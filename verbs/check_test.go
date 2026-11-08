@@ -370,3 +370,27 @@ func TestShowRowWithoutAWorker(t *testing.T) {
 	w.doctor.unitsErr = errBroken
 	want(t, w.do("carol", "show", "alice"), 0, `"unread": "connection refused"`)
 }
+
+// A bench whose seat lacks GH_GATE_TOKEN (its git's one github credential)
+// refuses at worker start in one line naming the grant; check quotes that
+// line, from the unit's log, in its red (#672).
+func TestCheckWorkersQuotesTheGitTokenGrant(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	healthy(t, w)
+	w.svc.worker = func(a WorkerArgs) error {
+		a.Harness, a.LookupEnv = "script", func(string) (string, bool) { return "", false }
+		return a.Check()
+	}
+	r := w.do("alice", "worker")
+	line := strings.TrimSuffix(r.Output, "\n")
+	grant := "nova-secrets grant GH_GATE_TOKEN --to alice --pins <dir> --store <dir> --key <file>"
+	if r.Exit == 0 || strings.Contains(line, "\n") || !strings.HasPrefix(line, "SPRINT REFUSED worker: worker refused: GH_GATE_TOKEN is not in the worker's environment") || !strings.Contains(line, grant) {
+		t.Fatalf("exit %d:\n%s", r.Exit, r.Output)
+	}
+	w.doctor.units = []WorkerUnit{{Machine: "alice", Service: "sprint-worker-alice", LastLine: line}}
+	r = w.do("", "check")
+	if r.Exit != 1 || !strings.Contains(r.Output, "CHECK RED worker alice: \""+line+"\"") {
+		t.Fatalf("exit %d:\n%s", r.Exit, r.Output)
+	}
+}

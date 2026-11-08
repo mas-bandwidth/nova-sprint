@@ -304,11 +304,18 @@ func (d *fakeDoctor) Worker(_ context.Context, machine string) (WorkerUnit, bool
 	return WorkerUnit{}, false, d.unitsErr
 }
 
-type fakeServices struct{ ran []string }
+type fakeServices struct {
+	ran []string
+	// worker, when set, is the worker's own start (Serve's Check on w).
+	worker func(WorkerArgs) error
+}
 
 func (s *fakeServices) Run(context.Context, string) error { s.ran = append(s.ran, "run"); return nil }
 func (s *fakeServices) Worker(_ context.Context, w WorkerArgs) error {
 	s.ran = append(s.ran, "worker "+w.Row)
+	if s.worker != nil {
+		return s.worker(w)
+	}
 	return nil
 }
 func (s *fakeServices) Dash(context.Context, string, string) error {

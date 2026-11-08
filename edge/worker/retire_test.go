@@ -26,6 +26,7 @@ const (
 	testHolderSHA = "6666666666666666666666666666666666666666"
 	testStaleSHA  = "7777777777777777777777777777777777777777"
 	testBranch    = "sprint/s1/p1"
+	testCloneURL  = "https://github.com/o/r.git"
 )
 
 // The lease form: OSGitOps pushes with --force-with-lease on the branch's
@@ -34,13 +35,24 @@ const (
 func TestOSGitPushIsALeaseFromTheExpectedHead(t *testing.T) {
 	t.Parallel()
 	fx := edge.NewFakeExec()
-	fx.On("git", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{Stdout: testPriorSHA + "\n"} })
+	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
+		switch c.Cmd.Argv[gitArg0_internal] {
+		case "remote":
+			return edge.FakeOutcome{Stdout: testCloneURL + "\n"}
+		case "config":
+			return edge.FakeOutcome{Stdout: "remote.origin.url\n" + testCloneURL + "\x00"}
+		case "ls-files":
+			return edge.FakeOutcome{}
+		}
+		return edge.FakeOutcome{Stdout: testPriorSHA + "\n"}
+	})
 	g := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
 	ctx := context.Background()
-	if err := g.Push(ctx, "/wt", testBranch, testWorkSHA, testPriorSHA); err != nil {
+	wt := filepath.Join(t.TempDir(), "repo")
+	if err := g.Push(ctx, wt, testCloneURL, testBranch, testWorkSHA, testPriorSHA); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Push(ctx, "/wt", testBranch, testWorkSHA, ""); err != nil {
+	if err := g.Push(ctx, wt, testCloneURL, testBranch, testWorkSHA, ""); err != nil {
 		t.Fatal(err)
 	}
 	tip, err := g.BranchTip(ctx, Job{Repo: "o/r", Forge: "github", Branch: testBranch})
@@ -49,11 +61,13 @@ func TestOSGitPushIsALeaseFromTheExpectedHead(t *testing.T) {
 	}
 	var got []string
 	for _, c := range fx.Calls() {
-		got = append(got, strings.Join(c.Cmd.Argv[5:], " "))
+		if v := c.Cmd.Argv[gitArg0_internal]; v != "remote" && v != "config" && v != "ls-files" { // the guard's reads
+			got = append(got, strings.Join(c.Cmd.Argv[gitArg0_internal:], " "))
+		}
 	}
 	want := []string{
-		"push --force-with-lease=refs/heads/" + testBranch + ":" + testPriorSHA + " origin " + testWorkSHA + ":refs/heads/" + testBranch,
-		"push --force-with-lease=refs/heads/" + testBranch + ": origin " + testWorkSHA + ":refs/heads/" + testBranch,
+		"push --no-recurse-submodules --force-with-lease=refs/heads/" + testBranch + ":" + testPriorSHA + " " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
+		"push --no-recurse-submodules --force-with-lease=refs/heads/" + testBranch + ": " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
 		"for-each-ref --format=%(objectname) refs/remotes/origin/" + testBranch,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -132,9 +146,7 @@ func newRetireRig_internal(t *testing.T, next NextResponse, rec JobRecord) *reti
 	t.Helper()
 	root := t.TempDir()
 	g := &retireRig_internal{sp: &crSprint{next: next}, git: newFakeGit_internal(), jobDir: filepath.Join(root, "jobs", rec.Consumer)}
-	if err := WriteJobRecord(g.jobDir, rec); err != nil {
-		t.Fatal(err)
-	}
+	writeStagedRecord_internal(t, g.jobDir, rec)
 	wt := filepath.Join(g.jobDir, "repo")
 	cache := filepath.Join(wt, ".gomodcache", "mod", "example.com", "m@v1")
 	if err := os.MkdirAll(cache, 0o755); err != nil {
@@ -149,7 +161,7 @@ func newRetireRig_internal(t *testing.T, next NextResponse, rec JobRecord) *reti
 		}
 	}
 	t.Cleanup(func() { _ = removeTree_internal(root) })
-	g.git.headByWT[wt], g.git.dirtyByWT[wt] = testStaleSHA, true
+	g.git.headByWT[wt] = testStaleSHA
 	g.git.originHeads[testBranch] = testHolderSHA
 	r, err := NewRunner(Runner{
 		Host: "b1", RootDir: root, Sprint: g.sp, Git: g.git, Wall: &fakeWall{}, Procs: &fakeProcTable{alive: map[string]bool{}},
@@ -243,11 +255,11 @@ func TestPushGateRefusesAJobThatNoLongerHolds(t *testing.T) {
 	g := newRetireRig_internal(t, NextResponse{Epoch: 1, Row: "vision.ds"}, staleWorkRecord_internal(JobHarvested, 1))
 	rec := staleWorkRecord_internal(JobHarvested, 1)
 	g.git.originHeads[testBranch] = testWorkSHA
-	if err := g.r.pushBranch_internal(context.Background(), "wt", &rec, testStaleSHA); err != nil {
+	if err := g.r.pushBranch_internal(context.Background(), &rec, testStaleSHA); err != nil {
 		t.Fatalf("a holder's push by lease: %v", err)
 	}
 	g.r.markGone_internal(1, "p1.w1", math.MaxInt)
-	err := g.r.pushBranch_internal(context.Background(), "wt", &rec, testRebSHA)
+	err := g.r.pushBranch_internal(context.Background(), &rec, testRebSHA)
 	if err == nil || !strings.Contains(err.Error(), "no longer holds its card") || len(g.git.pushes()) != 1 {
 		t.Fatalf("after final: %v, pushes %+v", err, g.git.pushes())
 	}

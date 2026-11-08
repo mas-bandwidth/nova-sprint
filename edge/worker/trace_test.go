@@ -26,6 +26,7 @@ type runnerJobDirState_internal struct {
 	outcome string
 	bounced bool
 	stopped bool
+	sealed  bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -86,6 +87,8 @@ type runnerWalkHarness_internal struct {
 	git        *fakeGit // origin: the card branches, and every push the runner made
 	finalAt    map[string]int
 	holder     map[string]bool
+	wall       *stepWall_internal // the runner's wall: every seal step it ran
+	sealedAt   map[string]int     // the seal steps the wall had run on c's tree at c's last Run
 }
 
 func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
@@ -114,6 +117,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		t.Fatalf("seed runner walk: err=%v rec=%+v", err, rec)
 	}
 	root, git := t.TempDir(), newFakeGit_internal()
+	wall := &stepWall_internal{fakeWall: &fakeWall{}, steps: &[][]string{}}
 	return &runnerWalkHarness_internal{
 		st:       st,
 		rootDir:  root,
@@ -128,16 +132,18 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		stopped:  map[string]bool{"c1": false, "c2": false},
 		gone:     map[string]*JobRecord{},
 		takes:    map[string]int{"c1": 0, "c2": 0},
-		runner:   runnerForWalk_internal(t, root, git),
+		runner:   runnerForWalk_internal(t, root, git, wall),
+		wall:     wall,
 		git:      git,
 		finalAt:  map[string]int{},
 		holder:   map[string]bool{"c1": false, "c2": false},
+		sealedAt: map[string]int{"c1": 0, "c2": 0},
 	}
 }
 
-func runnerForWalk_internal(t *testing.T, root string, git *fakeGit) *Runner {
+func runnerForWalk_internal(t *testing.T, root string, git *fakeGit, wall ReserveWall) *Runner {
 	t.Helper()
-	r, err := NewRunner(Runner{Host: "vision", RootDir: root, Git: git, Procs: &fakeProcTable{alive: map[string]bool{}},
+	r, err := NewRunner(Runner{Host: "vision", RootDir: root, Git: git, Wall: wall, Procs: &fakeProcTable{alive: map[string]bool{}},
 		Now: func() time.Time { return time.Unix(1000, 0) }, Sleep: func(time.Duration) {}})
 	if err != nil {
 		t.Fatal(err)
@@ -263,6 +269,7 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 		outcome: out,
 		bounced: h.bounced[c],
 		stopped: h.stopped[c],
+		sealed:  h.seals_internal(c) > h.sealedAt[c],
 	}
 }
 
@@ -311,9 +318,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.jobState[c] = JobStaged
 		rec := JobRecord{Epoch: 1, Consumer: c, Kind: "work", Row: "vision.ds", Branch: runnerBranchName_internal(c), BaseSHA: testBaseSHA,
 			Gen: 1, State: JobStaged, StartTipRead: true}
-		if err := WriteJobRecord(dir, rec); err != nil {
-			t.Fatal(err)
-		}
+		writeStagedRecord_internal(t, dir, rec)
 	case "Run":
 		rec, err := ReadJobRecord(dir)
 		if err != nil {
@@ -329,7 +334,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.git.mu.Unlock()
 		h.slotsInUse++
 		h.alive[c] = 1
-		h.stopped[c] = false
+		h.stopped[c], h.sealedAt[c] = false, h.seals_internal(c)
 		h.jobState[c] = JobRunning
 	case "Harvest", "Die":
 		h.finishRun_internal(t, c, act, dir)
@@ -401,8 +406,9 @@ func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h.seal_internal(t, c, kept)
 	// Its one push, by lease, while it still holds the card.
-	if err := h.runner.pushBranch_internal(context.Background(), filepath.Join(dir, "repo"), &kept, testWorkSHA); err != nil {
+	if err := h.runner.pushBranch_internal(context.Background(), &kept, testWorkSHA); err != nil {
 		t.Fatalf("Release %s: the push by lease: %v", c, err)
 	}
 	rec, err := h.st.Apply(context.Background(), store.Op{
@@ -454,6 +460,28 @@ func (h *runnerWalkHarness_internal) branchStep_internal(t *testing.T, act, c st
 	}
 }
 
+// seal_internal is the worker's own seal and collect of c's tree
+// (sealAndCollect_internal); jobDir.sealed is read back from the seal
+// steps the wall saw (seals_internal), never set by the walk.
+func (h *runnerWalkHarness_internal) seal_internal(t *testing.T, c string, rec JobRecord) {
+	t.Helper()
+	dir := h.jobDirPath_internal(c)
+	if _, err := h.runner.sealAndCollect_internal(context.Background(), Job{Consumer: c, Row: rec.Row, JobDir: dir, WorktreeDir: filepath.Join(dir, "repo")}, rec); err != nil {
+		t.Fatalf("seal %s: %v", c, err)
+	}
+}
+
+// seals_internal is how many seal steps the walk's wall ran on c's tree.
+func (h *runnerWalkHarness_internal) seals_internal(c string) int {
+	n, out := 0, filepath.Join(h.jobDirPath_internal(c), SealBundle)
+	for _, argv := range *h.wall.steps {
+		if slices.Contains(argv, out) {
+			n++
+		}
+	}
+	return n
+}
+
 func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, dir string) {
 	t.Helper()
 	rec, err := ReadJobRecord(dir)
@@ -473,6 +501,7 @@ func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, di
 	}
 	h.alive[c] = 0
 	h.slotsInUse--
+	h.seal_internal(t, c, rec) // the seal step, after the harness
 	h.jobState[c] = JobHarvested
 }
 
@@ -494,7 +523,7 @@ func (h *runnerWalkHarness_internal) advancePostRun_internal(t *testing.T, c, ac
 		h.jobState[c] = JobRebased
 	case "Push":
 		rec, _ := ReadJobRecord(dir)
-		if err := h.runner.pushBranch_internal(ctx, filepath.Join(dir, "repo"), &rec, testWorkSHA); err != nil {
+		if err := h.runner.pushBranch_internal(ctx, &rec, testWorkSHA); err != nil {
 			t.Fatalf("Push %s: %v", c, err)
 		}
 		h.pushed[c] = true
@@ -670,8 +699,8 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s]",
-		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped))
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s]",
+		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed))
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {

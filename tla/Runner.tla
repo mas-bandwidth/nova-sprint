@@ -30,6 +30,13 @@
 (* nothing; HolderPush is the new holder's push from another row.          *)
 (* NoPushAfterFinal and BranchOnlyByHolder; reversed witnesses             *)
 (* RunnerWithdrawnPushes and RunnerForcePushRewinds.                       *)
+(*                                                                         *)
+(* A job's tree is sealed before anything leaves it (#680, 2026-11-07):    *)
+(* jobDir[c].sealed is the seal step's run, inside the wall, after the     *)
+(* harness ended (Harvest, Die) or before a release's push; the worker     *)
+(* pushes only a sealed job's commits, from its own clone outside the job  *)
+(* directory, and runs no git in the job directory after the harness.      *)
+(* A run again (Run) starts unsealed. PushOnlySealed.                      *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -56,7 +63,7 @@ Init ==
   /\ jobState = [c \in Consumers |-> "none"]
   /\ slotsInUse = 0
   /\ width = Width
-  /\ jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE]]
+  /\ jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, released |-> FALSE]
@@ -112,7 +119,7 @@ Run(c) ==
   /\ slotsInUse < MaxSlots
   /\ slotsInUse' = slotsInUse + 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 1]
-  /\ jobDir' = [jobDir EXCEPT ![c].pid = PidFor(c), ![c].stopped = FALSE]   \* record pid in job.json at start; a resumed job runs again
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = PidFor(c), ![c].stopped = FALSE, ![c].sealed = FALSE]   \* record pid in job.json at start; a resumed job runs again
   /\ jobState' = [jobState EXCEPT ![c] = "running"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
@@ -122,7 +129,7 @@ Die(c) ==
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - 1
-  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "fault", ![c].bounced = FALSE]   \* Die is a fault, never a fail that bounces
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].sealed = TRUE, ![c].outcome = "fault", ![c].bounced = FALSE]   \* Die is a fault, never a fail that bounces; sealed after it
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
@@ -132,7 +139,7 @@ Harvest(c) ==
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - 1   \* slot freed only when harness ends
-  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "ok"]
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "ok", ![c].sealed = TRUE]   \* the seal step, in the wall
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
@@ -158,6 +165,7 @@ Push(c) ==
   /\ storeState[c] = "working"   \* only the holder touches the branch
   /\ jobState[c] \in {"harvested", "rebased"}
   /\ (jobState[c] = "harvested" => jobDir[c].outcome # "ok")
+  /\ jobDir[c].sealed   \* pushed from the worker's clone of the sealed tree
   /\ jobDir' = [jobDir EXCEPT ![c].pushed = TRUE, ![c].resId = IF @ = 0 THEN ResIDFor(c) ELSE @]
   /\ jobState' = [jobState EXCEPT ![c] = "reporting"]
   /\ branch' = JobPushes(c)
@@ -280,7 +288,7 @@ Release(c) ==
   /\ jobDir[c].exists
   /\ harnessAlive[c] = 0
   /\ storeState' = [storeState EXCEPT ![c] = "fail"]
-  /\ jobDir' = [jobDir EXCEPT ![c].pushed = TRUE, ![c].exists = FALSE]
+  /\ jobDir' = [jobDir EXCEPT ![c].pushed = TRUE, ![c].exists = FALSE, ![c].sealed = TRUE]   \* sealed, then pushed
   /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
   /\ env' = [env EXCEPT !.released = TRUE]
   /\ branch' = JobPushes(c)
@@ -413,6 +421,11 @@ NoPushAfterFinal ==
 \* the holder's; no job of this worker rewinds it.
 BranchOnlyByHolder ==
   \A c \in Consumers : branch[c].holderWrote => branch[c].tip = "holder"
+
+\* #680: the branch holds a job's commits only once its tree was sealed in
+\* the wall; the push is from the worker's clone, never the job directory.
+PushOnlySealed ==
+  \A c \in Consumers : branch[c].tip = "job" => jobDir[c].sealed
 
 \* Reach checks (each must be violated: the state is reachable).
 NeverTakesWhileAJobRuns ==

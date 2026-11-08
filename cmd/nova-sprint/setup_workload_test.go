@@ -89,7 +89,8 @@ func testWorkload(f *fleetFake, rows map[string]store.Row, present map[string]bo
 }
 
 // One record per worker bench, exactly the worker's flags, its own seat,
-// the keys and environment sprint-run's store and bus need; one
+// the keys (GH_GATE_TOKEN, its git's one github credential, among them)
+// and environment sprint-run's store and bus need; one
 // nova-fleet play limited to those benches applies them all.
 func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 	t.Parallel()
@@ -110,7 +111,7 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--harness","opencode","--providers","deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
-		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
+		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,GH_GATE_TOKEN,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
 		"--actor", "rowan", "--reason", "nova-sprint up 7/8 workers"}
 	if len(adds) != 2 || !slices.Equal(adds[0], want) || adds[1][3] != "sprint-worker-amd-2" {
 		t.Fatalf("records:\n%q\nwant\n%q", adds, want)

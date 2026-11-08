@@ -103,15 +103,26 @@ func (g *fakeGit) BranchTip(_ context.Context, j Job) (string, error) {
 	return g.originHeads[j.Branch], nil
 }
 
-func (g *fakeGit) HeadSHA(_ context.Context, wt string) (string, error) {
+// Collect is the seal step and the collect together: a dirty tree is
+// committed (testCommitSHA), and the job tree's head is the worker clone's.
+func (g *fakeGit) Collect(_ context.Context, sl Sealed) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.headByWT[wt], nil
+	wt := filepath.Join(sl.JobDir, "repo")
+	if g.dirtyByWT[wt] {
+		g.dirtyByWT[wt] = false
+		g.headByWT[wt] = testCommitSHA
+		g.commits = append(g.commits, wt)
+	}
+	g.headByWT[sl.Clone] = g.headByWT[wt]
+	return cmp.Or(g.headByWT[wt], sl.Base), nil
 }
+
+func (g *fakeGit) Export(context.Context, string, string, string) error { return nil }
 
 // Push records every push (branch, sha, lease) and keeps git's lease: the
 // branch on origin must be at expect ("" : absent).
-func (g *fakeGit) Push(_ context.Context, _, branch, sha, expect string) error {
+func (g *fakeGit) Push(_ context.Context, _, _, branch, sha, expect string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.pushLog = append(g.pushLog, fakePush{branch: branch, sha: sha, expect: expect})
@@ -132,7 +143,7 @@ func (g *fakeGit) pushes() []fakePush {
 	return append([]fakePush(nil), g.pushLog...)
 }
 
-func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _ string) (string, error) {
+func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _, _ string) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.rebaseErr != nil {
@@ -145,32 +156,14 @@ func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _ string) (string, err
 	return g.headByWT[wt], nil
 }
 
-func (g *fakeGit) OriginHasHead(_ context.Context, _, branch, sha string) (bool, error) {
+func (g *fakeGit) OriginHasHead(_ context.Context, _, _, branch, sha string) (bool, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.originHeads[branch] == sha, nil
 }
 
 func (g *fakeGit) HasHead(ctx context.Context, repo, branch, sha string) (bool, error) {
-	return g.OriginHasHead(ctx, repo, branch, sha)
-}
-
-func (g *fakeGit) IsDirty(_ context.Context, wt string) (bool, error) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.dirtyByWT[wt], nil
-}
-
-func (g *fakeGit) CommitAll(_ context.Context, wt, _ string) (string, error) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if !g.dirtyByWT[wt] {
-		return "", fmt.Errorf("nothing to commit in %s", wt)
-	}
-	g.dirtyByWT[wt] = false
-	g.headByWT[wt] = testCommitSHA
-	g.commits = append(g.commits, wt)
-	return testCommitSHA, nil
+	return g.OriginHasHead(ctx, "", repo, branch, sha)
 }
 
 func (g *fakeGit) RemoveWorktree(_ context.Context, wt string) error {
@@ -209,6 +202,10 @@ func (w *fakeWall) RunHarness(_ context.Context, j Job, argv, env []string, _ ti
 	_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 	_ = os.WriteFile(filepath.Join(j.JobDir, "usage.json"), []byte(`{"micro_usd":950,"priced":true}`), 0o600)
 	return WallRunResult{ExitCode: 0, PID: 100 + call, Nonce: "n1", Elapsed: 2 * time.Second}, nil
+}
+
+func (w *fakeWall) RunStep(context.Context, Job, []string, time.Duration) (WallRunResult, error) {
+	return WallRunResult{}, nil
 }
 
 func (w *fakeWall) RunTest(_ context.Context, j Job, cmd string, _ time.Duration) (WallRunResult, error) {
@@ -293,7 +290,7 @@ func TestRunnerRunsOnAnyHostTheCoordinatorsToo(t *testing.T) {
 			t.Fatalf("host %q: the worker refused: %v", host, err)
 		}
 	}
-	if err := (Config{Row: "coord", Host: "coord", Harness: "script"}).Check(); err != nil {
+	if err := (Config{Row: "coord", Host: "coord", Harness: "script", LookupEnv: func(string) (string, bool) { return gitTokenFixture, true }}).Check(); err != nil {
 		t.Fatalf("a worker config on the coordinator's host refused: %v", err)
 	}
 }
@@ -501,7 +498,7 @@ func TestRunnerProbeAndFullLifecycleWithLaunchRetry(t *testing.T) {
 	}
 }
 
-func TestRunnerRebaseConflictStageFaultAndDirtyKeep(t *testing.T) {
+func TestRunnerRebaseConflictStageFaultAndLeftTree(t *testing.T) {
 	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
@@ -525,11 +522,14 @@ func TestRunnerRebaseConflictStageFaultAndDirtyKeep(t *testing.T) {
 	}
 	snap, _ := st.Snapshot(context.Background())
 	p := snap.Cards["p1"]
-	if p.State != "ready" || p.Bounces != 1 || p.Head != testWorkSHA {
-		t.Fatalf("expected rebase conflict to bounce p1 to ready with pushed head kept, got %+v", p)
+	if p.State != "ready" || p.Bounces != 1 || p.Head != testCommitSHA || len(git.commits) != 1 {
+		t.Fatalf("expected rebase conflict to bounce p1 to ready with pushed head (the left tree, committed by the seal step) kept, got %+v commits %v", p, git.commits)
 	}
-	if _, err := os.Stat(filepath.Join(root, "jobs", "p1.w1")); err != nil {
-		t.Fatalf("expected dirty worktree kept on disk, got %v", err)
+	if _, err := os.Stat(filepath.Join(root, "jobs", "p1.w1")); !os.IsNotExist(err) {
+		t.Fatalf("expected the job directory cleaned once its head is on origin, got %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "jobs", "p1.w1"), 0o755); err != nil { // one left behind
+		t.Fatal(err)
 	}
 	next, _ := sc.Next(context.Background(), row)
 	err := r.RunConsumer(context.Background(), next, ConsumerSummary{ID: "p1.w1", Gen: 3})
@@ -555,12 +555,12 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 	git.headByWT[filepath.Join(jobDir, "repo")] = testPriorSHA
 
 	procs := &fakeProcTable{alive: map[string]bool{"777:nonce-live": true}}
-	_ = WriteJobRecord(jobDir, JobRecord{
+	writeStagedRecord_internal(t, jobDir, JobRecord{
 		Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1",
 		Branch: taken.Branch, BaseSHA: taken.BaseSHA, Gen: taken.Gen, Attempt: 1,
 		ResultID: "res-p1.w1-g3", State: JobRunning, PID: 777, Nonce: "nonce-live",
 	})
-	r1, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Procs: procs, Now: clock})
+	r1, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
 	if err := r1.RecoverRow(ctx, row); err != nil {
 		t.Fatalf("RecoverRow live: %v", err)
 	}
@@ -570,7 +570,7 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 
 	// Simulate harness death while runner was down, then restart and recover on r2 before pure QueryEdge.
 	delete(procs.alive, "777:nonce-live")
-	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Procs: procs, Now: clock})
+	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
 	if err := r2.RecoverRow(ctx, row); err != nil {
 		t.Fatalf("RecoverRow dead: %v", err)
 	}
@@ -580,7 +580,7 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 		t.Fatalf("QueryEdge 1: %v", err)
 	}
 	// Create a third brand-new Runner struct and query the exact same (epoch, kind, card, sha).
-	r3, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Procs: procs, Now: clock})
+	r3, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
 	res2, err := r3.QueryEdge(ctx, req)
 	if err != nil {
 		t.Fatalf("QueryEdge 2: %v", err)
@@ -774,9 +774,20 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fx := edge.NewFakeExec()
-	fx.Enqueue("git", edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"})
+	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
+		switch args := c.Cmd.Argv[gitArg0_internal:]; {
+		case args[0] == "config" && args[1] == "--local":
+			return edge.FakeOutcome{Stdout: "remote.origin.url\n" + testCloneURL + "\x00"}
+		case args[0] == "remote":
+			return edge.FakeOutcome{Stdout: testCloneURL + "\n"}
+		case args[0] == "fetch":
+			return edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"}
+		}
+		return edge.FakeOutcome{}
+	})
 	gitOps := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
-	_, err := gitOps.RebaseOntoStream(ctx, t.TempDir(), "sprint/s1/group")
+	wt := filepath.Join(t.TempDir(), "repo")
+	_, err := gitOps.RebaseOntoStream(ctx, wt, testCloneURL, "sprint/s1/group")
 	var fe *FetchError
 	if !errors.As(err, &fe) || fe.StreamRef != "sprint/s1/group" {
 		t.Fatalf("expected *FetchError from RebaseOntoStream when fetch fails, got %T (%v)", err, err)
@@ -868,6 +879,9 @@ func (w *cancelWaitWall) RunHarness(ctx context.Context, _ Job, _, _ []string, _
 	<-ctx.Done()
 	w.canceled <- ctx.Err()
 	return WallRunResult{ExitCode: -1}, ctx.Err()
+}
+func (w *cancelWaitWall) RunStep(context.Context, Job, []string, time.Duration) (WallRunResult, error) {
+	return WallRunResult{}, nil
 }
 func (w *cancelWaitWall) RunTest(context.Context, Job, string, time.Duration) (WallRunResult, error) {
 	return WallRunResult{}, nil

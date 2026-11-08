@@ -471,6 +471,11 @@ type WallConfig struct {
 	ReserveWait                        time.Duration
 	ReadPaths, WritePaths              []string
 	NetDeny                            bool
+	// WorkRoot and MirrorRoot are the worker's own clones a job's tree
+	// borrows objects from (clone --shared): the wall reads the job repo's
+	// <WorkRoot>/<name>/.git and <MirrorRoot>/<name>.git, worked out from
+	// the job's repo, never from what the job's tree says.
+	WorkRoot, MirrorRoot string
 }
 
 // wallKeeps are the names nova-sandbox passes into the wall without --env;

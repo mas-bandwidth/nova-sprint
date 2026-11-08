@@ -75,17 +75,15 @@ func isCloneAddress_internal(repo string) bool {
 }
 
 // credentialEnv_internal is the git environment that makes gh, as the
-// host's own login, the only credential helper for https://github.com (an
-// empty helper first clears the host's own, so a person's keychain never
-// answers for the sprint). gh runs through env(1) with every GitHub
-// credential of the process unset (forge.Unset), so a GH_TOKEN or a
-// GH_CONFIG_DIR in the environment cannot make it someone else (directive
-// 59). It names no secret.
+// host's own login, the only credential helper, for https://github.com
+// alone (githubHelperEnv_internal: an empty credential.helper first clears
+// the host's own, so a person's keychain never answers for the sprint). gh
+// runs through env(1) with every GitHub credential of the process unset
+// (forge.Unset), so a GH_TOKEN or a GH_CONFIG_DIR in the environment cannot
+// make it someone else (directive 59). It names no secret.
 func credentialEnv_internal(gh string) []string {
 	if gh == "" {
 		return nil
 	}
-	key := "credential." + strings.TrimSuffix(GitHubHost, "/") + ".helper"
-	helper := "!env " + strings.Join(forge.Unset(), " ") + " " + gh + " auth git-credential"
-	return []string{"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=" + key, "GIT_CONFIG_VALUE_0=", "GIT_CONFIG_KEY_1=" + key, "GIT_CONFIG_VALUE_1=" + helper}
+	return githubHelperEnv_internal("!env " + strings.Join(forge.Unset(), " ") + " " + gh + " auth git-credential")
 }

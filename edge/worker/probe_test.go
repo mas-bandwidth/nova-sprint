@@ -349,7 +349,7 @@ func TestStagePerStreamRepo(t *testing.T) {
 	roots := t.TempDir()
 	fx := edge.NewFakeExec()
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
-		args := c.Cmd.Argv[5:] // after git -c hooksPath -c fsmonitor
+		args := c.Cmd.Argv[gitArg0_internal:] // after gitPrefix_internal
 		switch {
 		case args[0] == "clone":
 			_ = os.MkdirAll(args[len(args)-1], 0o755)
@@ -375,11 +375,13 @@ func TestStagePerStreamRepo(t *testing.T) {
 	}
 	var clones, config []string
 	for _, c := range fx.Calls()[before:] {
-		switch c.Cmd.Argv[5] {
+		switch c.Cmd.Argv[gitArg0_internal] {
 		case "clone":
-			clones = append(clones, strings.Join(c.Cmd.Argv[5:], " "))
+			clones = append(clones, strings.Join(c.Cmd.Argv[gitArg0_internal:], " "))
 		case "config":
-			config = append(config, strings.Join(c.Cmd.Argv[6:], " "))
+			if c.Cmd.Argv[gitArg0_internal+1] != "--local" { // the config guard's read
+				config = append(config, strings.Join(c.Cmd.Argv[gitArg0_internal+1:], " "))
+			}
 		}
 	}
 	if strings.Join(config, ";") != "user.name "+testCommitName+";user.email "+testCommitEmail {

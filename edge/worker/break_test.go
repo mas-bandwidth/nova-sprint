@@ -73,10 +73,10 @@ type blockingRebaseGit_internal struct {
 	release chan struct{}
 }
 
-func (g *blockingRebaseGit_internal) RebaseOntoStream(ctx context.Context, wt, ref string) (string, error) {
+func (g *blockingRebaseGit_internal) RebaseOntoStream(ctx context.Context, wt, remote, ref string) (string, error) {
 	g.entered <- struct{}{}
 	<-g.release
-	return g.fakeGit.RebaseOntoStream(ctx, wt, ref)
+	return g.fakeGit.RebaseOntoStream(ctx, wt, remote, ref)
 }
 
 // TestBreakRestartAfterHarvestReportsOkWithoutRebaseOrTests

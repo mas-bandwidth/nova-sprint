@@ -36,6 +36,9 @@ func (w *liveWall) RunHarness(ctx context.Context, j Job, _, _ []string, _ time.
 	}
 	return WallRunResult{PID: 4242, Nonce: "n-4242"}, os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 }
+func (w *liveWall) RunStep(context.Context, Job, []string, time.Duration) (WallRunResult, error) {
+	return WallRunResult{}, nil
+}
 func (w *liveWall) RunTest(context.Context, Job, string, time.Duration) (WallRunResult, error) {
 	return WallRunResult{}, nil
 }
