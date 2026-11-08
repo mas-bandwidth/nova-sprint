@@ -11,20 +11,15 @@ permissions:
   contents: write
 jobs:
   release:
-    runs-on: [self-hosted, linux, x64, bench]
+    # GitHub's own runner, as nova-tools' release: it has gh and setup-go; the fleet's runners
+    # carry neither by design (v2.0.5's first release run failed on a bench with "gh: command not found")
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: use the installed Go toolchain
-        shell: bash
-        run: |
-          want=go$(sed -n 's/^go \([0-9.]*\)$/\1/p' go.mod)
-          newest=$(ls -d "$HOME"/sdk/go*/bin 2>/dev/null | sort -V | tail -1 || true)
-          onpath=$(dirname "$(command -v go 2>/dev/null || echo /none/go)")
-          for d in "$HOME/sdk/$want/bin" "$newest" "$HOME/go/bin" /usr/local/go/bin "$onpath"; do
-            [ -n "$d" ] && [ -x "$d/go" ] && { echo "$d" >> "$GITHUB_PATH"; "$d/go" version; exit 0; }
-          done
-          echo "no Go toolchain on this runner" >&2; exit 1
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
       - name: build every command for every platform
         shell: bash
         env:
