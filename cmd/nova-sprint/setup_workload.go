@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -49,14 +51,41 @@ const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,ince
 // bench: its seat is the bench's own, its keys the sprint credential, the
 // bus password when the bus has a user (as sprint-run's), and the provider
 // keys; its environment names the same store and bus as sprint-run's.
-func workerService(machine string, run verbs.FleetService) verbs.FleetService {
-	env := map[string]string{"NOVA_PG_DSN": run.Env["NOVA_PG_DSN"], "NOVA_BUS_REDIS": run.Env["NOVA_BUS_REDIS"]}
+func workerService(machine string, run verbs.FleetService, runAddress string) verbs.FleetService {
+	env := map[string]string{"NOVA_PG_DSN": benchReachable(run.Env["NOVA_PG_DSN"], runAddress), "NOVA_BUS_REDIS": benchReachable(run.Env["NOVA_BUS_REDIS"], runAddress)}
 	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD"}, workerProviderKeys()...)
 	if user := run.Env["NOVA_BUS_USER"]; user != "" {
 		env["NOVA_BUS_USER"] = user
 		keys = append(keys, "NOVA_BUS_PASSWORD")
 	}
 	return verbs.FleetService{Name: "sprint-worker-" + machine, Machine: machine, Seat: machine, Argv: workerArgv(machine, run.Machine), Keys: keys, Env: env}
+}
+
+// benchReachable is addr (a URL such as the store's DSN, or a host:port
+// such as the bus's) as a bench reaches it: a loopback host is the run
+// machine's, so it becomes runAddress, the run machine's fleet address,
+// with user, port, database and query kept. Any other host, an empty
+// runAddress or an address it cannot parse is kept as it is.
+func benchReachable(addr, runAddress string) string {
+	if runAddress == "" {
+		return addr
+	}
+	loopback := func(host string) bool { return host == "localhost" || net.ParseIP(host).IsLoopback() }
+	if u, err := url.Parse(addr); err == nil && u.Host != "" {
+		if !loopback(u.Hostname()) {
+			return addr
+		}
+		host := runAddress
+		if port := u.Port(); port != "" {
+			host = net.JoinHostPort(runAddress, port)
+		}
+		u.Host = host
+		return u.String()
+	}
+	if host, port, err := net.SplitHostPort(addr); err == nil && loopback(host) {
+		return net.JoinHostPort(runAddress, port)
+	}
+	return addr
 }
 
 // serviceLogPath is where nova-fleet's unit for service appends its output
@@ -95,6 +124,12 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 		return serviceConfigFailure("cannot inspect machine inventory: ", err)
 	}
 	benches := verbs.WorkerBenches(machines)
+	runAddress := ""
+	for _, m := range machines {
+		if m.Name == w.run.Machine {
+			runAddress = m.Address
+		}
+	}
 	if w.services.Command == nil {
 		return fmt.Errorf("worker setup unavailable: no fleet command is wired")
 	}
@@ -103,7 +138,7 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	}
 	names := make([]string, 0, len(benches))
 	for _, bench := range benches {
-		s := workerService(bench, w.run)
+		s := workerService(bench, w.run, runAddress)
 		if _, err = w.services.Ensure(ctx, s); err != nil {
 			return err
 		}

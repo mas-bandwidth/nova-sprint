@@ -331,3 +331,27 @@ func TestWorkerDirectoriesAreUnderHome(t *testing.T) {
 		}
 	}
 }
+
+// D15: a store or bus the run machine reaches on loopback is the run
+// machine's fleet address on a bench, keeping user, port, database and
+// query; an address that is not loopback is kept as it is.
+func TestWorkerServiceStoreAndBusReachableFromTheBench(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ dsn, bus, wantDSN, wantBus string }{
+		{"postgres://nova_sprint@127.0.0.1:5432/nova?sslmode=disable", "127.0.0.1:6379",
+			"postgres://nova_sprint@studio.tail.ts.net:5432/nova?sslmode=disable", "studio.tail.ts.net:6379"},
+		{"postgres://nova_sprint@localhost:5432/nova?sslmode=disable", "localhost:6379",
+			"postgres://nova_sprint@studio.tail.ts.net:5432/nova?sslmode=disable", "studio.tail.ts.net:6379"},
+		{"postgres://nova_sprint@[::1]:5432/nova", "[::1]:6379",
+			"postgres://nova_sprint@studio.tail.ts.net:5432/nova", "studio.tail.ts.net:6379"},
+		{"postgres://nova_sprint@100.76.29.55:5432/nova?sslmode=disable", "100.76.29.55:6379",
+			"postgres://nova_sprint@100.76.29.55:5432/nova?sslmode=disable", "100.76.29.55:6379"},
+	} {
+		run := workloadRun()
+		run.Env["NOVA_PG_DSN"], run.Env["NOVA_BUS_REDIS"] = c.dsn, c.bus
+		env := workerService("amd-1", run, "studio.tail.ts.net").Env
+		if env["NOVA_PG_DSN"] != c.wantDSN || env["NOVA_BUS_REDIS"] != c.wantBus {
+			t.Errorf("%s, %s: worker got %s, %s; want %s, %s", c.dsn, c.bus, env["NOVA_PG_DSN"], env["NOVA_BUS_REDIS"], c.wantDSN, c.wantBus)
+		}
+	}
+}
