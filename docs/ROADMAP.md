@@ -11,8 +11,8 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | A missing toolchain inside the wall is a refusal at admission or a fault, never a bounce | ❌ |
 | Exclude a stream from a row (needs a schema change) | ❌ |
 | Runner registrations stored as nova-config records | ❌ |
-| macOS functional CI job; a missing prerequisite program fails the job, never skips (PR #710, parked) | ❌ |
-| staticcheck and deadcode in CI; the guides' cold commands run against the binary (PR #712, parked) | ❌ |
+| ci-macos-functional-leg — PR #710, branch ci/macos-functional-govulncheck: macOS functional CI job, missing prerequisite programs fail the job, govulncheck | ❌ |
+| ci-staticcheck-deadcode-and-guides — PR #712, branch hygiene/staticcheck-deadcode-readme: staticcheck and deadcode in CI, the guides' cold commands run against the binary | ❌ |
 | Steps.tla gains the holds/limits/silence/Gone step (the model gap under #702's bug) | ❌ |
 | The nine validated policy limits read by the steps instead of Engine.* constants | ❌ |
 | complete | 0% |
