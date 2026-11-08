@@ -59,6 +59,12 @@ func TestOpenCodeConfigDeclaresTheJobsModelThroughTheProxy(t *testing.T) {
 	if _, ok := p.Models["deepseek-flash"]; !ok || len(p.Models) != 1 {
 		t.Fatalf("want the job's model declared: %+v", p.Models)
 	}
+	// opencode runs in <job>/repo and writes result.json to <job>, which it
+	// asks about as external_directory and `opencode run` auto-rejects; the
+	// wall is the filesystem boundary, so the config allows it.
+	if !strings.Contains(OpenCodeConfig("127.0.0.1:7000", []string{"deepseek"}, []string{"deepseek/deepseek-flash"}), `"permission":{"external_directory":"allow"}`) {
+		t.Fatalf("the config does not allow external_directory: %+v", cfg)
+	}
 	for _, kv := range env {
 		if strings.HasPrefix(kv, "OPENAI_") {
 			t.Fatalf("the OPENAI_* wiring opencode ignores is gone: %q", kv)
@@ -111,6 +117,11 @@ func TestSanitizeWallEnvKeepsOnlyAPlaceholderOpenCodeConfig(t *testing.T) {
 		{swap("http://127.0.0.1:7000/deepseek/v1", "http://127.0.0.1:7001/deepseek/v1"), false},
 		{swap("http://127.0.0.1:7000/deepseek/v1", "http://127.0.0.1:7000/inception/v1"), false},
 		{swap("@ai-sdk/openai-compatible", "evil-pkg"), false},
+		{swap(`"external_directory":"allow"`, `"external_directory":"ask"`), false},
+		{swap(`"external_directory":"allow"`, `"external_directory":"allow","bash":"allow"`), false},
+		{swap(`"permission":{"external_directory":"allow"}`, `"permission":{"bash":"allow"}`), false},
+		{swap(`"permission":{"external_directory":"allow"}`, `"permission":"allow"`), false},
+		{swap(`,"permission":{"external_directory":"allow"}`, ``), false},
 		{swap(`"name":"deepseek"`, `"name":"other"`), false},
 		{`{"$schema":"","provider":null}`, false},
 		{`{"$schema":"https://opencode.ai/config.json","provider":{}}`, false},

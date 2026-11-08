@@ -290,9 +290,13 @@ type (
 		Options opencodeOptions_internal `json:"options"`
 		Models  map[string]struct{}      `json:"models"`
 	}
+	opencodePermission_internal struct {
+		ExternalDirectory string `json:"external_directory"`
+	}
 	opencodeConfig_internal struct {
-		Schema   string                               `json:"$schema"`
-		Provider map[string]opencodeProvider_internal `json:"provider"`
+		Schema     string                               `json:"$schema"`
+		Permission opencodePermission_internal          `json:"permission"`
+		Provider   map[string]opencodeProvider_internal `json:"provider"`
 	}
 )
 
@@ -306,9 +310,12 @@ const (
 // each provider/model of models whose provider is a provider name among
 // routes, under an OpenAI-compatible provider whose base URL is the key
 // proxy's route for it (ProxyBaseURL) and whose key is the placeholder the
-// proxy swaps for the real one; "" when none is.
+// proxy swaps for the real one; "" when none is. It allows
+// external_directory: opencode runs in <job>/repo and writes result.json to
+// <job>, which `opencode run` otherwise auto-rejects; the wall is the
+// filesystem boundary.
 func OpenCodeConfig(proxyAddr string, routes, models []string) string {
-	cfg := opencodeConfig_internal{Schema: opencodeSchema_internal, Provider: map[string]opencodeProvider_internal{}}
+	cfg := opencodeConfig_internal{Schema: opencodeSchema_internal, Permission: opencodePermission_internal{ExternalDirectory: "allow"}, Provider: map[string]opencodeProvider_internal{}}
 	for _, m := range models {
 		provider, id, ok := strings.Cut(m, "/")
 		if !ok || id == "" || !providerName_internal.MatchString(provider) || !slices.Contains(routes, provider) {
@@ -331,7 +338,8 @@ func OpenCodeConfig(proxyAddr string, routes, models []string) string {
 
 // openCodeConfigRefusal_internal is why the wall refuses v, nil when v is
 // exactly an OpenCodeConfig, the only config it admits: re-encoded it is v
-// (no field beside its own, each model {}), and each provider is a provider
+// (no field beside its own, each model {}), its one permission is
+// external_directory "allow", and each provider is a provider
 // name with the openai-compatible package, its own name, the placeholder
 // key, and the base URL of its route on one loopback proxy. The reason
 // never quotes v.
@@ -339,6 +347,9 @@ func openCodeConfigRefusal_internal(v string) error {
 	var cfg opencodeConfig_internal
 	if json.Unmarshal([]byte(v), &cfg) != nil || cfg.Schema != opencodeSchema_internal || len(cfg.Provider) == 0 {
 		return errors.New("it is not an OpenCodeConfig with a provider")
+	}
+	if cfg.Permission.ExternalDirectory != "allow" {
+		return errors.New(`its permission is not external_directory "allow"`)
 	}
 	proxy := ""
 	for _, name := range slices.Sorted(maps.Keys(cfg.Provider)) {

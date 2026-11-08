@@ -142,7 +142,8 @@ func (r *Runner) servedModel_internal(needs Needs, cands, listed []string) (stri
 }
 
 // listModels_internal is the harness's own model list (its Needs'
-// ListModels run outside the wall, under the probe's home and the env a job
+// ListModels run outside the wall, under a fresh probe home, tmp and data
+// (a database an earlier opencode left is never opened) and the env a job
 // declaring models on the proxy's routes would get), nil when it has no such
 // command.
 func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness, models []string) ([]string, error) {
@@ -152,8 +153,8 @@ func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness,
 	}
 	dir := filepath.Join(r.RootDir, "probes", row)
 	for _, sub := range []string{"home", "tmp", "data"} {
-		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
-			return nil, fmt.Errorf("the probe directory: %w", err)
+		if err := errors.Join(os.RemoveAll(filepath.Join(dir, sub)), os.MkdirAll(filepath.Join(dir, sub), 0o755)); err != nil {
+			return nil, fmt.Errorf("the listing directory %s could not be cleared: %w", filepath.Join(dir, sub), err)
 		}
 	}
 	lj := Job{JobDir: dir, Row: row, Consumer: row + ".models", ProxyAddr: r.ProxyAddr, Routes: r.Proxy.RouteNames(), Models: models}
