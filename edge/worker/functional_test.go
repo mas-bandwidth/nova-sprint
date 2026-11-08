@@ -316,54 +316,71 @@ func TestFunctionalLateWriterCannotReachThePush(t *testing.T) {
 // commit to the job's own branch, so the case is live.
 func TestFunctionalRestartActsOnlyOnTheKeptRecord(t *testing.T) {
 	t.Parallel()
-	for _, late := range []bool{false, true} {
-		gb := setupGitBench_internal(t)
-		runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/main")
-		clock := testClock_internal()
-		st, row := seedFakeStore_internal(t, clock)
-		g := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
-		sc := &StoreSprintClient{Store: st, Origin: g, Now: clock}
-		ctx := context.Background()
-		taken, err := sc.Take(ctx, row, "p1.w1", 0)
-		require.NoError(t, err)
-		root := t.TempDir()
-		jobDir := filepath.Join(root, "jobs", "p1.w1")
-		j := Job{Repo: gb.originDir, Kind: "work", Branch: taken.Branch, BaseSHA: gb.baseSHA, Consumer: "p1.w1", Row: row,
-			JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
-		require.NoError(t, g.Fetch(ctx, j))
-		_, err = g.StageWorktree(ctx, j)
-		require.NoError(t, err)
-		rec := JobRecord{Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1", Repo: gb.originDir,
-			Branch: taken.Branch, BaseSHA: gb.baseSHA, Gen: taken.Gen, Attempt: 1, State: JobStaged, StartTipRead: true}
-		writeStagedRecord_internal(t, jobDir, rec) // no receipt: the restart releases it, its commits pushed first
-
-		// The harness's commit.
-		require.NoError(t, os.WriteFile(filepath.Join(j.WorktreeDir, "work.txt"), []byte("work\n"), 0o644))
-		runGitCmd_internal(t, j.WorktreeDir, "add", "work.txt")
-		runGitCmd_internal(t, j.WorktreeDir, "commit", "-q", "-m", "work")
-		if late { // the late writer: main, by lease from main's tip
-			evil := rec
-			evil.Branch, evil.StartTip = "main", gb.baseSHA
-			data, err := json.Marshal(evil)
+	// control: the kept record is acted on; tampered: a late writer sets
+	// job.json to main; pre-upgrade: a job taken before kept copies. Both
+	// last are set aside to quarantine, their harness killed, nothing pushed.
+	for _, kase := range []string{"control", "tampered", "pre-upgrade"} {
+		t.Run(kase, func(t *testing.T) {
+			gb := setupGitBench_internal(t)
+			runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/main")
+			clock := testClock_internal()
+			st, row := seedFakeStore_internal(t, clock)
+			g := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
+			sc := &StoreSprintClient{Store: st, Origin: g, Now: clock}
+			ctx := context.Background()
+			taken, err := sc.Take(ctx, row, "p1.w1", 0)
 			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(filepath.Join(jobDir, "job.json"), append(data, '\n'), 0o600))
-		}
+			root := t.TempDir()
+			jobDir := filepath.Join(root, "jobs", "p1.w1")
+			j := Job{Repo: gb.originDir, Kind: "work", Branch: taken.Branch, BaseSHA: gb.baseSHA, Consumer: "p1.w1", Row: row,
+				JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
+			require.NoError(t, g.Fetch(ctx, j))
+			_, err = g.StageWorktree(ctx, j)
+			require.NoError(t, err)
+			rec := JobRecord{Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1", Repo: gb.originDir,
+				Branch: taken.Branch, BaseSHA: gb.baseSHA, Gen: taken.Gen, Attempt: 1, State: JobStaged, StartTipRead: true, PID: 4242, Nonce: "n1"}
+			writeStagedRecord_internal(t, jobDir, rec) // no receipt: the restart releases it, its commits pushed first
 
-		var warns []string
-		r, err := NewRunner(Runner{Host: "b1", RootDir: root, Sprint: sc, Git: g, Procs: &fakeProcTable{alive: map[string]bool{}},
-			Wall: &OSReserveWall{Config: WallConfig{WorkRoot: g.WorkRoot, MirrorRoot: g.MirrorRoot}}, Now: clock, Sleep: time.Sleep,
-			Warn: func(s string) { warns = append(warns, s) }})
-		require.NoError(t, err)
-		require.NoError(t, r.RecoverRow(ctx, row))
+			// The harness's commit.
+			require.NoError(t, os.WriteFile(filepath.Join(j.WorktreeDir, "work.txt"), []byte("work\n"), 0o644))
+			runGitCmd_internal(t, j.WorktreeDir, "add", "work.txt")
+			runGitCmd_internal(t, j.WorktreeDir, "commit", "-q", "-m", "work")
+			switch kase {
+			case "tampered": // the late writer: main, by lease from main's tip
+				evil := rec
+				evil.Branch, evil.StartTip = "main", gb.baseSHA
+				data, err := json.Marshal(evil)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(filepath.Join(jobDir, "job.json"), append(data, '\n'), 0o600))
+			case "pre-upgrade":
+				require.NoError(t, os.RemoveAll(filepath.Join(root, RecordsDir)))
+			}
 
-		assert.Equal(t, gb.baseSHA, runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/main"), "late=%v: main moved", late)
-		branch := runGitCmd_internal(t, gb.originDir, "for-each-ref", "--format=%(objectname)", "refs/heads/"+taken.Branch)
-		if late {
-			assert.Empty(t, branch, "a refused job pushes nothing")
-			assert.Contains(t, strings.Join(warns, "\n"), "not the one the worker kept outside it", "the refusal is said")
-		} else {
-			require.NotEmpty(t, branch, "the control: the release pushes the job's commit to its own branch (warnings %q)", warns)
-			runGitCmd_internal(t, gb.originDir, "cat-file", "-e", branch+":work.txt")
-		}
+			var warns []string
+			procs := &fakeProcTable{alive: map[string]bool{"4242:n1": true}}
+			r, err := NewRunner(Runner{Host: "b1", RootDir: root, Sprint: sc, Git: g, Procs: procs,
+				Wall: &OSReserveWall{Config: WallConfig{WorkRoot: g.WorkRoot, MirrorRoot: g.MirrorRoot}}, Now: clock, Sleep: time.Sleep,
+				Warn: func(s string) { warns = append(warns, s) }})
+			require.NoError(t, err)
+			require.NoError(t, r.RecoverRow(ctx, row))
+
+			assert.Equal(t, gb.baseSHA, runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/main"), "%s: main moved", kase)
+			branch := runGitCmd_internal(t, gb.originDir, "for-each-ref", "--format=%(objectname)", "refs/heads/"+taken.Branch)
+			if kase != "control" {
+				said := strings.Join(warns, "\n")
+				assert.Empty(t, branch, "%s: a refused job pushes nothing", kase)
+				assert.Contains(t, said, "not the one the worker kept outside it", "%s: the refusal is said", kase)
+				assert.Contains(t, said, "quarantine", "%s: the quarantine is said", kase)
+				assert.NoDirExists(t, jobDir, "%s: the job directory is set aside", kase)
+				assert.FileExists(t, filepath.Join(r.quarantineDir_internal("p1.w1", taken.Gen), "job.json"), kase)
+				assert.Equal(t, []int{4242}, procs.killed, "%s: its harness is killed", kase)
+				assert.NoDirExists(t, filepath.Join(root, RecordsDir, "p1.w1"), kase)
+				require.NoError(t, r.RecoverRow(ctx, row)) // the next pass leaves it set aside
+				assert.Empty(t, runGitCmd_internal(t, gb.originDir, "for-each-ref", "--format=%(objectname)", "refs/heads/"+taken.Branch), kase)
+			} else {
+				require.NotEmpty(t, branch, "the control: the release pushes the job's commit to its own branch (warnings %q)", warns)
+				runGitCmd_internal(t, gb.originDir, "cat-file", "-e", branch+":work.txt")
+			}
+		})
 	}
 }

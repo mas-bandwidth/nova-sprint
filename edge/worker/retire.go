@@ -105,10 +105,7 @@ func (r *Runner) retireJob_internal(jobDir string, rec JobRecord, why string) {
 		r.retireFailed_internal(jobDir, rec, why, err)
 		return
 	}
-	r.report("removing the worker's clone of "+rec.Consumer, os.RemoveAll(r.clonePath_internal(rec.Consumer)))
-	if kept := keptDir_internal(jobDir); kept != "" {
-		r.report("removing the kept record of "+rec.Consumer, os.RemoveAll(kept))
-	}
+	r.removeJobState_internal(rec.Consumer)
 	r.logStep_internal(rec.Row, rec.Consumer, "retire", "removed, nothing pushed: "+why, 0)
 }
 

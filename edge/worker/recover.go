@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/edge"
@@ -236,22 +237,80 @@ func (r *Runner) resendErr_internal(ctx context.Context, jobDir string, rec JobR
 // record is. The pass goes on; the card is not resumed or released while
 // its record is there, so a reader decides.
 func (r *Runner) quarantine_internal(jobDir string, rec JobRecord) {
+	r.report("job record "+rec.Consumer, WriteJobRecord(jobDir, rec))
+	r.setAside_internal(jobDir, rec, fmt.Sprintf("its report was refused %d times the same way (%s)", rec.Refusals, rec.LastRefusal))
+}
+
+// quarantineChanged_internal sets aside a job directory whose record or
+// receipt is not the worker's kept copy, or that has none (a job from
+// before kept copies, one the harness's leftovers changed, or a crash
+// between the two writes): its tracked harness is killed, then it goes the
+// way of quarantine_internal, so a reader decides. Its pid, nonce and gen are the kept copy's when there is
+// one; else the directory's own, used only to kill (Procs.Kill kills only
+// a process carrying the nonce) and to name the quarantine.
+func (r *Runner) quarantineChanged_internal(jobDir, consumer string, cause error) {
+	var rec JobRecord
+	data, err := os.ReadFile(filepath.Join(r.RootDir, RecordsDir, consumer, "job.json"))
+	if err != nil {
+		data, err = os.ReadFile(filepath.Join(jobDir, "job.json"))
+	}
+	if err == nil {
+		r.report("the record of "+consumer+" set aside", json.Unmarshal(data, &rec))
+	}
+	rec.Consumer = consumer
+	if r.Procs != nil && rec.PID > 0 {
+		r.report("stopping the harness of "+consumer+", set aside", r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
+	}
+	r.setAside_internal(jobDir, rec, cause.Error())
+}
+
+// setAside_internal moves jobDir to <root>/quarantine/<consumer>@<gen>,
+// removes the worker's own state for it (removeJobState_internal) and
+// raises why.
+func (r *Runner) setAside_internal(jobDir string, rec JobRecord, why string) {
 	dst := r.quarantineDir_internal(rec.Consumer, rec.Gen)
 	if fileExists_internal(dst) {
 		dst += fmt.Sprintf("-%d", r.Now().Unix())
 	}
 	err := os.MkdirAll(filepath.Dir(dst), 0o755)
 	if err == nil {
-		r.report("job record "+rec.Consumer, WriteJobRecord(jobDir, rec))
 		err = os.Rename(jobDir, dst)
 	}
 	if err != nil {
-		r.report("quarantine of "+rec.Consumer, fmt.Errorf("setting the refused record aside failed, it stays in %s and is sent again next pass: %w", jobDir, err))
+		r.report("quarantine of "+rec.Consumer, fmt.Errorf("setting the job directory aside failed, it stays in %s and is tried again next pass: %w", jobDir, err))
 		return
 	}
+	r.removeJobState_internal(rec.Consumer)
 	r.logStep_internal(rec.Row, rec.Consumer, "quarantine", dst, 0)
-	r.report("quarantine", fmt.Errorf("%s@%d: its report was refused %d times the same way (%s); the record is set aside in %s for a reader: read it, then nova-sprint show %s",
-		rec.Consumer, rec.Gen, rec.Refusals, rec.LastRefusal, dst, rec.Consumer))
+	r.report("quarantine", fmt.Errorf("%s@%d: %s; the job directory is set aside in %s for a reader: read it, then nova-sprint show %s",
+		rec.Consumer, rec.Gen, why, dst, rec.Consumer))
+}
+
+// removeJobState_internal removes what the worker keeps for consumer
+// outside its job directory: its kept record (RecordsDir), its clone
+// (SealedDir), and a clone of the previous release at <root>/clones/<consumer>
+// when it is one (legacySealedClone_internal), never a work clone.
+func (r *Runner) removeJobState_internal(consumer string) {
+	r.report("removing the kept record of "+consumer, os.RemoveAll(filepath.Join(r.RootDir, RecordsDir, consumer)))
+	r.report("removing the worker's clone of "+consumer, os.RemoveAll(r.clonePath_internal(consumer)))
+	if legacy := filepath.Join(r.RootDir, "clones", consumer); r.legacySealedClone_internal(legacy) {
+		r.report("removing the previous release's clone of "+consumer, os.RemoveAll(legacy))
+	}
+}
+
+// legacySealedClone_internal: dir is a clone the previous release made at
+// <root>/clones/<consumer>: a shared clone of a work clone beside it, its
+// alternates naming <root>/clones/<other>/.git/objects. A work clone's
+// alternates name the mirror, or there are none.
+func (r *Runner) legacySealedClone_internal(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, ".git", "objects", "info", "alternates"))
+	if err != nil {
+		return false
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(string(data)), "\n")
+	rel, err := filepath.Rel(filepath.Join(r.RootDir, "clones"), filepath.Clean(first))
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	return err == nil && len(parts) == 3 && parts[0] != ".." && parts[0] != filepath.Base(dir) && parts[1] == ".git" && parts[2] == "objects"
 }
 
 func (r *Runner) quarantineDir_internal(consumer string, gen int) string {

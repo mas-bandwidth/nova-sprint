@@ -251,9 +251,16 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 	}
 	out := map[string]JobRecord{}
 	for _, e := range entries {
-		rec, err := ReadJobRecord(filepath.Join(r.RootDir, "jobs", e.Name()))
-		if errors.Is(err, ErrJobDirChanged) {
-			r.report("job "+e.Name()+" (left as it is, nothing pushed or reported)", err)
+		dir := filepath.Join(r.RootDir, "jobs", e.Name())
+		rec, err := ReadJobRecord(dir)
+		if err == nil {
+			if _, rerr := readKept_internal(dir, ReceiptName); errors.Is(rerr, ErrJobDirChanged) {
+				err = rerr
+			}
+		}
+		if e.IsDir() && errors.Is(err, ErrJobDirChanged) && !r.isRunningInFlight_internal(e.Name()) { // a job in flight writes its own record
+			r.quarantineChanged_internal(dir, e.Name(), err)
+			continue
 		}
 		if e.IsDir() && err == nil && rec.Row == row {
 			out[rec.Consumer] = rec
@@ -863,7 +870,6 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 	}
 	if r.Git != nil {
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
-		r.report("removing the worker's clone of "+rec.Consumer, r.Git.RemoveWorktree(ctx, clone))
 	}
 	if err := os.RemoveAll(jobDir); err != nil {
 		return err
@@ -871,7 +877,7 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 	if err := os.Remove(filepath.Join(r.RootDir, RemotesDir, rec.Consumer)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		r.report("removing the kept clone URL of "+rec.Consumer, err)
 	}
-	r.report("removing the kept record of "+rec.Consumer, os.RemoveAll(keptDir_internal(jobDir)))
+	r.removeJobState_internal(rec.Consumer)
 	r.logStep_internal(rec.Row, rec.Consumer, "clean", "removed", 0)
 	return nil
 }

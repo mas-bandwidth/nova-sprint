@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -476,42 +477,108 @@ func TestWallReadsOnlyWorkerOwnedClones(t *testing.T) {
 // is refused, and a pass says so and acts on nothing in it.
 func TestJobRecordIsReadOnlyFromTheKeptCopy(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	jobDir := filepath.Join(root, "jobs", "p1.w1")
-	rec := JobRecord{Epoch: 1, Consumer: "p1.w1", Kind: "work", Row: "vision.ds", Branch: "sprint/s/p1", Gen: 1}
-	if err := WriteJobRecord(jobDir, rec); err != nil {
-		t.Fatal(err)
-	}
-	if err := writeReceipt_internal(jobDir, TakeInfo{Consumer: "p1.w1", Branch: "sprint/s/p1"}); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := ReadJobRecord(jobDir); err != nil || got.Branch != rec.Branch || !fileExists_internal(filepath.Join(root, RecordsDir, "p1.w1", "job.json")) {
-		t.Fatalf("the kept record: %+v %v", got, err)
-	}
-	for _, name := range []string{"job.json", ReceiptName} {
-		if err := os.WriteFile(filepath.Join(jobDir, name), []byte(`{"consumer":"p1.w1","branch":"main","row":"vision.ds","kind":"work","epoch":1,"gen":1}`+"\n"), 0o600); err != nil {
+	// Each changed job directory is set aside to quarantine: its harness
+	// killed, its job directory moved, the worker's state for it removed.
+	for _, change := range []string{"job.json", ReceiptName, "no kept copy", "torn write"} {
+		root := t.TempDir()
+		jobDir := filepath.Join(root, "jobs", "p1.w1")
+		rec := JobRecord{Epoch: 1, Consumer: "p1.w1", Kind: "work", Row: "vision.ds", Branch: "sprint/s/p1", Gen: 3, PID: 4242, Nonce: "n1"}
+		if err := WriteJobRecord(jobDir, rec); err != nil {
 			t.Fatal(err)
 		}
+		if err := writeReceipt_internal(jobDir, TakeInfo{Consumer: "p1.w1", Branch: "sprint/s/p1"}); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := ReadJobRecord(jobDir); err != nil || got.Branch != rec.Branch || !fileExists_internal(filepath.Join(root, RecordsDir, "p1.w1", "job.json")) {
+			t.Fatalf("the kept record: %+v %v", got, err)
+		}
+		if err := os.MkdirAll(filepath.Join(root, SealedDir, "p1.w1", ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		evil := []byte(`{"consumer":"p1.w1","branch":"main","row":"vision.ds","kind":"work","epoch":1,"gen":3,"pid":4242,"nonce":"n1"}` + "\n")
+		var err error
+		switch change {
+		case "job.json", ReceiptName:
+			err = os.WriteFile(filepath.Join(jobDir, change), evil, 0o600)
+		case "no kept copy": // a job taken before kept copies
+			err = os.RemoveAll(filepath.Join(root, RecordsDir))
+		case "torn write": // a crash between the job directory's write and the kept copy's
+			rec.State = JobReporting
+			data, _ := json.Marshal(rec)
+			err = os.WriteFile(filepath.Join(jobDir, "job.json"), append(data, '\n'), 0o600)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if change == ReceiptName {
+			if _, err := readReceipt_internal(jobDir); !errors.Is(err, ErrJobDirChanged) {
+				t.Fatalf("a changed receipt: %v", err)
+			}
+		} else if _, err := ReadJobRecord(jobDir); !errors.Is(err, ErrJobDirChanged) {
+			t.Fatalf("%s: %v", change, err)
+		}
+		var warns []string
+		procs := &fakeProcTable{alive: map[string]bool{"4242:n1": true}}
+		r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: newFakeGit_internal(), Wall: &fakeWall{}, Procs: procs, Now: testClock_internal(), Sleep: noSleep_internal,
+			Warn: func(s string) { warns = append(warns, s) }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobs, err := r.loadRowJobs_internal("vision.ds")
+		said := strings.Join(warns, "\n")
+		if err != nil || len(jobs) != 0 || !strings.Contains(said, "quarantine") || !strings.Contains(said, "not the one the worker kept") {
+			t.Fatalf("%s: a pass over a changed job directory: jobs %+v err %v warnings %q", change, jobs, err, warns)
+		}
+		if fileExists_internal(jobDir) || !fileExists_internal(filepath.Join(r.quarantineDir_internal("p1.w1", 3), "job.json")) || !r.quarantined_internal(ConsumerSummary{ID: "p1.w1", Gen: 3}) {
+			t.Fatalf("%s: the job directory is not in quarantine (warnings %q)", change, warns)
+		}
+		if len(procs.killed) != 1 || procs.killed[0] != 4242 {
+			t.Fatalf("%s: its harness is not killed: %v", change, procs.killed)
+		}
+		for _, d := range []string{filepath.Join(root, RecordsDir, "p1.w1"), filepath.Join(root, SealedDir, "p1.w1")} {
+			if fileExists_internal(d) {
+				t.Fatalf("%s: %s is left", change, d)
+			}
+		}
 	}
-	if _, err := ReadJobRecord(jobDir); !errors.Is(err, ErrJobDirChanged) {
-		t.Fatalf("a changed job.json: %v", err)
+}
+
+// TestJobStateRemovesOnlyTheWorkersOwnClones: the previous release's clone
+// at <root>/clones/<consumer> (a shared clone of a work clone beside it) is
+// removed with the job; a work clone there never is.
+func TestJobStateRemovesOnlyTheWorkersOwnClones(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	clones := filepath.Join(root, "clones")
+	alternates := func(name, line string) string {
+		dir := filepath.Join(clones, name)
+		if err := os.MkdirAll(filepath.Join(dir, ".git", "objects", "info"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if line != "" {
+			if err := os.WriteFile(filepath.Join(dir, ".git", "objects", "info", "alternates"), []byte(line+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
 	}
-	if _, err := readReceipt_internal(jobDir); !errors.Is(err, ErrJobDirChanged) {
-		t.Fatalf("a changed receipt: %v", err)
+	work := alternates("work", filepath.Join(root, "mirrors", "x.git", "objects"))
+	bare := alternates("bare", "")
+	self := alternates("self", filepath.Join(clones, "self", ".git", "objects"))
+	outside := alternates("outside", filepath.Join(root, "elsewhere", "w", ".git", "objects"))
+	legacy := alternates("p1.w1", filepath.Join(clones, "work", ".git", "objects"))
+	r := &Runner{RootDir: root, Warn: func(string) {}}
+	for _, d := range []string{work, bare, self, outside} {
+		if r.legacySealedClone_internal(d) {
+			t.Fatalf("%s is taken for the worker's own clone", d)
+		}
+		r.removeJobState_internal(filepath.Base(d))
+		if !fileExists_internal(d) {
+			t.Fatalf("%s, not the worker's own, was removed", d)
+		}
 	}
-	if err := os.RemoveAll(filepath.Join(root, RecordsDir)); err != nil { // a job directory with no kept copy at all
-		t.Fatal(err)
-	}
-	if _, err := ReadJobRecord(jobDir); !errors.Is(err, ErrJobDirChanged) {
-		t.Fatalf("a job directory with no kept copy: %v", err)
-	}
-	var warns []string
-	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: newFakeGit_internal(), Wall: &fakeWall{}, Now: testClock_internal(), Sleep: noSleep_internal,
-		Warn: func(s string) { warns = append(warns, s) }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if jobs, err := r.loadRowJobs_internal("vision.ds"); err != nil || len(jobs) != 0 || !strings.Contains(strings.Join(warns, "\n"), "not the one the worker kept") {
-		t.Fatalf("a pass over a changed job directory: jobs %+v err %v warnings %q", jobs, err, warns)
+	r.removeJobState_internal("p1.w1")
+	if fileExists_internal(legacy) || !fileExists_internal(work) {
+		t.Fatalf("the previous release's clone: legacy left %v, work clone gone %v", fileExists_internal(legacy), !fileExists_internal(work))
 	}
 }
