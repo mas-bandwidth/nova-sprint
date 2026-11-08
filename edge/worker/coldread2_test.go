@@ -95,6 +95,9 @@ func (w *cr2Wall) RunHarness(_ context.Context, j Job, _, _ []string, _ time.Dur
 	_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 	return WallRunResult{PID: 4242, Nonce: "n-4242"}, nil
 }
+func (w *cr2Wall) RunStep(context.Context, Job, []string, time.Duration) (WallRunResult, error) {
+	return WallRunResult{}, nil
+}
 func (w *cr2Wall) RunTest(context.Context, Job, string, time.Duration) (WallRunResult, error) {
 	return WallRunResult{}, nil
 }

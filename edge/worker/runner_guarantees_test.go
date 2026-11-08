@@ -107,6 +107,9 @@ func (w *crWall) RunHarness(_ context.Context, j Job, _, _ []string, _ time.Dura
 	w.mu.Unlock()
 	return WallRunResult{ExitCode: 0, PID: 4242, Nonce: "n-4242"}, nil
 }
+func (w *crWall) RunStep(context.Context, Job, []string, time.Duration) (WallRunResult, error) {
+	return WallRunResult{}, nil
+}
 func (w *crWall) RunTest(context.Context, Job, string, time.Duration) (WallRunResult, error) {
 	return WallRunResult{}, nil
 }

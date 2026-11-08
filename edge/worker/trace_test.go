@@ -26,6 +26,7 @@ type runnerJobDirState_internal struct {
 	outcome string
 	bounced bool
 	stopped bool
+	sealed  bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -86,6 +87,7 @@ type runnerWalkHarness_internal struct {
 	git        *fakeGit // origin: the card branches, and every push the runner made
 	finalAt    map[string]int
 	holder     map[string]bool
+	sealed     map[string]bool // the seal step ran on the job's tree since its last run
 }
 
 func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
@@ -132,6 +134,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		git:      git,
 		finalAt:  map[string]int{},
 		holder:   map[string]bool{"c1": false, "c2": false},
+		sealed:   map[string]bool{"c1": false, "c2": false},
 	}
 }
 
@@ -263,6 +266,7 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 		outcome: out,
 		bounced: h.bounced[c],
 		stopped: h.stopped[c],
+		sealed:  h.sealed[c],
 	}
 }
 
@@ -327,7 +331,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.git.mu.Unlock()
 		h.slotsInUse++
 		h.alive[c] = 1
-		h.stopped[c] = false
+		h.stopped[c], h.sealed[c] = false, false
 		h.jobState[c] = JobRunning
 	case "Harvest", "Die":
 		h.finishRun_internal(t, c, act, dir)
@@ -400,7 +404,7 @@ func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
 		t.Fatal(err)
 	}
 	// Its one push, by lease, while it still holds the card.
-	if err := h.runner.pushBranch_internal(context.Background(), filepath.Join(dir, "repo"), &kept, testWorkSHA); err != nil {
+	if err := h.runner.pushBranch_internal(context.Background(), &kept, testWorkSHA); err != nil {
 		t.Fatalf("Release %s: the push by lease: %v", c, err)
 	}
 	rec, err := h.st.Apply(context.Background(), store.Op{
@@ -413,7 +417,7 @@ func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	h.pushed[c], h.gone[c], h.jobState[c] = true, &kept, JobCleaned
+	h.pushed[c], h.gone[c], h.jobState[c], h.sealed[c] = true, &kept, JobCleaned, true
 	h.finalAt[c] = len(h.git.pushes())
 	h.env.released = true
 }
@@ -471,6 +475,7 @@ func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, di
 	}
 	h.alive[c] = 0
 	h.slotsInUse--
+	h.sealed[c] = true // the seal step, after the harness (sealAndCollect_internal)
 	h.jobState[c] = JobHarvested
 }
 
@@ -492,7 +497,7 @@ func (h *runnerWalkHarness_internal) advancePostRun_internal(t *testing.T, c, ac
 		h.jobState[c] = JobRebased
 	case "Push":
 		rec, _ := ReadJobRecord(dir)
-		if err := h.runner.pushBranch_internal(ctx, filepath.Join(dir, "repo"), &rec, testWorkSHA); err != nil {
+		if err := h.runner.pushBranch_internal(ctx, &rec, testWorkSHA); err != nil {
 			t.Fatalf("Push %s: %v", c, err)
 		}
 		h.pushed[c] = true
@@ -668,8 +673,8 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s]",
-		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped))
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s]",
+		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed))
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {

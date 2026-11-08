@@ -9,7 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/store"
-	"io/fs"
+	"io"
 	"maps"
 	"math"
 	"os"
@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,27 +56,37 @@ type (
 		// work clone: its sha, or "" when the branch does not exist. A work
 		// job's first push leases from it (defect 78).
 		BranchTip(ctx context.Context, j Job) (string, error)
-		HeadSHA(ctx context.Context, worktree string) (string, error)
-		// Push moves branch on the worktree's origin to headSHA only while
-		// the branch is at expect ("" : the branch does not exist yet), by
-		// lease (--force-with-lease=refs/heads/<branch>:<expect>); never a
-		// plain force (defect 78: a stale job's force push rewound the new
-		// holder's branch).
+		// Collect takes a sealed job's commits into the worker's own clone
+		// of it, outside the job directory: the seal step's bundle
+		// (sealArgv_internal), verified and fetched into s.Clone, a fresh
+		// shared clone of the work clone. Its head must descend from s.Base
+		// and its commits add no gitlink. The head, checked out in s.Clone;
+		// s.Base when the seal found no commits.
+		Collect(ctx context.Context, s Sealed) (head string, err error)
+		// Export writes clone's commits since base to out, a bundle the wall
+		// applies to the job's tree before its done-when tests.
+		Export(ctx context.Context, clone, base, out string) error
+		// Push moves branch on remote to headSHA only while the branch is at
+		// expect ("" : the branch does not exist yet), by lease
+		// (--force-with-lease=refs/heads/<branch>:<expect>); never a plain
+		// force (defect 78: a stale job's force push rewound the new holder's
+		// branch).
 		//
-		// Push, RebaseOntoStream and OriginHasHead reach remote, the job's
-		// clone URL (CloneURL of its record), and refuse a worktree whose
-		// origin or url.*.insteadOf now points anywhere else.
-		Push(ctx context.Context, worktree, remote, branch, headSHA, expect string) error
-		RebaseOntoStream(ctx context.Context, worktree, remote, streamRef string) (newSHA string, err error)
-		OriginHasHead(ctx context.Context, worktree, remote, branch, sha string) (bool, error)
-		IsDirty(ctx context.Context, worktree string) (bool, error)
-		// CommitAll commits every change in the worktree (git add -A) with
-		// message, under the worktree's configured identity; the new head.
-		CommitAll(ctx context.Context, worktree, message string) (string, error)
+		// Push, RebaseOntoStream and OriginHasHead run in clone, the worker's
+		// own clone of the job (Collect), never in the job directory, and
+		// reach remote, the clone URL the job's take receipt named.
+		Push(ctx context.Context, clone, remote, branch, headSHA, expect string) error
+		RebaseOntoStream(ctx context.Context, clone, remote, streamRef string) (newSHA string, err error)
+		OriginHasHead(ctx context.Context, clone, remote, branch, sha string) (bool, error)
 		RemoveWorktree(ctx context.Context, worktree string) error
 	}
+	// Sealed is a sealed job for Collect: its directory, the worker's
+	// clone of it, its clone URL, the head it started from, and the
+	// sprint's commit identity for the clone's rebase.
+	Sealed        struct{ JobDir, Clone, Remote, Base, Name, Email string }
 	WallRunResult struct {
 		ExitCode, PID  int
+		Leftovers      int    // processes of the command's group still alive after it, killed (OSReserveWall.KillGroup)
 		Output         []byte // stdout then stderr, as the classifier reads it
 		Stdout, Stderr []byte
 		Argv           []string // the wall's command line as run
@@ -85,6 +96,9 @@ type (
 	ReserveWall interface {
 		RunHarness(ctx context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error)
 		RunTest(ctx context.Context, j Job, cmd string, timeout time.Duration) (WallRunResult, error)
+		// RunStep runs one of the worker's own commands in the wall: the
+		// seal step, the apply of a rebased head.
+		RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error)
 	}
 	ProcessTable interface {
 		Alive(pid int, nonce string) bool
@@ -183,7 +197,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	}
 	cfg.Timeouts = cfg.Timeouts.WithDefaults()
 	cfg.Procs = cmp.Or[ProcessTable](cfg.Procs, OSProcessTable{})
-	cfg.Wall = cmp.Or[ReserveWall](cfg.Wall, &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, Config: WallConfig{ReserveWait: cfg.Timeouts.ReserveWait, NetDeny: true}})
+	cfg.Wall = cmp.Or[ReserveWall](cfg.Wall, &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, KillGroup: OSKillGroup, Config: WallConfig{ReserveWait: cfg.Timeouts.ReserveWait, NetDeny: true}})
 	if cfg.Logger == nil && cfg.StateDir != "" {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
 	}
@@ -275,12 +289,16 @@ func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string,
 	if rec.Kind != "work" || r.Git == nil {
 		return ""
 	}
-	wt := filepath.Join(jobDir, "repo")
-	sha, err := r.Git.HeadSHA(ctx, wt)
-	if err != nil || sha == "" || sha == rec.BaseSHA || sha == rec.PriorHead || sha == rec.PushedHead {
+	job := Job{Consumer: rec.Consumer, Row: rec.Row, JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), ProxyAddr: r.ProxyAddr}
+	sha, err := r.sealAndCollect_internal(ctx, job, rec)
+	if err != nil {
+		r.report("sealing the tree of "+rec.Consumer, err)
 		return ""
 	}
-	if err := r.pushBranch_internal(ctx, wt, &rec, sha); err != nil {
+	if sha == "" || sha == rec.BaseSHA || sha == rec.PriorHead || sha == rec.PushedHead {
+		return ""
+	}
+	if err := r.pushBranch_internal(ctx, &rec, sha); err != nil {
 		r.report("pushing the partial head of "+rec.Consumer, err)
 		return ""
 	}
@@ -576,7 +594,7 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		job.ProxyStatus = 0
 		r.Sleep(r.launchBackoff_internal(attempt))
 	}
-	r.logStep_internal(job.Row, job.Consumer, "run", fmt.Sprintf("exit=%d", last.ExitCode), last.Elapsed)
+	r.logStep_internal(job.Row, job.Consumer, "run", fmt.Sprintf("exit=%d leftovers-killed=%d", last.ExitCode, last.Leftovers), last.Elapsed)
 	return last, runErr
 }
 func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
@@ -612,25 +630,23 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	return WriteJobRecord(job.JobDir, *rec)
 }
 
-// harvestWorkHead_internal pushes the head a work job left. A harness that
-// said ok with its changes uncommitted and HEAD where it started has its
-// tree committed here (the harness note of 2026-11-07); ok with nothing to
-// commit is a fail naming it.
+// harvestWorkHead_internal pushes the head a work job left, from the
+// worker's own clone (sealAndCollect_internal). Its tree, committed by the
+// seal step when dirty (the harness note of 2026-11-07), is the head; ok
+// with nothing committed and nothing to commit is a fail naming it.
 func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *JobRecord, out Outcome) Outcome {
 	if r.Git == nil {
 		return Outcome{Result: "fault", Reason: "missing git edge for a work consumer: start the worker through nova-worker or nova-sprint worker, which give it one"}
 	}
-	sha, herr := r.Git.HeadSHA(ctx, job.WorktreeDir)
-	if herr == nil && out.Result == "ok" && (sha == job.BaseSHA || sha == job.PriorHead) {
-		sha, herr = r.commitLeftTree_internal(ctx, job, sha)
-	}
+	sha, herr := r.sealAndCollect_internal(ctx, job, *rec)
 	switch {
 	case herr != nil && out.Result == "ok":
-		return Outcome{Result: "fault", Reason: "head fault: " + herr.Error()}
+		return Outcome{Result: "fault", Reason: "seal fault: " + herr.Error()}
 	case herr != nil:
+		r.report("sealing the tree of "+job.Consumer, herr)
 		return out
 	case sha != "" && sha != job.BaseSHA && sha != job.PriorHead:
-		if perr := r.pushBranch_internal(ctx, job.WorktreeDir, rec, sha); perr != nil {
+		if perr := r.pushBranch_internal(ctx, rec, sha); perr != nil {
 			if out.Result == "ok" {
 				return Outcome{Result: "fault", Head: rec.PushedHead, Reason: "push fault: " + perr.Error()}
 			}
@@ -643,32 +659,81 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 	return out
 }
 
-// commitLeftTree_internal commits a dirty work tree the harness left
-// uncommitted, under the row's identity, and is the new head; a clean tree
-// is head unchanged.
-func (r *Runner) commitLeftTree_internal(ctx context.Context, job Job, head string) (string, error) {
-	dirty, err := r.Git.IsDirty(ctx, job.WorktreeDir)
-	if err != nil || !dirty {
-		return head, err
+// Files the worker's steps leave in a job directory: the seal step's
+// bundle of the job's commits, or its mark that there were none; the
+// rebased head the wall applies before the done-when tests.
+const (
+	SealBundle    = "out.bundle"
+	SealNone      = "out.none"
+	RebasedBundle = "rebased.bundle"
+)
+
+// ClonesDir holds, outside every job directory, the worker's own clone of
+// each job, the one its pushes, rebase and checks run in:
+// <root>/clones/<consumer>.
+const ClonesDir = "clones"
+
+func (r *Runner) clonePath_internal(consumer string) string {
+	return filepath.Join(r.RootDir, ClonesDir, consumer)
+}
+
+// sealScript_internal is the seal step, run in the job's tree inside the
+// wall (net-deny, no token, the harness's writable set): the tree added
+// and, when dirty, committed; then the commits since $1 bundled to $2, or
+// $3 marked when there are none. Whatever the harness left in .git runs
+// here, inside the wall, and nowhere else.
+const sealScript_internal = `set -e
+rm -f "$2" "$3"
+git add -A
+if ! git diff --cached --quiet; then
+  if [ -n "$5" ]; then git -c user.name="$5" -c user.email="$6" commit -q --no-verify -m "$4"; else git commit -q --no-verify -m "$4"; fi
+fi
+if [ "$(git rev-parse HEAD)" = "$1" ]; then : > "$3"; else git bundle create "$2" "$1..HEAD"; fi`
+
+func sealArgv_internal(jobDir, base, name, email, msg string) []string {
+	return []string{"sh", "-c", sealScript_internal, "seal", base, filepath.Join(jobDir, SealBundle), filepath.Join(jobDir, SealNone), msg, name, email}
+}
+
+// applyArgv_internal checks the bundle's head out in the job's tree, in
+// the wall, so the done-when tests run on the head that is pushed.
+func applyArgv_internal(bundle string) []string {
+	return []string{"sh", "-c", `set -e; git fetch -q --no-tags "$1" HEAD; git checkout -q -f --detach FETCH_HEAD`, "apply", bundle}
+}
+
+// sealAndCollect_internal ends a work job's tree: the seal step in the
+// wall, the harness's process group killed after it (the wall's
+// KillGroup), then Collect into the worker's own clone. After it no worker
+// git runs in the job directory; the job's head is the clone's.
+func (r *Runner) sealAndCollect_internal(ctx context.Context, job Job, rec JobRecord) (string, error) {
+	if r.Wall == nil {
+		return "", errors.New("no wall to run the seal step in")
 	}
-	msg := job.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness reported ok and left its changes uncommitted; the worker committed the tree as it was.\n"
-	sha, err := r.Git.CommitAll(ctx, job.WorktreeDir, msg)
+	remote, err := r.jobRemote_internal(rec)
 	if err != nil {
-		return head, fmt.Errorf("commit the tree the harness left: %w", err)
+		return "", err
 	}
-	r.logStep_internal(job.Row, job.Consumer, "commit-left-tree", sha, 0)
-	return sha, nil
+	base := cmp.Or(rec.PriorHead, rec.BaseSHA)
+	msg := rec.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness left its changes uncommitted; the worker's seal step committed the tree as it was.\n"
+	res, err := r.Wall.RunStep(ctx, job, sealArgv_internal(job.JobDir, base, job.CommitName, job.CommitEmail, msg), r.Timeouts.RebaseAndTest)
+	r.logStep_internal(rec.Row, rec.Consumer, "seal", fmt.Sprintf("exit=%d leftovers-killed=%d", res.ExitCode, res.Leftovers), res.Elapsed)
+	if err == nil && res.ExitCode != 0 {
+		err = fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
+	}
+	if err != nil {
+		return "", fmt.Errorf("the seal step: %w", err)
+	}
+	return r.Git.Collect(ctx, Sealed{JobDir: job.JobDir, Clone: r.clonePath_internal(rec.Consumer), Remote: remote, Base: base, Name: job.CommitName, Email: job.CommitEmail})
 }
 func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, rec *JobRecord) error {
 	if rec.Kind != "work" || rec.Outcome.Result != "ok" {
 		return nil
 	}
-	wt := filepath.Join(jobDir, "repo")
+	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
 	if r.Git != nil && rec.StreamRef != "" {
 		remote, err := r.jobRemote_internal(*rec)
 		newSHA := ""
 		if err == nil {
-			newSHA, err = r.Git.RebaseOntoStream(ctx, wt, remote, rec.StreamRef)
+			newSHA, err = r.Git.RebaseOntoStream(ctx, clone, remote, rec.StreamRef)
 		}
 		if err != nil {
 			var ce *ConflictError
@@ -689,6 +754,11 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		rec.Outcome.Head = cmp.Or(newSHA, rec.Outcome.Head)
 	}
 	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
+	if err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
+		rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
+		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
+		return nil
+	}
 	for _, cmd := range rec.DoneWhen {
 		if strings.TrimSpace(cmd) != "" && r.Wall != nil {
 			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
@@ -703,7 +773,7 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		}
 	}
 	if r.Git != nil && rec.Outcome.Head != "" && rec.Outcome.Head != rec.PushedHead {
-		if err := r.pushBranch_internal(ctx, wt, rec, rec.Outcome.Head); err != nil {
+		if err := r.pushBranch_internal(ctx, rec, rec.Outcome.Head); err != nil {
 			// The head that did land is reported, so the next attempt's
 			// prior head (and its lease) is the branch as it stands.
 			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "post-rebase push fault: " + err.Error()}
@@ -714,6 +784,25 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	rec.State = JobRebased
 	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 	return nil
+}
+
+// applyRebased_internal checks the rebased head out in the job's tree,
+// inside the wall, before the done-when tests: Export from the worker's
+// clone, applyArgv_internal in the wall. Nothing to do with no rebase or
+// no tests.
+func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) error {
+	if r.Git == nil || r.Wall == nil || rec.StreamRef == "" || !slices.ContainsFunc(rec.DoneWhen, func(c string) bool { return strings.TrimSpace(c) != "" }) {
+		return nil
+	}
+	bundle := filepath.Join(j.JobDir, RebasedBundle)
+	if err := r.Git.Export(ctx, r.clonePath_internal(rec.Consumer), cmp.Or(rec.PriorHead, rec.BaseSHA), bundle); err != nil {
+		return err
+	}
+	res, err := r.Wall.RunStep(ctx, j, applyArgv_internal(bundle), r.Timeouts.RebaseAndTest)
+	if err == nil && res.ExitCode != 0 {
+		err = fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
+	}
+	return err
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	rec.State = JobReporting
@@ -749,12 +838,12 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	return r.cleanJobDir_internal(ctx, jobDir, rec)
 }
 func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec JobRecord) error {
-	wt := filepath.Join(jobDir, "repo")
+	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
 	if rec.Kind == "work" && rec.PushedHead != "" && r.Git != nil {
 		remote, err := r.jobRemote_internal(rec)
 		ok := false
 		if err == nil {
-			ok, err = r.Git.OriginHasHead(ctx, wt, remote, rec.Branch, rec.PushedHead)
+			ok, err = r.Git.OriginHasHead(ctx, clone, remote, rec.Branch, rec.PushedHead)
 		}
 		if err != nil || !ok {
 			why := "kept-unconfirmed-head"
@@ -766,13 +855,8 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 		}
 	}
 	if r.Git != nil {
-		if dirty, err := r.Git.IsDirty(ctx, wt); err == nil && dirty {
-			r.logStep_internal(rec.Row, rec.Consumer, "clean", "DIRTY WORKTREE KEPT", 0)
-			return nil
-		} else if err != nil {
-			r.logStep_internal(rec.Row, rec.Consumer, "clean", "dirty check failed, removing: "+err.Error(), 0)
-		}
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
+		r.report("removing the worker's clone of "+rec.Consumer, r.Git.RemoveWorktree(ctx, clone))
 	}
 	if err := os.RemoveAll(jobDir); err != nil {
 		return err
@@ -897,7 +981,7 @@ func (g *OSGitOps) workClone_internal(ctx context.Context, url, name string) (st
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
 	mirror, work := filepath.Join(g.MirrorRoot, name+".git"), filepath.Join(g.WorkRoot, name)
 	if g.MirrorRoot != "" && !fileExists_internal(mirror) {
-		if _, err := g.runGit_internal(ctx, to, "", "clone", "--quiet", "--mirror", url, mirror); err != nil {
+		if _, err := g.runRemoteGit_internal(ctx, to, "", "clone", "--quiet", "--mirror", url, mirror); err != nil {
 			return "", fmt.Errorf("stage: the mirror of %s: %w", url, err)
 		}
 	}
@@ -906,7 +990,7 @@ func (g *OSGitOps) workClone_internal(ctx context.Context, url, name string) (st
 		if g.MirrorRoot != "" {
 			args = append(args, "--reference", mirror)
 		}
-		if _, err := g.runGit_internal(ctx, to, "", append(args, url, work)...); err != nil {
+		if _, err := g.runRemoteGit_internal(ctx, to, "", append(args, url, work)...); err != nil {
 			return "", fmt.Errorf("stage: the work clone of %s: %w", url, err)
 		}
 	} else if got, err := g.runGit_internal(ctx, to, work, "remote", "get-url", "origin"); err != nil || strings.TrimSpace(got) != url {
@@ -929,7 +1013,7 @@ func (g *OSGitOps) Fetch(ctx context.Context, j Job) error {
 	if err != nil {
 		return err
 	}
-	if _, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), work, "fetch", "--quiet", "--no-recurse-submodules", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+	if _, err := g.runRemoteGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), work, "fetch", "--quiet", "--no-recurse-submodules", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
 		return fmt.Errorf("fetch %s: %w", url, err)
 	}
 	return nil
@@ -998,7 +1082,7 @@ func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j
 			return "", err
 		}
 	}
-	return g.headSHA_internal(ctx, j.WorktreeDir)
+	return g.headSHA_internal(ctx, j.WorktreeDir, "HEAD")
 }
 
 // BranchTip reads j's branch from the work clone's remote-tracking refs
@@ -1017,141 +1101,12 @@ func (g *OSGitOps) BranchTip(ctx context.Context, j Job) (string, error) {
 	}
 	return strings.TrimSpace(out), nil
 }
-func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error) {
-	if err := g.guardWorktree_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree); err != nil {
-		return "", err
-	}
-	return g.headSHA_internal(ctx, worktree)
-}
 
-// headSHA_internal is the worktree's HEAD, read with no guard: staging's
-// own read, before the harness has run.
-func (g *OSGitOps) headSHA_internal(ctx context.Context, worktree string) (string, error) {
-	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", "HEAD")
+// headSHA_internal is the worktree's HEAD: staging's own read, before the
+// harness has run, and the worker's clone's.
+func (g *OSGitOps) headSHA_internal(ctx context.Context, worktree, rev string) (string, error) {
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", rev)
 	return strings.TrimSpace(out), err
-}
-
-// stagedConfigKey_internal is true for a local config key git writes at
-// clone (core.*, origin, the default branch's upstream, and the format
-// extensions a clone carries from its source) or the worker sets at stage
-// (origin's push URL on a read, the commit identity, the job branch's
-// upstream). Nothing else is ever in a staged worktree's .git/config.
-func stagedConfigKey_internal(key, value string) bool {
-	switch strings.ToLower(key) {
-	case "core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates", "core.ignorecase", "core.precomposeunicode", "core.symlinks",
-		"extensions.objectformat", "extensions.refstorage",
-		"remote.origin.url", "remote.origin.fetch", "remote.origin.pushurl", "user.name", "user.email":
-		return true
-	}
-	if name, ok := strings.CutPrefix(key, "branch."); ok {
-		lower := strings.ToLower(name)
-		return strings.HasSuffix(lower, ".merge") || strings.HasSuffix(lower, ".remote") && value == "origin"
-	}
-	return false
-}
-
-// guardWorktree_internal runs before every worker git call after the
-// harness, which can write anything under the worktree, .git included. The
-// worktree must be as staging left it:
-//   - no nested repository: no .git file or directory below its root
-//     (walked in Go, so no git runs in it), and no gitlink (mode 160000) in
-//     its index, so no git of the worker's ever runs inside another
-//     repository's config, filters or http settings (nestedRepo_internal,
-//     gitlinks_internal);
-//   - its own config (git config --local, read with nothing run) holds only
-//     the keys staging wrote (stagedConfigKey_internal): a filter,
-//     core.sshCommand, core.fsmonitor or core.hooksPath, an include, a
-//     remote other than origin, url.*, http.* or credential.* is refused;
-//   - its objects/info/alternates is the one staging wrote: the work clone's
-//     objects, then the work clone's own alternates (alternates_internal).
-//
-// Hooks never run in any case, and submodules are never recursed into:
-// every worker git call passes gitPrefix_internal.
-func (g *OSGitOps) guardWorktree_internal(ctx context.Context, to time.Duration, worktree string) error {
-	if err := nestedRepo_internal(worktree); err != nil {
-		return err
-	}
-	list, err := g.runGit_internal(ctx, to, worktree, "config", "--local", "--null", "--list")
-	if err != nil {
-		return err
-	}
-	origin := ""
-	for _, entry := range strings.Split(list, "\x00") {
-		key, value, _ := strings.Cut(entry, "\n")
-		if key != "" && !stagedConfigKey_internal(key, value) {
-			return fmt.Errorf("git refused: the worktree's config has %s, which neither git's clone nor the worker's staging writes: the harness changed .git/config, and the worker's git runs only with the config it staged", key)
-		}
-		if strings.EqualFold(key, "remote.origin.url") {
-			origin = value
-		}
-	}
-	if err := g.alternates_internal(worktree, origin); err != nil {
-		return err
-	}
-	return g.gitlinks_internal(ctx, to, worktree)
-}
-
-// nestedRepo_internal refuses a worktree with a .git file or directory
-// anywhere below its root, or one it cannot read whole (a .git could hide
-// there). Symbolic links are not followed, as git does not.
-func nestedRepo_internal(worktree string) error {
-	root := filepath.Join(worktree, ".git")
-	return filepath.WalkDir(worktree, func(p string, d fs.DirEntry, err error) error {
-		switch {
-		case err != nil:
-			return fmt.Errorf("git refused: the worktree cannot be read whole to check it holds no nested repository: %w", err)
-		case p == root:
-			return filepath.SkipDir
-		case d.Name() == ".git":
-			return fmt.Errorf("git refused: the worktree holds a nested repository at %s: the harness made it, and the worker's git never runs in another repository's config", p)
-		}
-		return nil
-	})
-}
-
-// gitlinks_internal refuses a worktree whose index holds a gitlink (mode
-// 160000, a submodule): git ls-files --stage reads the index, running
-// nothing.
-func (g *OSGitOps) gitlinks_internal(ctx context.Context, to time.Duration, worktree string) error {
-	out, err := g.runGit_internal(ctx, to, worktree, "ls-files", "--stage", "-z")
-	if err != nil {
-		return err
-	}
-	for _, entry := range strings.Split(out, "\x00") {
-		if mode, rest, _ := strings.Cut(entry, " "); mode == "160000" {
-			_, path, _ := strings.Cut(rest, "\t")
-			return fmt.Errorf("git refused: the worktree's index holds a gitlink (a submodule) at %s: the worker's git never runs in another repository", path)
-		}
-	}
-	return nil
-}
-
-// alternates_internal refuses a worktree whose objects/info/alternates is
-// not the one staging wrote for its origin's work clone (clone --shared
-// writes <work>/.git/objects; StageWorktree appends the work clone's own
-// alternates): another object store could feed the worker's git objects
-// staging never fetched.
-func (g *OSGitOps) alternates_internal(worktree, origin string) error {
-	name, err := repoName_internal(origin)
-	if err != nil {
-		return fmt.Errorf("git refused: the worktree's origin %q names no work clone: %w", origin, err)
-	}
-	work, err := filepath.Abs(filepath.Join(g.WorkRoot, name))
-	if err != nil {
-		return err
-	}
-	want := []string{filepath.Join(work, ".git", "objects")}
-	if alt, err := os.ReadFile(filepath.Join(work, ".git", "objects", "info", "alternates")); err == nil {
-		want = append(want, strings.Fields(string(alt))...)
-	}
-	got, err := os.ReadFile(filepath.Join(worktree, ".git", "objects", "info", "alternates"))
-	if err != nil {
-		return fmt.Errorf("git refused: the worktree's objects/info/alternates, which staging wrote, cannot be read: the harness changed it: %w", err)
-	}
-	if !slices.Equal(strings.Fields(string(got)), want) {
-		return fmt.Errorf("git refused: the worktree's objects/info/alternates is %q, not the %q staging wrote: the harness changed it", strings.Fields(string(got)), want)
-	}
-	return nil
 }
 
 // RemotesDir holds, outside every job directory (which the harness can
@@ -1190,7 +1145,7 @@ func (r *Runner) jobRemote_internal(rec JobRecord) (string, error) {
 
 // recordRemote_internal is the clone URL rec's job was staged from
 // (CloneURL of its repo and forge; "" when they give none, which every git
-// call that reaches a remote refuses, guardRemote_internal).
+// call that reaches a remote refuses).
 func recordRemote_internal(rec JobRecord) string {
 	if url, err := CloneURL(rec.Repo, rec.Forge); err == nil {
 		return url
@@ -1198,49 +1153,178 @@ func recordRemote_internal(rec JobRecord) string {
 	return ""
 }
 
-// guardRemote_internal is the check before every git call that reaches
-// remote, the job's clone URL as the worker staged it (CloneURL of its
-// record): the worktree, which the harness could write, has origin's fetch
-// and push URLs still remote, and no url.<base>.insteadOf or
-// pushInsteadOf in any config git reads there rewrites remote. Each such
-// call then names remote itself, never origin, so neither another repo nor
-// another host is ever pushed to or fetched from with the worker's
-// credential (#680 cold read).
-func (g *OSGitOps) guardRemote_internal(ctx context.Context, to time.Duration, worktree, remote string) error {
-	if strings.TrimSpace(remote) == "" {
-		return errors.New("git refused: the job names no clone URL to push or fetch: its record's repo and forge give none (CloneURL)")
+// Collect: see GitOps. Every git call here runs in the worker's own clone
+// with the worker's config; the job directory is only read, by Go, for the
+// seal step's bundle (copySealed_internal).
+func (g *OSGitOps) Collect(ctx context.Context, s Sealed) (string, error) {
+	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	name, err := repoName_internal(s.Remote)
+	if err != nil {
+		return "", fmt.Errorf("collect: %w", err)
 	}
-	if err := g.guardWorktree_internal(ctx, to, worktree); err != nil {
-		return err
+	if err := os.RemoveAll(s.Clone); err != nil {
+		return "", fmt.Errorf("collect: clear the worker's clone: %w", err)
 	}
-	for _, args := range [][]string{{"remote", "get-url", "origin"}, {"remote", "get-url", "--push", "origin"}} {
-		got, err := g.runGit_internal(ctx, to, worktree, args...)
-		if err != nil {
-			return err
+	if err := os.MkdirAll(filepath.Dir(s.Clone), 0o700); err != nil {
+		return "", fmt.Errorf("collect: %w", err)
+	}
+	lock := g.cloneLock_internal(s.Remote)
+	lock.RLock()
+	_, err = g.runGit_internal(ctx, to, "", "clone", "--quiet", "--shared", "--no-checkout", filepath.Join(g.WorkRoot, name), s.Clone)
+	lock.RUnlock()
+	if err != nil {
+		return "", fmt.Errorf("collect: the worker's clone: %w", err)
+	}
+	for _, kv := range [][2]string{{"user.name", s.Name}, {"user.email", s.Email}} {
+		if kv[1] == "" {
+			continue
 		}
-		if strings.TrimSpace(got) != remote {
-			return fmt.Errorf("git refused: the worktree's origin (git %s) is %q, not the job's clone URL %q: the worktree was changed after it was staged, and the worker never pushes or fetches anywhere else", strings.Join(args, " "), strings.TrimSpace(got), remote)
+		if _, err := g.runGit_internal(ctx, to, s.Clone, "config", kv[0], kv[1]); err != nil {
+			return "", err
 		}
 	}
-	list, err := g.runGit_internal(ctx, to, worktree, "config", "--null", "--list")
+	bundle, err := copySealed_internal(s.JobDir, s.Clone)
+	if err != nil || bundle == "" {
+		return s.Base, err
+	}
+	for _, args := range [][]string{
+		{"bundle", "verify", "-q", bundle},
+		{"-c", "protocol.file.allow=always", "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", bundle, "+HEAD:refs/worker/sealed"},
+	} {
+		if _, err := g.runGit_internal(ctx, to, s.Clone, args...); err != nil {
+			return "", fmt.Errorf("collect: the sealed bundle: %w", err)
+		}
+	}
+	head, err := g.headSHA_internal(ctx, s.Clone, "refs/worker/sealed")
+	if err != nil {
+		return "", err
+	}
+	if _, err := g.runGit_internal(ctx, to, s.Clone, "merge-base", "--is-ancestor", s.Base, head); err != nil {
+		return "", fmt.Errorf("collect refused: the sealed head %s does not descend from %s, the head the job started from: %w", head, s.Base, err)
+	}
+	if err := g.newGitlinks_internal(ctx, to, s.Clone, s.Base, head); err != nil {
+		return "", err
+	}
+	if _, err := g.runGit_internal(ctx, to, s.Clone, "checkout", "--quiet", "--detach", head); err != nil {
+		return "", err
+	}
+	return head, nil
+}
+
+// copySealed_internal copies the seal step's bundle from jobDir into
+// clone's .git, opened with no symbolic link followed and refused unless a
+// regular file; "" when the seal step marked no commits.
+func copySealed_internal(jobDir, clone string) (string, error) {
+	f, err := os.OpenFile(filepath.Join(jobDir, SealBundle), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		if fi, lerr := os.Lstat(filepath.Join(jobDir, SealNone)); lerr == nil && fi.Mode().IsRegular() {
+			return "", nil
+		}
+		return "", fmt.Errorf("collect: the seal step left neither %s nor %s in the job directory", SealBundle, SealNone)
+	}
+	if err != nil {
+		return "", fmt.Errorf("collect: open the sealed bundle: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("collect refused: %s is not a regular file (%v)", SealBundle, err)
+	}
+	dst := filepath.Join(clone, ".git", "sealed.bundle")
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", fmt.Errorf("collect: %w", err)
+	}
+	_, err = io.Copy(out, f)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return "", fmt.Errorf("collect: copy the sealed bundle: %w", err)
+	}
+	return dst, nil
+}
+
+// newGitlinks_internal refuses a commit in base..head whose tree holds a
+// gitlink (mode 160000, a submodule) that base's tree does not.
+func (g *OSGitOps) newGitlinks_internal(ctx context.Context, to time.Duration, clone, base, head string) error {
+	links := func(commit string) ([]string, error) {
+		out, err := g.runGit_internal(ctx, to, clone, "ls-tree", "-r", "-z", commit)
+		var found []string
+		for _, entry := range strings.Split(out, "\x00") {
+			if strings.HasPrefix(entry, "160000 ") {
+				found = append(found, entry)
+			}
+		}
+		return found, err
+	}
+	known, err := links(base)
 	if err != nil {
 		return err
 	}
-	for _, entry := range strings.Split(list, "\x00") {
-		key, prefix, _ := strings.Cut(entry, "\n")
-		key = strings.ToLower(key)
-		if strings.HasPrefix(key, "url.") && (strings.HasSuffix(key, ".insteadof") || strings.HasSuffix(key, ".pushinsteadof")) && prefix != "" && strings.HasPrefix(remote, prefix) {
-			return fmt.Errorf("git refused: config %s=%q rewrites the job's clone URL %q: the worker never pushes or fetches through a rewritten URL", key, prefix, remote)
+	revs, err := g.runGit_internal(ctx, to, clone, "rev-list", base+".."+head)
+	if err != nil {
+		return err
+	}
+	for _, rev := range strings.Fields(revs) {
+		found, err := links(rev)
+		if err != nil {
+			return err
+		}
+		for _, l := range found {
+			if !slices.Contains(known, l) {
+				_, path, _ := strings.Cut(l, "\t")
+				return fmt.Errorf("collect refused: commit %s adds a gitlink (a submodule) at %s: the worker never pushes one", rev, path)
+			}
 		}
 	}
 	return nil
 }
-func (g *OSGitOps) Push(ctx context.Context, worktree, remote, branch, headSHA, expect string) error {
-	ref := "refs/heads/" + branch
-	to := g.to_internal(g.Timeouts.WithDefaults().Push)
-	err := g.guardRemote_internal(ctx, to, worktree, remote)
+
+// Export: see GitOps. The bundle is made in clone, then written into out's
+// directory under a fresh name and renamed over out.
+func (g *OSGitOps) Export(ctx context.Context, clone, base, out string) error {
+	tmp := filepath.Join(clone, ".git", "export.bundle")
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if _, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), clone, "bundle", "create", tmp, base+"..HEAD"); err != nil {
+		return fmt.Errorf("export the rebased head: %w", err)
+	}
+	in, err := os.Open(tmp)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	f, err := os.CreateTemp(filepath.Dir(out), ".rebased-*")
+	if err != nil {
+		return fmt.Errorf("export the rebased head: %w", err)
+	}
+	_, err = io.Copy(f, in)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
 	if err == nil {
-		_, err = g.runGit_internal(ctx, to, worktree, "push", "--no-recurse-submodules", "--force-with-lease="+ref+":"+expect, remote, headSHA+":"+ref)
+		err = os.Rename(f.Name(), out)
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+		return fmt.Errorf("export the rebased head: %w", err)
+	}
+	return nil
+}
+
+// remoteNamed_internal refuses a call that would reach no clone URL.
+func remoteNamed_internal(remote string) error {
+	if strings.TrimSpace(remote) == "" {
+		return errors.New("git refused: the job names no clone URL to push or fetch: its record's repo and forge give none (CloneURL)")
+	}
+	return nil
+}
+func (g *OSGitOps) Push(ctx context.Context, clone, remote, branch, headSHA, expect string) error {
+	ref := "refs/heads/" + branch
+	err := remoteNamed_internal(remote)
+	if err == nil {
+		_, err = g.runRemoteGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), clone, "push", "--no-recurse-submodules", "--force-with-lease="+ref+":"+expect, remote, headSHA+":"+ref)
 	}
 	if err != nil {
 		at := cmp.Or(expect, "no branch (a new one)")
@@ -1248,12 +1332,13 @@ func (g *OSGitOps) Push(ctx context.Context, worktree, remote, branch, headSHA, 
 	}
 	return nil
 }
-func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, remote, streamRef string) (string, error) {
+func (g *OSGitOps) RebaseOntoStream(ctx context.Context, clone, remote, streamRef string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().RebaseAndTest)
-	if err := g.guardRemote_internal(ctx, to, worktree, remote); err != nil {
-		return "", err // the worktree's doing, so the job's failure, never a fault to retry
+	if err := remoteNamed_internal(remote); err != nil {
+		return "", err
 	}
-	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", "--no-recurse-submodules", remote, streamRef); err != nil {
+	worktree := clone // the worker's own clone, never the job directory
+	if _, err := g.runRemoteGit_internal(ctx, to, worktree, "fetch", "--quiet", "--no-recurse-submodules", remote, streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
@@ -1269,47 +1354,26 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, remote, strea
 		}
 		return "", err
 	}
-	return g.HeadSHA(ctx, worktree)
+	return g.headSHA_internal(ctx, worktree, "HEAD")
 }
 
-// OriginHasHead: the branch at remote, the job's clone URL (which the
-// worktree's origin must still be, guardRemote_internal), is at sha.
-func (g *OSGitOps) OriginHasHead(ctx context.Context, worktree, remote, branch, sha string) (bool, error) {
-	if err := g.guardRemote_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, remote); err != nil {
+// OriginHasHead: the branch at remote, the job's clone URL, is at sha;
+// asked from the worker's clone.
+func (g *OSGitOps) OriginHasHead(ctx context.Context, clone, remote, branch, sha string) (bool, error) {
+	if err := remoteNamed_internal(remote); err != nil {
 		return false, err
 	}
-	return g.HasHead(ctx, remote, branch, sha)
+	return g.hasHead_internal(ctx, clone, remote, branch, sha)
 }
 
 // HasHead: the branch of the repository at remote (a clone URL or path) is
 // at sha.
 func (g *OSGitOps) HasHead(ctx context.Context, remote, branch, sha string) (bool, error) {
-	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), "", "ls-remote", remote, "refs/heads/"+branch)
+	return g.hasHead_internal(ctx, "", remote, branch, sha)
+}
+func (g *OSGitOps) hasHead_internal(ctx context.Context, dir, remote, branch, sha string) (bool, error) {
+	out, err := g.runRemoteGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), dir, "ls-remote", remote, "refs/heads/"+branch)
 	return err == nil && strings.HasPrefix(strings.TrimSpace(out), sha), err
-}
-func (g *OSGitOps) IsDirty(ctx context.Context, worktree string) (bool, error) {
-	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
-	if err := g.guardWorktree_internal(ctx, to, worktree); err != nil {
-		return false, err
-	}
-	out, err := g.runGit_internal(ctx, to, worktree, "status", "--porcelain")
-	return err == nil && strings.TrimSpace(out) != "", err
-}
-func (g *OSGitOps) CommitAll(ctx context.Context, worktree, message string) (string, error) {
-	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
-	if err := g.guardWorktree_internal(ctx, to, worktree); err != nil {
-		return "", err
-	}
-	if _, err := g.runGit_internal(ctx, to, worktree, "add", "-A"); err != nil {
-		return "", err
-	}
-	if err := g.gitlinks_internal(ctx, to, worktree); err != nil { // the tree about to be committed
-		return "", err
-	}
-	if _, err := g.runGit_internal(ctx, to, worktree, "commit", "--quiet", "--no-verify", "-m", message); err != nil {
-		return "", err
-	}
-	return g.HeadSHA(ctx, worktree)
 }
 func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
 	return os.RemoveAll(worktree)
@@ -1319,25 +1383,32 @@ func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
 // fsmonitor, and no submodule recursion, whatever any config says.
 var gitPrefix_internal = []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false", "-c", "diff.ignoreSubmodules=all"}
 
-// networkVerbs_internal are the worker's git verbs that reach a remote:
-// only they carry the credential (gitEnv_internal).
-var networkVerbs_internal = []string{"clone", "fetch", "ls-remote", "push"}
-
 // gitEnv_internal is a worker git call's whole environment: PATH, HOME,
-// no prompt, and for a network verb the one credential (git.CredentialEnv);
-// status, add, commit, rebase, rev-parse and config never carry it.
-func (g *OSGitOps) gitEnv_internal(verb string) []string {
+// no prompt, and for a call that reaches a remote the one credential
+// (git.CredentialEnv); a local call never carries it.
+func (g *OSGitOps) gitEnv_internal(remote bool) []string {
 	env := []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"}
-	if !slices.Contains(networkVerbs_internal, verb) {
+	if !remote {
 		return env
 	}
 	return append(env, git.CredentialEnv(g.Token, cmp.Or(g.GitHubCredential, "gh"))...)
 }
+
+// runGit_internal is a local worker git call: no credential.
 func (g *OSGitOps) runGit_internal(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
+	return g.runGitEnv_internal(ctx, timeout, dir, g.gitEnv_internal(false), args)
+}
+
+// runRemoteGit_internal is a worker git call that reaches a remote (clone,
+// fetch, ls-remote, push of a clone URL): it alone carries the credential.
+func (g *OSGitOps) runRemoteGit_internal(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
+	return g.runGitEnv_internal(ctx, timeout, dir, g.gitEnv_internal(true), args)
+}
+func (g *OSGitOps) runGitEnv_internal(ctx context.Context, timeout time.Duration, dir string, env, args []string) (string, error) {
 	cmd := edge.Cmd{
 		Argv:     append(slices.Clone(gitPrefix_internal), args...),
 		Dir:      dir,
-		Env:      g.gitEnv_internal(args[0]),
+		Env:      env,
 		CleanEnv: true, Timeout: timeout,
 	}
 	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, cmd)
@@ -1352,6 +1423,25 @@ type OSReserveWall struct {
 	UseSandbox bool
 	Exec       edge.Exec
 	LookPath   func(string) (string, error) // exec.LookPath when nil
+	// KillGroup kills what is left of a finished wall command's process
+	// group and is how many it found (OSKillGroup in the binary); nil kills
+	// nothing. No guarantee rests on it: no worker git runs in the job
+	// directory after the harness, whatever outlives it.
+	KillGroup func(pgid int) int
+}
+
+// OSKillGroup kills process group pgid (a wall command's, whose leader has
+// exited) and is how many of its processes pgrep found.
+func OSKillGroup(pgid int) int {
+	if pgid <= 1 {
+		return 0
+	}
+	out, _ := exec.Command("pgrep", "-g", strconv.Itoa(pgid)).Output() // exit 1: none left
+	n := len(strings.Fields(string(out)))
+	if n > 0 {
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	}
+	return n
 }
 
 // RunHarness runs the harness in the wall, granting --read on the
@@ -1373,6 +1463,9 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
 	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+}
+func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
+	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
@@ -1436,7 +1529,11 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 		pid = fallbackPID
 	}
 	liveProcNonces_internal.Delete(pid)
-	out := WallRunResult{ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
+	leftovers := 0
+	if w.KillGroup != nil && res.PID > 0 && res.PID != os.Getpid() { // edge's exec makes each command its group's leader
+		leftovers = w.KillGroup(res.PID)
+	}
+	out := WallRunResult{Leftovers: leftovers, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if res.ExitCode == 1 && strings.Contains(combined, "nova-reserve:") && !strings.Contains(combined, "nova-reserve: HELD") {
 		return out, fmt.Errorf("%w: %w", ErrNoSlot, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))

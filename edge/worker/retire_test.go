@@ -49,7 +49,6 @@ func TestOSGitPushIsALeaseFromTheExpectedHead(t *testing.T) {
 	g := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
 	ctx := context.Background()
 	wt := filepath.Join(t.TempDir(), "repo")
-	writeStagedAlternates_internal(t, g, wt, "r")
 	if err := g.Push(ctx, wt, testCloneURL, testBranch, testWorkSHA, testPriorSHA); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +161,7 @@ func newRetireRig_internal(t *testing.T, next NextResponse, rec JobRecord) *reti
 		}
 	}
 	t.Cleanup(func() { _ = removeTree_internal(root) })
-	g.git.headByWT[wt], g.git.dirtyByWT[wt] = testStaleSHA, true
+	g.git.headByWT[wt] = testStaleSHA
 	g.git.originHeads[testBranch] = testHolderSHA
 	r, err := NewRunner(Runner{
 		Host: "b1", RootDir: root, Sprint: g.sp, Git: g.git, Wall: &fakeWall{}, Procs: &fakeProcTable{alive: map[string]bool{}},
@@ -256,11 +255,11 @@ func TestPushGateRefusesAJobThatNoLongerHolds(t *testing.T) {
 	g := newRetireRig_internal(t, NextResponse{Epoch: 1, Row: "vision.ds"}, staleWorkRecord_internal(JobHarvested, 1))
 	rec := staleWorkRecord_internal(JobHarvested, 1)
 	g.git.originHeads[testBranch] = testWorkSHA
-	if err := g.r.pushBranch_internal(context.Background(), "wt", &rec, testStaleSHA); err != nil {
+	if err := g.r.pushBranch_internal(context.Background(), &rec, testStaleSHA); err != nil {
 		t.Fatalf("a holder's push by lease: %v", err)
 	}
 	g.r.markGone_internal(1, "p1.w1", math.MaxInt)
-	err := g.r.pushBranch_internal(context.Background(), "wt", &rec, testRebSHA)
+	err := g.r.pushBranch_internal(context.Background(), &rec, testRebSHA)
 	if err == nil || !strings.Contains(err.Error(), "no longer holds its card") || len(g.git.pushes()) != 1 {
 		t.Fatalf("after final: %v, pushes %+v", err, g.git.pushes())
 	}

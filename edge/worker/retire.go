@@ -31,7 +31,7 @@ const RetiredDir = "retired"
 // sha only while rec's job holds its consumer (holds_internal), and only by
 // lease from leaseFrom_internal. A push that lands is rec.PushedHead, which
 // the caller writes to the job record.
-func (r *Runner) pushBranch_internal(ctx context.Context, wt string, rec *JobRecord, sha string) error {
+func (r *Runner) pushBranch_internal(ctx context.Context, rec *JobRecord, sha string) error {
 	if !r.holds_internal(*rec) {
 		return fmt.Errorf("push of %s to %s refused: %s@%d no longer holds its card (its consumer is final, or the row holds a newer generation), and the branch belongs to the card's holder", sha, rec.Branch, rec.Consumer, rec.Gen)
 	}
@@ -39,7 +39,7 @@ func (r *Runner) pushBranch_internal(ctx context.Context, wt string, rec *JobRec
 	if err != nil {
 		return fmt.Errorf("push of %s to %s refused: %w", sha, rec.Branch, err)
 	}
-	if err := r.Git.Push(ctx, wt, remote, rec.Branch, sha, leaseFrom_internal(*rec)); err != nil {
+	if err := r.Git.Push(ctx, r.clonePath_internal(rec.Consumer), remote, rec.Branch, sha, leaseFrom_internal(*rec)); err != nil {
 		return err
 	}
 	rec.PushedHead = sha
@@ -105,6 +105,7 @@ func (r *Runner) retireJob_internal(jobDir string, rec JobRecord, why string) {
 		r.retireFailed_internal(jobDir, rec, why, err)
 		return
 	}
+	r.report("removing the worker's clone of "+rec.Consumer, os.RemoveAll(r.clonePath_internal(rec.Consumer)))
 	r.logStep_internal(rec.Row, rec.Consumer, "retire", "removed, nothing pushed: "+why, 0)
 }
 

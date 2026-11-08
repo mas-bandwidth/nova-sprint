@@ -200,6 +200,7 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	assert.NotEmpty(t, snap.Cards["p1"].Head)
 	assert.NotEqual(t, movedStreamSHA, snap.Cards["p1"].Head)
 
+	assert.Equal(t, snap.Cards["p1"].Head, runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/sprint/s1/p1"), "the job's rebased head is on origin's branch")
 	parentSHA := runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/sprint/s1/p1^")
 	assert.Equal(t, movedStreamSHA, parentSHA)
 	_, err = os.Stat(filepath.Join(r.RootDir, "jobs", "p1.w1"))
@@ -243,59 +244,59 @@ func TestFunctionalRunnerRebaseConflict(t *testing.T) {
 	assert.Contains(t, snap.Cards["p1.w1"].Reason, "work.txt")
 }
 
-// TestFunctionalWorkerGitRefusesANestedRepoFilter (functional tier: real
-// git) is the round-3 reader's case: a repository nested in the worktree,
-// recorded as a gitlink, whose own config has a clean filter that touches a
-// marker and whose .gitattributes applies it. Plain `git status` in the
-// worktree runs the filter (the control); every worker git call after the
-// harness refuses the worktree first, so the marker never appears.
-func TestFunctionalWorkerGitRefusesANestedRepoFilter(t *testing.T) {
+// TestFunctionalLateWriterCannotReachThePush (functional tier: real git,
+// the real wall) is the round-4 reader's race: a writer that outlives the
+// harness rewrites the job's .git/config (a clean filter that touches a
+// marker outside the job directory, origin's push URL and an insteadOf
+// pointed at another repository) before the seal step. The seal step runs
+// that config inside the wall; the worker's push, from its own clone,
+// lands the job's commits (the left tree committed too) on origin's branch
+// and nothing on the other repository, and the marker never appears. A
+// plain git add in the job's tree runs the filter (the control).
+func TestFunctionalLateWriterCannotReachThePush(t *testing.T) {
 	t.Parallel()
 	gb := setupGitBench_internal(t)
+	root := t.TempDir()
 	g := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
-	ctx := context.Background()
-	j := Job{Repo: gb.originDir, Kind: "work", Branch: "sprint/s1/p1", BaseSHA: gb.baseSHA, Consumer: "p1.w1",
-		WorktreeDir: filepath.Join(t.TempDir(), "job", "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
-	require.NoError(t, g.Fetch(ctx, j))
-	_, err := g.StageWorktree(ctx, j)
+	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: g, Wall: &OSReserveWall{}, Now: time.Now, Sleep: time.Sleep})
 	require.NoError(t, err)
-	_, err = g.IsDirty(ctx, j.WorktreeDir)
-	require.NoError(t, err, "a staged worktree passes the guard")
+	ctx := context.Background()
+	jobDir := filepath.Join(root, "jobs", "p1.w1")
+	wt := filepath.Join(jobDir, "repo")
+	j := Job{Repo: gb.originDir, Kind: "work", Branch: "sprint/s1/p1", BaseSHA: gb.baseSHA, Consumer: "p1.w1", Row: "b1.script",
+		JobDir: jobDir, WorktreeDir: wt, CommitName: testCommitName, CommitEmail: testCommitEmail}
+	require.NoError(t, g.Fetch(ctx, j))
+	_, err = g.StageWorktree(ctx, j)
+	require.NoError(t, err)
+	require.NoError(t, r.keepRemote_internal(TakeInfo{Consumer: j.Consumer, Repo: gb.originDir}))
+	rec := JobRecord{Epoch: 1, Consumer: j.Consumer, Kind: "work", Row: j.Row, Repo: gb.originDir, Branch: j.Branch, BaseSHA: gb.baseSHA, Gen: 1, StartTipRead: true}
 
+	// The harness: one commit, and a file left uncommitted.
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work\n"), 0o644))
+	runGitCmd_internal(t, wt, "add", "work.txt")
+	runGitCmd_internal(t, wt, "commit", "-q", "-m", "work")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "left.txt"), []byte("left\n"), 0o644))
+
+	// The late writer.
+	evil := filepath.Join(t.TempDir(), "evil.git")
+	runGitCmd_internal(t, root, "init", "-q", "--bare", evil)
 	marker := filepath.Join(t.TempDir(), "MARKER")
-	sub := filepath.Join(j.WorktreeDir, "sub")
-	require.NoError(t, os.MkdirAll(sub, 0o755))
-	runGitCmd_internal(t, sub, "init", "-q")
-	runGitCmd_internal(t, sub, "config", "filter.x.clean", "sh -c 'touch "+marker+"; cat'")
-	require.NoError(t, os.WriteFile(filepath.Join(sub, ".gitattributes"), []byte("* filter=x\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(sub, "f"), []byte("one\n"), 0o644))
-	runGitCmd_internal(t, sub, "add", "f", ".gitattributes")
-	runGitCmd_internal(t, sub, "commit", "-q", "-m", "sub")
-	require.NoError(t, os.WriteFile(filepath.Join(sub, "f"), []byte("two\n"), 0o644))
-	runGitCmd_internal(t, j.WorktreeDir, "add", "sub") // the gitlink
-	require.NoError(t, os.RemoveAll(marker))
+	runGitCmd_internal(t, wt, "config", "filter.x.clean", "sh -c 'touch "+marker+"; cat'")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, ".gitattributes"), []byte("* filter=x\n"), 0o644))
+	runGitCmd_internal(t, wt, "config", "remote.origin.pushurl", evil)
+	runGitCmd_internal(t, wt, "config", "url."+evil+".insteadOf", gb.originDir)
 
-	for verb, call := range map[string]func() error{
-		"dirty":  func() error { _, err := g.IsDirty(ctx, j.WorktreeDir); return err },
-		"commit": func() error { _, err := g.CommitAll(ctx, j.WorktreeDir, "m"); return err },
-		"head":   func() error { _, err := g.HeadSHA(ctx, j.WorktreeDir); return err },
-		"push":   func() error { return g.Push(ctx, j.WorktreeDir, gb.originDir, j.Branch, gb.baseSHA, "") },
-		"fetch": func() error {
-			_, err := g.RebaseOntoStream(ctx, j.WorktreeDir, gb.originDir, "sprint/s1/group")
-			return err
-		},
-		"has head": func() error {
-			_, err := g.OriginHasHead(ctx, j.WorktreeDir, gb.originDir, j.Branch, gb.baseSHA)
-			return err
-		},
-	} {
-		err := call()
-		require.Error(t, err, verb)
-		require.Contains(t, err.Error(), "nested repository", verb)
-		_, statErr := os.Stat(marker)
-		require.True(t, os.IsNotExist(statErr), "%s: the nested repo's filter ran", verb)
-	}
-	runGitCmd_internal(t, j.WorktreeDir, "status", "--porcelain") // the control: plain git runs it
-	_, err = os.Stat(marker)
-	require.NoError(t, err, "the control: plain git status should have run the nested filter, so the case is live")
+	out := r.harvestWorkHead_internal(ctx, j, &rec, Outcome{Result: "ok"})
+	require.Equal(t, "ok", out.Result, "%+v", out)
+	require.Equal(t, out.Head, runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/sprint/s1/p1"), "the job's head is on origin's branch")
+	runGitCmd_internal(t, gb.originDir, "cat-file", "-e", out.Head+":left.txt") // the seal step committed the left tree
+	runGitCmd_internal(t, gb.originDir, "merge-base", "--is-ancestor", gb.baseSHA, out.Head)
+	require.Empty(t, runGitCmd_internal(t, evil, "for-each-ref"), "nothing reached the late writer's repository")
+	_, statErr := os.Stat(marker)
+	require.True(t, os.IsNotExist(statErr), "the late writer's filter ran outside the wall")
+
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "control.txt"), []byte("c\n"), 0o644))
+	runGitCmd_internal(t, wt, "add", "control.txt") // the control: plain git runs it
+	_, statErr = os.Stat(marker)
+	require.NoError(t, statErr, "the control: plain git add should have run the filter, so the case is live")
 }
