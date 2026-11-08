@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -76,19 +74,6 @@ func (f hostForge) CanAct(ctx context.Context, repo string) error {
 	}
 	return &verbs.OperationError{Problem: "this host's gh identity has " + orNone(perm) + " permission on " + repo + ", and the landing needs write to push, open and merge",
 		Fix: "give the identity gh auth status names write access to " + repo + ", then add the stream again", Exit: 1}
-}
-
-// PR is pull request n of repo: its head and whether it merged.
-func (f hostForge) PR(ctx context.Context, repo string, n int) (string, bool, error) {
-	out, err := f.gh(ctx, "pr", "view", strconv.Itoa(n), "-R", repo, "--json", "headRefOid,state")
-	if err != nil {
-		return "", false, err
-	}
-	var v struct{ HeadRefOid, State string }
-	if err := json.Unmarshal([]byte(out), &v); err != nil {
-		return "", false, fmt.Errorf("gh pr view %d -R %s: %s", n, repo, edge.ParseFailure(err, []byte(out)))
-	}
-	return strings.ToLower(v.HeadRefOid), v.State == "MERGED", nil
 }
 
 // RequiredChecks are the status checks the base branch of repo requires, from

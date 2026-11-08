@@ -85,14 +85,6 @@ func TestCardAdmission(t *testing.T) {
 			prep: func(_ *testing.T, w *world) { w.origin.tips["o/r sprint/s/x1"] = tip; w.origin.contains = true },
 			want: []string{"card x1: its work is already at the base: its branch sprint/s/x1", "do not add it"}},
 		{name: "its branch not at the base", as: "carol", args: b("x2", ""), exit: 0, prep: func(_ *testing.T, w *world) { w.origin.tips["o/r sprint/s/x2"] = tip }, want: []string{"ADDED 1 cards"}},
-		{name: "its HEAD at the base", as: "carol", args: b("x3", "HEAD: "+tip+"\n"), exit: 1, prep: func(_ *testing.T, w *world) { w.origin.contains = true }, want: []string{"its HEAD dddddddddddd is in main"}},
-		{name: "its PR merged", as: "carol", args: b("x4", "PR: 7\n"), exit: 1,
-			prep: func(_ *testing.T, w *world) {
-				w.forge.prs, w.forge.merged = map[int]string{7: tip}, map[int]bool{7: true}
-			}, want: []string{"PR 7 merged"}},
-		{name: "its PR's head at the base", as: "carol", args: b("x5", "PR: 7\n"), exit: 1,
-			prep: func(_ *testing.T, w *world) { w.forge.prs = map[int]string{7: tip}; w.origin.contains = true }, want: []string{"its PR 7's head"}},
-		{name: "its PR unreadable", as: "carol", args: b("x6", "PR: 8\n"), exit: 2, want: []string{"PR 8 of o/r cannot be read", "gh pr view 8 -R o/r"}},
 		{name: "a gate naming a bench", as: "carol", args: b("n1", "DONE-WHEN: make test HOST=alice\n"), exit: 1, want: []string{"card n1: line 5's gate names the bench alice", "never a host"}},
 	})
 }
@@ -117,8 +109,6 @@ func TestBriefContractLint(t *testing.T) {
 		"line 4 DONE-WHEN go test ./... && go vet ./... is not one command: && is shell syntax":                  strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: go test ./... && go vet ./...", 1),
 		"line 4 DONE-WHEN Verify the tests pass is not one command: the first word Verify is not a program name": strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: Verify the tests pass", 1),
 		"must contain a valid NEEDS-ROUTE section":                                                               strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nNEEDS-ROUTE: two words", 1),
-		"must contain a valid HEAD section":                                                                      strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nHEAD: abc", 1),
-		"must contain a valid PR section":                                                                        strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nPR: -3", 1),
 		"line 2 is a retired WHO line":                                                                           strings.Replace(good, "PATHS: a.go", "WHO: alice\nPATHS: a.go", 1),
 		"line 2 is a retired LOCK line":                                                                          strings.Replace(good, "PATHS: a.go", "LOCK: build\nPATHS: a.go", 1),
 		"line 7 names a JOB.md to write, a retired mechanic":                                                     good + "Write JOB.md when done.\n",
@@ -141,7 +131,7 @@ func TestBriefContractLint(t *testing.T) {
 	if _, err := parseBrief("b1", good+readsJobMD); err != nil {
 		t.Fatalf("a brief that reads JOB.md: %v", err)
 	}
-	a, err := parseBrief("b1", strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nNEEDS-ROUTE: ipad\nNEEDS-ROUTE: usb\nHEAD: "+tip+"\nPR: 12", 1))
+	a, err := parseBrief("b1", strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nNEEDS-ROUTE: ipad\nNEEDS-ROUTE: usb", 1))
 	if err != nil || len(a.DoneWhen) != 1 {
 		t.Fatalf("%+v %v", a, err)
 	}

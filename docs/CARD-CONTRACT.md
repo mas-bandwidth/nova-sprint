@@ -119,8 +119,6 @@ restored (an `ADMIT` line each). The parse refuses:
   `route:<name>` role in nova-config (`--roles bench,route:<name>`); kin
   serve no routes. The one parse is `card.NeedsRoutes`, which the tick, the
   unserved judgement and admission all read. Uppercase like every other key.
-- **HEAD: <full sha>** and **PR: <number>** (once each, optional): the work
-  the brief carries, read only by admission (the brief keeps them).
 - **DONE-WHEN** that is not one command. A DONE-WHEN is one argv: words
   split at white space, a single or double quote joining what it encloses,
   run directly with no shell. So the line is refused (decided 2026-11-07,

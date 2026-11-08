@@ -246,12 +246,9 @@ func (o *fakeOrigin) Branches(_ context.Context, url, prefix string) (map[string
 	return out, o.err
 }
 
-// fakeForge is the host's gh identity: act is CanAct's answer; prs maps a
-// PR number to its head, merged lists the merged ones.
+// fakeForge is the host's gh identity: act is CanAct's answer.
 type fakeForge struct {
 	act    error
-	prs    map[int]string
-	merged map[int]bool
 	checks []string // the base's required checks
 	checkE error
 }
@@ -261,14 +258,6 @@ func (f *fakeForge) RequiredChecks(context.Context, string, string) ([]string, e
 }
 
 func (f *fakeForge) CanAct(context.Context, string) error { return f.act }
-
-func (f *fakeForge) PR(_ context.Context, _ string, n int) (string, bool, error) {
-	h, ok := f.prs[n]
-	if !ok {
-		return "", false, errors.New("no pull requests found")
-	}
-	return h, f.merged[n], nil
-}
 
 func (o *fakeOrigin) Tip(_ context.Context, repo, branch string) (string, bool, error) {
 	sha, ok := o.tips[repo+" "+branch]
