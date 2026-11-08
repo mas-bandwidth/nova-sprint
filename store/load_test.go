@@ -86,14 +86,14 @@ func loadPG(t *testing.T, fsync string) (dsn string, stats bool) {
 	if stats = len(libs)+len(libs2) > 0; stats {
 		args = append(args, "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=all")
 	}
-	// pg_ctl starts it and stops it (-m immediate), never a signal.
+	// pg_ctl starts it and stops it (-m fast, a clean shutdown), never a signal.
 	ctl := filepath.Join(bin, "pg_ctl")
 	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", strings.Join(args[2:], " "), "-w", "start")
 	start.Env = append(os.Environ(), "LC_ALL=C")
 	// Stop is registered before start: a start that fails or times out can
 	// leave a postmaster running, and t.Fatalf must not orphan it.
 	t.Cleanup(func() {
-		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "fast", "-w", "stop")
 		stop.Env = append(os.Environ(), "LC_ALL=C")
 		if out, err := stop.CombinedOutput(); err != nil {
 			t.Logf("pg_ctl stop: %v\n%s", err, out)
