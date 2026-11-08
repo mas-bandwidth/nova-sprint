@@ -87,6 +87,7 @@ type (
 	WallRunResult struct {
 		ExitCode, PID  int
 		Leftovers      int    // processes of the command's group still alive after it, killed (OSReserveWall.KillGroup)
+		LeftoverErr    error  // KillGroup's failure to count or kill them, said on the step's log line
 		Output         []byte // stdout then stderr, as the classifier reads it
 		Stdout, Stderr []byte
 		Argv           []string // the wall's command line as run
@@ -250,7 +251,11 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 	}
 	out := map[string]JobRecord{}
 	for _, e := range entries {
-		if rec, err := ReadJobRecord(filepath.Join(r.RootDir, "jobs", e.Name())); e.IsDir() && err == nil && rec.Row == row {
+		rec, err := ReadJobRecord(filepath.Join(r.RootDir, "jobs", e.Name()))
+		if errors.Is(err, ErrJobDirChanged) {
+			r.report("job "+e.Name()+" (left as it is, nothing pushed or reported)", err)
+		}
+		if e.IsDir() && err == nil && rec.Row == row {
 			out[rec.Consumer] = rec
 		}
 	}
@@ -289,7 +294,7 @@ func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string,
 	if rec.Kind != "work" || r.Git == nil {
 		return ""
 	}
-	job := Job{Consumer: rec.Consumer, Row: rec.Row, JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), ProxyAddr: r.ProxyAddr}
+	job := Job{Consumer: rec.Consumer, Row: rec.Row, Repo: rec.Repo, Forge: rec.Forge, JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), ProxyAddr: r.ProxyAddr}
 	sha, err := r.sealAndCollect_internal(ctx, job, rec)
 	if err != nil {
 		r.report("sealing the tree of "+rec.Consumer, err)
@@ -594,7 +599,8 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		job.ProxyStatus = 0
 		r.Sleep(r.launchBackoff_internal(attempt))
 	}
-	r.logStep_internal(job.Row, job.Consumer, "run", fmt.Sprintf("exit=%d leftovers-killed=%d", last.ExitCode, last.Leftovers), last.Elapsed)
+	r.logStep_internal(job.Row, job.Consumer, "run", fmt.Sprintf("exit=%d %s", last.ExitCode, leftoversNote_internal(last)), last.Elapsed)
+	r.report("killing what the harness of "+job.Consumer+" left running", last.LeftoverErr)
 	return last, runErr
 }
 func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
@@ -668,13 +674,13 @@ const (
 	RebasedBundle = "rebased.bundle"
 )
 
-// ClonesDir holds, outside every job directory, the worker's own clone of
+// SealedDir holds, outside every job directory, the worker's own clone of
 // each job, the one its pushes, rebase and checks run in:
-// <root>/clones/<consumer>.
-const ClonesDir = "clones"
+// <root>/sealed/<consumer>. (<root>/clones is the work clones' default.)
+const SealedDir = "sealed"
 
 func (r *Runner) clonePath_internal(consumer string) string {
-	return filepath.Join(r.RootDir, ClonesDir, consumer)
+	return filepath.Join(r.RootDir, SealedDir, consumer)
 }
 
 // sealScript_internal is the seal step, run in the job's tree inside the
@@ -715,7 +721,8 @@ func (r *Runner) sealAndCollect_internal(ctx context.Context, job Job, rec JobRe
 	base := cmp.Or(rec.PriorHead, rec.BaseSHA)
 	msg := rec.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness left its changes uncommitted; the worker's seal step committed the tree as it was.\n"
 	res, err := r.Wall.RunStep(ctx, job, sealArgv_internal(job.JobDir, base, job.CommitName, job.CommitEmail, msg), r.Timeouts.RebaseAndTest)
-	r.logStep_internal(rec.Row, rec.Consumer, "seal", fmt.Sprintf("exit=%d leftovers-killed=%d", res.ExitCode, res.Leftovers), res.Elapsed)
+	r.logStep_internal(rec.Row, rec.Consumer, "seal", fmt.Sprintf("exit=%d %s", res.ExitCode, leftoversNote_internal(res)), res.Elapsed)
+	r.report("killing what the seal step of "+rec.Consumer+" left running", res.LeftoverErr)
 	if err == nil && res.ExitCode != 0 {
 		err = fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
 	}
@@ -753,7 +760,7 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		}
 		rec.Outcome.Head = cmp.Or(newSHA, rec.Outcome.Head)
 	}
-	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
+	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, Repo: rec.Repo, Forge: rec.Forge, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
 	if err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
 		rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
 		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
@@ -864,6 +871,7 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 	if err := os.Remove(filepath.Join(r.RootDir, RemotesDir, rec.Consumer)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		r.report("removing the kept clone URL of "+rec.Consumer, err)
 	}
+	r.report("removing the kept record of "+rec.Consumer, os.RemoveAll(keptDir_internal(jobDir)))
 	r.logStep_internal(rec.Row, rec.Consumer, "clean", "removed", 0)
 	return nil
 }
@@ -1384,10 +1392,13 @@ func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
 var gitPrefix_internal = []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false", "-c", "diff.ignoreSubmodules=all"}
 
 // gitEnv_internal is a worker git call's whole environment: PATH, HOME,
-// no prompt, and for a call that reaches a remote the one credential
+// no prompt, no global or system config (no host filter, LFS or helper
+// runs on what a harness left; the identity is the clone's own config, set
+// by Collect), and for a call that reaches a remote the one credential
 // (git.CredentialEnv); a local call never carries it.
 func (g *OSGitOps) gitEnv_internal(remote bool) []string {
-	env := []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"}
+	env := []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0",
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
 	if !remote {
 		return env
 	}
@@ -1427,21 +1438,38 @@ type OSReserveWall struct {
 	// group and is how many it found (OSKillGroup in the binary); nil kills
 	// nothing. No guarantee rests on it: no worker git runs in the job
 	// directory after the harness, whatever outlives it.
-	KillGroup func(pgid int) int
+	KillGroup func(pgid int) (int, error)
 }
 
 // OSKillGroup kills process group pgid (a wall command's, whose leader has
-// exited) and is how many of its processes pgrep found.
-func OSKillGroup(pgid int) int {
+// exited) and is how many of its processes pgrep found; a pgrep that
+// fails (other than finding none) or a kill that fails is its error.
+func OSKillGroup(pgid int) (int, error) {
 	if pgid <= 1 {
-		return 0
+		return 0, nil
 	}
-	out, _ := exec.Command("pgrep", "-g", strconv.Itoa(pgid)).Output() // exit 1: none left
+	out, err := exec.Command("pgrep", "-g", strconv.Itoa(pgid)).Output()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 { // none left
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("pgrep -g %d: %w", pgid, err)
+	}
 	n := len(strings.Fields(string(out)))
-	if n > 0 {
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return n, fmt.Errorf("kill -KILL -%d: %w", pgid, err)
 	}
-	return n
+	return n, nil
+}
+
+// leftoversNote_internal is a step's log note on its wall command's
+// leftovers: the count killed, and KillGroup's error when it had one.
+func leftoversNote_internal(res WallRunResult) string {
+	if res.LeftoverErr != nil {
+		return fmt.Sprintf("leftovers-killed=%d leftovers-error=%q", res.Leftovers, res.LeftoverErr.Error())
+	}
+	return fmt.Sprintf("leftovers-killed=%d", res.Leftovers)
 }
 
 // RunHarness runs the harness in the wall, granting --read on the
@@ -1471,18 +1499,12 @@ func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
 	cfg.ReserveBin = resolveToolBin_internal(cmp.Or(cfg.ReserveBin, "nova-reserve"))
 	cfg.SandboxBin = resolveToolBin_internal(cmp.Or(cfg.SandboxBin, "nova-sandbox"))
-	if data, err := os.ReadFile(filepath.Join(j.WorktreeDir, ".git")); j.WorktreeDir != "" && err == nil {
-		if gitDir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:"); ok {
-			commonGit := filepath.Dir(filepath.Dir(strings.TrimSpace(gitDir)))
-			cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), commonGit)
-			j.WorktreeDir = filepath.Dir(commonGit)
+	if _, name, err := cloneURL_internal(j); err == nil {
+		if cfg.WorkRoot != "" {
+			cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), filepath.Join(cfg.WorkRoot, name, ".git"))
 		}
-	}
-	if alt, err := os.ReadFile(filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")); j.WorktreeDir != "" && err == nil {
-		for _, line := range strings.Split(strings.TrimSpace(string(alt)), "\n") {
-			if line = strings.TrimSpace(line); line != "" {
-				cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), filepath.Dir(line))
-			}
+		if cfg.MirrorRoot != "" {
+			cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), filepath.Join(cfg.MirrorRoot, name+".git"))
 		}
 	}
 	return cfg
@@ -1529,11 +1551,11 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 		pid = fallbackPID
 	}
 	liveProcNonces_internal.Delete(pid)
-	leftovers := 0
+	leftovers, leftoverErr := 0, error(nil)
 	if w.KillGroup != nil && res.PID > 0 && res.PID != os.Getpid() { // edge's exec makes each command its group's leader
-		leftovers = w.KillGroup(res.PID)
+		leftovers, leftoverErr = w.KillGroup(res.PID)
 	}
-	out := WallRunResult{Leftovers: leftovers, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
+	out := WallRunResult{Leftovers: leftovers, LeftoverErr: leftoverErr, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if res.ExitCode == 1 && strings.Contains(combined, "nova-reserve:") && !strings.Contains(combined, "nova-reserve: HELD") {
 		return out, fmt.Errorf("%w: %w", ErrNoSlot, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))

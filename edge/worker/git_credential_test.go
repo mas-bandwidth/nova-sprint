@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -135,7 +136,13 @@ func TestWorkerGitTokenNeverReachesTheHarness(t *testing.T) { // unitlint: seria
 	fx := cr2OKExec_internal()
 	var groups []int
 	w := &OSReserveWall{Exec: fx, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true},
-		LookPath: func(string) (string, error) { return "/usr/bin/claude", nil }, KillGroup: func(pgid int) int { groups = append(groups, pgid); return 2 }}
+		LookPath: func(string) (string, error) { return "/usr/bin/claude", nil }, KillGroup: func(pgid int) (int, error) {
+			groups = append(groups, pgid)
+			if len(groups) == 3 {
+				return 2, errors.New("kill -KILL: operation not permitted")
+			}
+			return 2, nil
+		}}
 	j := Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}
 	leaked := append([]string{"PATH=/usr/bin", forge.TokenEnv + "=" + gitTokenFixture}, git.CredentialEnv(gitTokenFixture, "gh")...)
 	var results []WallRunResult
@@ -165,6 +172,10 @@ func TestWorkerGitTokenNeverReachesTheHarness(t *testing.T) { // unitlint: seria
 		if groups[i] != c.PID || results[i].Leftovers != 2 {
 			t.Fatalf("run %d: group killed %v, leftovers %d, want pid %d and 2", i, groups, results[i].Leftovers, c.PID)
 		}
+	}
+	// A kill that failed is said on the step's line, never dropped.
+	if note := leftoversNote_internal(results[2]); results[0].LeftoverErr != nil || !strings.Contains(note, "operation not permitted") || !strings.Contains(note, "leftovers-killed=2") {
+		t.Fatalf("the seal step's leftovers note %q (harness's error %v)", note, results[0].LeftoverErr)
 	}
 }
 
@@ -268,8 +279,8 @@ func sealedFake_internal(fx *edge.FakeExec, sha string) {
 // The token is on the calls that reach a remote alone (the work clone's
 // clone and fetch, the rebase's fetch, ls-remote, push), never on a local
 // clone, the bundle fetch, rebase, rev-parse or config; every call carries
-// the no-hooks, no-fsmonitor, no-submodule flags, and fetch and push
-// --no-recurse-submodules.
+// the no-hooks, no-fsmonitor, no-submodule flags, reads no global or
+// system config, and fetch and push pass --no-recurse-submodules.
 func TestWorkerGitTokenOnlyOnNetworkCalls(t *testing.T) {
 	t.Parallel()
 	fx := edge.NewFakeExec()
@@ -284,12 +295,15 @@ func TestWorkerGitTokenOnlyOnNetworkCalls(t *testing.T) {
 		}
 		network := remoteCall_internal(args)
 		token := slices.Contains(c.Cmd.Env, "NOVA_SPRINT_GIT_TOKEN="+gitTokenFixture)
-		helper := slices.ContainsFunc(c.Cmd.Env, func(kv string) bool { return strings.HasPrefix(kv, "GIT_CONFIG_") })
+		helper := slices.ContainsFunc(c.Cmd.Env, func(kv string) bool { return strings.HasPrefix(kv, "GIT_CONFIG_COUNT=") })
 		if network != token || network != helper {
 			t.Fatalf("%q: network %t, token %t, helper %t", args, network, token, helper)
 		}
 		if (args[0] == "fetch" || args[0] == "push") && !slices.Contains(args, "--no-recurse-submodules") {
 			t.Fatalf("%q recurses into submodules", args)
+		}
+		if !slices.Contains(c.Cmd.Env, "GIT_CONFIG_GLOBAL=/dev/null") || !slices.Contains(c.Cmd.Env, "GIT_CONFIG_NOSYSTEM=1") {
+			t.Fatalf("%q reads the host's global or system git config: %q", args, c.Cmd.Env)
 		}
 	}
 	for _, v := range []string{"clone", "fetch", "ls-remote", "push", "rebase", "rev-parse", "config", "bundle", "merge-base", "checkout", "-c"} {
@@ -425,4 +439,73 @@ func remoteCall_internal(args []string) bool {
 		return slices.Contains(args, "https://github.com/o/r.git")
 	}
 	return false
+}
+
+// The wall's read set for a job's tree is worked out from the job's repo
+// and the worker's own clone roots, never from the tree: a .git file
+// naming another gitdir or alternates naming another object store widen
+// nothing.
+func TestWallReadsOnlyWorkerOwnedClones(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	wt := filepath.Join(dir, "repo")
+	info := filepath.Join(wt, ".git", "objects", "info")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte("/secret/store/objects\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := &OSReserveWall{Config: WallConfig{ReadPaths: []string{"/usr"}, WorkRoot: "/w", MirrorRoot: "/m"}}
+	cfg := w.effectiveConfig_internal(Job{Repo: "o/r", Forge: "github", JobDir: dir, WorktreeDir: wt})
+	if want := []string{"/usr", "/w/r/.git", "/m/r.git"}; !slices.Equal(cfg.ReadPaths, want) {
+		t.Fatalf("read set %q, want %q", cfg.ReadPaths, want)
+	}
+	if err := os.RemoveAll(filepath.Join(wt, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: /secret/repo/.git/worktrees/x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := w.effectiveConfig_internal(Job{Repo: "o/r", Forge: "github", JobDir: dir, WorktreeDir: wt}); slices.ContainsFunc(cfg.ReadPaths, func(p string) bool { return strings.HasPrefix(p, "/secret") }) {
+		t.Fatalf("a .git file widened the read set: %q", cfg.ReadPaths)
+	}
+}
+
+// A job directory whose job.json or receipt is not the worker's kept copy
+// is refused, and a pass says so and acts on nothing in it.
+func TestJobRecordIsReadOnlyFromTheKeptCopy(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	jobDir := filepath.Join(root, "jobs", "p1.w1")
+	rec := JobRecord{Epoch: 1, Consumer: "p1.w1", Kind: "work", Row: "vision.ds", Branch: "sprint/s/p1", Gen: 1}
+	if err := WriteJobRecord(jobDir, rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReceipt_internal(jobDir, TakeInfo{Consumer: "p1.w1", Branch: "sprint/s/p1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadJobRecord(jobDir); err != nil || got.Branch != rec.Branch || !fileExists_internal(filepath.Join(root, RecordsDir, "p1.w1", "job.json")) {
+		t.Fatalf("the kept record: %+v %v", got, err)
+	}
+	for _, name := range []string{"job.json", ReceiptName} {
+		if err := os.WriteFile(filepath.Join(jobDir, name), []byte(`{"consumer":"p1.w1","branch":"main","row":"vision.ds","kind":"work","epoch":1,"gen":1}`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := ReadJobRecord(jobDir); !errors.Is(err, ErrJobDirChanged) {
+		t.Fatalf("a changed job.json: %v", err)
+	}
+	if _, err := readReceipt_internal(jobDir); !errors.Is(err, ErrJobDirChanged) {
+		t.Fatalf("a changed receipt: %v", err)
+	}
+	var warns []string
+	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: newFakeGit_internal(), Wall: &fakeWall{}, Now: testClock_internal(), Sleep: noSleep_internal,
+		Warn: func(s string) { warns = append(warns, s) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jobs, err := r.loadRowJobs_internal("vision.ds"); err != nil || len(jobs) != 0 || !strings.Contains(strings.Join(warns, "\n"), "not the one the worker kept") {
+		t.Fatalf("a pass over a changed job directory: jobs %+v err %v warnings %q", jobs, err, warns)
+	}
 }

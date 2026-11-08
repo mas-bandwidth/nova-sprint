@@ -101,18 +101,19 @@ func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr stri
 	}
 	ex, timeouts := edge.NewOSExec(), DefaultTimeouts()
 	root := cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row))
+	workRoot, mirrorRoot := cmp.Or(c.WorkRoot, filepath.Join(root, "clones")), cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror"))
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,
 		StateDir: cmp.Or(c.StateDir, filepath.Join(home, ".local", "state")),
 		Sprint:   sprint, Beater: sprint,
-		Git: &OSGitOps{WorkRoot: cmp.Or(c.WorkRoot, filepath.Join(root, "clones")),
-			MirrorRoot: cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror")), Exec: ex, Timeouts: timeouts,
+		Git: &OSGitOps{WorkRoot: workRoot, MirrorRoot: mirrorRoot, Exec: ex, Timeouts: timeouts,
 			Token: c.lookupEnv_internal(forge.TokenEnv), GitHubCredential: "gh"},
 		Now: time.Now, Sleep: time.Sleep, After: time.After, WakeEvery: WakeEvery,
 		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
-		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: timeouts.ReserveWait, NetDeny: true}},
-		Procs:   OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
+		Wall: &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: timeouts.ReserveWait, NetDeny: true,
+			WorkRoot: workRoot, MirrorRoot: mirrorRoot}},
+		Procs: OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
 		Warn: out, Meter: OSMeter{Exec: ex, ReserveBin: "nova-reserve", CPU: NewOSCPUSampler(ex)},
 	})
 }

@@ -2,6 +2,7 @@
 package worker
 
 import (
+	"bytes"
 	"cmp"
 	"crypto/sha256"
 	"encoding/json"
@@ -121,21 +122,14 @@ type (
 )
 
 func WriteJobRecord(jobDir string, rec JobRecord) error {
-	if err := os.MkdirAll(jobDir, 0o755); err != nil {
-		return err
-	}
 	data, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
-	tmp, dst := filepath.Join(jobDir, "job.json.tmp"), filepath.Join(jobDir, "job.json")
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dst)
+	return writeKept_internal(jobDir, "job.json", append(data, '\n'))
 }
 func ReadJobRecord(jobDir string) (JobRecord, error) {
-	data, err := os.ReadFile(filepath.Join(jobDir, "job.json"))
+	data, err := readKept_internal(jobDir, "job.json")
 	var rec JobRecord
 	if err != nil {
 		return rec, err
@@ -144,6 +138,81 @@ func ReadJobRecord(jobDir string) (JobRecord, error) {
 		return rec, fmt.Errorf("job record %s: %s", filepath.Join(filepath.Base(jobDir), "job.json"), edge.ParseFailure(err, data))
 	}
 	return rec, nil
+}
+
+// RecordsDir holds, outside every job directory (which the wall can
+// write), the worker's own copy of each job's record and take receipt:
+// <root>/records/<consumer>/. The worker reads only that copy; a job
+// directory whose copy differs is refused (ErrJobDirChanged).
+const RecordsDir = "records"
+
+// ErrJobDirChanged: a job directory's record or receipt is not the copy the
+// worker kept outside it.
+var ErrJobDirChanged = errors.New("refused: the job directory's copy is not the one the worker kept outside it: the job directory was changed after the worker wrote it, and the worker acts only on its own copy")
+
+// keptDir_internal is the worker's own copy of a job directory
+// <root>/jobs/<consumer>: <root>/records/<consumer>; "" for any other
+// directory (a retired record's, which is itself outside the job).
+func keptDir_internal(jobDir string) string {
+	if filepath.Base(filepath.Dir(jobDir)) != "jobs" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(filepath.Dir(jobDir)), RecordsDir, filepath.Base(jobDir))
+}
+
+// writeKept_internal writes name's data in the job directory and in the
+// worker's kept copy, each through a new file (O_EXCL: a link the harness
+// left is never followed) renamed into place.
+func writeKept_internal(jobDir, name string, data []byte) error {
+	dirs := []string{jobDir}
+	if kept := keptDir_internal(jobDir); kept != "" {
+		dirs = append(dirs, kept)
+	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		tmp := filepath.Join(dir, name+".tmp")
+		if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			return err
+		}
+		_, err = f.Write(data)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err == nil {
+			err = os.Rename(tmp, filepath.Join(dir, name))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// readKept_internal is name as the worker kept it outside jobDir, refused
+// when the job directory's copy is missing or differs.
+func readKept_internal(jobDir, name string) ([]byte, error) {
+	kept := keptDir_internal(jobDir)
+	if kept == "" {
+		return os.ReadFile(filepath.Join(jobDir, name))
+	}
+	data, err := os.ReadFile(filepath.Join(kept, name))
+	if err != nil {
+		return nil, err
+	}
+	cp, err := os.ReadFile(filepath.Join(jobDir, name))
+	if err != nil {
+		return nil, fmt.Errorf("%s of %s: %w (read: %w)", name, filepath.Base(jobDir), ErrJobDirChanged, err)
+	}
+	if !bytes.Equal(cp, data) {
+		return nil, fmt.Errorf("%s of %s: %w (its content differs)", name, filepath.Base(jobDir), ErrJobDirChanged)
+	}
+	return data, nil
 }
 func TailBytes(b []byte, max int) string {
 	if max = cmp.Or(max, MaxReasonBytes); len(b) > max {

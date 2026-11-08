@@ -263,22 +263,24 @@ func (r *Runner) quarantined_internal(w ConsumerSummary) bool {
 	return fileExists_internal(r.quarantineDir_internal(w.ID, w.Gen))
 }
 
-// writeReceipt_internal keeps the take receipt in the job directory.
+// writeReceipt_internal keeps the take receipt in the job directory and in
+// the worker's copy outside it (RecordsDir).
 func writeReceipt_internal(jobDir string, info TakeInfo) error {
 	data, err := json.Marshal(info)
 	if err != nil {
 		return fmt.Errorf("the take receipt: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(jobDir, ReceiptName), append(data, '\n'), 0o600); err != nil {
+	if err := writeKept_internal(jobDir, ReceiptName, append(data, '\n')); err != nil {
 		return fmt.Errorf("keep the take receipt: %w", err)
 	}
 	return nil
 }
 
-// readReceipt_internal is the take receipt a job directory keeps.
+// readReceipt_internal is the take receipt the worker kept for a job
+// directory, refused when the directory's copy differs.
 func readReceipt_internal(jobDir string) (TakeInfo, error) {
 	var info TakeInfo
-	data, err := os.ReadFile(filepath.Join(jobDir, ReceiptName))
+	data, err := readKept_internal(jobDir, ReceiptName)
 	if err != nil {
 		return info, fmt.Errorf("no take receipt in %s: %w", filepath.Base(jobDir), err)
 	}
