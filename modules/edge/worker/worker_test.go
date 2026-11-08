@@ -290,7 +290,7 @@ func TestRunnerRunsOnAnyHostTheCoordinatorsToo(t *testing.T) {
 			t.Fatalf("host %q: the worker refused: %v", host, err)
 		}
 	}
-	if err := (Config{Row: "coord", Host: "coord", Harness: "script", LookupEnv: func(string) (string, bool) { return gitTokenFixture, true }}).Check(); err != nil {
+	if err := (Config{Row: "coord", Host: "coord", Harness: "opencode", LookupEnv: func(string) (string, bool) { return gitTokenFixture, true }}).Check(); err != nil {
 		t.Fatalf("a worker config on the coordinator's host refused: %v", err)
 	}
 }
@@ -454,7 +454,7 @@ func TestRunnerProbeAndFullLifecycleWithLaunchRetry(t *testing.T) {
 	sc := &StoreSprintClient{Store: st, Origin: git, Now: clock}
 	root := t.TempDir()
 	r, err := NewRunner(Runner{
-		Host: "b1", RootDir: root, StateDir: root, Sprint: sc,
+		Host: "b1", RootDir: root, StateDir: root, Sprint: sc, DefaultHarness: &ScriptHarness{},
 		Git: git, Wall: wall, Now: clock, Sleep: func(time.Duration) {},
 	})
 	if err != nil {

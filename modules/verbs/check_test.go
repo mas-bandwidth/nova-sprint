@@ -372,7 +372,7 @@ func TestCheckWorkersQuotesTheGitTokenGrant(t *testing.T) {
 	w := newWorld(t)
 	healthy(t, w)
 	w.svc.worker = func(a WorkerArgs) error {
-		a.Harness, a.LookupEnv = "script", func(string) (string, bool) { return "", false }
+		a.Harness, a.LookupEnv = "opencode", func(string) (string, bool) { return "", false }
 		return a.Check()
 	}
 	r := w.do("alice", "worker")

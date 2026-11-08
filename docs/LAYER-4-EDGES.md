@@ -30,7 +30,7 @@ facts (a send confirmed, a head on origin, a check green) as evidence.
    only the exact sha CI passed, only onto the base it was gated on; a rate
    limit rests the identity and fails no card. Checked by `forge.Fake` and a
    scratch GitHub repository with its own token.
-5. `nova-worker`, one service per bench: deal to report by script, a slot
+5. `nova-sprint worker`, one service per bench: deal to report by script, a slot
    from nova-reserve, a worktree per card inside nova-sandbox, an adapter per
    harness, restartable with nothing lost. Checked by `tla/Runner.tla`, fakes
    of every edge it touches, and a bench run with a script harness.
@@ -605,7 +605,7 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
   sprint only through verbs, and the take receipt is the seam
   (`SEAMS.md`, section 6).
   * *Row 14.* `NewRunner` no longer defaults `Now` or `Sleep`: a runner with
-    no clock is refused naming both, `cmd/nova-worker` passes `time.Now` and
+    no clock is refused naming both, `nova-sprint worker` passes `time.Now` and
     `time.Sleep`, and every unit test passes a fake clock. The job record's
     deadline is the start plus the receipt's `deadline`; the `CIWaitExtra`
     margin (a v1 guess with no reader but this sum) is deleted with it.
@@ -613,7 +613,7 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
     `timeouts().consumer[tier]`) and `forge` (from the stream, `""` for a hand
     stream) and loses `require_pr`: a forge always means a PR, so the PR step
     runs when `forge` is set, through the adapter named by it
-    (`Runner.Forges`, `cmd/nova-worker` serves `github`); a forge with no
+    (`Runner.Forges`, `nova-sprint worker` serves `github`); a forge with no
     adapter is a fault naming it. A receipt missing a key is refused with one
     line naming `nova-sprint take <card>@<gen> --as <row> --json`
     (`ErrReceipt`); the card already taken is reported `fault` through the
@@ -625,7 +625,7 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
     `next --json`, `DefaultCoordinatorHosts`, the `--coordinator-hosts`
     default (a worker with no list is refused naming the flag: a check
     against nothing would pass on the coordinator) and the provider route
-    literals in `cmd/nova-worker` (now `--provider-upstream`,
+    literals in `nova-sprint worker` (now `--provider-upstream`,
     `--provider-hosts`, `--provider-key`, none defaulted; given none the
     proxy has no route and answers 502). `TestStitchNoDeadlineModelHostOrTierLiteralsInTheWorker`
     keeps them out. nova-config v2.0.2 has no table for provider hosts or

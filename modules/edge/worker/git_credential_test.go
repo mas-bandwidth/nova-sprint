@@ -186,17 +186,17 @@ func TestWorkerGitTokenNeverReachesTheHarness(t *testing.T) { // unitlint: seria
 func TestWorkerRefusesWithoutGitToken(t *testing.T) {
 	t.Parallel()
 	none := func(string) (string, bool) { return "", false }
-	err := (Config{Row: "amd-1", Host: "amd-1", Harness: "script", LookupEnv: none}).Check()
+	err := (Config{Row: "amd-1", Host: "amd-1", Harness: "opencode", LookupEnv: none}).Check()
 	want := "nova-secrets grant GH_GATE_TOKEN --to amd-1 --pins <dir> --store <dir> --key <file>, push the secrets store (grant does not)"
 	if err == nil || !strings.HasPrefix(err.Error(), "worker refused: GH_GATE_TOKEN is not in the worker's environment") || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "\n") {
 		t.Fatalf("a worker with no git token: %v", err)
 	}
 	blank := func(string) (string, bool) { return "  ", true }
-	if err := (Config{Row: "amd-1", Harness: "script", LookupEnv: blank}).Check(); err == nil || !strings.Contains(err.Error(), want) {
+	if err := (Config{Row: "amd-1", Harness: "opencode", LookupEnv: blank}).Check(); err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("a worker with a blank git token: %v", err)
 	}
 	token := func(k string) (string, bool) { return gitTokenFixture, k == forge.TokenEnv }
-	if err := (Config{Row: "amd-1", Harness: "script", LookupEnv: token}).Check(); err != nil {
+	if err := (Config{Row: "amd-1", Harness: "opencode", LookupEnv: token}).Check(); err != nil {
 		t.Fatalf("a worker with its git token refused: %v", err)
 	}
 }

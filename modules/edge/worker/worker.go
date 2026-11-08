@@ -65,7 +65,7 @@ type (
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, Head, Tier, Model, HarnessName, Brief, Prose, Finding string
 		Paths, DoneWhen, Siblings                                                                                                                       []string
 		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
-		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode, Forge                                                                      string
+		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, Forge                                                                                  string
 		Deadline                                                                                                                                        time.Duration
 		Needs                                                                                                                                           Needs // the harness's wall, from its adapter
 		// Models are declared to the harness beside Model (the probe's
