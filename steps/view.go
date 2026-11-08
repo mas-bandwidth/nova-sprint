@@ -152,6 +152,7 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 	} else {
 		v.born[c.ID] = e.Seq
 	}
+	c = store.FoldCard(old, had, c)
 	v.Cards[c.ID] = c
 	v.touched[c.ID] = e.Seq
 	v.index(c)
