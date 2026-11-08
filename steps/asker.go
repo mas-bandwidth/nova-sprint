@@ -136,10 +136,14 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // tick with no usable timeouts() answer runs on, as for every timeout.
 // UndealtAfter is the seconds a
 // producer may stay ready with a serving row with room before it is judged
-// (more than one one-second tick; LAYER-3 "Undealt").
+// (more than one one-second tick; LAYER-3 "Undealt"). PresentGrace is the
+// seconds a row last seen on nova-bus still counts present: one failed
+// `nova-bus who` read is not every row gone (30, a guess at how long who
+// takes to drop a crashed hook; unmeasured).
 type Defaults struct {
 	EscalateAfter, FrontierAfter int
 	UndealtAfter                 int
+	PresentGrace                 int
 	Reads                        int
 	FlapLimit                    int
 	IdleFloor, IdleCeiling       float64
@@ -156,7 +160,7 @@ type Defaults struct {
 // section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
 // guesses, marked there.
 var Engine = Defaults{
-	EscalateAfter: 2, FrontierAfter: 4, UndealtAfter: 2, Reads: 1, FlapLimit: 3,
+	EscalateAfter: 2, FrontierAfter: 4, UndealtAfter: 2, PresentGrace: 30, Reads: 1, FlapLimit: 3,
 	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
 	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
 	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300}},

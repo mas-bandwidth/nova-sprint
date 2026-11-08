@@ -168,7 +168,7 @@ func (t *tick) cleared(j store.Judgement) string {
 	case "unserved":
 		parts := strings.Split(j.About, "+") // the tier, then the routes (unservedAbout)
 		for _, n := range t.rowNames {
-			if t.v.Open(t.v.Rows[n]) && contains(t.tiers(n), parts[0]) && t.in.Roster.ServesRoutes(n, parts[1:]) {
+			if t.v.Open(t.v.Rows[n]) && t.present(n) && contains(t.tiers(n), parts[0]) && t.in.Roster.ServesRoutes(n, parts[1:]) {
 				return "row " + n + " serves " + j.About
 			}
 		}
@@ -274,10 +274,11 @@ func (t *tick) alarms() {
 	}
 }
 
-// load is the open width (up, unheld rows) and the working consumers.
+// load is the open width (up, unheld rows on the bus) and the working
+// consumers.
 func (t *tick) load() (open, working int) {
 	for n, r := range t.v.Rows {
-		if t.v.Open(r) {
+		if t.v.Open(r) && t.present(n) {
 			open += t.width(n)
 			working += t.v.Working(n)
 		}
