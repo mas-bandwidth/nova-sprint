@@ -71,7 +71,7 @@ func (t *tick) newGroup(kind, about string, moves ...move) (group, *card.Refusal
 	}
 	g := group{kind: kind, about: about, plan: plan}
 	g.key = keyOf(plan, about)
-	g.key.Kind = kind
+	g.key.Kind, g.key.Body = kind, hashBody(plan.Expect, plan.Writes)
 	return g, nil
 }
 

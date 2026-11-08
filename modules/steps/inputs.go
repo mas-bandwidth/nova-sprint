@@ -74,6 +74,7 @@ type GroupKey struct {
 	Gens  map[string]int `json:"gens,omitempty"`
 	Row   string         `json:"row,omitempty"`
 	Item  string         `json:"item,omitempty"`
+	Body  string         `json:"body,omitempty"` // the hash of the group's conditions and writes (refusedAlone)
 }
 
 // Plan is one tick's output: Ops in priority order, each packed from up to

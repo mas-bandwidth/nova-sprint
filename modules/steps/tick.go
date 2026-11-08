@@ -282,7 +282,9 @@ func sortedKeys[V any](m map[string]V) []string {
 }
 
 // refusedAlone names a group by its kind, cards (card@gen for those it
-// read) and row: a group planned again on the same state has the same name.
+// read), row and the hash of its conditions and writes: a group planned
+// again on the same state has the same name, and one a race moved a fence
+// of (a row's gen, a card's) does not.
 func refusedAlone(k GroupKey) string {
 	parts := make([]string, len(k.Cards))
 	for i, c := range k.Cards {
@@ -295,7 +297,7 @@ func refusedAlone(k GroupKey) string {
 	if k.Row != "" {
 		name += " on row " + k.Row
 	}
-	return name + aloneWords
+	return name + " (" + k.Body + ")" + aloneWords
 }
 
 // aloneChanged is the card a refused-alone engine judgement read that has
@@ -305,6 +307,7 @@ func (t *tick) aloneChanged(question string) string {
 	if !ok {
 		return ""
 	}
+	before, _, _ = strings.Cut(before, " (")
 	before, _, _ = strings.Cut(before, " on row ")
 	_, list, _ := strings.Cut(before, " of ")
 	for _, part := range strings.Split(list, ",") {
