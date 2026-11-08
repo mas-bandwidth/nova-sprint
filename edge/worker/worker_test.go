@@ -111,7 +111,7 @@ func (g *fakeGit) HeadSHA(_ context.Context, wt string) (string, error) {
 
 // Push records every push (branch, sha, lease) and keeps git's lease: the
 // branch on origin must be at expect ("" : absent).
-func (g *fakeGit) Push(_ context.Context, _, branch, sha, expect string) error {
+func (g *fakeGit) Push(_ context.Context, _, _, branch, sha, expect string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.pushLog = append(g.pushLog, fakePush{branch: branch, sha: sha, expect: expect})
@@ -132,7 +132,7 @@ func (g *fakeGit) pushes() []fakePush {
 	return append([]fakePush(nil), g.pushLog...)
 }
 
-func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _ string) (string, error) {
+func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _, _ string) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.rebaseErr != nil {
@@ -145,14 +145,14 @@ func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _ string) (string, err
 	return g.headByWT[wt], nil
 }
 
-func (g *fakeGit) OriginHasHead(_ context.Context, _, branch, sha string) (bool, error) {
+func (g *fakeGit) OriginHasHead(_ context.Context, _, _, branch, sha string) (bool, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.originHeads[branch] == sha, nil
 }
 
 func (g *fakeGit) HasHead(ctx context.Context, repo, branch, sha string) (bool, error) {
-	return g.OriginHasHead(ctx, repo, branch, sha)
+	return g.OriginHasHead(ctx, "", repo, branch, sha)
 }
 
 func (g *fakeGit) IsDirty(_ context.Context, wt string) (bool, error) {
@@ -774,9 +774,11 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fx := edge.NewFakeExec()
-	fx.Enqueue("git", edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"})
+	// The remote guard's reads (origin, its push URL, the config), then the fetch.
+	fx.Enqueue("git", edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{},
+		edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"})
 	gitOps := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
-	_, err := gitOps.RebaseOntoStream(ctx, t.TempDir(), "sprint/s1/group")
+	_, err := gitOps.RebaseOntoStream(ctx, t.TempDir(), testCloneURL, "sprint/s1/group")
 	var fe *FetchError
 	if !errors.As(err, &fe) || fe.StreamRef != "sprint/s1/group" {
 		t.Fatalf("expected *FetchError from RebaseOntoStream when fetch fails, got %T (%v)", err, err)

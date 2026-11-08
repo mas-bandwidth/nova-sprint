@@ -84,24 +84,34 @@ type Config struct {
 }
 
 // tokenEnv_internal is the credential helper that answers git with the
-// token: credential.helper reset to empty (which drops every helper the
-// host's config names), then a shell helper reading the token from the
-// child's environment, as GIT_CONFIG_* command-line config.
+// token for https://github.com only (githubHelperEnv_internal): a shell
+// helper reading the token from the child's environment.
 func tokenEnv_internal(token string) []string {
 	if token == "" {
 		return nil
 	}
 	helper := `!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$NOVA_SPRINT_GIT_TOKEN"; }; f`
-	return []string{"NOVA_SPRINT_GIT_TOKEN=" + token, "GIT_CONFIG_COUNT=2",
-		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
-		"GIT_CONFIG_KEY_1=credential.helper", "GIT_CONFIG_VALUE_1=" + helper}
+	return append([]string{"NOVA_SPRINT_GIT_TOKEN=" + token}, githubHelperEnv_internal(helper)...)
+}
+
+// githubHelperEnv_internal is helper as git's one credential helper, and
+// for https://github.com alone, as GIT_CONFIG_* command-line config:
+// credential.helper reset to empty first (which drops every helper the
+// host's or the repository's config files name, scoped ones included), then
+// helper under credential.https://github.com.helper, so any other host (an
+// origin or url.*.insteadOf pointed elsewhere) is asked with no helper and
+// gets no credential.
+func githubHelperEnv_internal(helper string) []string {
+	key := "credential." + strings.TrimSuffix(GitHubHost, "/") + ".helper"
+	return []string{"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=", "GIT_CONFIG_KEY_1=" + key, "GIT_CONFIG_VALUE_1=" + helper}
 }
 
 // CredentialEnv is the git environment that makes one credential the only
-// one git uses over https: the token when it is set (tokenEnv_internal),
-// else gh's login for https://github.com (credentialEnv_internal). Each
+// one git uses, for https://github.com only: the token when it is set
+// (tokenEnv_internal), else gh's login (credentialEnv_internal). Each
 // resets credential.helper before it names its own, so a helper from the
-// host's config files (~/.gitconfig's included) is never asked. The token
+// host's config files (~/.gitconfig's included) is never asked, and no
+// other host is ever answered (githubHelperEnv_internal). The token
 // reaches git in the environment only, never in argv. The landing's git
 // (Client) and the worker's (edge/worker OSGitOps) both use it.
 func CredentialEnv(token, gh string) []string {

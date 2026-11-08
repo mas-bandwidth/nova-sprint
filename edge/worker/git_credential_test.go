@@ -42,10 +42,14 @@ func workerGitCalls_internal(t *testing.T, g *OSGitOps, fx *edge.FakeExec) []edg
 	if err := g.Fetch(ctx, j); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.HasHead(ctx, "https://github.com/o/r.git", j.Branch, strings.Repeat("a", 40)); err != nil {
+	const url = "https://github.com/o/r.git"
+	if _, err := g.OriginHasHead(ctx, j.WorktreeDir, url, j.Branch, strings.Repeat("a", 40)); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Push(ctx, j.WorktreeDir, j.Branch, strings.Repeat("a", 40), strings.Repeat("b", 40)); err != nil {
+	if _, err := g.RebaseOntoStream(ctx, j.WorktreeDir, url, "sprint/s/group"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Push(ctx, j.WorktreeDir, url, j.Branch, strings.Repeat("a", 40), strings.Repeat("b", 40)); err != nil {
 		t.Fatal(err)
 	}
 	var remote []edge.FakeCall
@@ -81,9 +85,9 @@ func TestWorkerGitCarriesTheOneCredential(t *testing.T) {
 		if len(env) < len(cred) || !slices.Equal(env[len(env)-len(cred):], cred) {
 			t.Fatalf("%q env %q does not end with edge/git's credential env %q", c.Cmd.Argv, env, cred)
 		}
-		reset := slices.Index(env, "GIT_CONFIG_KEY_0=credential.helper")
-		if reset < 0 || !slices.Contains(env, "GIT_CONFIG_VALUE_0=") || !slices.Contains(env, "GIT_CONFIG_COUNT=2") {
-			t.Fatalf("%q env %q does not reset credential.helper first", c.Cmd.Argv, env)
+		if !slices.Contains(env, "GIT_CONFIG_KEY_0=credential.helper") || !slices.Contains(env, "GIT_CONFIG_VALUE_0=") || !slices.Contains(env, "GIT_CONFIG_COUNT=2") ||
+			!slices.Contains(env, "GIT_CONFIG_KEY_1=credential.https://github.com.helper") {
+			t.Fatalf("%q env %q does not reset credential.helper first and scope the token to github.com", c.Cmd.Argv, env)
 		}
 		if !slices.Contains(env, "NOVA_SPRINT_GIT_TOKEN="+gitTokenFixture) {
 			t.Fatalf("%q env %q does not answer with the token", c.Cmd.Argv, env)
@@ -113,8 +117,8 @@ func TestWorkerGitWithoutTokenUsesGh(t *testing.T) {
 			if len(cred) == 0 || len(env) < len(cred) || !slices.Equal(env[len(env)-len(cred):], cred) {
 				t.Fatalf("GitHubCredential %q: %q env %q does not end with gh's credential env %q", named, c.Cmd.Argv, env, cred)
 			}
-			if !slices.Contains(env, "GIT_CONFIG_KEY_0=credential.https://github.com.helper") || !slices.Contains(env, "GIT_CONFIG_VALUE_0=") {
-				t.Fatalf("%q env %q does not reset the github helper first", c.Cmd.Argv, env)
+			if !slices.Contains(env, "GIT_CONFIG_KEY_0=credential.helper") || !slices.Contains(env, "GIT_CONFIG_VALUE_0=") || !slices.Contains(env, "GIT_CONFIG_KEY_1=credential.https://github.com.helper") {
+				t.Fatalf("%q env %q does not reset credential.helper first and scope gh to github.com", c.Cmd.Argv, env)
 			}
 			if slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "NOVA_SPRINT_GIT_TOKEN=") }) {
 				t.Fatalf("%q env %q carries a token when there is none", c.Cmd.Argv, env)
@@ -159,7 +163,7 @@ func TestWorkerRefusesWithoutGitToken(t *testing.T) {
 	t.Parallel()
 	none := func(string) (string, bool) { return "", false }
 	err := (Config{Row: "amd-1", Host: "amd-1", Harness: "script", LookupEnv: none}).Check()
-	want := "nova-secrets grant GH_GATE_TOKEN --to amd-1 --pins <dir> --store <dir> --key <file>"
+	want := "nova-secrets grant GH_GATE_TOKEN --to amd-1 --pins <dir> --store <dir> --key <file>, push the secrets store (grant does not)"
 	if err == nil || !strings.HasPrefix(err.Error(), "worker refused: GH_GATE_TOKEN is not in the worker's environment") || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "\n") {
 		t.Fatalf("a worker with no git token: %v", err)
 	}
@@ -170,5 +174,92 @@ func TestWorkerRefusesWithoutGitToken(t *testing.T) {
 	token := func(k string) (string, bool) { return gitTokenFixture, k == forge.TokenEnv }
 	if err := (Config{Row: "amd-1", Harness: "script", LookupEnv: token}).Check(); err != nil {
 		t.Fatalf("a worker with its git token refused: %v", err)
+	}
+}
+
+// guardFake_internal is a fake git whose worktree reads origin as origin
+// and its push URL as pushURL, and whose config lists config ("key\nvalue"
+// entries); it records every git argv after the -c pairs.
+func guardFake_internal(origin, pushURL string, config ...string) (*edge.FakeExec, *[]string) {
+	fx := edge.NewFakeExec()
+	var argvs []string
+	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
+		args := c.Cmd.Argv[5:]
+		argvs = append(argvs, strings.Join(args, " "))
+		switch {
+		case len(args) > 3 && args[0] == "remote" && args[2] == "--push":
+			return edge.FakeOutcome{Stdout: pushURL + "\n"}
+		case args[0] == "remote":
+			return edge.FakeOutcome{Stdout: origin + "\n"}
+		case args[0] == "config":
+			return edge.FakeOutcome{Stdout: strings.Join(config, "\x00")}
+		case args[0] == "rev-parse":
+			return edge.FakeOutcome{Stdout: strings.Repeat("a", 40) + "\n"}
+		}
+		return edge.FakeOutcome{}
+	})
+	return fx, &argvs
+}
+
+// #680 cold read: the worktree is under the job directory, which the
+// harness writes, so its origin, its push URL or a url.*.insteadOf may point
+// at another repo or host by the time the worker pushes. Push, the rebase's
+// fetch and OriginHasHead refuse such a worktree before any git call
+// reaches a remote; an untouched one goes to the job's clone URL by name,
+// never to origin.
+func TestWorkerGitRefusesATamperedRemote(t *testing.T) {
+	t.Parallel()
+	const url = "https://github.com/o/r.git"
+	sha, lease := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	ctx := context.Background()
+	reaches := func(argvs []string) bool {
+		return slices.ContainsFunc(argvs, func(a string) bool {
+			return strings.HasPrefix(a, "push") || strings.HasPrefix(a, "fetch") || strings.HasPrefix(a, "ls-remote")
+		})
+	}
+	for name, fake := range map[string][]string{
+		"origin elsewhere":          {"https://evil.example/o/r.git", url},
+		"origin another repo":       {"https://github.com/other/r.git", url},
+		"push URL elsewhere":        {url, "https://evil.example/o/r.git"},
+		"insteadOf":                 {url, url, "core.bare\nfalse", "url.https://evil.example/.insteadof\nhttps://github.com/"},
+		"pushInsteadOf, mixed case": {url, url, "url.https://github.com/other/.pushInsteadOf\nhttps://github.com/o/"},
+	} {
+		for verb, call := range map[string]func(g *OSGitOps) error{
+			"push":  func(g *OSGitOps) error { return g.Push(ctx, "/wt", url, "sprint/s/p1", sha, lease) },
+			"fetch": func(g *OSGitOps) error { _, err := g.RebaseOntoStream(ctx, "/wt", url, "sprint/s/group"); return err },
+			"has head": func(g *OSGitOps) error {
+				_, err := g.OriginHasHead(ctx, "/wt", url, "sprint/s/p1", sha)
+				return err
+			},
+		} {
+			fx, argvs := guardFake_internal(fake[0], fake[1], fake[2:]...)
+			err := call(&OSGitOps{Exec: fx, Token: gitTokenFixture})
+			if err == nil || !strings.Contains(err.Error(), "git refused:") || reaches(*argvs) {
+				t.Fatalf("%s, %s: err %v, git ran %q", name, verb, err, *argvs)
+			}
+		}
+	}
+	fx, argvs := guardFake_internal(url, url, "url.git@github.com:.insteadof\nhttps://gitlab.example/")
+	g := &OSGitOps{Exec: fx, Token: gitTokenFixture}
+	if err := g.Push(ctx, "/wt", url, "sprint/s/p1", sha, lease); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.RebaseOntoStream(ctx, "/wt", url, "sprint/s/group"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := g.OriginHasHead(ctx, "/wt", url, "sprint/s/p1", sha); err != nil || ok {
+		t.Fatal(ok, err)
+	}
+	for _, want := range []string{"push --force-with-lease=refs/heads/sprint/s/p1:" + lease + " " + url + " " + sha + ":refs/heads/sprint/s/p1",
+		"fetch --quiet " + url + " sprint/s/group", "ls-remote " + url + " refs/heads/sprint/s/p1"} {
+		if !slices.Contains(*argvs, want) {
+			t.Fatalf("an untouched worktree: no %q in %q", want, *argvs)
+		}
+	}
+	if slices.ContainsFunc(*argvs, func(a string) bool { return strings.Contains(a, " origin ") && !strings.HasPrefix(a, "remote") }) {
+		t.Fatalf("a remote call named origin: %q", *argvs)
+	}
+	if err := (&OSGitOps{Exec: fx}).Push(ctx, "/wt", "", "sprint/s/p1", sha, lease); err == nil || !strings.Contains(err.Error(), "names no clone URL") {
+		t.Fatalf("a job with no clone URL: %v", err)
 	}
 }

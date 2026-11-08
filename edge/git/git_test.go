@@ -236,7 +236,7 @@ func TestTokenIsTheOnlyCredential(t *testing.T) {
 		t.Fatalf("push argv %v", seen)
 	}
 	env := strings.Join(seen[0].Env, "\n")
-	for _, want := range []string{"NOVA_SPRINT_GIT_TOKEN=tok-sprint", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=credential.helper\nGIT_CONFIG_VALUE_0=\n", "GIT_CONFIG_KEY_1=credential.helper", `password=$NOVA_SPRINT_GIT_TOKEN`} {
+	for _, want := range []string{"NOVA_SPRINT_GIT_TOKEN=tok-sprint", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=credential.helper\nGIT_CONFIG_VALUE_0=\n", "GIT_CONFIG_KEY_1=credential.https://github.com.helper\n", `password=$NOVA_SPRINT_GIT_TOKEN`} {
 		if !strings.Contains(env+"\n", want) {
 			t.Fatalf("push env lacks %q:\n%s", want, env)
 		}

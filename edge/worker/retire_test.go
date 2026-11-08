@@ -26,6 +26,7 @@ const (
 	testHolderSHA = "6666666666666666666666666666666666666666"
 	testStaleSHA  = "7777777777777777777777777777777777777777"
 	testBranch    = "sprint/s1/p1"
+	testCloneURL  = "https://github.com/o/r.git"
 )
 
 // The lease form: OSGitOps pushes with --force-with-lease on the branch's
@@ -34,13 +35,21 @@ const (
 func TestOSGitPushIsALeaseFromTheExpectedHead(t *testing.T) {
 	t.Parallel()
 	fx := edge.NewFakeExec()
-	fx.On("git", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{Stdout: testPriorSHA + "\n"} })
+	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
+		switch c.Cmd.Argv[5] {
+		case "remote":
+			return edge.FakeOutcome{Stdout: testCloneURL + "\n"}
+		case "config":
+			return edge.FakeOutcome{}
+		}
+		return edge.FakeOutcome{Stdout: testPriorSHA + "\n"}
+	})
 	g := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
 	ctx := context.Background()
-	if err := g.Push(ctx, "/wt", testBranch, testWorkSHA, testPriorSHA); err != nil {
+	if err := g.Push(ctx, "/wt", testCloneURL, testBranch, testWorkSHA, testPriorSHA); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Push(ctx, "/wt", testBranch, testWorkSHA, ""); err != nil {
+	if err := g.Push(ctx, "/wt", testCloneURL, testBranch, testWorkSHA, ""); err != nil {
 		t.Fatal(err)
 	}
 	tip, err := g.BranchTip(ctx, Job{Repo: "o/r", Forge: "github", Branch: testBranch})
@@ -49,11 +58,13 @@ func TestOSGitPushIsALeaseFromTheExpectedHead(t *testing.T) {
 	}
 	var got []string
 	for _, c := range fx.Calls() {
-		got = append(got, strings.Join(c.Cmd.Argv[5:], " "))
+		if v := c.Cmd.Argv[5]; v != "remote" && v != "config" { // the remote guard's reads
+			got = append(got, strings.Join(c.Cmd.Argv[5:], " "))
+		}
 	}
 	want := []string{
-		"push --force-with-lease=refs/heads/" + testBranch + ":" + testPriorSHA + " origin " + testWorkSHA + ":refs/heads/" + testBranch,
-		"push --force-with-lease=refs/heads/" + testBranch + ": origin " + testWorkSHA + ":refs/heads/" + testBranch,
+		"push --force-with-lease=refs/heads/" + testBranch + ":" + testPriorSHA + " " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
+		"push --force-with-lease=refs/heads/" + testBranch + ": " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
 		"for-each-ref --format=%(objectname) refs/remotes/origin/" + testBranch,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {

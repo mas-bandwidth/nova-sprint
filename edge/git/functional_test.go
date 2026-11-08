@@ -180,3 +180,31 @@ func TestFunctionalLandPassEndToEndAndBaseMoved(t *testing.T) {
 		t.Fatalf("a pass after landing = %+v err=%v, want landed (every head on base)", again, err)
 	}
 }
+
+// TestFunctionalCredentialEnvAnswersGitHubOnly is the same against the git
+// on PATH (`git credential fill`), with a ~/.gitconfig whose github.com and
+// plain helpers would answer: github.com gets the token, no other host
+// gets anything.
+func TestFunctionalCredentialEnvAnswersGitHubOnly(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cfg := "[credential \"https://github.com\"]\n\thelper = \"!f() { echo password=V1; }; f\"\n[credential]\n\thelper = \"!f() { echo password=PLAIN; }; f\"\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fill := func(host string) string {
+		cmd := exec.Command("git", "credential", "fill")
+		cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1"}, CredentialEnv("tok-fixture", "gh")...)
+		cmd.Stdin = strings.NewReader("protocol=https\nhost=" + host + "\n\n")
+		out, _ := cmd.CombinedOutput() // a host with no helper fails to fill: its output is what is checked
+		return string(out)
+	}
+	if out := fill("github.com"); !strings.Contains(out, "password=tok-fixture\n") {
+		t.Fatalf("github.com: %q", out)
+	}
+	for _, host := range []string{"evil.example", "github.com.evil.example"} {
+		if out := fill(host); strings.Contains(out, "password=") {
+			t.Fatalf("%s was answered: %q", host, out)
+		}
+	}
+}

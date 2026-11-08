@@ -60,9 +60,13 @@ type (
 		// lease (--force-with-lease=refs/heads/<branch>:<expect>); never a
 		// plain force (defect 78: a stale job's force push rewound the new
 		// holder's branch).
-		Push(ctx context.Context, worktree, branch, headSHA, expect string) error
-		RebaseOntoStream(ctx context.Context, worktree, streamRef string) (newSHA string, err error)
-		OriginHasHead(ctx context.Context, worktree, branch, sha string) (bool, error)
+		//
+		// Push, RebaseOntoStream and OriginHasHead reach remote, the job's
+		// clone URL (CloneURL of its record), and refuse a worktree whose
+		// origin or url.*.insteadOf now points anywhere else.
+		Push(ctx context.Context, worktree, remote, branch, headSHA, expect string) error
+		RebaseOntoStream(ctx context.Context, worktree, remote, streamRef string) (newSHA string, err error)
+		OriginHasHead(ctx context.Context, worktree, remote, branch, sha string) (bool, error)
 		IsDirty(ctx context.Context, worktree string) (bool, error)
 		// CommitAll commits every change in the worktree (git add -A) with
 		// message, under the worktree's configured identity; the new head.
@@ -657,7 +661,7 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	}
 	wt := filepath.Join(jobDir, "repo")
 	if r.Git != nil && rec.StreamRef != "" {
-		newSHA, err := r.Git.RebaseOntoStream(ctx, wt, rec.StreamRef)
+		newSHA, err := r.Git.RebaseOntoStream(ctx, wt, recordRemote_internal(*rec), rec.StreamRef)
 		if err != nil {
 			var ce *ConflictError
 			var fe *FetchError
@@ -739,7 +743,7 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	wt := filepath.Join(jobDir, "repo")
 	if rec.Kind == "work" && rec.PushedHead != "" && r.Git != nil {
-		if ok, err := r.Git.OriginHasHead(ctx, wt, rec.Branch, rec.PushedHead); err != nil || !ok {
+		if ok, err := r.Git.OriginHasHead(ctx, wt, recordRemote_internal(rec), rec.Branch, rec.PushedHead); err != nil || !ok {
 			why := "kept-unconfirmed-head"
 			if err != nil {
 				why += ": " + err.Error()
@@ -1001,18 +1005,70 @@ func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error)
 	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", "HEAD")
 	return strings.TrimSpace(out), err
 }
-func (g *OSGitOps) Push(ctx context.Context, worktree, branch, headSHA, expect string) error {
+
+// recordRemote_internal is the clone URL rec's job was staged from
+// (CloneURL of its repo and forge; "" when they give none, which every git
+// call that reaches a remote refuses, guardRemote_internal).
+func recordRemote_internal(rec JobRecord) string {
+	if url, err := CloneURL(rec.Repo, rec.Forge); err == nil {
+		return url
+	}
+	return ""
+}
+
+// guardRemote_internal is the check before every git call that reaches
+// remote, the job's clone URL as the worker staged it (CloneURL of its
+// record): the worktree, which the harness could write, has origin's fetch
+// and push URLs still remote, and no url.<base>.insteadOf or
+// pushInsteadOf in any config git reads there rewrites remote. Each such
+// call then names remote itself, never origin, so neither another repo nor
+// another host is ever pushed to or fetched from with the worker's
+// credential (#680 cold read).
+func (g *OSGitOps) guardRemote_internal(ctx context.Context, to time.Duration, worktree, remote string) error {
+	if strings.TrimSpace(remote) == "" {
+		return errors.New("git refused: the job names no clone URL to push or fetch: its record's repo and forge give none (CloneURL)")
+	}
+	for _, args := range [][]string{{"remote", "get-url", "origin"}, {"remote", "get-url", "--push", "origin"}} {
+		got, err := g.runGit_internal(ctx, to, worktree, args...)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(got) != remote {
+			return fmt.Errorf("git refused: the worktree's origin (git %s) is %q, not the job's clone URL %q: the worktree was changed after it was staged, and the worker never pushes or fetches anywhere else", strings.Join(args, " "), strings.TrimSpace(got), remote)
+		}
+	}
+	list, err := g.runGit_internal(ctx, to, worktree, "config", "--null", "--list")
+	if err != nil {
+		return err
+	}
+	for _, entry := range strings.Split(list, "\x00") {
+		key, prefix, _ := strings.Cut(entry, "\n")
+		key = strings.ToLower(key)
+		if strings.HasPrefix(key, "url.") && (strings.HasSuffix(key, ".insteadof") || strings.HasSuffix(key, ".pushinsteadof")) && prefix != "" && strings.HasPrefix(remote, prefix) {
+			return fmt.Errorf("git refused: config %s=%q rewrites the job's clone URL %q: the worker never pushes or fetches through a rewritten URL", key, prefix, remote)
+		}
+	}
+	return nil
+}
+func (g *OSGitOps) Push(ctx context.Context, worktree, remote, branch, headSHA, expect string) error {
 	ref := "refs/heads/" + branch
-	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force-with-lease="+ref+":"+expect, "origin", headSHA+":"+ref)
+	to := g.to_internal(g.Timeouts.WithDefaults().Push)
+	err := g.guardRemote_internal(ctx, to, worktree, remote)
+	if err == nil {
+		_, err = g.runGit_internal(ctx, to, worktree, "push", "--force-with-lease="+ref+":"+expect, remote, headSHA+":"+ref)
+	}
 	if err != nil {
 		at := cmp.Or(expect, "no branch (a new one)")
 		return fmt.Errorf("push of %s to %s refused or failed: it moves the branch only from %s, the head this job last pushed or started from, and a branch another holder moved is theirs: %w", headSHA, branch, at, err)
 	}
 	return nil
 }
-func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef string) (string, error) {
+func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, remote, streamRef string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().RebaseAndTest)
-	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", "origin", streamRef); err != nil {
+	if err := g.guardRemote_internal(ctx, to, worktree, remote); err != nil {
+		return "", err // the worktree's doing, so the job's failure, never a fault to retry
+	}
+	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", remote, streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
@@ -1031,13 +1087,13 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef str
 	return g.HeadSHA(ctx, worktree)
 }
 
-// OriginHasHead: the branch on the worktree's origin (the repo) is at sha.
-func (g *OSGitOps) OriginHasHead(ctx context.Context, worktree, branch, sha string) (bool, error) {
-	url, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "remote", "get-url", "origin")
-	if err != nil {
+// OriginHasHead: the branch at remote, the job's clone URL (which the
+// worktree's origin must still be, guardRemote_internal), is at sha.
+func (g *OSGitOps) OriginHasHead(ctx context.Context, worktree, remote, branch, sha string) (bool, error) {
+	if err := g.guardRemote_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, remote); err != nil {
 		return false, err
 	}
-	return g.HasHead(ctx, strings.TrimSpace(url), branch, sha)
+	return g.HasHead(ctx, remote, branch, sha)
 }
 
 // HasHead: the branch of the repository at remote (a clone URL or path) is

@@ -35,7 +35,7 @@ func (r *Runner) pushBranch_internal(ctx context.Context, wt string, rec *JobRec
 	if !r.holds_internal(*rec) {
 		return fmt.Errorf("push of %s to %s refused: %s@%d no longer holds its card (its consumer is final, or the row holds a newer generation), and the branch belongs to the card's holder", sha, rec.Branch, rec.Consumer, rec.Gen)
 	}
-	if err := r.Git.Push(ctx, wt, rec.Branch, sha, leaseFrom_internal(*rec)); err != nil {
+	if err := r.Git.Push(ctx, wt, recordRemote_internal(*rec), rec.Branch, sha, leaseFrom_internal(*rec)); err != nil {
 		return err
 	}
 	rec.PushedHead = sha
