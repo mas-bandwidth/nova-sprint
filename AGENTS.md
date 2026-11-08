@@ -22,6 +22,8 @@ separate outcomes. Report only what you observed.
 ## Change nova-sprint
 
 Before contributing, read the [Contributor Assignment Agreement](https://github.com/mas-bandwidth/.github/blob/main/CAA.md).
+It assigns copyright in the contribution to Más Bandwidth LLC and grants you a
+license to use your own contribution; the agreement gives the full terms.
 The repository's [contributor check](.github/workflows/cla.yml) requires the
 applicable author signatures; use the authorized commit identity.
 
