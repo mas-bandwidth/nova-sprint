@@ -44,8 +44,8 @@ func (c Config) lookupEnv_internal(name string) string {
 
 // Check refuses a config that cannot run, one line naming the fix.
 func (c Config) Check() error {
-	if strings.TrimSpace(c.Row) == "" {
-		return fmt.Errorf("worker refused: missing --as <row>: pass --as <row>")
+	if !rowName_internal(c.Row) {
+		return fmt.Errorf("worker refused: --as %q: a row is a name of letters, digits, '-', '_' and '.', not \".\" or \"..\", at most 64 bytes: pass --as <machine name>", c.Row)
 	}
 	if _, err := NewHarness(cmp.Or(c.Harness, "claude")); err != nil {
 		return err
@@ -57,6 +57,21 @@ func (c Config) Check() error {
 		return fmt.Errorf("worker refused: %s is not in the worker's environment, and it is the one github credential of the worker's git clones, fetches and pushes: on the control machine run nova-secrets grant %s --to %s --pins <dir> --store <dir> --key <file>, push the secrets store (grant does not), then nova-sprint up --as <coordinator>", forge.TokenEnv, forge.TokenEnv, strings.TrimSpace(c.Row))
 	}
 	return nil
+}
+
+// rowName_internal reports whether row is safe to join into the paths the
+// worker clears (probe.go): letters, digits, '-', '_' and '.', not "." or
+// "..", 1 to 64 bytes.
+func rowName_internal(row string) bool {
+	if row == "" || len(row) > 64 || row == "." || row == ".." {
+		return false
+	}
+	for _, r := range row {
+		if !('a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' || '0' <= r && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 // Serve builds the OS adapters and serves the row (Runner.ServeRow: hook,
