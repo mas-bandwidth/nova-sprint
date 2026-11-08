@@ -39,8 +39,6 @@ func coordinateVerbs() []*verb {
 			about: "makes a stored version the active one"},
 		{name: "policy show", group: "coordinate", role: roleWorker, usage: "[<version>|default] [--list]", flags: "list", max: 1, run: runPolicy,
 			about: "a version's source (default: the built-in, as a file policy set takes), or every version"},
-		{name: "policy diff", group: "coordinate", role: roleWorker, usage: "<version|default> [<version|default>]", min: 1, max: 2, run: runPolicy,
-			about: "the difference between two versions"},
 		{name: "cost reconcile", group: "coordinate", role: roleCoordinator, usage: "--as <coordinator>", max: 0, run: runCostReconcile,
 			about: "reads each provider's balance and sets its fall beside the store's priced API records; a gap over 5% and $1 opens one cost-gap judgement",
 			more: []string{"run under nova-secrets exec --only DEEPSEEK_API_KEY so the key is in the environment; the run loop does this hourly",

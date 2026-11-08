@@ -366,8 +366,8 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
    too (`POLICY STORED AND ACTIVE v<n> changes=<k>`). While no policy is active, or the active one fails,
    the run deals nothing and one `no-policy` judgement on your row says so with the fix.
 3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> changes=<k>`.
-4. A rollback is `policy activate` of an older version; `policy show --list` and `policy diff`
-   show what you have.
+4. A rollback is `policy activate` of an older version; `policy show --list` and `policy show <v>`
+   (two of them through `diff`) show what you have.
 
 ## 9. Releases, backups and clears
 

@@ -600,7 +600,7 @@ sprint_env nova-sprint policy show
 sprint_env nova-sprint policy show --list
 sprint_env nova-sprint policy check '<policy-file>'
 sprint_env nova-sprint policy set '<policy-file>' --reason '<why>'
-sprint_env nova-sprint policy diff '<old-version>' '<new-version>'
+diff <(sprint_env nova-sprint policy show '<old-version>') <(sprint_env nova-sprint policy show '<new-version>')
 sprint_env nova-sprint policy activate '<new-version>' --reason '<why>'
 ```
 

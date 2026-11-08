@@ -260,12 +260,11 @@ refusal is in the CORRECT-USE form.
 | `policy set <file> --reason <r>` | compiles, checks names and arity, runs `check` on the current snapshot, stores the next version (kind `script`, name the file's base name, the reason in the event), not active; `next: nova-sprint policy check v<n>` | not the coordinator ("policy is the coordinator's: ask over the bus"); the file unreadable or over 64 KiB; a syntax or resolve error, with its line; a missing question; an unknown top-level name; a wrong arity; an answer refused on the current snapshot; a body equal to a stored version ("v4 has this body: `policy activate 4`"); `up` not run |
 | `policy activate <v> --reason <r>` | re-runs `check` on the current snapshot, then one op: the active flag moves to `v`, the open policy judgement of the old version is answered; prints the count of answers that change; `next: nova-sprint next` | an unknown version; already active (layer 1's same-value refusal); a refused answer on the current snapshot; a version of kind `data` (unused by this layer) |
 | `policy show [v]` | prints the version (active by default), its actor, time, reason and body; `--list` prints every version, newest first, the active one marked | an unknown version |
-| `policy diff <a> [b]` | the text diff of two bodies (`b` defaults to active; `default` names the built-in) | an unknown version |
 | `policy check <file \| v>` | read-only: runs it on the current snapshot and prints every answer that would differ from the active version's, by question and subject, then every refusal; exit 0 when nothing is refused, 1 otherwise | an unreadable file; an unknown version |
 
 `up` stores the built-in default as version 1 and activates it when the
 store holds none. A newer binary's default changes nothing by itself:
-`policy diff default` shows it, and only `set` and `activate` adopt it.
+`policy show default` beside `policy show` shows it, and only `set` and `activate` adopt it.
 
 ## The lifecycle of a version
 

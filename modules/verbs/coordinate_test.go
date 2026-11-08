@@ -291,7 +291,6 @@ func TestPolicy(t *testing.T) {
 	want(t, w.do("carol", "policy", "set", file, "--reason", "try"), 0, "POLICY STORED v2", "next: nova-sprint policy check v2")
 	want(t, w.do("alice", "policy", "show", "--list"), 0, "v2")
 	want(t, w.do("alice", "policy", "show", "v2"), 0, "# mine")
-	want(t, w.do("alice", "policy", "diff", "v1", "v2"), 0)
 	want(t, w.do("alice", "policy", "check", "v2"), 0)
 	want(t, w.do("carol", "policy", "activate", "2", "--reason", "go"), 0, "POLICY ACTIVE v2")
 }

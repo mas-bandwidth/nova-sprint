@@ -22,7 +22,7 @@ func TestVerbsFake(t *testing.T) {
 func verbSuite(t *testing.T, mk func(testing.TB) store.Store) {
 	for name, fn := range map[string]func(*testing.T, *world){
 		"up": testUp, "set refusals": testSetRefusals, "set": testSet, "activate refusals": testActivateRefusals,
-		"set first": testSetFirst, "activate": testActivate, "show list diff": testShow, "check": testCheck, "broken mid-sprint": testBrokenMidSprint,
+		"set first": testSetFirst, "activate": testActivate, "show list": testShow, "check": testCheck, "broken mid-sprint": testBrokenMidSprint,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -190,17 +190,6 @@ func testShow(t *testing.T, w *world) {
 	assert.True(t, strings.HasPrefix(lines[0], "  v2 script two-reads.star"), lines[0])
 	assert.True(t, strings.HasPrefix(lines[1], "* v1 script default.star"), lines[1])
 	assert.True(t, strings.HasSuffix(lines[1], ": up: the built-in default"), lines[1])
-	d, err := Diff(w.ctx(), w.st, "default", "v2")
-	require.NoError(t, err)
-	assert.Contains(t, d, "--- default\n+++ v2\n")
-	assert.Contains(t, d, "\n-     return 1  # v1 standing rule, 2026-10-20\n+     return 2  # v1 standing rule, 2026-10-20\n")
-	_, err = Diff(w.ctx(), w.st, "8", "")
-	assert.Equal(t, "SPRINT REFUSED policy diff: policy version 8 does not exist: nova-sprint policy show --list", refusal(t, err))
-	_, err = Diff(w.ctx(), w.st, "x", "")
-	assert.Equal(t, "SPRINT REFUSED policy diff: unknown version x: nova-sprint policy show --list", refusal(t, err))
-	d, err = Diff(w.ctx(), w.st, "1", "")
-	require.NoError(t, err)
-	assert.NotContains(t, d, "\n- ", "v1 against the active v1: nothing differs")
 }
 
 func testCheck(t *testing.T, w *world) {
