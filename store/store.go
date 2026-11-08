@@ -393,10 +393,8 @@ func Fold(s Snapshot, events []Event) Snapshot {
 		}
 		overlay(s.Streams, e.After.Streams)
 		for id, c := range e.After.Cards {
-			if old, ok := s.Cards[id]; ok {
-				c.Model = old.Model // set when the card is cut, never changed: putCard's upsert leaves it, whatever an after-image says (a pre-model binary's has none)
-			}
-			s.Cards[id] = c
+			old, had := s.Cards[id]
+			s.Cards[id] = FoldCard(old, had, c)
 		}
 		overlay(s.Rows, e.After.Rows)
 		overlay(s.Judgements, e.After.Judgements)
@@ -410,6 +408,17 @@ func Fold(s Snapshot, events []Event) Snapshot {
 		}
 	}
 	return s
+}
+
+// FoldCard is after-image c laid over old, the card it replaces (had: there
+// was one), as Fold lays it; steps' view folds a card through it too. The
+// model is set when the card is cut, never changed: putCard's upsert leaves
+// it, whatever an after-image says (a pre-model binary's has none).
+func FoldCard(old Card, had bool, c Card) Card {
+	if had {
+		c.Model = old.Model
+	}
+	return c
 }
 
 func overlay[K comparable, V any](dst, src map[K]V) {
