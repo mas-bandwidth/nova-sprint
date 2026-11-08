@@ -596,7 +596,7 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	if err != nil {
 		return WallRunResult{}, err
 	}
-	job.Needs = h.Needs()
+	job.Needs, job.Routes = h.Needs(), r.Proxy.RouteNames()
 	argv, env := h.Command(job)
 	rec.State = JobRunning
 	if rec.PID <= 0 || rec.PID == os.Getpid() {

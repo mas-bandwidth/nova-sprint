@@ -74,16 +74,11 @@ func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness
 	if len(next.TierModels) == 0 {
 		return nil, nil, fmt.Errorf("no model for any tier: next --json names no tier for %s (roster: %s): check that nova-config gives this machine the bench role (nova-sprint check)", row, cmp.Or(next.RosterErr, "read"))
 	}
-	var routed []string
-	for _, cands := range next.TierModels {
-		for _, m := range cands {
-			if provider, _, _ := strings.Cut(m, "/"); r.Proxy.HasRoute(provider) && !slices.Contains(routed, m) {
-				routed = append(routed, m)
-			}
-		}
+	var cands []string
+	for _, tier := range slices.Sorted(maps.Keys(next.TierModels)) {
+		cands = append(cands, next.TierModels[tier]...)
 	}
-	slices.Sort(routed)
-	listed, err := r.listModels_internal(ctx, row, h, routed)
+	listed, err := r.listModels_internal(ctx, row, h, cands)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -148,7 +143,8 @@ func (r *Runner) servedModel_internal(needs Needs, cands, listed []string) (stri
 
 // listModels_internal is the harness's own model list (its Needs'
 // ListModels run outside the wall, under the probe's home and the env a job
-// with models declared would get), nil when it has no such command.
+// declaring models on the proxy's routes would get), nil when it has no such
+// command.
 func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness, models []string) ([]string, error) {
 	argv := h.Needs().ListModels
 	if argv == nil {
@@ -160,7 +156,7 @@ func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness,
 			return nil, fmt.Errorf("the probe directory: %w", err)
 		}
 	}
-	_, env := h.Command(Job{JobDir: dir, Row: row, Consumer: row + ".models", ProxyAddr: r.ProxyAddr, Models: models})
+	_, env := h.Command(Job{JobDir: dir, Row: row, Consumer: row + ".models", ProxyAddr: r.ProxyAddr, Routes: r.Proxy.RouteNames(), Models: models})
 	cmd := edge.Cmd{Argv: argv, Env: env, CleanEnv: true, Dir: dir, Timeout: r.Timeouts.LaunchGrace}
 	res, err := cmp.Or[edge.Exec](r.Exec, edge.NewOSExec()).Run(ctx, cmd)
 	if err != nil || res.ExitCode != 0 {
@@ -190,7 +186,7 @@ func (r *Runner) probeModel_internal(ctx context.Context, row string, h Harness,
 		}
 	}
 	pj := h.Probe(Job{Consumer: row + ".probe", Row: row, Kind: "work", Model: model, HarnessName: h.Name(), ProxyAddr: r.ProxyAddr})
-	pj.JobDir, pj.WorktreeDir, pj.Needs = dir, filepath.Join(dir, "repo"), h.Needs()
+	pj.JobDir, pj.WorktreeDir, pj.Needs, pj.Routes = dir, filepath.Join(dir, "repo"), h.Needs(), r.Proxy.RouteNames()
 	argv, env := h.Command(pj)
 	res, runErr := r.Wall.RunHarness(ctx, pj, argv, env, r.Timeouts.LaunchGrace)
 	r.report("probe logs for "+row, keepLogs_internal(dir, res))

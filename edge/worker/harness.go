@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -266,13 +267,13 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 }
 
 // Command: opencode is given OpenCodeConfig for the job's model (and the
-// probe listing's Models) in OPENCODE_CONFIG_CONTENT, so one proxy serves
-// every provider.
+// probe listing's Models) on the proxy's Routes in OPENCODE_CONFIG_CONTENT,
+// so one proxy serves every provider.
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 	argv := append(append([]string{"opencode", "run"}, modelFlag_internal(j, "")...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
-	if j.ProxyAddr != "" {
-		env = append(env, "OPENCODE_CONFIG_CONTENT="+OpenCodeConfig(j.ProxyAddr, append(slices.Clone(j.Models), j.Model)))
+	if cfg := OpenCodeConfig(j.ProxyAddr, j.Routes, append(slices.Clone(j.Models), j.Model)); j.ProxyAddr != "" && cfg != "" {
+		env = append(env, "OPENCODE_CONFIG_CONTENT="+cfg)
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
@@ -283,10 +284,10 @@ type (
 		APIKey  string `json:"apiKey"`
 	}
 	opencodeProvider_internal struct {
-		NPM     string                    `json:"npm"`
-		Name    string                    `json:"name"`
-		Options opencodeOptions_internal  `json:"options"`
-		Models  map[string]map[string]any `json:"models"`
+		NPM     string                   `json:"npm"`
+		Name    string                   `json:"name"`
+		Options opencodeOptions_internal `json:"options"`
+		Models  map[string]struct{}      `json:"models"`
 	}
 	opencodeConfig_internal struct {
 		Schema   string                               `json:"$schema"`
@@ -294,41 +295,58 @@ type (
 	}
 )
 
+const (
+	opencodeSchema_internal = "https://opencode.ai/config.json"
+	opencodeNPM_internal    = "@ai-sdk/openai-compatible"
+)
+
 // OpenCodeConfig is opencode's config (JSON, its documented custom-provider
 // form; opencode 1.18 and 2.2 read it from OPENCODE_CONFIG_CONTENT) declaring
-// each provider/model of models under an OpenAI-compatible provider whose
-// base URL is the key proxy's route for it (ProxyBaseURL) and whose key is
-// the placeholder the proxy swaps for the real one. A model without a
-// provider prefix is left out.
-func OpenCodeConfig(proxyAddr string, models []string) string {
-	cfg := opencodeConfig_internal{Schema: "https://opencode.ai/config.json", Provider: map[string]opencodeProvider_internal{}}
+// each provider/model of models whose provider is a provider name among
+// routes, under an OpenAI-compatible provider whose base URL is the key
+// proxy's route for it (ProxyBaseURL) and whose key is the placeholder the
+// proxy swaps for the real one; "" when none is.
+func OpenCodeConfig(proxyAddr string, routes, models []string) string {
+	cfg := opencodeConfig_internal{Schema: opencodeSchema_internal, Provider: map[string]opencodeProvider_internal{}}
 	for _, m := range models {
 		provider, id, ok := strings.Cut(m, "/")
-		if !ok || provider == "" || id == "" {
+		if !ok || id == "" || !providerName_internal.MatchString(provider) || !slices.Contains(routes, provider) {
 			continue
 		}
 		p, seen := cfg.Provider[provider]
 		if !seen {
-			p = opencodeProvider_internal{NPM: "@ai-sdk/openai-compatible", Name: provider,
-				Options: opencodeOptions_internal{BaseURL: ProxyBaseURL(proxyAddr, m), APIKey: ProxyPlaceholderKey}, Models: map[string]map[string]any{}}
+			p = opencodeProvider_internal{NPM: opencodeNPM_internal, Name: provider,
+				Options: opencodeOptions_internal{BaseURL: ProxyBaseURL(proxyAddr, m), APIKey: ProxyPlaceholderKey}, Models: map[string]struct{}{}}
 		}
-		p.Models[id] = map[string]any{}
+		p.Models[id] = struct{}{}
 		cfg.Provider[provider] = p
 	}
-	b, _ := json.Marshal(cfg) // maps of strings: never fails
+	if len(cfg.Provider) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(cfg) // strings and empty structs: never fails
 	return string(b)
 }
 
-// placeholderOpenCodeConfig_internal: v is exactly an OpenCodeConfig (no
-// field beside its own) whose every provider's key is the proxy placeholder,
-// the only config the wall admits.
+// placeholderOpenCodeConfig_internal: v is exactly an OpenCodeConfig, the
+// only config the wall admits: re-encoded it is v (no field beside its own,
+// each model {}), and each provider is a provider name with the
+// openai-compatible package, its own name, the placeholder key, and the
+// base URL of its route on one loopback proxy.
 func placeholderOpenCodeConfig_internal(v string) bool {
 	var cfg opencodeConfig_internal
-	if json.Unmarshal([]byte(v), &cfg) != nil {
+	if json.Unmarshal([]byte(v), &cfg) != nil || cfg.Schema != opencodeSchema_internal || len(cfg.Provider) == 0 {
 		return false
 	}
-	for _, p := range cfg.Provider {
-		if p.Options.APIKey != ProxyPlaceholderKey {
+	proxy := ""
+	for name, p := range cfg.Provider {
+		u, err := url.Parse(p.Options.BaseURL)
+		if err != nil || u.Scheme != "http" || CheckLoopbackAddr(u.Host) != nil || (proxy != "" && u.Host != proxy) {
+			return false
+		}
+		proxy = u.Host
+		if !providerName_internal.MatchString(name) || p.NPM != opencodeNPM_internal || p.Name != name ||
+			p.Options.APIKey != ProxyPlaceholderKey || p.Options.BaseURL != ProxyBaseURL(proxy, name+"/") {
 			return false
 		}
 	}

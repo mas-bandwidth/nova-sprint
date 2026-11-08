@@ -189,6 +189,14 @@ func (p *KeyProxy) HasRoute(name string) bool {
 	return ok
 }
 
+// RouteNames are the providers the proxy forwards for, sorted; nil for none.
+func (p *KeyProxy) RouteNames() []string {
+	if p == nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(p.Routes))
+}
+
 // MissingKeys are the routes whose key is absent, one line each naming the
 // key and its fix; none is nil.
 func (p *KeyProxy) MissingKeys() []string {

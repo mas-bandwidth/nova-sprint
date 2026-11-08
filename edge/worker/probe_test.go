@@ -234,7 +234,7 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 		{&ScriptHarness{}, []string{"--net-deny"}, []string{"--unix", "--net-allow"}},
 	}
 	for _, c := range cases {
-		j := Job{Consumer: "c1", JobDir: t.TempDir(), ProxyAddr: "127.0.0.1:7000", Model: "deepseek/deepseek-flash", Needs: c.h.Needs()}
+		j := Job{Consumer: "c1", JobDir: t.TempDir(), ProxyAddr: "127.0.0.1:7000", Routes: []string{"deepseek"}, Model: "deepseek/deepseek-flash", Needs: c.h.Needs()}
 		argv, env := c.h.Command(j)
 		res, err := wall.RunHarness(context.Background(), j, argv, env, time.Second)
 		if err != nil {

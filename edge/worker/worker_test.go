@@ -302,7 +302,7 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 		Consumer: "p1.w1", Kind: "work", Row: "amd-1.ds", Stream: "s1",
 		Branch: "sprint/s1/p1", BaseSHA: testBaseSHA, Tier: "pro", SlotWeight: 1,
 		Model: "deepseek/deepseek-r1", JobDir: dir, WorktreeDir: filepath.Join(dir, "repo"),
-		ProxyAddr: "127.0.0.1:19999", Prose: "fix bug",
+		ProxyAddr: "127.0.0.1:19999", Routes: []string{"deepseek"}, Prose: "fix bug",
 	}
 	ch, _ := NewHarness("claude")
 	cArgv, _ := ch.Command(j)

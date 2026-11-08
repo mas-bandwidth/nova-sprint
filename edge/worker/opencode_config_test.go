@@ -47,7 +47,7 @@ func opencodeConfigOf_internal(t *testing.T, env []string) opencodeConfig_test {
 func TestOpenCodeConfigDeclaresTheJobsModelThroughTheProxy(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	_, env := (&OpenCodeHarness{}).Command(Job{Consumer: "c1", JobDir: dir, ProxyAddr: "127.0.0.1:7000", Model: "deepseek/deepseek-flash"})
+	_, env := (&OpenCodeHarness{}).Command(Job{Consumer: "c1", JobDir: dir, ProxyAddr: "127.0.0.1:7000", Routes: []string{"deepseek", "inception"}, Model: "deepseek/deepseek-flash"})
 	cfg := opencodeConfigOf_internal(t, env)
 	p, ok := cfg.Provider["deepseek"]
 	if !ok || len(cfg.Provider) != 1 {
@@ -70,19 +70,51 @@ func TestOpenCodeConfigDeclaresTheJobsModelThroughTheProxy(t *testing.T) {
 	if _, env := (&OpenCodeHarness{}).Command(Job{Consumer: "c1", JobDir: dir, Model: "deepseek/deepseek-flash"}); slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "OPENCODE_CONFIG_CONTENT=") }) {
 		t.Fatalf("no proxy, no config: %v", env)
 	}
+	// A model whose provider has no route, or is no provider name (it would
+	// be a path segment of the base URL), is never declared.
+	for _, j := range []Job{
+		{Model: "anthropic/fable", Routes: []string{"deepseek"}},
+		{Model: "../x", Routes: []string{"..", "deepseek"}},
+		{Model: "Deep Seek/x", Routes: []string{"Deep Seek"}},
+	} {
+		j.Consumer, j.JobDir, j.ProxyAddr = "c1", dir, "127.0.0.1:7000"
+		if _, env := (&OpenCodeHarness{}).Command(j); slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "OPENCODE_CONFIG_CONTENT=") }) {
+			t.Errorf("model %s with routes %v is declared: %v", j.Model, j.Routes, env)
+		}
+	}
+	if got := OpenCodeConfig("127.0.0.1:7000", []string{"deepseek"}, []string{"deepseek/a", "inception/b", "../c"}); strings.Contains(got, "inception") || strings.Contains(got, "..") {
+		t.Fatalf("only routed providers are declared: %s", got)
+	}
 }
 
-// The wall keeps the config only when every provider's key in it is the
-// placeholder: a real key never crosses into the wall this way.
+// The wall keeps the config only when it is exactly an OpenCodeConfig: each
+// provider the openai-compatible package, its base URL the loopback proxy's
+// route for it, its key the placeholder, its models bare names. A real key,
+// another host, another package or anything nested never crosses this way.
 func TestSanitizeWallEnvKeepsOnlyAPlaceholderOpenCodeConfig(t *testing.T) {
 	t.Parallel()
-	good := OpenCodeConfig("127.0.0.1:7000", []string{"deepseek/deepseek-flash", "inception/mercury-3"})
-	bad := strings.ReplaceAll(good, ProxyPlaceholderKey, "sk-real")
+	good := OpenCodeConfig("127.0.0.1:7000", []string{"deepseek", "inception"}, []string{"deepseek/deepseek-flash", "inception/mercury-3"})
+	if !strings.Contains(good, `"deepseek-flash":{}`) {
+		t.Fatalf("the config this test edits: %s", good)
+	}
+	swap := func(old, new string) string { return strings.Replace(good, old, new, 1) }
 	for _, c := range []struct {
 		v    string
 		keep bool
-	}{{good, true}, {bad, false}, {"not json", false}, {`{"provider":{"x":{"options":{}}}}`, false},
-		{strings.Replace(good, `"apiKey":"`, `"headers":{"Authorization":"Bearer sk-real"},"apiKey":"`, 1), false}} {
+	}{{good, true}, {strings.ReplaceAll(good, ProxyPlaceholderKey, "sk-real"), false}, {"not json", false}, {`{"provider":{"x":{"options":{}}}}`, false},
+		{swap(`"apiKey":"`, `"headers":{"Authorization":"Bearer sk-real"},"apiKey":"`), false},
+		{swap(`"deepseek-flash":{}`, `"deepseek-flash":{"headers":{"Authorization":"Bearer sk-real"}}`), false},
+		{swap(`"deepseek-flash":{}`, `"deepseek-flash":{"options":{"apiKey":"sk-real"}}`), false},
+		{swap("http://127.0.0.1:7000/deepseek/v1", "https://api.deepseek.com/v1"), false},
+		{swap("http://127.0.0.1:7000/deepseek/v1", "file:///etc"), false},
+		{swap("http://127.0.0.1:7000/deepseek/v1", "http://10.0.0.1:7000/deepseek/v1"), false},
+		{swap("http://127.0.0.1:7000/deepseek/v1", "http://127.0.0.1:7001/deepseek/v1"), false},
+		{swap("http://127.0.0.1:7000/deepseek/v1", "http://127.0.0.1:7000/inception/v1"), false},
+		{swap("@ai-sdk/openai-compatible", "evil-pkg"), false},
+		{swap(`"name":"deepseek"`, `"name":"other"`), false},
+		{`{"$schema":"","provider":null}`, false},
+		{`{"$schema":"https://opencode.ai/config.json","provider":{}}`, false},
+		{`{"$schema":"https://opencode.ai/config.json","provider":{"..":{"npm":"@ai-sdk/openai-compatible","name":"..","options":{"baseURL":"http://127.0.0.1:7000/../v1","apiKey":"` + ProxyPlaceholderKey + `"},"models":{"x":{}}}}}`, false}} {
 		env := SanitizeWallEnv([]string{"OPENCODE_CONFIG_CONTENT=" + c.v}, t.TempDir())
 		if kept := slices.Contains(env, "OPENCODE_CONFIG_CONTENT="+c.v); kept != c.keep {
 			t.Errorf("config %q: kept %v, want %v", c.v, kept, c.keep)
@@ -146,7 +178,7 @@ func TestFunctionalOpenCodeListsTheConfiguredModels(t *testing.T) {
 		}
 	}
 	want := []string{"deepseek/nova-test-flash", "inception/nova-test-3"}
-	_, env := (&OpenCodeHarness{}).Command(Job{JobDir: dir, Consumer: "b1.models", ProxyAddr: "127.0.0.1:9", Models: want})
+	_, env := (&OpenCodeHarness{}).Command(Job{JobDir: dir, Consumer: "b1.models", ProxyAddr: "127.0.0.1:9", Routes: []string{"deepseek", "inception"}, Models: want})
 	cmd := exec.Command(bin, "models")
 	cmd.Env, cmd.Dir = env, dir
 	out, err := cmd.CombinedOutput()
