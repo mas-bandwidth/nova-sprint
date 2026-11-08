@@ -700,7 +700,7 @@ candidate filter narrows the row set the model already chooses from.
   one fails as a whole (run's `Answers.NoDeal`, layer 6), the tick deals
   nothing: no preemption, no Start, no read. One `no-policy` judgement on
   the coordinator's row (the first hooked coordinator, else `sprint`) says
-  so with the fix, with no deadline (it blocks until it clears: a policy
+  so with the fix, with no deadline (it stands until it clears: a policy
   answers again). Reports, the inbox, resolve, fix, landing and judgements
   go on. This is the one exception to guarantee 10: a question one active
   version fails still falls to the default with a `policy` judgement; only
@@ -814,7 +814,7 @@ steps changed with it:
   cause (`TestHandUndealtJudged`). At the default budget (250) this needs a
   burst of over 250 resolves in a tick; not measured.
 - Tests: `hand_test.go` (nudge then unacked, no nudge after a report,
-  undealt with and without room, a route fault blocks and is never dealt
+  undealt with and without room, a route fault waits held and is never dealt
   again, a plain fault re-deals); the sims' `take` is the acknowledgement.
 
 

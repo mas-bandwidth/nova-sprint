@@ -17,7 +17,7 @@ judgement id as its message prints it, `<row>` a row's name on the bus.
    finish and read them by the worker playbook.
 3. The run loop does the seat's mechanical work: it deals, asks reads, decides yes or fix from
    all the reads, lands what CI passed green, parks cards in a held stream,
-   blocks a card that bounces too often, and opens a judgement only when a mind is needed. Do
+   holds a card that bounces too often (it waits with its reason), and opens a judgement only when a mind is needed. Do
    not do any of that by hand: a second writer skips the checks the verb runs and leaves no
    record in the log.
 4. You are told by push. From the moment you hook in to the sprint, every judgement, landing,

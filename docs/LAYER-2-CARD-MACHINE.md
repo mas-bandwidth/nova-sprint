@@ -594,7 +594,7 @@ breaker's trace fixture is regenerated.
 - Tests: the card package's tables, breakers and cold reads changed from
   `Take` to the deal; `TestBreakHeldWidth` and the seq2 width test refuse a
   second deal at width 1; the cold read's third fault reason names a
-  missing route and blocks.
+  missing route and waits held.
 - TLC (measured, on the bench host, `tla/ci-tlc.sh` at cd960636,
   2026-11-07): all 250 runs as expected, none failed; about 28 minutes of
   wall time with the trace check running beside it. The first run (at

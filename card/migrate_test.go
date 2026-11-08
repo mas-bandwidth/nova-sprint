@@ -8,8 +8,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// TestMigratedReasonHolds: every reason a card had in the dropped blocked
-// state comes out of the store's round 29 migration (store.HoldingReason) as
+// TestMigratedReasonHolds: every reason a card had in the state round 29
+// dropped comes out of the store's round 29 migration (store.HoldingReason) as
 // a reason this machine holds (HeldReason), the text kept after the prefix,
 // so no card that was held is released to the deal by the migration.
 func TestMigratedReasonHolds(t *testing.T) {
