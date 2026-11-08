@@ -106,11 +106,11 @@ func TestWallReadsGrantsAndCarriesGoEnvOnlyWhenGranted(t *testing.T) {
 	if slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "GO") }) || strings.Contains(val(env, "PATH"), goroot) || pair(argv, "--read", goroot) {
 		t.Errorf("an ungranted toolchain reached the wall: %q %q", env, argv)
 	}
-	if _, notes := goWallGrant_internal(WallConfig{GoRoot: goroot, GoModCache: modcache, ReadPaths: []string{modcache}}); len(notes) != 1 || !strings.Contains(notes[0], "--wall-read "+goroot) {
-		t.Errorf("an ungranted go is not said with its fix: %q", notes)
+	if _, notes := goWallGrant_internal(WallConfig{GoRoot: goroot, GoModCache: modcache, ReadPaths: []string{modcache}}); len(notes) != 0 {
+		t.Errorf("an ungranted go said it is read: %q", notes)
 	}
-	if _, notes := goWallGrant_internal(WallConfig{GoRoot: goroot, GoModCache: modcache, ReadPaths: []string{goroot}}); len(notes) != 1 || !strings.Contains(notes[0], "--wall-read "+modcache) {
-		t.Errorf("an ungranted module cache is not said with its fix: %q", notes)
+	if _, notes := goWallGrant_internal(WallConfig{GoRoot: goroot, GoModCache: modcache, ReadPaths: []string{goroot}}); len(notes) != 1 || !strings.Contains(notes[0], "GOROOT="+goroot) || strings.Contains(notes[0], "GOMODCACHE") {
+		t.Errorf("the start line for go without its cache: %q", notes)
 	}
 }
 
@@ -133,5 +133,55 @@ func TestDetectGoReadsGoEnvAndNoGoIsNone(t *testing.T) {
 	missing.SetMissing("go", true)
 	if root, cache, err := DetectGo(context.Background(), missing, time.Minute); err != nil || root != "" || cache != "" {
 		t.Errorf("no go on PATH: %q %q %v", root, cache, err)
+	}
+}
+
+// The GOROOT and GOMODCACHE go env names at start are granted read-only
+// with no flag, after the --wall-read checks; a detected dir those refuse
+// (under a dot-directory of the home) is skipped with one line, and the
+// worker still starts.
+func TestDetectedGoIsGrantedWithNoFlagsAndARefusedDirIsSkipped(t *testing.T) {
+	t.Parallel()
+	start := func(goroot, modcache, home string) (WallConfig, []string, error) {
+		t.Helper()
+		for _, d := range []string{goroot, modcache} {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		fx := edge.NewFakeExec()
+		fx.Enqueue("go", edge.FakeOutcome{Stdout: goroot + "\n" + modcache + "\n"})
+		var lines []string
+		cfg, err := osWallConfig_internal(context.Background(), Config{Row: "r1"}, fx, time.Minute, home, [][2]string{{"--root", filepath.Join(home, "state")}}, func(s string) { lines = append(lines, s) })
+		return cfg, lines, err
+	}
+	home := t.TempDir()
+	goroot, modcache := filepath.Join(home, "sdk", "go1.99.0"), filepath.Join(home, "go", "pkg", "mod")
+	cfg, lines, err := start(goroot, modcache, home)
+	rRoot, rCache := resolvePath_internal(goroot), resolvePath_internal(modcache)
+	if err != nil || !slices.Equal(cfg.ReadPaths, []string{rRoot, rCache}) {
+		t.Fatalf("detected go not granted: %q %v", cfg.ReadPaths, err)
+	}
+	env := GoWallEnv([]string{"PATH=/usr/bin"}, cfg)
+	for _, want := range []string{"GOROOT=" + rRoot, "GOMODCACHE=" + rCache, "GOPROXY=off", "GOTOOLCHAIN=local", "PATH=" + filepath.Join(rRoot, "bin") + string(os.PathListSeparator) + "/usr/bin"} {
+		if !slices.Contains(env, want) {
+			t.Errorf("wall env %q lacks %s", env, want)
+		}
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "GOROOT="+rRoot) || !strings.Contains(lines[0], "GOMODCACHE="+rCache) {
+		t.Errorf("start lines %q: want one naming GOROOT= and GOMODCACHE=", lines)
+	}
+
+	home = t.TempDir()
+	dotRoot := filepath.Join(home, ".local", "go")
+	cfg, lines, err = start(dotRoot, filepath.Join(home, "go", "pkg", "mod"), home)
+	if err != nil {
+		t.Fatalf("a refused detected dir stopped the start: %v", err)
+	}
+	if slices.Contains(cfg.ReadPaths, resolvePath_internal(dotRoot)) || slices.ContainsFunc(GoWallEnv(nil, cfg), func(kv string) bool { return strings.HasPrefix(kv, "GO") }) {
+		t.Errorf("a refused GOROOT reached the wall: %q", cfg.ReadPaths)
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "GOROOT") || !strings.Contains(lines[0], "dot-directory") || !strings.Contains(lines[0], "skipped") {
+		t.Errorf("start lines %q: want one saying the GOROOT is skipped and why", lines)
 	}
 }

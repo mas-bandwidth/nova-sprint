@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -132,12 +133,13 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 	})
 }
 
-// osWallConfig_internal is the wall's operator grants (--wall-read,
-// CheckWallReads against the worker's own directories) and the Go
-// toolchain `go env` names on the worker's PATH, with its start lines
-// (goWallGrant_internal: granted, or the --wall-read that would grant it).
-// A go that is there and does not answer is said, never fatal: cards that
-// need no go still run.
+// osWallConfig_internal is the wall's read grants: the operator's
+// --wall-read (CheckWallReads against the worker's own directories; a
+// refusal stops the start), then the GOROOT and GOMODCACHE `go env` names
+// on the worker's PATH (DetectGo), each granted by the same checks or
+// skipped with one line saying why; and the start line naming what go the
+// wall reads (goWallGrant_internal). A go that is missing, refused or does
+// not answer is said, never fatal: cards that need no go still run.
 func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout time.Duration, home string, own [][2]string, out func(string)) (WallConfig, error) {
 	reads, err := CheckWallReads(c.WallReads, home, own)
 	if err != nil {
@@ -146,6 +148,19 @@ func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout 
 	cfg := WallConfig{ReadPaths: reads}
 	if cfg.GoRoot, cfg.GoModCache, err = DetectGo(ctx, ex, timeout); err != nil {
 		out("worker: go is on the worker's PATH and go env failed, so the wall is given no Go toolchain: " + edge.RedactN(err.Error(), edge.FailureMax))
+	}
+	for _, d := range [][2]string{{"GOROOT", cfg.GoRoot}, {"GOMODCACHE", cfg.GoModCache}} {
+		if d[1] == "" {
+			continue
+		}
+		got, err := CheckWallReads([]string{d[1]}, home, own)
+		if err != nil {
+			out(fmt.Sprintf("worker: go env's %s %s is skipped, not granted to the wall: %s", d[0], d[1], edge.RedactN(err.Error(), edge.FailureMax)))
+			continue
+		}
+		if !slices.Contains(cfg.ReadPaths, got[0]) {
+			cfg.ReadPaths = append(cfg.ReadPaths, got[0])
+		}
 	}
 	_, notes := goWallGrant_internal(cfg)
 	for _, n := range notes {

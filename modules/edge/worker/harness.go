@@ -809,33 +809,29 @@ func pathUnder_internal(p, dir string) bool {
 }
 
 // goWallGrant_internal is the Go toolchain's names inside the wall, and
-// the worker's start lines about them. cfg.GoRoot and cfg.GoModCache are
-// what `go env` said outside the wall at start (DetectGo); each is admitted
-// only when a --wall-read grant (cfg.ReadPaths) covers it, so they widen
-// nothing: GOROOT with GOTOOLCHAIN=local (no toolchain download), and
-// GOMODCACHE with GOPROXY=off (the cache is read-only and the wall has no
-// network: a module missing from it fails at once, named). GOCACHE is left
-// to go's default under the job's own home.
+// the worker's start line about them. cfg.GoRoot and cfg.GoModCache are
+// what `go env` said outside the wall at start (DetectGo), granted then
+// (osWallConfig_internal); each is admitted only when a grant in
+// cfg.ReadPaths covers it, so they widen nothing: GOROOT with
+// GOTOOLCHAIN=local (no toolchain download), and GOMODCACHE with
+// GOPROXY=off (the cache is read-only and the wall has no network: a
+// module missing from it fails at once, named). GOCACHE is left to go's
+// default under the job's own home.
 func goWallGrant_internal(cfg WallConfig) (vars, notes []string) {
 	root, cache := resolvePath_internal(cfg.GoRoot), resolvePath_internal(cfg.GoModCache)
 	granted := func(p string) bool {
 		return filepath.IsAbs(p) && slices.ContainsFunc(cfg.ReadPaths, func(d string) bool { return pathUnder_internal(p, resolvePath_internal(d)) })
 	}
-	if root == "" {
+	if root == "" || !granted(root) {
 		return nil, nil
 	}
-	if !granted(root) {
-		return nil, []string{fmt.Sprintf("worker: go is on the worker's PATH (GOROOT %s) and no --wall-read grants it, so a card's go commands are denied inside the wall: pass --wall-read %s", cfg.GoRoot, cfg.GoRoot)}
-	}
 	vars = []string{"GOROOT=" + root, "GOTOOLCHAIN=local"}
-	switch {
-	case cache != "" && granted(cache):
+	line := "worker: the wall reads go: GOROOT=" + root
+	if cache != "" && granted(cache) {
 		vars = append(vars, "GOMODCACHE="+cache, "GOPROXY=off")
-		notes = []string{fmt.Sprintf("worker: the wall reads go at %s and its module cache at %s (GOPROXY=off, GOTOOLCHAIN=local)", root, cache)}
-	case cache != "":
-		notes = []string{fmt.Sprintf("worker: the wall reads go at %s; its module cache %s is not granted, so a card's go commands that need a module fail inside the wall: pass --wall-read %s", root, cfg.GoModCache, cfg.GoModCache)}
+		line += " GOMODCACHE=" + cache + " (GOPROXY=off)"
 	}
-	return vars, notes
+	return vars, []string{line + " GOTOOLCHAIN=local"}
 }
 
 // GoWallEnv is env (a sanitized wall environment) with the Go toolchain's

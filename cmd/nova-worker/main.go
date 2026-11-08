@@ -32,7 +32,7 @@ func run_internal(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&c.MirrorRoot, "mirror-root", "", "directory of the bare mirrors, <repo>.git as mirror-refresh keeps them (default ~/nova-bench/mirror)")
 	fs.StringVar(&c.SprintBin, "sprint-bin", "nova-sprint", "nova-sprint binary (run directly: the worker's environment holds the sprint's credentials)")
 	fs.StringVar(&c.Providers, "providers", "", "key proxy routes, <name>=<upstream url>@<KEY NAME>[,...]; each key is read from the environment")
-	fs.Func("wall-read", "a directory every job's wall reads, never writes, repeatable (a toolchain, its module cache: go env GOROOT and GOMODCACHE)", func(d string) error {
+	fs.Func("wall-read", "a directory every job's wall reads, never writes, repeatable (a toolchain; go env GOROOT and GOMODCACHE are granted without it)", func(d string) error {
 		c.WallReads = append(c.WallReads, d)
 		return nil
 	})

@@ -810,11 +810,13 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   any overlap with `--root`, `--state-dir`, `--work-root`, `--mirror-root`
   or `NOVA_SECRETS_STORE` when set. At start the worker runs
   `go env GOROOT GOMODCACHE` outside the wall (`DetectGo`; no go on PATH is
-  no Go); `GoWallEnv` sets `GOROOT`, `GOTOOLCHAIN=local` and `GOROOT/bin`
-  first on `PATH` inside every wall only when a grant covers GOROOT, and
-  `GOMODCACHE` with `GOPROXY=off` only when a grant covers the cache.
-  `GOCACHE` stays go's default under the job's own home. An ungranted go
-  or cache is one start line naming the `--wall-read` that grants it.
+  no Go) and grants both read-only as if passed with `--wall-read`, after
+  the same checks; a detected directory they refuse is skipped with one
+  start line saying why, and the worker starts. `GoWallEnv` sets `GOROOT`,
+  `GOTOOLCHAIN=local` and `GOROOT/bin` first on `PATH` inside every wall
+  only when a grant covers GOROOT, and `GOMODCACHE` with `GOPROXY=off` only
+  when a grant covers the cache; one start line names what was granted.
+  `GOCACHE` stays go's default under the job's own home.
 - **The cause line (25).** `edge.CauseLine`: escapes stripped
   (`edge.StripANSI`), the first line holding error, refused or failed, else
   the last non-empty line, bounded; `edge.StderrLines` strips escapes too.
