@@ -2,9 +2,23 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 )
+
+func TestHelpNamesNoRetiredService(t *testing.T) {
+	t.Parallel()
+	var c worker.Config
+	retired := "mirror-" + "refresh"
+	flagSet(&c).VisitAll(func(f *flag.Flag) {
+		if strings.Contains(f.Usage, retired) {
+			t.Errorf("flag -%s help names a retired service: %q", f.Name, f.Usage)
+		}
+	})
+}
 
 func TestWorkerCLIFlagRefusals(t *testing.T) {
 	t.Parallel()

@@ -21,8 +21,8 @@ import (
 type Config struct {
 	Row, Host, Root, StateDir, Harness string
 	// WorkRoot holds a work clone per stream repo (default <root>/clones),
-	// MirrorRoot its bare mirror, <name>.git, as mirror-refresh keeps them
-	// (default ~/nova-bench/mirror). Both are made on first use.
+	// MirrorRoot its bare mirror, <name>.git, cloned on first use and fetched
+	// per job (default ~/nova-bench/mirror). Both are made on first use.
 	WorkRoot, MirrorRoot string
 	SprintBin            string
 	// Providers is --providers: the key proxy's routes (ParseProviders).

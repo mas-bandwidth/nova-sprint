@@ -934,8 +934,8 @@ func (r *Runner) evalEdgeQuery_internal(ctx context.Context, id string, req Edge
 }
 
 // OSGitOps stages from one work clone per stream repo (directive 42): the
-// repo is the deal receipt's; its bare mirror is <MirrorRoot>/<name>.git,
-// the layout mirror-refresh keeps, cloned on first use when absent; its work
+// repo is the deal receipt's; its bare mirror is <MirrorRoot>/<name>.git, a
+// mirror cloned on first use when absent and fetched per job; its work
 // clone is <WorkRoot>/<name>, made on first use borrowing the mirror's
 // objects. A job's worktree is a shared clone of the work clone whose origin
 // is the repo's clone URL, so its fetches and pushes go to the repo.
@@ -972,7 +972,7 @@ func CloneURL(repo, forgeName string) (string, error) {
 }
 
 // repoName_internal is the clone's directory name: the URL's last element
-// without .git, as mirror-refresh names its mirrors.
+// without .git, the bare mirror's name under the mirror root.
 func repoName_internal(cloneURL string) (string, error) {
 	name := strings.TrimSuffix(filepath.Base(strings.TrimRight(strings.ReplaceAll(cloneURL, ":", "/"), "/")), ".git")
 	if name == "" || name == "." || name == ".." || name == "/" {
