@@ -252,3 +252,27 @@ func TestRestartRequeryIdempotence(t *testing.T) {
 		t.Fatalf("restart query mismatch: res1=%+v res2=%+v err=%v", res1, res2, err)
 	}
 }
+
+// TestAPIPathTakesOwnerRepoFromAURL: a stream whose repository is a clone
+// URL gets owner/repo in every api path, never the URL pasted in.
+func TestAPIPathTakesOwnerRepoFromAURL(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"o/r":                         "o/r",
+		"https://github.com/o/r":      "o/r",
+		"https://github.com/o/r.git":  "o/r",
+		"https://github.com/o/r.git/": "o/r",
+		"git@github.com:o/r.git":      "o/r",
+		"ssh://git@github.com/o/r":    "o/r",
+		"/srv/git/r.git":              "/srv/git/r.git",
+	} {
+		if got, err := RepoPath(in); got != want || err != nil {
+			t.Errorf("RepoPath(%q) = %q, %v, want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"https://gitlab.example.com/o/r.git", "git@gitlab.example.com:o/r.git"} { // another host is never github.com's o/r
+		if got, err := RepoPath(in); err == nil || !strings.Contains(err.Error(), in) {
+			t.Errorf("RepoPath(%q) = %q, %v, want a refusal naming the URL", in, got, err)
+		}
+	}
+}

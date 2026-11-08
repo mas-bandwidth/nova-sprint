@@ -782,15 +782,11 @@ card dealt before models were named), beside w2D2's repo, base, branch and
 clipped brief. Test: `TestEventNoticesUseCommittedImagesAndRecipients`.
 ## Built: the landing's red split in the facts; the host identity (stitch w3L, 2026-11-07)
 
-Directives 59, 63, 76; LANDING.md "Red that is not the card's".
-`modules/run/edges.go`: `landFacts` leads a red judgement's facts with `NEW red (not
-red on the base)` (each workflow, what the base was read from, "its run
-still going", each failed job's runner, page and first error lines), then
-`inherited red (red on the base too, not this card's)`, then the PR's
-commit authors when an agreement check failed, then the merge base; the
-rest is as before. `landItem` hands layer 4's `ci_red_inherited` to layer 3
-as `steps.InheritedRed`. Waiting for the run behind inherited red is layer
-4's `ci_pending`, asked again every `LandPoll` like any pending CI.
+Directives 59, 76; LANDING.md "A red base". `modules/run/edges.go`:
+`landFacts` leads a red judgement on a red base with "the base itself is
+red at its tip <sha> on: ...; the card's head is red on: ..."; the rest is
+as before. (The inherited/new split, the agreement authors and
+`ci_red_inherited` were removed 2026-11-08.)
 `cmd/nova-sprint/edges.go`: the forge's `Identity` is `identity(env)`
 (`forge.HostLogin`, or `GH_GATE_TOKEN` named as the override), and git's
 github.com credential is always gh as the host's login (no switch on

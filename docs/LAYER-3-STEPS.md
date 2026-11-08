@@ -866,15 +866,12 @@ the landing (w2L); merged, superseding them where they differ:
   of 88 ok (the 12 Steps walks, the 8 `steps-ok-*` fixtures matched, the
   6 `steps-bad-*` refused at their last record). The Steps fixtures from
   that commit's TLC logs are byte-identical to those of `e8852d30`.
-## Built: inherited red worded for a glance (stitch w3L, 2026-11-07)
+## Superseded: inherited red worded for a glance (stitch w3L, 2026-11-07)
 
-Directive 59; LANDING.md "Red that is not the card's". `landJudge` words the
-land outcome `ci_red_inherited` (`InheritedRed`: layer 4 found every failing
-workflow red on the base too and the run ended) as "card <c> (...) has only
-inherited red (...): land it with nova-sprint land <c> --reason <why>.
-Facts: ...". It is still one land judgement with the choices land, fix and
-retry: red never lands by itself, and no state or transition changed, so
-`Steps.tla` is untouched. Test: `TestTickLandInheritedRedIsAGlance`.
+Removed 2026-11-08: a red base is the coordinator's whole-picture judgement
+(LANDING.md "A red base"), so `ci_red_inherited`, `InheritedRed` and its
+"land it" wording are gone; red is one `ci_red` land judgement with the
+choices land, fix and retry. `Steps.tla` is untouched.
 
 ## Built: why the fleet is idle (stitch w4V, 2026-11-07)
 
