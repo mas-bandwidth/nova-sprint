@@ -1083,6 +1083,7 @@ operators where the check is about them:
 | `AfterKept` | guarantee 3, ENFORCED L2-U19 | a land request never goes out for a producer whose `after` target is merging |
 | `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
 | `VerdictHasItsRead` | Fix | a yes has a done ok read of the review and no fix read, a fix a done fix read; a faulted read is neither |
+| `NeverDealtAbsent` | D1' (2026-11-07) | no accepted Start, read or preemption lands on a row absent from nova-bus (`bus`), whatever the store's up says |
 
 `ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
 under weak fairness on `Snap` and `Tick` only (rows need not take or
@@ -1134,6 +1135,7 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsGlobOverlaps` | pre | a glob both list counts as overlap | ResolveFromState |
 | `witnesses/StepsHeldUnshown` | deal | no overlap judgement for a held producer | HeldBehindShown |
 | `witnesses/StepsYesOnFault` | deal | the verdict default is yes unless a read said fix | VerdictHasItsRead |
+| `witnesses/StepsDealtAbsent` | deal | the deal reads the store's up as presence | NeverDealtAbsent |
 | `witnesses/StepsFaultCounted` | deal | a faulted read counts as a read | FaultedReadReadAgain (liveness, TLC exit 13) |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
@@ -1160,6 +1162,7 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `reach/StepsNeverHeldBehind` | deal | none | violated: an overlap judgement is opened |
 | `reach/StepsNeverHandLanded` | deal | none | violated: a store op lands a producer by hand |
 | `reach/StepsNeverReadAgain` | deal | none | violated: a review whose read faulted is read again |
+| `reach/StepsNeverAbsent` | deal | none | violated: a tick runs with an up row off the bus serving a ready card |
 
 `python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
 five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`

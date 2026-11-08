@@ -24,7 +24,9 @@ type world struct {
 	cursor   int64
 	n        int
 	now      time.Time
-	headless set // streams the inputs carry no head for (the edge's read failed)
+	headless set           // streams the inputs carry no head for (the edge's read failed)
+	away     set           // rows the inputs do not see on the bus this tick (their hook is down)
+	lapse    time.Duration // how long ago the last good who read saw the rest (0: this tick)
 }
 
 var t0 = time.Unix(1000, 0).UTC()
@@ -185,8 +187,8 @@ func (w *world) reportPlan(c, result, head, reason string) (card.Plan, *card.Ref
 	return card.ReportPlan(cc, p, cons, rows, card.StreamFromStore(s.Streams[p.Stream]), needs, card.Report{Row: cc.Holder, Result: result, Head: head, Reason: reason})
 }
 
-// inputs is the tick's inputs at the world's clock: every row seen now, every
-// stream at base.
+// inputs is the tick's inputs at the world's clock: every row seen now but
+// the away ones, every stream at base.
 func (w *world) inputs() Inputs {
 	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}, Roster: w.roster}
 	for s := range w.v.Streams {
@@ -195,7 +197,9 @@ func (w *world) inputs() Inputs {
 		}
 	}
 	for r := range w.v.Rows {
-		in.Seen[r] = in.Now
+		if _, gone := w.away[r]; !gone {
+			in.Seen[r] = in.Now.Add(-w.lapse)
+		}
 	}
 	return in
 }

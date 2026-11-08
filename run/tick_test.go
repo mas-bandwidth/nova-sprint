@@ -52,9 +52,10 @@ func (a *answering) AnswerContext(_ context.Context, _ policy.Versions, snap sto
 type sent struct{ to, subject, body string }
 
 type fakeBus struct {
-	sent []sent
-	fail map[string]bool
-	who  map[string]bus.Presence
+	sent     []sent
+	fail     map[string]bool
+	who      map[string]bus.Presence
+	whoFails int // the first whoFails Who reads fail
 }
 
 func (b *fakeBus) Send(_ context.Context, to, subject, body string) (string, error) {
@@ -64,7 +65,13 @@ func (b *fakeBus) Send(_ context.Context, to, subject, body string) (string, err
 	b.sent = append(b.sent, sent{to, subject, body})
 	return "1-1", nil
 }
-func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) { return b.who, nil }
+func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
+	if b.whoFails > 0 {
+		b.whoFails--
+		return nil, errors.New("nova-bus who exited 1")
+	}
+	return b.who, nil
+}
 
 var t0 = time.Unix(1_800_000_000, 0).UTC()
 
@@ -377,6 +384,61 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	}
 	if len(b.sent) == 0 || b.sent[0].to != "bench" {
 		t.Fatalf("no envelope to bench: %+v\n%s", b.sent, log.String())
+	}
+}
+
+// TestServeFirstWhoFailurePlansNothing (D1' cold read): the first who read
+// after the start fails, so no row has been seen: that tick plans nothing
+// (no deal, no unserved or cannot-read judgement) and logs the fault; the
+// next good read deals as usual.
+func TestServeFirstWhoFailurePlansNothing(t *testing.T) {
+	t.Parallel()
+	f := started(t)
+	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
+	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
+	must(t, f, "up", store.SetRowState{Row: "bench", State: "up"})
+	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &watched{beats: &beats{now: t0, tick: make(chan time.Time)}, read: make(chan struct{})}
+	b := &fakeBus{who: map[string]bus.Presence{"bench": {Name: "bench"}}, whoFails: 1}
+	var log strings.Builder
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, Clock: clock, Log: &log}, &healthy{})
+	}()
+	<-clock.read
+	for range 3 {
+		clock.tick <- t0
+	}
+	clock.tick <- t0 // the third tick has finished once the fourth beat is taken
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	out := log.String()
+	if !strings.Contains(out, "EDGE FAULT nova-bus who") {
+		t.Fatalf("the failed who read is not logged: %s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "TICK n=1 ") && !strings.Contains(line, " ops=0/0 ") {
+			t.Fatalf("the first tick planned with no row seen: %s", line)
+		}
+	}
+	snap, err := f.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, j := range snap.Judgements {
+		if j.Kind == "unserved" || j.Kind == "cannot-read" {
+			t.Fatalf("judgement %s (%s) opened by one failed who read", id, j.Kind)
+		}
+	}
+	if c, ok := snap.Cards["p1.w1"]; !ok || c.Holder != "bench" {
+		t.Fatalf("the good read after did not deal p1 to bench: %+v\n%s", snap.Cards, out)
 	}
 }
 

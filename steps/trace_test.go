@@ -186,7 +186,7 @@ func (w *traceWalk) record(action string, args []string) {
 	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
 	fields = append(fields, args...)
 	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
-		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc))
+		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA())
 	w.records = append(w.records, "["+strings.Join(fields, ", ")+"]")
 }
 
@@ -325,8 +325,19 @@ func (w *traceWalk) reportOne() {
 	w.moved("Report", []string{"card |-> " + SlotTLA(w.view(), id), fmt.Sprintf("res |-> %q", res)})
 }
 
+// busTLA is the model's bus: every row on nova-bus but the walk's away ones.
+func (w *traceWalk) busTLA() string {
+	var out []string
+	for _, r := range []string{"r1", "r2"} {
+		_, gone := w.away[r]
+		out = append(out, fmt.Sprintf("%s |-> %s", r, tlaBool(!gone)))
+	}
+	return "[" + strings.Join(out, ", ") + "]"
+}
+
 // envOne is the scenario's environment: pre lifts s2's hold and flips r2;
-// deal flips r1; land holds and lifts s1; burst has none.
+// deal flips r1 or takes r2 off the bus and back (D1'); land holds and
+// lifts s1; burst has none.
 func (w *traceWalk) envOne() {
 	w.pick()
 	s := w.snap()
@@ -338,6 +349,10 @@ func (w *traceWalk) envOne() {
 		}
 		w.flip("r2")
 	case "deal":
+		if w.rng.Intn(2) == 0 {
+			w.presence("r2")
+			return
+		}
 		w.flip("r1")
 	case "land":
 		if s.Streams["s1"].Held {
@@ -491,6 +506,22 @@ func (w *traceWalk) consumersIn(state string) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// presence takes row off nova-bus, or puts it back: the store is untouched
+// (its hook record stands), only the tick's Seen changes (Leave, Return).
+func (w *traceWalk) presence(row string) {
+	w.ok()
+	if _, gone := w.away[row]; gone {
+		delete(w.away, row)
+		w.moved("Return", nil)
+		return
+	}
+	if w.away == nil {
+		w.away = set{}
+	}
+	w.away[row] = struct{}{}
+	w.moved("Leave", nil)
 }
 
 // module is the StepsTraceLog module of the records, and cfg the trace cfg:

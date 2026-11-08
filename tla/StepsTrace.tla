@@ -34,7 +34,8 @@
 (* the slots that are not "none" (every other slot must be "none"), so a   *)
 (* record stays small whatever K is; a record may log w whole instead. rg  *)
 (* is each row's generation less its generation at Init.                   *)
-(* A record that logs nothing of w leaves it to the model.                 *)
+(* A record that logs nothing of w leaves it to the model. bus, who is on *)
+(* nova-bus (the walk's away rows), is logged whole or left to the model. *)
 (***************************************************************************)
 EXTENDS Steps, StepsTraceLog, TLC
 
@@ -43,7 +44,7 @@ VARIABLE l
 traceVars == <<vars, l>>
 
 TraceActions == {"Init", "Snap", "Tick", "Report", "Hold", "Unhold", "Gone", "Seen",
-                 "EnvMove", "EdgeResult", "Answer"}
+                 "Leave", "Return", "EnvMove", "EdgeResult", "Answer"}
 
 Has(r, f) == f \in DOMAIN r
 
@@ -67,6 +68,7 @@ Logged(r) ==
   /\ Has(r, "inflight") => inflight = r.inflight
   /\ Has(r, "js")       => js = r.js
   /\ Has(r, "split")    => split = r.split
+  /\ Has(r, "bus")      => bus = r.bus
 
 \* The same after a step (written out, so the record index is not primed).
 LoggedNext(r) ==
@@ -78,6 +80,7 @@ LoggedNext(r) ==
   /\ Has(r, "inflight") => inflight' = r.inflight
   /\ Has(r, "js")       => js' = r.js
   /\ Has(r, "split")    => split' = r.split
+  /\ Has(r, "bus")      => bus' = r.bus
 
 \* The environment move a record names (EnvMove leaves it to the model).
 EnvKind(r) ==
@@ -85,6 +88,8 @@ EnvKind(r) ==
     [] r.action = "Unhold" -> \E s \in Streams : w.sh[s] /\ ~w'.sh[s]
     [] r.action = "Gone"   -> \E x \in Rows : w.up[x] /\ ~w'.up[x]
     [] r.action = "Seen"   -> \E x \in Rows : ~w.up[x] /\ w'.up[x]
+    [] r.action = "Leave"  -> \E x \in Rows : bus[x] /\ ~bus'[x]   \* off nova-bus (D1')
+    [] r.action = "Return" -> \E x \in Rows : ~bus[x] /\ bus'[x]
     [] OTHER               -> TRUE
 
 \* The model action a record names, with its arguments.
@@ -94,7 +99,7 @@ StepAs(r) ==
                                     /\ Has(r, "answer") => a = r.answer
                                     /\ Tick(a)
     [] r.action = "Report"     -> Report(r.card, r.res)
-    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "EnvMove"} -> EnvMove /\ EnvKind(r)
+    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "EnvMove"} -> EnvMove /\ EnvKind(r)
     [] r.action = "EdgeResult" -> \E f \in inflight : f.id = r.id /\ EdgeResult(f, r.out, r.n)
     [] r.action = "Answer"     -> Answer(r.p, r.choice)
     [] OTHER                   -> FALSE

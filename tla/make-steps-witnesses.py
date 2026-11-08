@@ -26,6 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
+    "NeverDealtAbsent",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -68,6 +69,7 @@ REACH = {
     "StepsNeverHeldBehind": ("deal", "a producer held behind another on a file opens overlap"),
     "StepsNeverHandLanded": ("deal", "a store op lands a producer by hand"),
     "StepsNeverReadAgain": ("deal", "a review whose read faulted is read again"),
+    "StepsNeverAbsent": ("deal", "a tick runs with an up row absent from the bus serving a ready card"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
@@ -137,7 +139,7 @@ WITNESSES = [
     ("StepsSelfRefusal", "RefusedOnlyByRace", "deal",
      "The deal does not pre-check that a row is up: it plans a Start the\n"
      "store refuses on fresh state.",
-     [("  /\\ V.up[r]\n  /\\ Serves(r, x.p)\n", "  /\\ TRUE   \\* FAULT: was V.up[r]\n  /\\ Serves(r, x.p)\n", 1),
+     [("  /\\ V.up[r]\n  /\\ bus[r]", "  /\\ TRUE   \\* FAULT: was V.up[r]\n  /\\ bus[r]", 1),
       ("MayMove(V, x, r) == IF x.kind = \"work\" THEN StartOK(V, x.p, r) ELSE ReadOK(V, x.p, r)",
        "MayMove(V, x, r) == TRUE   \\* FAULT: was the store's own guard", 1)]),
     ("StepsFenceOnView", "RefusedOnlyByRace", "pre1",
@@ -180,7 +182,7 @@ WITNESSES = [
      "The tier is checked nowhere: policy's rows answer is taken for any up\n"
      "row, and Start does not check that the row serves the card's tier.",
      [("InDomain(V, x, ar, t) == ar \\in Rows /\\ Eligible(V, x, ar, t)",
-       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar]   \\* FAULT: was Eligible(V, x, ar, t)", 1),
+       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar] /\\ bus[ar]   \\* FAULT: was Eligible(V, x, ar, t)", 1),
       ("  /\\ ~W.sh[Stream[p]]\n  /\\ Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n",
        "  /\\ ~W.sh[Stream[p]]\n  /\\ TRUE   \\* FAULT: was Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n", 1)]),
     ("StepsAfterIgnored", "AfterKept", "land",
@@ -244,6 +246,11 @@ WITNESSES = [
      "verdict is retry, and the producer sits in review for good.",
      [("ReadOwed(W, p) == W.ps[p].st = \"review\" /\\ ~\\E c \\in CurReads(W, p) : W.cs[c].st # \"fail\" /\\ ~Faulted(W, c)",
        "ReadOwed(W, p) == W.ps[p].st = \"review\" /\\ ~\\E c \\in CurReads(W, p) : W.cs[c].st # \"fail\"   \\* FAULT: a faulted read counted", 1)]),
+    ("StepsDealtAbsent", "NeverDealtAbsent", "deal",
+     "The deal reads the store's up as presence (D1', 2026-11-07): a row\n"
+     "hooked and up but gone from the bus is dealt a card it never takes.",
+     [("  /\\ bus[r]   \\* on the bus this tick: a configured row is not a present one (D1')\n",
+       "  /\\ TRUE   \\* FAULT: was bus[r]\n", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"
