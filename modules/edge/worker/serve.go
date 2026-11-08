@@ -44,6 +44,9 @@ func (c Config) lookupEnv_internal(name string) string {
 
 // Check refuses a config that cannot run, one line naming the fix.
 func (c Config) Check() error {
+	if strings.TrimSpace(c.Row) == "" {
+		return fmt.Errorf("worker refused: missing --as <row>: pass --as <row>")
+	}
 	if !rowName_internal(c.Row) {
 		return fmt.Errorf("worker refused: --as %q: a row is a name of letters, digits, '-', '_' and '.', not \".\" or \"..\", at most 64 bytes: pass --as <machine name>", c.Row)
 	}
