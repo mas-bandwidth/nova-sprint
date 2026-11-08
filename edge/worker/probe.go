@@ -156,7 +156,11 @@ func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness,
 			return nil, fmt.Errorf("the probe directory: %w", err)
 		}
 	}
-	_, env := h.Command(Job{JobDir: dir, Row: row, Consumer: row + ".models", ProxyAddr: r.ProxyAddr, Routes: r.Proxy.RouteNames(), Models: models})
+	lj := Job{JobDir: dir, Row: row, Consumer: row + ".models", ProxyAddr: r.ProxyAddr, Routes: r.Proxy.RouteNames(), Models: models}
+	if err := wallRefusal_internal(h, lj); err != nil {
+		return nil, err
+	}
+	_, env := h.Command(lj)
 	cmd := edge.Cmd{Argv: argv, Env: env, CleanEnv: true, Dir: dir, Timeout: r.Timeouts.LaunchGrace}
 	res, err := cmp.Or[edge.Exec](r.Exec, edge.NewOSExec()).Run(ctx, cmd)
 	if err != nil || res.ExitCode != 0 {
@@ -187,6 +191,9 @@ func (r *Runner) probeModel_internal(ctx context.Context, row string, h Harness,
 	}
 	pj := h.Probe(Job{Consumer: row + ".probe", Row: row, Kind: "work", Model: model, HarnessName: h.Name(), ProxyAddr: r.ProxyAddr})
 	pj.JobDir, pj.WorktreeDir, pj.Needs, pj.Routes = dir, filepath.Join(dir, "repo"), h.Needs(), r.Proxy.RouteNames()
+	if err := wallRefusal_internal(h, pj); err != nil {
+		return err
+	}
 	argv, env := h.Command(pj)
 	res, runErr := r.Wall.RunHarness(ctx, pj, argv, env, r.Timeouts.LaunchGrace)
 	r.report("probe logs for "+row, keepLogs_internal(dir, res))

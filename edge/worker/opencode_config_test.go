@@ -122,6 +122,27 @@ func TestSanitizeWallEnvKeepsOnlyAPlaceholderOpenCodeConfig(t *testing.T) {
 	}
 }
 
+// A config the wall refuses (here: a proxy address that is not loopback, so
+// OpenCodeConfig and the wall check disagree) is said: the probe's refusal
+// names the wall and why, never the config, instead of "not in the
+// harness's model list".
+func TestARefusedOpenCodeConfigIsSaid(t *testing.T) {
+	t.Parallel()
+	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{Row: "b1", TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
+	r := probeRunner_internal(t, sp, &fakeWall{}, listingExec_internal("opencode/free"), threeProviders_internal(t, allKeys_internal))
+	r.ProxyAddr = "10.0.0.1:7000"
+	err := r.ProbeRow(context.Background(), "b1", "opencode")
+	if err == nil || !strings.Contains(err.Error(), "the opencode config was refused at the wall: provider deepseek: its baseURL is not on a loopback http proxy") {
+		t.Fatalf("a refused config is said with why: %v", err)
+	}
+	if strings.Contains(err.Error(), ProxyPlaceholderKey) || strings.Contains(err.Error(), `"provider"`) || strings.Contains(err.Error(), "10.0.0.1") {
+		t.Fatalf("the refusal prints the config: %v", err)
+	}
+	if (&OpenCodeHarness{}).WallRefusal(Job{ProxyAddr: "127.0.0.1:7000", Routes: []string{"deepseek"}, Model: "deepseek/deepseek-flash"}) != nil {
+		t.Fatal("an admitted config is no refusal")
+	}
+}
+
 // The probe lists models under the same config, declaring every tier
 // candidate whose provider has a key-proxy route (and only those), so
 // `opencode models` lists the policy's models.
