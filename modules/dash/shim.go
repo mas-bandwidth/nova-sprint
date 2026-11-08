@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/big"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -253,9 +254,16 @@ func countWork(w *workRow, c store.Card) {
 		w.Fix++
 	default:
 		w.Waiting++
-		log.Printf("ALARM dashboard: producer %q has unknown state %q; counted as waiting", c.ID, c.State)
+		if _, said := unknownStates.LoadOrStore(c.ID+"\x00"+c.State, true); !said {
+			log.Printf("ALARM dashboard: producer %q has unknown state %q; counted as waiting (said once)", c.ID, c.State)
+		}
 	}
 }
+
+// unknownStates is each producer and unknown state already said: the board
+// maps every poll, and a card's ALARM is said once, not once a second.
+var unknownStates sync.Map
+
 func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]*streamCost) {
 	if w := work[c.Stream]; w != nil {
 		countCost(w, c, costs[c.Stream])
@@ -305,7 +313,11 @@ func countResult(c store.Card, fleet, friends map[string]*fleetRow) {
 }
 func countCost(w *workRow, c store.Card, costs *streamCost) {
 	if !c.Priced {
-		costs.unpriced++
+		// summarizeCost's count, per stream: a finished API run with no
+		// price (a seat run is free; one not yet run has nothing to price).
+		if (c.State == "done" || c.State == "fail") && usage.MustParse(c.Usage).Billing != usage.BillingSubscription {
+			costs.unpriced++
+		}
 		return
 	}
 	if w.Cost == nil {

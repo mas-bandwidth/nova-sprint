@@ -198,7 +198,7 @@ func (r *Runner) probeModel_internal(ctx context.Context, row string, h Harness,
 	argv, env := h.Command(pj)
 	res, runErr := r.Wall.RunHarness(ctx, pj, argv, env, r.Timeouts.LaunchGrace)
 	r.report("probe logs for "+row, keepLogs_internal(dir, res))
-	pj.ProxyStatus = cmp.Or(pj.ProxyStatus, r.Proxy.ConsumeStatus())
+	pj.ProxyStatus = cmp.Or(pj.ProxyStatus, r.Proxy.ConsumeStatus(pj.Consumer))
 	out := ClassifyJob(h, pj, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
 	if runErr == nil && out.Result == "ok" {
 		r.logStep_internal(row, pj.Consumer, "probe", "ok "+cmp.Or(model, "default"), res.Elapsed)

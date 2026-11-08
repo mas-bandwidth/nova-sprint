@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -15,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -178,9 +176,7 @@ type Runner struct {
 	fatal                     chan error      // a refused receipt from a detached job ends the wake loop
 	probed, withdrawn, served map[string]bool
 	tiers                     map[string]string // per row: the tiers its probe proved, a comma list (advertise_internal)
-	adopted                   map[string]JobRecord
 	running                   map[string]context.CancelFunc
-	dedup                     *edge.Deduplicator
 	backoffSeq                uint64
 	lastBeatErr               string
 	advertised                string // the tiers the heartbeat says this harness serves (advertise_internal)
@@ -204,7 +200,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	}
 	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
 	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
-	cfg.adopted, cfg.running, cfg.dedup, cfg.gone = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator(), map[string]int{}
+	cfg.running, cfg.gone = map[string]context.CancelFunc{}, map[string]int{}
 	return &cfg, nil
 }
 func (r *Runner) harnessFor_internal(name string) (Harness, error) {
@@ -307,9 +303,6 @@ func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
 	if rec.PID > 0 {
 		r.killTracked_internal("stopping the withdrawn harness of "+rec.Consumer, rec.PID, rec.Nonce)
 	}
-	r.mu.Lock()
-	delete(r.adopted, rec.Consumer)
-	r.mu.Unlock()
 	r.logStep_internal(rec.Row, rec.Consumer, "withdraw", "stopped; nothing pushed", 0)
 }
 
@@ -354,22 +347,6 @@ func (r *Runner) cancelRunning_internal(id string) {
 	}
 }
 
-// Start is the startup order (drift row 20): the bus hook, which claims the
-// row's name; then a self-unhook of any sprint hook a dead worker left (a
-// refusal means there was none); then `nova-sprint hook --as <row> --role
-// worker`. Nothing acts before it returns, and the caller owns the hook.
-func (r *Runner) Start(ctx context.Context, row string) (WakeHook, error) {
-	hook, err := r.busHook_internal(ctx, row)
-	if err != nil {
-		return nil, err
-	}
-	if err := r.sprintHook_internal(ctx, row); err != nil {
-		hook.Stop()
-		return nil, err
-	}
-	return hook, nil
-}
-
 // busHook_internal is the start's first half: the bus hook, which claims
 // the row's name, then the self-unhook of a dead worker's sprint hook.
 func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, error) {
@@ -394,31 +371,6 @@ func (r *Runner) sprintHook_internal(ctx context.Context, row string) error {
 	}
 	r.logStep_internal(row, "-", "hook", "ok", 0)
 	return nil
-}
-
-// RunOnce is one pass under the same startup order.
-func (r *Runner) RunOnce(ctx context.Context, row string) error {
-	hook, err := r.Start(ctx, row)
-	if err != nil {
-		return err
-	}
-	defer hook.Stop()
-	return r.StepRow(ctx, row)
-}
-
-// RunWakeLoop hooks in (Start), takes one pass, then one pass per burst of
-// wakes: a pass runs on a goroutine of its own, wakes that arrive while it
-// runs coalesce into one more pass, and unacknowledged reports are sent again
-// by each pass (RecoverRow). It returns nil when ctx ends, and an error when
-// the bus hook dies, which the caller turns into a non-zero exit, or when a
-// receipt is refused (ErrReceipt).
-func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
-	hook, err := r.Start(ctx, row)
-	if err != nil {
-		return err
-	}
-	defer hook.Stop()
-	return r.wakeLoop_internal(ctx, row, hook)
 }
 
 // ServeRow is the binary's order: the bus hook and the self-unhook, then
@@ -454,7 +406,7 @@ func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) e
 		beatCtx, stop := context.WithCancel(ctx)
 		defer stop()
 		if m, ok := r.Meter.(OSMeter); ok && m.CPU != nil && r.Now != nil && r.Sleep != nil {
-			go m.CPU.Run(beatCtx, r.Now, r.Sleep)
+			go m.CPU.Run(beatCtx, r.Now, r.Sleep, r.report)
 		}
 		go r.beatLoop_internal(beatCtx, row)
 	}
@@ -624,7 +576,7 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 		}
 		r.report("harness logs", keepLogs_internal(job.JobDir, last))
-		job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus())
+		job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus(job.Consumer))
 		out := ClassifyJob(h, job, last.ExitCode, last.Elapsed, r.Timeouts.LaunchGrace, last.Output)
 		if !out.Retryable5xx || attempt == r.Timeouts.LaunchTries {
 			break
@@ -640,8 +592,7 @@ func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
 	if strings.Contains(string(res.Output), "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
 		return true, fmt.Sprintf("wall/binary fault (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
 	}
-	var exitErr *exec.ExitError
-	if runErr != nil && !errors.As(runErr, &exitErr) {
+	if runErr != nil {
 		return true, "wall execution fault: " + runErr.Error()
 	}
 	return false, ""
@@ -651,7 +602,7 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	if err != nil {
 		return err
 	}
-	job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus())
+	job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus(job.Consumer))
 	out := ClassifyJob(h, job, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
 	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" {
 		out = Outcome{Result: "fault", Reason: why}
@@ -903,7 +854,7 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 	if r.Git != nil {
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
 	}
-	if err := os.RemoveAll(jobDir); err != nil {
+	if err := r.removeDir_internal(jobDir); err != nil { // a read-only module cache too, as the retire path
 		return err
 	}
 	if err := os.Remove(filepath.Join(r.RootDir, RemotesDir, rec.Consumer)); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -912,36 +863,6 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 	r.removeJobState_internal(rec.Consumer)
 	r.logStep_internal(rec.Row, rec.Consumer, "clean", "removed", 0)
 	return nil
-}
-func (r *Runner) QueryEdge(ctx context.Context, req EdgeRequest) (EdgeResult, error) {
-	return r.dedup.Do(ctx, req, func(ctx context.Context, q EdgeRequest) (EdgeResult, error) {
-		return r.evalEdgeQuery_internal(ctx, q.Key(), q)
-	})
-}
-func (r *Runner) evalEdgeQuery_internal(ctx context.Context, id string, req EdgeRequest) (EdgeResult, error) {
-	res := EdgeResult{Epoch: req.Epoch, ID: id, Kind: req.Kind, Card: req.Card, SHA: req.SHA, Outcome: JobNone}
-	rec, recErr := ReadJobRecord(filepath.Join(r.RootDir, "jobs", req.Card))
-	if row := cmp.Or(req.Row, rec.Row); row != "" {
-		next, err := r.Sprint.Next(ctx, row)
-		if err != nil {
-			return EdgeResult{}, err
-		}
-		for _, g := range []struct {
-			items []ConsumerSummary
-			state string
-		}{{next.Final, ""}, {next.Working, card.Working}, {next.Ready, card.Ready}} {
-			for _, c := range g.items {
-				if c.ID == req.Card {
-					res.SHA, res.Outcome = cmp.Or(c.Head, req.SHA), cmp.Or(g.state, c.State)
-					return res, nil
-				}
-			}
-		}
-	}
-	if recErr == nil {
-		res.SHA, res.Outcome, res.Failure = cmp.Or(rec.PushedHead, req.SHA), rec.State, rec.Outcome.Reason
-	}
-	return res, nil
 }
 
 // OSGitOps stages from one work clone per stream repo (directive 42): the
@@ -963,23 +884,6 @@ type OSGitOps struct {
 	Token, GitHubCredential string
 	mu                      sync.Mutex
 	clones                  map[string]*sync.RWMutex // per clone URL (cloneLock_internal)
-}
-
-var orgRepo_internal = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
-
-// CloneURL is the URL a stream's repo is cloned from: a URL or an absolute
-// path as it is; owner/name on the github forge, https://github.com/owner/name.git.
-func CloneURL(repo, forgeName string) (string, error) {
-	repo = strings.TrimSpace(repo)
-	switch {
-	case repo == "":
-		return "", errors.New("stage refused: the receipt names no repo: set the stream's repo (nova-sprint stream set)")
-	case strings.Contains(repo, "://") || strings.HasPrefix(repo, "/") || strings.HasPrefix(repo, "git@"):
-		return repo, nil
-	case forgeName == "github" && orgRepo_internal.MatchString(repo):
-		return "https://github.com/" + strings.TrimSuffix(repo, ".git") + ".git", nil
-	}
-	return "", fmt.Errorf("stage refused: repo %q is not a URL or a path, and forge %q gives no clone URL for it: set the stream's repo to a clone URL, or its forge to github", repo, forgeName)
 }
 
 // repoName_internal is the clone's directory name: the URL's last element
@@ -1012,7 +916,7 @@ func (g *OSGitOps) cloneLock_internal(url string) *sync.RWMutex {
 
 // cloneURL_internal is j's repo's clone URL and its directory name.
 func cloneURL_internal(j Job) (string, string, error) {
-	url, err := CloneURL(j.Repo, j.Forge)
+	url, err := git.CloneURL(j.Repo, j.Forge)
 	if err != nil {
 		return "", "", err
 	}
@@ -1166,7 +1070,7 @@ func (r *Runner) keepRemote_internal(info TakeInfo) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("keep the job's clone URL: %w", err)
 	}
-	url, _ := CloneURL(info.Repo, info.Forge) // "" on a refusal: staging refuses it with its reason
+	url, _ := git.CloneURL(info.Repo, info.Forge) // "" on a refusal: staging refuses it with its reason
 	if err := os.WriteFile(filepath.Join(dir, info.Consumer), []byte(url+"\n"), 0o600); err != nil {
 		return fmt.Errorf("keep the job's clone URL: %w", err)
 	}
@@ -1190,10 +1094,10 @@ func (r *Runner) jobRemote_internal(rec JobRecord) (string, error) {
 }
 
 // recordRemote_internal is the clone URL rec's job was staged from
-// (CloneURL of its repo and forge; "" when they give none, which every git
+// (git.CloneURL of its repo and forge; "" when they give none, which every git
 // call that reaches a remote refuses).
 func recordRemote_internal(rec JobRecord) string {
-	if url, err := CloneURL(rec.Repo, rec.Forge); err == nil {
+	if url, err := git.CloneURL(rec.Repo, rec.Forge); err == nil {
 		return url
 	}
 	return ""
@@ -1412,11 +1316,6 @@ func (g *OSGitOps) OriginHasHead(ctx context.Context, clone, remote, branch, sha
 	return g.hasHead_internal(ctx, clone, remote, branch, sha)
 }
 
-// HasHead: the branch of the repository at remote (a clone URL or path) is
-// at sha.
-func (g *OSGitOps) HasHead(ctx context.Context, remote, branch, sha string) (bool, error) {
-	return g.hasHead_internal(ctx, "", remote, branch, sha)
-}
 func (g *OSGitOps) hasHead_internal(ctx context.Context, dir, remote, branch, sha string) (bool, error) {
 	out, err := g.runRemoteGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), dir, "ls-remote", remote, "refs/heads/"+branch)
 	return err == nil && strings.HasPrefix(strings.TrimSpace(out), sha), err

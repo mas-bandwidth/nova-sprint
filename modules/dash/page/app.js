@@ -327,16 +327,15 @@ function renderStreams(d) {
   });
   var rank = function (k) { return RANK[statusOf[k]] == null ? 5 : RANK[statusOf[k]]; };
   var keys = streamOrder(d).filter(function (k) { return !arch[k]; }).sort(function (a, b) { return rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0); });
-  var sum = { cost: 0n, totalCost: 0n, workCost: 0n, readCost: 0n, unreconciled: 0n, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
+  var sum = { cost: 0n, totalCost: 0n, workCost: 0n, readCost: 0n, unreconciled: 0n }, held = 0, landedStreams = 0, prevRank = null;
   // the epoch's spend, every stream's, the archived ones' too: the cost tile's scope once the
   // sprint is done (where --json's done), when the table's streams are all archived
-  var epoch = { totalCost: 0n, workCost: 0n, readCost: 0n, unpriced: 0 };
+  var epoch = { totalCost: 0n, workCost: 0n, readCost: 0n };
   streamOrder(d).forEach(function (k) {
     var sc = (d.stream_costs || {})[k] || {};
     var tc = cents(sc.total_cost); if (tc) epoch.totalCost += tc;
     var wc = cents(sc.work_cost); if (wc) epoch.workCost += wc;
     var rc = cents(sc.read_cost); if (rc) epoch.readCost += rc;
-    epoch.unpriced += int(sc.unpriced_runs);
   });
   sum.epoch = epoch;
   var digits = digitsOf(streamOrder(d).reduce(function (a, k) { return a + FLOW.reduce(function (b, st) { return b + int(work[k][st]); }, 0); }, 0));
@@ -363,7 +362,6 @@ function renderStreams(d) {
       // the reads beside the work: the same total split by kind (sprint.TierCosts)
       var wc = cents(sc.work_cost); if (wc) sum.workCost += wc;
       var rc = cents(sc.read_cost); if (rc) sum.readCost += rc;
-      sum.unpriced += int(sc.unpriced_runs);
     }
     var status = statusOf[k];
     if (status === "held") held++;

@@ -29,6 +29,7 @@ type Cache struct {
 	anchor      historyAnchor
 	landings    []time.Time // this epoch's landings (not the v1 import's), from the store's events: the ETA's rate, independent of uptime
 	landingsOK  bool
+	rosterNote  errNote       // the run feed's roster failure, said once per cause
 	roster      roster.Roster // each row's kind and width (round 22); SetRoster
 }
 

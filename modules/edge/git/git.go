@@ -191,10 +191,20 @@ func (c *Client) Fetch(ctx context.Context, repoDir string, refs ...string) erro
 	if err != nil {
 		return err
 	}
-	if code != 0 {
+	if code != 0 && missingRef_internal(stderr) {
 		return fmt.Errorf("%w: %w", ErrMissingRef, c.failed_internal(code, stdout, stderr, nil, args...))
 	}
+	if code != 0 { // a login, a host, a timeout: git's own words, never "not on origin"
+		return c.failed_internal(code, stdout, stderr, nil, args...)
+	}
 	return nil
+}
+
+// missingRef_internal: git's stderr says the fetched ref or object is not on
+// origin (a branch: "couldn't find remote ref"; a sha: "not our ref", or a
+// server that serves no unadvertised object).
+func missingRef_internal(stderr string) bool {
+	return strings.Contains(stderr, "couldn't find remote ref") || strings.Contains(stderr, "not our ref") || strings.Contains(stderr, "unadvertised object")
 }
 func (c *Client) LsRemote(ctx context.Context, repoDir, ref string) (string, bool, error) {
 	if isFullSHA_internal(ref) {

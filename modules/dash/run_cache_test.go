@@ -55,7 +55,7 @@ func TestRunFeedShowsStoppedWithReason(t *testing.T) {
 }
 
 // Stella's finding 6: a roster that failed is never shown as current: every
-// row at width 0, the alarm raised, the error on the envelope; the store's
+// row at width 0, the failure said, the error on the envelope; the store's
 // lines stay fresh.
 func TestRunFeedRosterFailureIsNotAnOldRoster(t *testing.T) {
 	t.Parallel()
@@ -70,8 +70,8 @@ func TestRunFeedRosterFailureIsNotAnOldRoster(t *testing.T) {
 	if err := c.Publish(Feed{Snap: snap, Roster: ro, RosterErr: errors.New("nova-config down"), At: now}); err != nil {
 		t.Fatal(err)
 	}
-	if w := c.view.Tables["fleet"].(map[string]*fleetRow)["amd-1"].Width; w != 0 || !c.alarm || !strings.Contains(c.view.Error, "nova-config down") {
-		t.Fatalf("width %d alarm %v error %q: an old roster shown as current", w, c.alarm, c.view.Error)
+	if w := c.view.Tables["fleet"].(map[string]*fleetRow)["amd-1"].Width; w != 0 || !strings.Contains(c.rosterNote.last, "nova-config down") || !strings.Contains(c.view.Error, "nova-config down") {
+		t.Fatalf("width %d said %q error %q: an old roster shown as current", w, c.rosterNote.last, c.view.Error)
 	}
 	if c.view.Machine != "machine: STOPPED x" {
 		t.Fatalf("store line not fresh: %q", c.view.Machine)

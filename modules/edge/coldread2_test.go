@@ -34,8 +34,8 @@ func cr2Sources_internal(t *testing.T, tests bool) map[string]string {
 }
 
 // Build rules: "no dead code"; round 2 ruling: RunRemoteLandStep "is removed
-// if unused". Each name below appears once in the layer's non-test Go: its
-// declaration.
+// if unused". A name below that appears exactly once in the layer's non-test
+// Go is its declaration alone; one moved to a test file or deleted is gone.
 func TestColdread2DefectDeadCode(t *testing.T) {
 	t.Parallel()
 	src := cr2Sources_internal(t, false)
@@ -45,7 +45,7 @@ func TestColdread2DefectDeadCode(t *testing.T) {
 		for _, s := range src {
 			n += len(re.FindAllStringIndex(s, -1))
 		}
-		if n <= 1 {
+		if n == 1 {
 			t.Errorf("%s is declared and never used in non-test code", name)
 		}
 	}

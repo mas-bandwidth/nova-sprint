@@ -13,10 +13,15 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync/atomic"
+	"sync"
 )
 
 const ProxyPlaceholderKey = "nova-proxy-placeholder"
+
+// ProxyKey is the placeholder key a job's harness is given: the proxy
+// swaps it for the route's real key, and reads the job from it, so a
+// provider status is the job's that made the request.
+func ProxyKey(consumer string) string { return ProxyPlaceholderKey + "-" + consumer }
 
 type (
 	ProxyRoute struct {
@@ -28,20 +33,40 @@ type (
 		Routes       map[string]ProxyRoute
 		DefaultRoute string
 		Transport    http.RoundTripper
-		lastStatus   atomic.Int32
+		mu           sync.Mutex
+		lastStatus   map[string]int // per job (ProxyKey's consumer)
 	}
 )
 
-func (p *KeyProxy) RecordStatus(code int) {
+// RecordStatus keeps code as job's last provider status.
+func (p *KeyProxy) RecordStatus(job string, code int) {
 	if p != nil {
-		p.lastStatus.Store(int32(code))
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.lastStatus == nil {
+			p.lastStatus = map[string]int{}
+		}
+		p.lastStatus[job] = code
 	}
 }
-func (p *KeyProxy) ConsumeStatus() int {
+
+// ConsumeStatus is job's last provider status, forgotten once read.
+func (p *KeyProxy) ConsumeStatus(job string) int {
 	if p != nil {
-		return int(p.lastStatus.Swap(0))
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		code := p.lastStatus[job]
+		delete(p.lastStatus, job)
+		return code
 	}
 	return 0
+}
+
+// jobOf_internal is the job a request's placeholder key names ("" for the
+// bare placeholder).
+func jobOf_internal(r *http.Request) string {
+	job, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "+ProxyKey(""))
+	return job
 }
 func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route, ok := p.resolveRoute_internal(r)
@@ -125,7 +150,9 @@ type Provider struct{ Name, Upstream, Host, Key string }
 
 var (
 	providerName_internal = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
-	keyName_internal      = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	// proxyKey_internal is a placeholder key (ProxyKey): never a real one.
+	proxyKey_internal = regexp.MustCompile(`^` + regexp.QuoteMeta(ProxyPlaceholderKey) + `-[A-Za-z0-9._@:-]*$`)
+	keyName_internal  = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 )
 
 // ParseProviders reads --providers: <name>=<upstream url>@<KEY NAME>, comma
@@ -265,13 +292,13 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 	outReq.Host = target.Host
 	resp, err := cmp.Or[http.RoundTripper](p.Transport, http.DefaultTransport).RoundTrip(outReq)
 	if err != nil {
-		p.RecordStatus(http.StatusBadGateway)
+		p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
 		http.Error(w, "proxy upstream fault: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-		p.RecordStatus(resp.StatusCode)
+		p.RecordStatus(jobOf_internal(r), resp.StatusCode)
 	}
 	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)

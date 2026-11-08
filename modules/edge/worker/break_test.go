@@ -218,7 +218,7 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 func TestFunctionalBreakHarnessOutputUnbounded(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	w := &OSReserveWall{}
+	w := &OSReserveWall{Config: WallConfig{ReserveDir: t.TempDir()}} // its own slots, never the host's
 	res, err := w.RunHarness(context.Background(), Job{Consumer: "p1.w1", JobDir: dir, WorktreeDir: dir},
 		[]string{"head", "-c", "100000000", "/dev/zero"}, nil, 60*time.Second)
 	if err != nil {
@@ -243,7 +243,7 @@ func TestFunctionalBreakHarnessOutputUnbounded(t *testing.T) {
 func TestFunctionalBreakHarnessTimeoutHangsOnBackgroundChild(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	w := &OSReserveWall{}
+	w := &OSReserveWall{Config: WallConfig{ReserveDir: t.TempDir()}} // its own slots, never the host's
 	done := make(chan time.Duration, 1)
 	go func() {
 		start := time.Now()

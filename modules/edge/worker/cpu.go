@@ -119,36 +119,36 @@ func clampPercent(p float64) float64 {
 
 // Step takes one reading at now and, when it gives a percent, keeps it and drops
 // what is older than CPUWindow. With Stat the first Step only records the
-// counters.
-func (s *CPUSampler) Step(ctx context.Context, now time.Time) {
+// counters. The error is a reading that could not be taken.
+func (s *CPUSampler) Step(ctx context.Context, now time.Time) error {
 	var pct float64
 	switch {
 	case s.Stat != nil:
 		text, err := s.Stat()
 		if err != nil {
-			return
+			return edge.Cause("the CPU counters could not be read", err)
 		}
 		cur, ok := parseProcStat(text)
 		if !ok {
-			return
+			return errors.New("the CPU counters have no aggregate cpu line")
 		}
 		s.mu.Lock()
 		prev := s.prev
 		s.prev = &cur
 		s.mu.Unlock()
 		if prev == nil {
-			return
+			return nil
 		}
 		if pct, ok = busyPercent(*prev, cur); !ok {
-			return
+			return nil
 		}
 	case s.Second != nil:
 		var err error
 		if pct, err = s.Second(ctx); err != nil {
-			return
+			return err
 		}
 	default:
-		return
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -159,6 +159,7 @@ func (s *CPUSampler) Step(ctx context.Context, now time.Time) {
 		}
 	}
 	s.samples = append(keep, cpuSample{at: now, pct: clampPercent(pct)})
+	return nil
 }
 
 // Peak is the highest percent kept within CPUWindow before now; false when
@@ -176,11 +177,18 @@ func (s *CPUSampler) Peak(now time.Time) (float64, bool) {
 }
 
 // Run steps once a second until ctx ends, on the clock and the wait it is given.
-// A Second meter takes its own second, so it is not waited on again.
-func (s *CPUSampler) Run(ctx context.Context, now func() time.Time, sleep func(time.Duration)) {
+// A Second meter that read takes its own second, so it is not waited on
+// again; a failed step is (never a busy loop), and its failure goes to warn
+// once per cause.
+func (s *CPUSampler) Run(ctx context.Context, now func() time.Time, sleep func(time.Duration), warn func(string, error)) {
+	said := map[string]bool{}
 	for ctx.Err() == nil {
-		s.Step(ctx, now())
-		if s.Second == nil {
+		err := s.Step(ctx, now())
+		if err != nil && ctx.Err() == nil && !said[err.Error()] {
+			said[err.Error()] = true
+			warn("CPU sampler (each cause said once)", err)
+		}
+		if s.Second == nil || err != nil {
 			sleep(time.Second)
 		}
 		if s.Stat == nil && s.Second == nil {

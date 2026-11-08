@@ -376,12 +376,9 @@ func TestStagePerStreamRepo(t *testing.T) {
 		{"/srv/git/x.git", ""}:                 "/srv/git/x.git",
 		{"https://h.example/o/r.git", ""}:      "https://h.example/o/r.git",
 	} {
-		if got, err := CloneURL(repo[0], repo[1]); err != nil || got != want {
-			t.Fatalf("CloneURL(%q, %q) = %q, %v", repo[0], repo[1], got, err)
+		if got, _, err := cloneURL_internal(Job{Repo: repo[0], Forge: repo[1]}); err != nil || got != want {
+			t.Fatalf("cloneURL_internal(%q, %q) = %q, %v", repo[0], repo[1], got, err)
 		}
-	}
-	if _, err := CloneURL("o/r", ""); err == nil || !strings.Contains(err.Error(), "forge \"\" gives no clone URL") {
-		t.Fatalf("org/repo on no forge: %v", err)
 	}
 	roots := t.TempDir()
 	fx := edge.NewFakeExec()
