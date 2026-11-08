@@ -47,3 +47,18 @@ func TestStepsAnswersAttributesFailuresToTheirOwnVersion(t *testing.T) {
 	assert.Equal(t, "accept", a.Verdict["c1"])
 	assert.Empty(t, a.Failed, "v5's failure is not v4's")
 }
+
+// TestJudgementOpLeavesTheAnsweringVersionToSteps: a failed question of the
+// version that answered is the steps' policy judgement (one per question,
+// group policy:v4), so run's op opens none for it; a version that failed
+// and did not answer (v5) is run's, one judgement.
+func TestJudgementOpLeavesTheAnsweringVersionToSteps(t *testing.T) {
+	t.Parallel()
+	a := &asker{snap: store.Snapshot{Seq: 7}, answers: policy.Answers{Version: 4}, failures: []policy.Failure{
+		{Version: 4, Label: "v4", Question: "verdict", Subject: "c1", Line: 3, Msg: "verdict: not a string"},
+		{Version: 5, Label: "v5", Line: 1, Msg: "syntax error"}}}
+	op, ok := judgementOp(a, Observed{})
+	require.True(t, ok)
+	require.Len(t, op.Writes, 1)
+	assert.Equal(t, policy.Group(5), op.Writes[0].(store.PutJudgement).Group)
+}

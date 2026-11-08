@@ -65,11 +65,12 @@ func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []PushFailu
 }
 
 // judgementOp is the tick's policy judgements (policy.Judgements): one per
-// failing version (a row the roster does not name is the steps'), as one op on
-// the snapshot the questions were asked on; its id is that seq's, so a
-// replay applies it once.
+// failing version that did not answer (the answering version's failed
+// questions are the steps' policy judgements, one each; a row the roster
+// does not name is the steps'), as one op on the snapshot the questions
+// were asked on; its id is that seq's, so a replay applies it once.
 func judgementOp(a *asker, o Observed) (store.Op, bool) {
-	js := policy.Judgements(a.snap, o.Roster, a.failures)
+	js := policy.Judgements(a.snap, o.Roster, slices.DeleteFunc(slices.Clone(a.failures), func(f policy.Failure) bool { return f.Version == a.answers.Version }))
 	if len(js) == 0 {
 		return store.Op{}, false
 	}
