@@ -29,12 +29,13 @@ const workerFix = "nova-sprint up --as <coordinator> (it rewrites every bench's 
 // ssh): red when the last line is a refusal (the worker exits on it and its
 // unit restarts it, forever: D14, 2026-11-07, every bench's record carrying
 // flags an earlier worker took, for days, while the rows read as hooked and
-// up), red when the bench is not hooked and up on the bus (up's step 7), a
-// WARN for a log or an inventory that cannot be read from here.
+// up), red when the bench is not hooked and up on the bus (up's step 7) or
+// the inventory cannot be read (no bench was checked), a WARN for a log that
+// cannot be read from here.
 func (e *Engine) checkWorkers(ctx context.Context, r *checkReport, snap store.Snapshot, who map[string]bus.Presence) {
 	units, err := e.Doctor.Workers(ctx)
 	if err != nil {
-		r.warn("workers: the benches cannot be read ("+errText(err)+")", "nova-config machine list --json on the control machine")
+		r.red(RefusalOr(err, broken("workers: the benches cannot be read ("+errText(err)+")", "nova-config machine list --json on the control machine")))
 		return
 	}
 	if len(units) == 0 {

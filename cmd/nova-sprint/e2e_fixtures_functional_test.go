@@ -55,17 +55,28 @@ func (tr *transcript) record(cmd string, exit int, out string) {
 	tr.b.WriteByte('\n')
 }
 
-// save writes the transcript to run/testdata, where the bench commits it.
+// save writes the transcript to run/testdata, where the bench commits it:
+// only after a passing run (a failed run's half transcript never replaces
+// the committed one), written beside it and renamed over it.
 func (tr *transcript) save(t *testing.T) {
+	if t.Failed() {
+		t.Log("transcript: not saved (the run failed)")
+		return
+	}
 	path := filepath.Join("..", "..", "modules", "run", "testdata", "e2e-transcript.txt")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Logf("transcript: %v", err)
+		t.Errorf("transcript: %v", err)
 		return
 	}
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-	if err := os.WriteFile(path, []byte(tr.b.String()), 0o644); err != nil {
-		t.Logf("transcript: %v", err)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(tr.b.String()), 0o644); err != nil {
+		t.Errorf("transcript: %v", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		t.Errorf("transcript: %v", err)
 	}
 }
 

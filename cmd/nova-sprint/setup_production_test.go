@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
 	"strings"
@@ -583,5 +584,67 @@ func TestUnwrappedToolsReceiveOnlyTheirOwnInputs(t *testing.T) {
 	}
 	if !slices.Contains(fleet, "NOVA_SECRETS_STORE=/store") || slices.Contains(fleet, "NOVA_BUS_PASSWORD=bus-secret") || !slices.Contains(bus, "NOVA_BUS_PASSWORD=bus-secret") || !slices.Contains(bus, "CODEX_THREAD_ID=fixture") {
 		t.Fatal("tool-specific inputs missing or crossed")
+	}
+}
+
+// A NOVA_PG_DSN the run's role DSN cannot be made from refuses the walk with
+// its cause, never a run adapter on an empty DSN.
+func TestProductionSetupRefusesABadDSN(t *testing.T) {
+	t.Parallel()
+	st := store.NewFake()
+	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
+	cfg := configForSetup()
+	cfg.DSN = "mysql://db/nova"
+	setup, lock := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
+	if _, err := setup.Verify(context.Background(), 1, verbs.SetupInput{Actor: "alice"}); err == nil || !strings.Contains(err.Error(), `scheme "mysql" is not postgres`) {
+		t.Fatalf("verify: %v", err)
+	}
+	if _, err := lock.Acquire(context.Background()); err == nil || !strings.Contains(err.Error(), `scheme "mysql"`) {
+		t.Fatalf("lock: %v", err)
+	}
+}
+
+// tickingStore is a live sprint: the run service writes an op between the
+// continuation's read and each of its first n writes.
+type tickingStore struct {
+	*store.Fake
+	n int
+}
+
+func (s *tickingStore) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
+	if s.n > 0 && strings.HasPrefix(op.ID, "up-handoff-") {
+		s.n--
+		tick := store.Op{ID: fmt.Sprintf("tick-%d", s.n), Epoch: op.Epoch, Actor: "sprint", Kind: "tick", At: op.At, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: fmt.Sprintf("tick:%d", s.n), Body: "x"}}}
+		if r, err := s.Fake.Apply(ctx, tick); err != nil || !r.Accepted {
+			return r, fmt.Errorf("tick: %+v %v", r, err)
+		}
+	}
+	return s.Fake.Apply(ctx, op)
+}
+
+// A tick between up's read and its continuation write is the store moving
+// on, not a refusal of the continuation: the write reads again and lands.
+// Ticks without end still refuse, after a bounded number of tries.
+func TestContinuationWriteSurvivesALiveRun(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	in := verbs.SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
+	digest, err := handoffDigest(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("b", 64)
+	request, _ := json.Marshal(handoffEnvelope{ID: id, Actor: in.Actor, Digest: digest})
+	st := &tickingStore{Fake: store.NewFake(), n: 2}
+	written, err := writeSetupContinuation(ctx, st, bytes.NewReader(request), time.Unix(1000, 0))
+	if err != nil || written != id {
+		t.Fatal(written, err)
+	}
+	if err = validateHandoffRecord(ctx, st, id, in.Actor, digest); err != nil {
+		t.Fatal(err)
+	}
+	busy := &tickingStore{Fake: store.NewFake(), n: 100}
+	if _, err := writeSetupContinuation(ctx, busy, bytes.NewReader(request), time.Unix(1000, 0)); err == nil || !strings.Contains(err.Error(), "continuation refused") {
+		t.Fatalf("a store that never settles: %v", err)
 	}
 }

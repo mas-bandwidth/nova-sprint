@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
@@ -38,7 +39,7 @@ func runLand(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if reason == "" {
 		return "", refuse("a hand landing needs its reason", "add --reason \"<why>\"")
 	}
-	line, err := e.handLand(ctx, in, snap, in.arg(0), in.str("head"), reason, "")
+	line, err := e.handLand(ctx, in, snap, in.arg(0), strings.ToLower(in.str("head")), reason, "")
 	if err != nil {
 		return "", err
 	}

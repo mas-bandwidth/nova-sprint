@@ -77,12 +77,28 @@ func (p PGBackups) Backup(ctx context.Context, out string) (BackupInfo, error) {
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	target := filepath.Join(out, fmt.Sprintf("sprint-e%d-s%d.sql", info.Epoch, info.Seq))
-	if err = publishDump(body, target); err != nil {
+	target, err := publishAtSeq(body, out, info.Epoch, info.Seq)
+	if err != nil {
 		return BackupInfo{}, err
 	}
 	info.Path = target
 	return info, nil
+}
+
+// publishAtSeq publishes body in dir as sprint-e<epoch>-s<seq>.sql, or, when
+// a dump of that seq is already there (a backup, then clear's own: a backup
+// writes no op), as sprint-e<epoch>-s<seq>-<n>.sql with the first n free.
+func publishAtSeq(body []byte, dir string, epoch int, seq int64) (string, error) {
+	for n := 1; ; n++ {
+		name := fmt.Sprintf("sprint-e%d-s%d.sql", epoch, seq)
+		if n > 1 {
+			name = fmt.Sprintf("sprint-e%d-s%d-%d.sql", epoch, seq, n)
+		}
+		target := filepath.Join(dir, name)
+		if err := publishDump(body, target); !errors.Is(err, os.ErrExist) {
+			return target, err
+		}
+	}
 }
 func publishDump(body []byte, target string) error {
 	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)

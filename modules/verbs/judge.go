@@ -118,7 +118,7 @@ func answerRequest(j store.Judgement, choice, reason string, snap store.Snapshot
 	r := steps.Request{Judgement: j.ID, Answer: choice}
 	switch choice {
 	case "unhold":
-		r.Card, r.Event = j.About, card.UnholdCard{Reason: reason}
+		r.Card, r.Event = j.About, card.UnholdCard{Reason: unheldPrefix + reason}
 	case "drop":
 		r.Card, r.Event = j.About, card.Cancel{Reason: reason}
 	case "fix":

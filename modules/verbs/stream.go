@@ -113,6 +113,14 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if len(ws) == 0 {
 		return done(waitNext, fmt.Sprintf("STREAM %s mode=%s forge=%s unchanged", name, mode, orWord(forge, "none"))), nil
 	}
+	// the stream it makes is admitted as stream add admits one
+	s.Mode, s.Forge = mode, forge
+	if _, err := e.admitStream(ctx, s, "set the stream again"); err != nil {
+		return "", err
+	}
+	if err := e.ensureGroup(ctx, s); err != nil {
+		return "", err
+	}
 	op := e.newOp("stream-set", in.actor, snap, name, mode, forge)
 	op.Writes = ws
 	r, err := e.commit(ctx, op, "nova-sprint show "+name)

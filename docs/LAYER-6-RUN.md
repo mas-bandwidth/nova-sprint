@@ -152,8 +152,8 @@ A fresh store is stopped, its reason `never started`, until the coordinator runs
 run comes up on it and ticks nothing, the board shows `STOPPED never started`, `next` tells the
 coordinator `nova-sprint start --as <coordinator> --reason "<why>"` once the streams need
 nothing first, and tells a worker to wait. `start` on a running sprint and `stop` on a stopped
-one change nothing and succeed (exit 0): `RUNNING already: the sprint is already running
-(<reason>); nothing to start`, next `nova-sprint next --as <me>`, and `STOPPED already: ...`,
+one change nothing and succeed (exit 0): `RUNNING already: the sprint is already running;
+nothing to start`, next `nova-sprint next --as <me>`, and `STOPPED already: ...`,
 next `nova-sprint start`.
 
 `hook` does not run the bus hook: the bus hook (`nova-bus hook --as <name>` under the session's

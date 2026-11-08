@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -62,7 +64,18 @@ func (l *lander) Land(ctx context.Context, s store.Stream, branch, head string) 
 		return "", err
 	}
 	sha, err := l.land_internal(ctx, dir, s, branch, head)
-	return sha, errors.Join(err, lock.Close())
+	return landResult(os.Stderr, sha, err, lock.Close())
+}
+
+// landResult is a landing's outcome: a merge that succeeded is landed at
+// sha whatever the lock's release says (that error is written to w apart);
+// a merge that failed carries both errors.
+func landResult(w io.Writer, sha string, err, closeErr error) (string, error) {
+	if err == nil && closeErr != nil {
+		fmt.Fprintf(w, "nova-sprint: landed %s; the clone's lock did not release: %s\n", sha, edge.RedactN(closeErr.Error(), edge.CommandMax))
+		return sha, nil
+	}
+	return sha, errors.Join(err, closeErr)
 }
 
 func (l *lander) land_internal(ctx context.Context, dir string, s store.Stream, branch, head string) (string, error) {

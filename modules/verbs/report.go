@@ -52,7 +52,7 @@ func readOutcome(in *input) (outcome, error) {
 	if f != nil {
 		return outcome{}, f
 	}
-	o := outcome{verb: in.verb, id: id, gen: gen, head: in.str("head"), reason: in.str("reason"), usage: in.str("usage")}
+	o := outcome{verb: in.verb, id: id, gen: gen, head: strings.ToLower(in.str("head")), reason: in.str("reason"), usage: in.str("usage")}
 	switch in.verb {
 	case "finish":
 		o.result = map[bool]string{true: "fail", false: "ok"}[in.has("failed")]

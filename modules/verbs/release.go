@@ -36,7 +36,7 @@ func runRelease(e *Engine, ctx context.Context, in *input, snap store.Snapshot) 
 	if c.Holder != in.actor && snap.Rows[in.actor].Role != "coordinator" {
 		return "", refuse(id+" is held by "+c.Holder+", not "+in.actor, "ask "+c.Holder+", or the coordinator, to release it")
 	}
-	c, herr := e.releasedHead(ctx, snap, c, in.str("head"))
+	c, herr := e.releasedHead(ctx, snap, c, strings.ToLower(in.str("head")))
 	if herr != nil {
 		return "", herr
 	}

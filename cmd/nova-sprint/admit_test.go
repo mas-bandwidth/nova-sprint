@@ -213,3 +213,18 @@ func TestLanderLandHoldsTheClonesLock(t *testing.T) {
 		t.Fatalf("checkouts with the lock held: %v, want [true]", checkoutLocked)
 	}
 }
+
+// A landing whose merge succeeded is landed even when the clone's lock then
+// fails to release: the merge sha is returned, the lock error said apart.
+func TestLandedEvenWhenTheLockFailsToRelease(t *testing.T) {
+	t.Parallel()
+	sha := strings.Repeat("e", 40)
+	var said strings.Builder
+	got, err := landResult(&said, sha, nil, errors.New("close: bad file descriptor"))
+	if got != sha || err != nil || !strings.Contains(said.String(), "landed "+sha) || !strings.Contains(said.String(), "bad file descriptor") {
+		t.Fatalf("landResult = %q, %v; said %q", got, err, said.String())
+	}
+	if _, err := landResult(&said, "", errors.New("merge refused"), errors.New("close")); err == nil {
+		t.Fatal("a failed merge must stay a failure")
+	}
+}

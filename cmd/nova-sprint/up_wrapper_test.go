@@ -112,3 +112,33 @@ func TestHandoffRefusedWhenWriterStaysOpenPastExpiry(t *testing.T) {
 		t.Fatal("an open channel past its expiry was accepted")
 	}
 }
+
+// up's own refusals go to stdout with its exit, as every verb's do; stderr
+// stays empty (one stream for the one refusal line).
+func TestUpWrapperRefusesOnStdout(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv) and swaps os.Stdout
+	t.Setenv("NOVA_PG_ADMIN_PASSWORD", "fixture")
+	dir := t.TempDir()
+	stdout, err := os.Create(filepath.Join(dir, "stdout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := os.Create(filepath.Join(dir, "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keepOut, keepErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdout, stderr
+	code := runUpWrapper(context.Background(), []string{"--as", "alice"})
+	os.Stdout, os.Stderr = keepOut, keepErr
+	out, err := os.ReadFile(stdout.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	errOut, err := os.ReadFile(stderr.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 1 || !strings.HasPrefix(string(out), "SPRINT REFUSED up: up is the one verb run without database credentials") || len(errOut) != 0 {
+		t.Fatalf("exit %d stdout %q stderr %q", code, out, errOut)
+	}
+}
