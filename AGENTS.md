@@ -56,3 +56,5 @@ Check existing posts for that tag before creating another. Publish only through
 the authorized account and within the user's posting instructions. Report a
 prepared draft as prepared; report it as posted only after verifying the live
 post and retaining its URL.
+
+An idea or a wanted feature goes into docs/roadmap.sexp (render with nova-roadmap); it is never implemented when it is had.
