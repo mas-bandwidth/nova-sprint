@@ -44,13 +44,8 @@ func (e *Engine) newOp(kind, actor string, snap store.Snapshot, what ...any) sto
 	return store.Op{ID: fmt.Sprintf("%s.%x", kind, sha256.Sum256(body)), Epoch: snap.Epoch, Actor: actor, Kind: kind, At: e.Now()}
 }
 
-// consumerOpID is a row's op on a consumer, canonical from (epoch, verb,
-// consumer, gen): nova-worker derives the same id (edge/worker), so a
-// retried take or report replays.
-func consumerOpID(kind string, epoch int, consumer string, gen int) string {
-	sum := sha256.Sum256(fmt.Appendf(nil, "%d:%s:%d:%s:%d", len(kind), kind, epoch, consumer, gen))
-	return fmt.Sprintf("consumer:%x", sum)
-}
+// consumerOpID is store.ConsumerOpID: a row's op on a consumer.
+var consumerOpID = store.ConsumerOpID
 
 // rules are the active policy's numbers the verbs read: the roster's width
 // cap and the consumer deadlines (SEAMS 4: policy owns run's numbers).

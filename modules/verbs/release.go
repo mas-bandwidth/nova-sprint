@@ -35,10 +35,7 @@ func runRelease(e *Engine, ctx context.Context, in *input, snap store.Snapshot) 
 	if herr != nil {
 		return "", herr
 	}
-	opID, err := machineID(in, snap, "release", id, gen)
-	if err != nil {
-		return "", err
-	}
+	opID := consumerOpID("release", snap.Epoch, id, gen)
 	plan, err := withdraw(snap, []store.Card{c}, reason)
 	if err != nil {
 		return "", err

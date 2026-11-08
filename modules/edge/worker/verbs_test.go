@@ -195,7 +195,7 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 	}
 	// the deal is the take: the acknowledgement is a cursor, as verbs' take
 	op := store.Op{
-		ID: FormatTakeOpID(snap.Epoch, consumerID, gen, row), Epoch: snap.Epoch,
+		ID: store.ConsumerOpID("take", snap.Epoch, consumerID, gen), Epoch: snap.Epoch,
 		Actor: row, Kind: "take", At: s.now_internal(), Expect: []store.Expect{store.CardGen{Card: consumerID, Gen: gen}},
 		Writes: []store.Write{store.SetCursor{Name: steps.AckCursor(snap.Epoch, consumerID), Seq: max(snap.Seq, 1)}},
 	}
@@ -417,18 +417,18 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 			if slices.Contains(argv, "take") {
 				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4,"model":"m1","deadline":900,"forge":"","commit_name":"Sprint Bot","commit_email":"1+sprint-bot@users.noreply.example.test"}`), 0, nil
 			}
-			opID := FormatResultID(3, "p1.w1", 1, 4)
+			opID := resultID_internal(3, "p1.w1", 4)
 			return []byte(fmt.Sprintf(`{"accepted":true,"op":%q}`, opID)), 0, nil
 		},
 	}
-	wantTakeID := FormatTakeOpID(3, "p1.w1", 4, "vision.ds")
+	wantTakeID := store.ConsumerOpID("take", 3, "p1.w1", 4)
 	if !strings.HasPrefix(wantTakeID, "consumer:") || len(wantTakeID) != len("consumer:")+64 {
 		t.Fatalf("unexpected canonical take op id: %s", wantTakeID)
 	}
 	if _, err := cli.Take(ctx, "vision.ds", "p1.w1", 4); err != nil {
 		t.Fatalf("Take: %v", err)
 	}
-	wantRepID := FormatResultID(3, "p1.w1", 1, 4)
+	wantRepID := resultID_internal(3, "p1.w1", 4)
 	rec, err := cli.Report(ctx, ReportRequest{
 		Epoch: 3, Row: "vision.ds", Consumer: "p1.w1", Gen: 4,
 		Result: "ok", Head: strings.Repeat("a", 40), Cost: 950, Priced: true, Usage: "input=10 output=2 model=deepseek/deepseek-flash",
@@ -437,11 +437,11 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 		t.Fatalf("Report: rec=%+v err=%v", rec, err)
 	}
 	takeArgs := strings.Join(calls[0], " ")
-	if !strings.Contains(takeArgs, "--id "+wantTakeID+" --epoch 3 --as vision.ds --json") {
+	if !strings.Contains(takeArgs, "take p1.w1@4 --epoch 3 --as vision.ds --json") || strings.Contains(takeArgs, "--id") {
 		t.Fatalf("unexpected take argv: %s", takeArgs)
 	}
 	repArgs := strings.Join(calls[1], " ")
-	if !strings.Contains(repArgs, "--result ok --id "+wantRepID+" --epoch 3 --cost-microusd 950 --priced true --as vision.ds --json") {
+	if !strings.Contains(repArgs, "--result ok --epoch 3 --as vision.ds --json") || !strings.Contains(repArgs, "--cost 0.00095") || strings.Contains(repArgs, "--id") {
 		t.Fatalf("unexpected report argv: %s", repArgs)
 	}
 	if i := slices.Index(calls[1], "--usage"); i < 0 || calls[1][i+1] != "input=10 output=2 model=deepseek/deepseek-flash" {

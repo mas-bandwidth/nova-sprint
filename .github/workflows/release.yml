@@ -1,4 +1,4 @@
-# Release: a pushed tag vX.Y.Z builds nova-sprint and nova-worker for every platform, writes one
+# Release: a pushed tag vX.Y.Z builds nova-sprint for every platform, writes one
 # SHA256SUMS and creates the GitHub release as a prerelease: it becomes latest only after a
 # real card has run end to end on it (gh release edit TAG --prerelease=false --latest). Assets are named <command>_<tag>_<os>_<arch>[.exe],
 # the scheme nova-tools' release uses and `nova-fleet install --repo mas-bandwidth/nova-sprint
@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          for dir in cmd/nova-sprint cmd/nova-worker; do
+          for dir in cmd/nova-sprint; do
             cmd=$(basename "$dir")
             # the version: main.binaryVersion (nova-sprint's version verb, and what a
             # backup records) and dash.Version for the dashboard; -X on a main

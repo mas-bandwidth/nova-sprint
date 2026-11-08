@@ -315,8 +315,8 @@ func TestColdread2DefectUnparsedReportOutputBecomesReceipt(t *testing.T) {
 }
 
 // Round 2 ruling (keys): "EdgeRequest, RequestID, report and take op ids all
-// carry the epoch." FormatTakeOpID exists (worker.go:29) but nothing calls it:
-// the take verb is sent with no op id at all (verbs.go:102).
+// carry the epoch." The take verb derives its op id from the epoch
+// (store.ConsumerOpID), so the take is sent with its --epoch.
 func TestColdread2DefectTakeSendsNoEpochOpID(t *testing.T) {
 	t.Parallel()
 	var argv []string
@@ -325,7 +325,7 @@ func TestColdread2DefectTakeSendsNoEpochOpID(t *testing.T) {
 		return []byte(`{"Consumer":"p1.w1"}`), 0, nil
 	}}
 	_, _ = cli.Take(context.Background(), "vision.ds", "p1.w1", 4)
-	if !slices.Contains(argv, "--id") {
-		t.Errorf("take was sent as %q: no op id, so no epoch fences it", argv)
+	if !slices.Contains(argv, "--epoch") {
+		t.Errorf("take was sent as %q: no epoch, so none fences its op id", argv)
 	}
 }

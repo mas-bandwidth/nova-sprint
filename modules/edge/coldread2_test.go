@@ -17,7 +17,7 @@ import (
 func cr2Sources_internal(t *testing.T, tests bool) map[string]string {
 	t.Helper()
 	out := map[string]string{}
-	for _, root := range []string{".", "../../cmd/nova-worker"} {
+	for _, root := range []string{"."} {
 		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") != tests {
 				return nil
@@ -39,7 +39,7 @@ func cr2Sources_internal(t *testing.T, tests bool) map[string]string {
 func TestColdread2DefectDeadCode(t *testing.T) {
 	t.Parallel()
 	src := cr2Sources_internal(t, false)
-	for _, name := range []string{"FormatTakeOpID", "RunArgv", "JobCIWait", "JobCleaned", "HasHead", "RestedUntil", "NewClient"} {
+	for _, name := range []string{"RunArgv", "JobCIWait", "JobCleaned", "HasHead", "RestedUntil", "NewClient"} {
 		re := regexp.MustCompile(`\b` + name + `\b`)
 		n := 0
 		for _, s := range src {

@@ -7,8 +7,10 @@ package store
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -109,6 +111,15 @@ type Op struct {
 	Expect []Expect
 	Writes []Write
 	Note   string // kept in the receipt
+}
+
+// ConsumerOpID is a row's op on a consumer, canonical from (kind, epoch,
+// consumer, gen): the verbs write a take or report under it and the worker
+// checks its report's receipt against it, so a retried take or report
+// replays.
+func ConsumerOpID(kind string, epoch int, consumer string, gen int) string {
+	sum := sha256.Sum256(fmt.Appendf(nil, "%d:%s:%d:%s:%d", len(kind), kind, epoch, consumer, gen))
+	return fmt.Sprintf("consumer:%x", sum)
 }
 
 // Stream is a row of sprint.streams. Mode and Forge are its landing

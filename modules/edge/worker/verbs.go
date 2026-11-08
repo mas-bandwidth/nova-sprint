@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/usage"
 	"strconv"
 	"strings"
 	"time"
@@ -20,9 +21,9 @@ var (
 	// other than the store, in the sprint's own words: a stream's origin
 	// this host cannot read is not the store being down.
 	ErrHookFailed = errors.New("worker: sprint hook failed")
-	// ErrReceipt marks a take receipt that lacks what the worker takes from
-	// it (model, deadline, forge). It is fatal: the sprint is older than the
-	// worker, and every further card would be refused the same way.
+	// ErrReceipt marks a take receipt that lacks what the worker runs a card
+	// with (model, deadline, commit identity). It is fatal: every further
+	// card would be refused the same way.
 	ErrReceipt = errors.New("worker: take receipt refused")
 )
 
@@ -178,33 +179,13 @@ func (c *CLISprintClient) Next(ctx context.Context, row string) (NextResponse, e
 	return resp, nil
 }
 func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen int) (TakeInfo, error) {
-	ep := cmp.Or(c.Epoch, 1)
-	id := FormatTakeOpID(ep, consumer, gen, row)
-	out, code, err := c.run_internal(ctx, c.argv_internal("take", fmt.Sprintf("%s@%d", consumer, gen), "--id", id, "--epoch", strconv.Itoa(ep), "--as", row, "--json"))
+	out, code, err := c.run_internal(ctx, c.argv_internal("take", fmt.Sprintf("%s@%d", consumer, gen), "--epoch", strconv.Itoa(cmp.Or(c.Epoch, 1)), "--as", row, "--json"))
 	var info TakeInfo
 	if cerr := c.classifyCLIError_internal(out, code, err); cerr != nil {
 		return info, cerr
 	}
 	if err := json.Unmarshal(out, &info); err != nil {
 		return info, fmt.Errorf("nova-sprint take --json: %s", edge.ParseFailure(err, out))
-	}
-	// The forge may be "" (hand), so presence is read from the keys.
-	var keys map[string]json.RawMessage
-	if err := json.Unmarshal(out, &keys); err != nil {
-		return TakeInfo{}, fmt.Errorf("nova-sprint take --json: %s", edge.ParseFailure(err, out))
-	}
-	have := map[string]bool{}
-	for k := range keys {
-		have[strings.ToLower(k)] = true
-	}
-	var missing []string
-	for _, k := range []string{"model", "deadline", "forge"} {
-		if !have[k] {
-			missing = append(missing, k)
-		}
-	}
-	if len(missing) > 0 {
-		return TakeInfo{}, receiptError_internal(consumer, missing)
 	}
 	return info, nil
 }
@@ -229,16 +210,18 @@ func checkReceipt_internal(info TakeInfo) error {
 	return nil
 }
 func receiptError_internal(consumer string, missing []string) error {
-	return fmt.Errorf("%w: the receipt for %s has no %s: update nova-sprint, then check that `nova-sprint take <card>@<gen> --as <row> --json` prints model, deadline, forge, commit_name and commit_email", ErrReceipt, consumer, strings.Join(missing, ", "))
+	return fmt.Errorf("%w: the receipt for %s has no %s: check that `nova-sprint take <card>@<gen> --as <row> --json` prints model, deadline, commit_name and commit_email (the deal's model, the policy's timeouts().consumer[tier], the sprint's commit identity)", ErrReceipt, consumer, strings.Join(missing, ", "))
 }
 func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
 	ep := cmp.Or(req.Epoch, c.Epoch, 1)
-	id := cmp.Or(req.ResultID, FormatResultID(ep, req.Consumer, 0, req.Gen))
+	id := cmp.Or(req.ResultID, resultID_internal(ep, req.Consumer, req.Gen))
 	argv := c.argv_internal("report", fmt.Sprintf("%s@%d", req.Consumer, req.Gen),
-		"--result", req.Result, "--id", id, "--epoch", strconv.Itoa(ep),
-		"--cost-microusd", strconv.FormatInt(max(0, req.Cost), 10), "--priced", strconv.FormatBool(req.Priced),
-		"--as", req.Row, "--json")
-	for _, kv := range [][2]string{{"--head", req.Head}, {"--reason", req.Reason}, {"--finding", req.Finding}, {"--usage", req.Usage}} {
+		"--result", req.Result, "--epoch", strconv.Itoa(ep), "--as", req.Row, "--json")
+	cost := "" // unpriced: no --cost
+	if req.Priced {
+		cost = usage.USD(req.Cost)
+	}
+	for _, kv := range [][2]string{{"--head", req.Head}, {"--reason", req.Reason}, {"--finding", req.Finding}, {"--usage", req.Usage}, {"--cost", cost}} {
 		if kv[1] != "" {
 			argv = append(argv, kv[0], kv[1])
 		}

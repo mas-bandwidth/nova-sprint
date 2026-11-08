@@ -14,10 +14,9 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 )
 
-// Config is one worker as a binary starts it: `nova-worker` and
-// `nova-sprint worker` both build it from their flags and call Serve, so the
-// two are one worker (drift rows 14, 15, 20: no host, model, deadline or
-// provider literal; those come from the flags and the take receipt). Any
+// Config is one worker as `nova-sprint worker` starts it from its flags
+// (drift rows 14, 15, 20: no host, model, deadline or provider literal;
+// those come from the flags and the take receipt). Any
 // machine nova-config gives the bench role runs one, the coordinator's too.
 type Config struct {
 	Row, Host, Root, StateDir, Harness string

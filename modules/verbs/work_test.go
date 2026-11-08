@@ -76,7 +76,6 @@ func TestTakeRefusals(t *testing.T) {
 		{name: "a producer", as: "alice", args: []string{"take", "p1@1"}, exit: 1, want: []string{"p1 is not dealt"}},
 		{name: "an old epoch", as: "alice", args: []string{"take", "p1.w1@1", "--epoch", "2"}, exit: 1, want: []string{"epoch 2 is over", "nova-sprint next"}},
 		{name: "a bad epoch", as: "alice", args: []string{"take", "p1.w1@1", "--epoch", "x"}, exit: 2, want: []string{"--epoch takes a positive whole number"}},
-		{name: "another id", as: "alice", args: []string{"take", "p1.w1@1", "--id", "x"}, exit: 1, want: []string{"--id x is not this take's id", "pass --id consumer:"}},
 		{name: "not in nova-config", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1,
 			prep: func(_ *testing.T, w *world) { delete(w.roster.ro.Workers, "alice") }, want: []string{"row alice is not in nova-config"}},
 		{name: "a tier not served", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1,
@@ -126,7 +125,7 @@ func TestFinishFailedAndReportForms(t *testing.T) {
 	want(t, w.do("alice", "finish", "p1.w1@1", "--failed", "--reason", "gate red: go test exit 1"), 0, "FAILED p1.w1")
 	w = newWorld(t)
 	takeW1(t, w)
-	r := w.do("alice", "report", "p1.w1@1", "--result", "fault", "--reason", "bench down", "--cost-microusd", "12", "--priced", "false", "--json")
+	r := w.do("alice", "report", "p1.w1@1", "--result", "fault", "--reason", "bench down", "--json")
 	want(t, r, 0, `"accepted":true`)
 	if c := w.snap(t).Cards["p1.w1"]; c.Result != "fault" || c.Cost != 0 || c.Priced || c.Usage != "billing=api charged=- unpriced=no-tokens" {
 		t.Fatalf("card %+v", c)
@@ -145,9 +144,7 @@ func TestFinishRefusals(t *testing.T) {
 		{name: "failed with no reason", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@1", "--failed"}, exit: 1, want: []string{"a fail needs its reason"}},
 		{name: "not the holder", as: "bob", prep: takeW1, args: finish, exit: 1, want: []string{"p1.w1 is not held by bob"}},
 		{name: "a read card", as: "bob", prep: takeR1, args: []string{"finish", "p2.r1@1", "--head", head}, exit: 1, want: []string{"p2.r1 is a read card", "nova-sprint read p2.r1@1 yes|fix"}},
-		{name: "costs mixed", as: "alice", prep: takeW1, args: append(finish, "--cost", "1", "--priced", "true"), exit: 1, want: []string{"--cost mixes with --cost-microusd"}},
 		{name: "a bad cost", as: "alice", prep: takeW1, args: append(finish, "--cost", "1.0000001"), exit: 2, want: []string{"--cost is dollars"}},
-		{name: "micro-dollars unpriced", as: "alice", prep: takeW1, args: append(finish, "--cost-microusd", "5"), exit: 2, want: []string{"--priced true|false go together"}},
 		{name: "not in hand", as: "alice", args: []string{"finish", "p1.w1@1", "--head", head}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State = "ready" }), want: []string{"nova-sprint show p1.w1"}},
 	})
 }

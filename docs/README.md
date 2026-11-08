@@ -25,7 +25,7 @@ missing values.
 ## Inspect a release before setup
 
 The [official releases](https://github.com/mas-bandwidth/nova-sprint/releases)
-contain `nova-sprint`, `nova-worker` and `SHA256SUMS` for Linux and macOS, on
+contain `nova-sprint` and `SHA256SUMS` for Linux and macOS, on
 amd64 and arm64. The following Bash block downloads one pinned release into a
 private temporary directory, checks the binary against its release checksum,
 and reads its version and help. It removes that temporary directory on exit;

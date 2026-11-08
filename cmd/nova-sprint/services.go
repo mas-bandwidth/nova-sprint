@@ -90,7 +90,7 @@ func runMachine(ctx context.Context, ro *run.ConfigRoster) (string, error) {
 	return run.ResolveMachine(os.Getenv(run.MachineEnv), hostname, machines)
 }
 
-// Worker is nova-worker's runner (edge/worker) for one row, its sprint
+// Worker is the worker's runner (edge/worker) for one row, its sprint
 // verbs this binary's own.
 func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 	self, err := os.Executable()

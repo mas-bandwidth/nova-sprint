@@ -4,11 +4,11 @@ package worker
 import (
 	"bytes"
 	"cmp"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,15 +22,10 @@ type (
 	EdgeResult  = edge.EdgeResult
 )
 
-func consumerOpID_internal(verb string, epoch int, consumer string, gen int) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s:%d:%s:%d", len(verb), verb, cmp.Or(epoch, 1), consumer, gen)))
-	return fmt.Sprintf("consumer:%x", sum)
-}
-func FormatResultID(epoch int, consumer string, _ int, gen int) string {
-	return consumerOpID_internal("report", epoch, consumer, gen)
-}
-func FormatTakeOpID(epoch int, consumer string, gen int, _ string) string {
-	return consumerOpID_internal("take", epoch, consumer, gen)
+// resultID_internal is the op id the report verb writes a consumer's
+// report under (store.ConsumerOpID), which the receipt is checked against.
+func resultID_internal(epoch int, consumer string, gen int) string {
+	return store.ConsumerOpID("report", cmp.Or(epoch, 1), consumer, gen)
 }
 
 const (

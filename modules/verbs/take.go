@@ -64,10 +64,7 @@ func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if f != nil {
 		return "", f
 	}
-	opID, err := machineID(in, snap, "take", id, gen)
-	if err != nil {
-		return "", err
-	}
+	opID := consumerOpID("take", snap.Epoch, id, gen)
 	a, err := e.answers(ctx, snap)
 	if err != nil {
 		return "", err
@@ -112,16 +109,6 @@ func heldBy(snap store.Snapshot, ro roster.Roster, row, id string, gen int) (sto
 		return c, refuse(fmt.Sprintf("row %s does not serve tier %s", row, c.Tier), "nova-sprint release "+fmtCard(id, gen)+" --as "+row+" --reason \"tier "+c.Tier+" not served\"")
 	}
 	return c, nil
-}
-
-// machineID is a row's op id on a consumer, checked against --id when
-// given (--epoch is every hooked verb's, checked before it runs).
-func machineID(in *input, snap store.Snapshot, kind, id string, gen int) (string, error) {
-	opID := consumerOpID(kind, snap.Epoch, id, gen)
-	if given := in.str("id"); given != "" && given != opID {
-		return "", refuse("--id "+given+" is not this "+kind+"'s id", "pass --id "+opID+", or leave --id out")
-	}
-	return opID, nil
 }
 
 // acknowledge writes row's acknowledgement of c, fenced on c's gen: one op,

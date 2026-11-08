@@ -279,7 +279,7 @@ func (h *runnerWalkHarness_internal) shadowRec_internal(c string) JobRecord {
 	}
 	var resID string
 	if h.pushed[c] {
-		resID = FormatResultID(1, c, 1, 1)
+		resID = resultID_internal(1, c, 1)
 	}
 	out := "ok"
 	if h.bounced[c] {
@@ -299,7 +299,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 	case "Take":
 		h.takes[c]++
 		rec, err := h.st.Apply(ctx, store.Op{
-			ID:     FormatTakeOpID(1, c, h.takes[c], "vision.ds"),
+			ID:     store.ConsumerOpID("take", 1, c, h.takes[c]),
 			Epoch:  1,
 			Actor:  "vision.ds",
 			Kind:   "take",
@@ -528,7 +528,7 @@ func (h *runnerWalkHarness_internal) advancePostRun_internal(t *testing.T, c, ac
 		}
 		h.pushed[c] = true
 		if rec.ResultID == "" {
-			rec.ResultID = FormatResultID(1, c, 1, 1)
+			rec.ResultID = resultID_internal(1, c, 1)
 		}
 		rec.State = JobReporting
 		_ = WriteJobRecord(dir, rec)
