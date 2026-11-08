@@ -124,7 +124,7 @@ held after too many bounces, a row that flapped, a card that cannot land) is a s
 
 ```
 NEEDS YOU judgement=<n> card=<id>: CI red at <head>: see <url>
-choices: rework | waive | drop
+choices: land | fix | retry
 run: nova-sprint judge <n> <choice> --reason "<why>"
 ```
 
