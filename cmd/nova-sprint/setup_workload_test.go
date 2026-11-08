@@ -355,3 +355,32 @@ func TestWorkerServiceStoreAndBusReachableFromTheBench(t *testing.T) {
 		}
 	}
 }
+
+// D15: a loopback store or bus with no fleet address for the run machine
+// (no address, or not in the inventory) is a refusal naming the machine
+// and how to give it one, before any record is written; a store that is
+// not loopback needs no address.
+func TestInstallWorkersRefusesLoopbackWithNoRunAddress(t *testing.T) {
+	t.Parallel()
+	noAddress := strings.Replace(workloadMachines, `"address":"100.100.1.2"`, `"address":""`, 1)
+	notListed := workloadMachines[strings.Index(workloadMachines, `{"kind":"machine","fields":{"name":"amd-1"`):]
+	for _, c := range []struct {
+		machines string
+		rows     int
+	}{{noAddress, 3}, {notListed, 2}} {
+		machines := c.machines
+		f := &fleetFake{machines: machines, rows: c.rows}
+		w := testWorkload(f, nil, nil)
+		w.run.Env["NOVA_PG_DSN"] = "postgres://nova_sprint@LOCALHOST:5432/nova?sslmode=disable"
+		err := w.InstallWorkers(context.Background())
+		var op *verbs.OperationError
+		if !errors.As(err, &op) || !strings.Contains(op.Problem, "studio") || !strings.Contains(op.Fix, "nova-config machine set studio --address") ||
+			slices.ContainsFunc(f.calls, func(c []string) bool { return len(c) > 2 && c[2] == "add" }) {
+			t.Fatal(err, f.calls)
+		}
+		f = &fleetFake{machines: machines, rows: c.rows}
+		if err := testWorkload(f, nil, nil).InstallWorkers(context.Background()); err != nil {
+			t.Fatal("a store that is not loopback needs no run address:", err)
+		}
+	}
+}

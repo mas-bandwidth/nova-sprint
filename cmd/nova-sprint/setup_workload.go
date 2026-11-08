@@ -61,20 +61,28 @@ func workerService(machine string, run verbs.FleetService, runAddress string) ve
 	return verbs.FleetService{Name: "sprint-worker-" + machine, Machine: machine, Seat: machine, Argv: workerArgv(machine, run.Machine), Keys: keys, Env: env}
 }
 
-// benchReachable is addr (a URL such as the store's DSN, or a host:port
-// such as the bus's) as a bench reaches it: a loopback host is the run
+// loopbackAddr is true when addr (a URL such as the store's DSN, or a
+// host:port such as the bus's) names a loopback host: localhost in any
+// case, 127.0.0.0/8 or ::1.
+func loopbackAddr(addr string) bool {
+	host := ""
+	if u, err := url.Parse(addr); err == nil && u.Host != "" {
+		host = u.Hostname()
+	} else if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+}
+
+// benchReachable is addr as a bench reaches it: a loopback host is the run
 // machine's, so it becomes runAddress, the run machine's fleet address,
 // with user, port, database and query kept. Any other host, an empty
 // runAddress or an address it cannot parse is kept as it is.
 func benchReachable(addr, runAddress string) string {
-	if runAddress == "" {
+	if runAddress == "" || !loopbackAddr(addr) {
 		return addr
 	}
-	loopback := func(host string) bool { return host == "localhost" || net.ParseIP(host).IsLoopback() }
 	if u, err := url.Parse(addr); err == nil && u.Host != "" {
-		if !loopback(u.Hostname()) {
-			return addr
-		}
 		host := runAddress
 		if port := u.Port(); port != "" {
 			host = net.JoinHostPort(runAddress, port)
@@ -82,10 +90,8 @@ func benchReachable(addr, runAddress string) string {
 		u.Host = host
 		return u.String()
 	}
-	if host, port, err := net.SplitHostPort(addr); err == nil && loopback(host) {
-		return net.JoinHostPort(runAddress, port)
-	}
-	return addr
+	_, port, _ := net.SplitHostPort(addr)
+	return net.JoinHostPort(runAddress, port)
 }
 
 // serviceLogPath is where nova-fleet's unit for service appends its output
@@ -135,6 +141,9 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	}
 	if len(benches) == 0 {
 		return nil
+	}
+	if runAddress == "" && (loopbackAddr(w.run.Env["NOVA_PG_DSN"]) || loopbackAddr(w.run.Env["NOVA_BUS_REDIS"])) {
+		return &verbs.OperationError{Problem: "the store or bus is on loopback on run machine " + w.run.Machine + ", which has no fleet address in the machine inventory, so no bench could reach it", Fix: "nova-config machine set " + w.run.Machine + " --address <MagicDNS name> --actor <you> --reason <why>, then nova-sprint up again", Exit: 1}
 	}
 	names := make([]string, 0, len(benches))
 	for _, bench := range benches {
