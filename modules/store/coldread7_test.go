@@ -138,6 +138,22 @@ func TestColdRead7ReceiptFidelityFake(t *testing.T) {
 	require.NoError(t, checkRebuild(snap, evs))
 }
 
+// A dump whose stop flag or reason was changed is not what its log rebuilds:
+// checkRebuild (so ValidateHistory, so a restore) refuses it. Unit: Fake only.
+func TestCheckRebuildComparesTheStop(t *testing.T) {
+	t.Parallel()
+	f := NewFake()
+	_, evs := cr7Run(t, f)
+	snap, err := f.Snapshot(context.Background())
+	require.NoError(t, err)
+	flipped := snap
+	flipped.Stopped = !snap.Stopped
+	require.ErrorContains(t, checkRebuild(flipped, evs), "stopped")
+	reason := snap
+	reason.StopReason = snap.StopReason + " (edited)"
+	require.ErrorContains(t, checkRebuild(reason, evs), "stop reason")
+}
+
 func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

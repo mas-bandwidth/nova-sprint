@@ -50,7 +50,7 @@ func TestFunctionalRestoreSameSessionAndRollback(t *testing.T) {
 		if err := w.Exec(ctx, fmt.Sprintf("INSERT INTO sprint.meta (id,schema,hash) VALUES (1,2,'%s')", identity.Expected)); err != nil {
 			return err
 		}
-		return w.Exec(ctx, "INSERT INTO sprint.epoch (id,n) VALUES (1,1)")
+		return w.Exec(ctx, "INSERT INTO sprint.epoch (id,n,stopped,stop_reason) VALUES (1,1,true,'never started')")
 	}))
 	var value int
 	require.NoError(t, admin.QueryRow(ctx, "SELECT n FROM sprint.epoch").Scan(&value))
