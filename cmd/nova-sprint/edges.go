@@ -59,22 +59,39 @@ type origin struct {
 	dir string
 }
 
-func (o *origin) clone(ctx context.Context, repo string) (string, error) {
+// fetched is the address's clone, cloned when absent, with refs (or
+// origin's default refspec) fetched, both under the clone's lock
+// (git.LockClone), so reads of one address in this process or another on
+// the same dir never run git fetch in one repository at once. What is read
+// after the fetch takes no lock.
+func (o *origin) fetched(ctx context.Context, repo string, refs ...string) (string, error) {
 	sum := sha256.Sum256([]byte(repo))
 	dir := filepath.Join(o.dir, fmt.Sprintf("%x", sum[:8]))
-	if err := os.MkdirAll(o.dir, 0o700); err != nil {
+	lock, err := git.LockClone(ctx, dir)
+	if err != nil {
 		return "", err
 	}
-	return dir, o.git.Clone(ctx, repo, dir)
+	err = o.git.Clone(ctx, repo, dir)
+	if err == nil {
+		err = o.git.Fetch(ctx, dir, refs...)
+	}
+	return dir, errors.Join(err, lock.Close())
+}
+
+// push is git push from the address's clone at dir under the clone's lock:
+// a push updates refs/remotes/origin in the clone, as a fetch does.
+func (o *origin) push(ctx context.Context, dir, sha, ref, expectOld string) error {
+	lock, err := git.LockClone(ctx, dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(o.git.Push(ctx, dir, sha, ref, expectOld), lock.Close())
 }
 
 // Contains is whether head contains ancestor, read in the clone of the
 // repository at url (admission: the work is not already at the base).
 func (o *origin) Contains(ctx context.Context, url, ancestor, head string) (bool, error) {
-	dir, err := o.clone(ctx, url)
-	if err == nil {
-		err = o.git.Fetch(ctx, dir)
-	}
+	dir, err := o.fetched(ctx, url)
 	if err != nil {
 		return false, err
 	}

@@ -4,8 +4,10 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -136,7 +138,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	absent := time.Duration(0)
 	for {
-		res, err := git.LandPass(ctx, e.Git, e.Forge, req)
+		res, err := git.LandPass(ctx, lockedClone{e.Git}, e.Forge, req)
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			absent = waited
 			if e.Pause(ctx, LandPoll) != nil {
@@ -276,7 +278,36 @@ func (e *Edges) clone(ctx context.Context, s store.Stream) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(url))
 	dir := filepath.Join(e.ReposDir, fmt.Sprintf("%x", sum[:8]))
-	return dir, e.Git.Clone(ctx, url, dir)
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		return dir, nil // there: no lock, so a heads read never waits behind a landing
+	}
+	lock, err := git.LockClone(ctx, dir) // Clone looks for .git again under it
+	if err != nil {
+		return "", err
+	}
+	return dir, errors.Join(e.Git.Clone(ctx, url, dir), lock.Close())
+}
+
+// lockedClone is LandPass's Git with each fetch and push (both update
+// refs/remotes/origin in the clone) under the clone's lock (git.LockClone,
+// the lock nova-sprint check takes in the same repos dir); its other steps,
+// and its waits for CI, hold nothing.
+type lockedClone struct{ git.Git }
+
+func (g lockedClone) Fetch(ctx context.Context, dir string, refs ...string) error {
+	lock, err := git.LockClone(ctx, dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(g.Git.Fetch(ctx, dir, refs...), lock.Close())
+}
+
+func (g lockedClone) Push(ctx context.Context, dir, sha, ref, expectOld string) error {
+	lock, err := git.LockClone(ctx, dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(g.Git.Push(ctx, dir, sha, ref, expectOld), lock.Close())
 }
 
 // Stale asks the heads loop to read again now.

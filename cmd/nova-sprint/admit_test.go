@@ -2,11 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
+	"slices"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // TestHostForge: CanAct reads gh's viewerPermission and refuses below
@@ -90,5 +97,82 @@ func TestRequiredChecksFromAURL(t *testing.T) {
 	}
 	if len(argvs) != 2 || !strings.HasPrefix(argvs[0], "gh api repos/mas-bandwidth/nova-tools/branches/main ") || !strings.HasPrefix(argvs[1], "gh api repos/mas-bandwidth/nova-tools/rules/branches/main ") {
 		t.Fatalf("argv %q", argvs)
+	}
+}
+
+// TestOriginFetchSerialized: the clone and fetch of one address's clone are
+// held under one lock per clone dir (concurrent git fetch in one repository
+// fails "cannot lock ref", and admission read that as a repository that
+// cannot be cloned). While one read of the address is fetching, a second
+// read (Tree, Commits, Contains) does not fetch, and one whose ctx ends while
+// it waits returns the ctx's error; the lock is a file lock, so it holds
+// across processes too. git is a fake (no process); the lock file is in a
+// temp dir.
+func TestOriginFetchSerialized(t *testing.T) {
+	t.Parallel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	var fetches atomic.Int32
+	o := &origin{dir: t.TempDir(), git: git.New(git.Config{Exec: git.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		if slices.Contains(cmd.Argv, "fetch") && fetches.Add(1) == 1 {
+			entered <- struct{}{}
+			<-release
+		}
+		return edge.Result{}, nil
+	})})}
+	const url = "https://github.com/o/r"
+	first := make(chan error, 1)
+	go func() {
+		_, err := o.Tree(context.Background(), url, "abc")
+		first <- err
+	}()
+	<-entered
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, errTree := o.Tree(done, url, "abc")
+	_, errCommits := o.Commits(done, url, "abc", "main", "")
+	_, errContains := o.Contains(done, url, "abc", "def")
+	for _, err := range []error{errTree, errCommits, errContains} {
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("a read that waited on a fetch in flight: %v (want context.Canceled)", err)
+		}
+	}
+	if n := fetches.Load(); n != 1 {
+		t.Fatalf("%d fetches in one clone at once, want 1", n)
+	}
+	close(release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.Tree(context.Background(), url, "abc"); err != nil || fetches.Load() != 2 {
+		t.Fatalf("after the first fetch: %v, %d fetches", err, fetches.Load())
+	}
+}
+
+// TestLanderPushTakesTheClonesLock: git push updates refs/remotes/origin/<ref>
+// in the clone, so the lander's push holds the clone's lock as its fetch
+// does. git is a fake (no process).
+func TestLanderPushTakesTheClonesLock(t *testing.T) {
+	t.Parallel()
+	var pushLocked []bool
+	l := &lander{clones: &origin{dir: t.TempDir(), git: git.New(git.Config{Exec: git.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		switch {
+		case slices.Contains(cmd.Argv, "push"):
+			f, err := os.OpenFile(cmd.Dir+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+			if err != nil {
+				return edge.Result{}, err
+			}
+			pushLocked = append(pushLocked, syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil)
+			if err := f.Close(); err != nil {
+				return edge.Result{}, err
+			}
+		}
+		return edge.Result{}, nil
+	})})}}
+	s := store.Stream{Name: "s1", Repo: "https://example.invalid/r.git", Base: "main"}
+	if err := l.CreateGroup(context.Background(), s, strings.Repeat("a", 40)); err != nil {
+		t.Fatal(err)
+	}
+	if len(pushLocked) != 1 || !pushLocked[0] {
+		t.Fatalf("pushes with the lock held: %v, want [true]", pushLocked)
 	}
 }

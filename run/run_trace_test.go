@@ -513,7 +513,7 @@ func (r *runTrace) start(hookFails bool) bool {
 	r.add("Hook", fmt.Sprintf(`, p |-> %q, lock |-> %q, hook |-> %q, procPhase |-> "ready"`, r.proc, r.proc, r.proc))
 	r.chooser = ch
 	l, err := coldStart(r.ctx, Config{Store: &traceStore{Fake: r.base, r: r}, Policy: tracePolicy{r}, Bus: traceBus{r}, Git: stillGit{},
-		Clock: &beats{now: r.at}, Log: io.Discard}, ch)
+		ReposDir: r.t.TempDir(), Clock: &beats{now: r.at}, Log: io.Discard}, ch)
 	if err != nil {
 		r.t.Fatal(err)
 	}

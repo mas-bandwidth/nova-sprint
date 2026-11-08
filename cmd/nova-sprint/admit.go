@@ -18,10 +18,7 @@ import (
 // Tree is every file at sha in the address's clone under the state dir
 // (fetched first, so a base newer than the clone is there).
 func (o *origin) Tree(ctx context.Context, url, sha string) ([]string, error) {
-	dir, err := o.clone(ctx, url)
-	if err == nil {
-		err = o.git.Fetch(ctx, dir)
-	}
+	dir, err := o.fetched(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -32,10 +29,7 @@ func (o *origin) Tree(ctx context.Context, url, sha string) ([]string, error) {
 // since, in the address's clone under the state dir, fetched first (the
 // head and the base are there): one git log.
 func (o *origin) Commits(ctx context.Context, url, head, base, since string) ([]git.Commit, error) {
-	dir, err := o.clone(ctx, url)
-	if err == nil {
-		err = o.git.Fetch(ctx, dir)
-	}
+	dir, err := o.fetched(ctx, url)
 	if err != nil {
 		return nil, err
 	}

@@ -256,6 +256,7 @@ func (c *Client) lsRemoteSHA_internal(ctx context.Context, repoDir, target strin
 			if s == target {
 				// A tip origin lists that cannot be fetched is not absent: the
 				// fetch's failure is the answer, never "not on origin".
+				// Fetches without the clone's lock (LockClone): on a shared clone, ls-remote a ref, never a sha.
 				if err := c.Fetch(ctx, repoDir, target); err != nil {
 					return "", false, err
 				}
@@ -269,7 +270,7 @@ func (c *Client) lsRemoteSHA_internal(ctx context.Context, repoDir, target strin
 	// the first such failure is returned rather than "not on origin".
 	var unknown error
 	for _, rsha := range remoteSHAs {
-		if err := c.Fetch(ctx, repoDir, rsha); err != nil {
+		if err := c.Fetch(ctx, repoDir, rsha); err != nil { // unlocked too, as above
 			unknown = cmp.Or(unknown, err)
 			continue
 		}
