@@ -22,9 +22,6 @@ type (
 	EdgeResult  = edge.EdgeResult
 )
 
-func RequestID(epoch int64, kind, card, sha string) string {
-	return edge.RequestID(epoch, kind, card, sha)
-}
 func consumerOpID_internal(verb string, epoch int, consumer string, gen int) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s:%d:%s:%d", len(verb), verb, cmp.Or(epoch, 1), consumer, gen)))
 	return fmt.Sprintf("consumer:%x", sum)

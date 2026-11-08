@@ -146,8 +146,10 @@ func TestFunctionalREADMECommandsRunCold(t *testing.T) {
 			t.Errorf("bare nova-sprint is not next: %+v, next %+v", bare, next)
 		}
 	}
-	// Not on the bus: the bus is an operation that failed; the fix starts the bus hook.
-	refuses(run("next", "--as", "cold-reader"), failed, "nova-bus hook --as cold-reader", "next")
+	// Not on the bus: the bus is an operation that failed; the fix starts the
+	// bus hook. next reads the bus itself and answers exit 0 with a next line.
+	refuses(run("take", "--as", "cold-reader"), failed, "nova-bus hook --as cold-reader", "take")
+	completes(run("next", "--as", "cold-reader"), "next", "--as", "cold-reader")
 	// Bad usage: the fix points at help.
 	refuses(run("frob"), failed, "nova-sprint help", "frob")
 	refuses(run("version", "--frob"), failed, "nova-sprint help version", "version", "--frob")
