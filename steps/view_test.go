@@ -87,6 +87,26 @@ func TestViewFoldEqualsBuild(t *testing.T) {
 	assert.Empty(t, w.v.Cards)
 }
 
+// TestViewFoldKeepsAConsumersModel: the view folds a card as store.Fold
+// does, so a report from a pre-model worker (an after-image with no model)
+// keeps the cut's model, and the fold equals a fresh build of the rebuilt
+// snapshot at that seq.
+func TestViewFoldKeepsAConsumersModel(t *testing.T) {
+	t.Parallel()
+	cut := store.Card{ID: "p1.w4", Kind: "work", Of: "p1", Stream: "s", State: "working", Holder: "amd-2", Model: "inception/mercury-3"}
+	done := cut
+	done.State, done.Model, done.Gen = "done", "", 1
+	events := []store.Event{
+		{Seq: 1, Accepted: true, Kind: "tick", At: t0, After: &store.State{Cards: map[string]store.Card{cut.ID: cut}}},
+		{Seq: 2, Accepted: true, Kind: "report", At: t0, After: &store.State{Cards: map[string]store.Card{cut.ID: done}}},
+	}
+	rebuilt := store.Rebuild(events)
+	v := Build(store.Rebuild(nil), t0)
+	v.Fold(events)
+	assert.Equal(t, rebuilt.Cards[cut.ID], v.Cards[cut.ID], "the view folds a card as store.Fold does")
+	assert.Equal(t, Build(rebuilt, t0).core(), v.core(), "the fold equals a fresh build at seq 2")
+}
+
 // TestViewRefusedEventMovesSeqOnly: a refused op is an event too; it moves
 // the cursor and nothing else.
 func TestViewRefusedEventMovesSeqOnly(t *testing.T) {

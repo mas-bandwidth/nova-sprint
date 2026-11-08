@@ -354,6 +354,9 @@ func (p productionSetup) writeHandoffChild(ctx context.Context, request handoffE
 		return "", err
 	}
 	s := p.cfg.Secrets
+	if err = s.ExecReady(); err != nil {
+		return "", err
+	}
 	args := []string{"exec", "--only", "NOVA_SPRINT_PG_PASSWORD", "--store", s.Store, "--key", s.KeyFile, "--as", s.Seat, "--", p.cfg.Binary, "--internal-write-continuation"}
 	cmd := exec.CommandContext(ctx, "nova-secrets", args...)
 	cmd.Stdin = bytes.NewReader(data)
@@ -995,6 +998,9 @@ func productionFleetCommandWith(cfg productionSetupConfig, run func(context.Cont
 			return nil, edge.Cause("nova-config DSN unavailable", err)
 		}
 		s := cfg.Secrets
+		if err = s.ExecReady(); err != nil {
+			return nil, err
+		}
 		prefix := []string{"exec", "--only", "NOVA_PG_PASSWORD", "--store", s.Store, "--key", s.KeyFile, "--as", s.Seat, "--", "env", "NOVA_PG_DSN=" + dsn, "NOVA_PG_PASSWORD_ENV=NOVA_PG_PASSWORD", name}
 		return run(ctx, true, "nova-secrets", append(prefix, args...)...)
 	}
