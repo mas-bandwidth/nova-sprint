@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,4 +99,22 @@ func TestHelpSaysWhatUpGives(t *testing.T) {
 	want(t, w.do("", "help", "stop"), 0, "up: the store up makes at step 2 (an epoch), at any later step of up")
 	want(t, w.do("", "help", "check"), 0, "up: nothing")
 	want(t, w.do("", "help"), 0, "whatever step up is at")
+}
+
+// The help index and the role label say what the cold verbs really need:
+// help and version run anywhere, the rest need the acting name on the bus.
+func TestHelpSaysColdVerbsNeedTheBus(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	r := w.do("", "help")
+	want(t, r, 0, "help and version run anywhere; up, check and every other verb need the acting name hooked in to the bus", "check            ", "[cold (no sprint hook needed)]")
+	if strings.Contains(r.Output, "no hook needed") || strings.Contains(r.Output, "up and check run anywhere") {
+		t.Fatalf("help still says the cold verbs need nothing:\n%s", r.Output)
+	}
+}
+
+// A group's help names how to read each verb's table, as help playbook does.
+func TestHelpOfAGroupNamesItsVerbs(t *testing.T) {
+	t.Parallel()
+	want(t, newWorld(t).do("", "help", "policy"), 0, "nova-sprint help policy set|activate|show|diff|check for its table")
 }

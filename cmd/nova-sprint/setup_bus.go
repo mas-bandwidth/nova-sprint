@@ -22,6 +22,9 @@ func setupBusCommand(cfg productionSetupConfig, required func(context.Context) (
 			return nil, err
 		}
 		s := cfg.Secrets
+		if err := s.ExecReady(); err != nil {
+			return nil, err
+		}
 		out, err := run(ctx, true, "nova-secrets", "names", "--store", s.Store, "--as", s.Seat)
 		if err != nil {
 			if ctx.Err() != nil {

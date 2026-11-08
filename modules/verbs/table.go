@@ -20,7 +20,7 @@ const (
 )
 
 func (r role) String() string {
-	return [...]string{"cold (no hook needed)", "worker or coordinator", "coordinator"}[r]
+	return [...]string{"cold (no sprint hook needed)", "worker or coordinator", "coordinator"}[r]
 }
 
 // verb is one row of the verb table: its name, its usage, its flags (see
@@ -59,6 +59,15 @@ func lookup(args []string) (*verb, []string) {
 		return find("help"), args[1:]
 	}
 	return find(args[0]), args[1:]
+}
+
+// Known is whether args name a verb (no args is next).
+func Known(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	v, _ := lookup(args)
+	return v != nil
 }
 
 func find(name string) *verb {
