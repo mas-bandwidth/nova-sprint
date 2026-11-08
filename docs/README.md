@@ -1,4 +1,4 @@
-# nova-sprint: a guide for AIs
+# nova-sprint: the detailed guide
 
 With nova-sprint, your AIs can:
 
@@ -14,12 +14,83 @@ workers receive them over nova-bus, and the run service arranges independent
 reviews and landing. PostgreSQL keeps the cards, attempts, findings and decisions
 outside the workers' contexts. The dashboard shows that same work moving.
 
-This guide is for an AI with a shell, starting without project knowledge.
-If you were invited to an existing sprint, start at [Join as a worker](#join-as-a-worker).
-If you are setting up the system, start at [Set up a sprint](#set-up-a-sprint).
-Replace every `<placeholder>` before running an example. Output examples show
-the shape of receipts; your names, generations, hashes and sequence numbers
-come from your own sprint.
+This is the detailed guide for humans and AIs using nova-sprint. Pick the route
+that matches your task; you do not need to provision a second sprint to join one.
+
+| You want to… | Start here | What you need |
+| --- | --- | --- |
+| Decide whether nova-sprint fits your work | [Inspect a release](#inspect-a-release-before-setup) | Linux or macOS, a release download and a checksum check; no fleet, account or API key. |
+| Set up a new sprint | [Set up a sprint](#set-up-a-sprint) | A working nova-tools fleet, PostgreSQL, Redis, machine access and a coordinator. |
+| Work or review an assigned card | [Join as a worker](#join-as-a-worker) | An invitation, your registered row, fleet connection settings, seat and granted runtime credentials. |
+| Add work and manage decisions | [Run a sprint as coordinator](#run-a-sprint-as-coordinator) | A configured sprint and its coordinator role. |
+| Recover from a refused command | [When a command refuses](#when-a-command-refuses) | The full receipt and the current row, generation and epoch. |
+
+Use nova-sprint when several AI sessions or worker machines need shared tasks,
+dependencies, review and landing in Git repositories. It requires the nova-tools
+fleet for real work; inspecting the binary does not demonstrate a running sprint.
+A single session with a small local task may need only its usual coding tools.
+
+Run shell examples in Bash. Replace every `<placeholder>` before running an
+example. Output examples show receipt shapes; your names, generations, hashes
+and sequence numbers come from your own sprint. A printed `next:` line is a
+suggestion for the configured workflow, not a reason to run setup or invent
+missing values.
+
+## Inspect a release before setup
+
+The [official releases](https://github.com/mas-bandwidth/nova-sprint/releases)
+contain `nova-sprint`, `nova-worker` and `SHA256SUMS` for Linux and macOS, on
+amd64 and arm64. The following Bash block downloads one pinned release into a
+private temporary directory, checks the binary against its release checksum,
+and reads its version and help. It removes that temporary directory on exit;
+it does not install a service or change an existing binary. It needs `curl`,
+`awk`, and `sha256sum` (Linux) or `shasum` (macOS).
+
+```sh
+(
+  set -eu
+  NOVA_SPRINT_VERSION=v2.0.9
+  case "$(uname -s)" in
+    Linux) sprint_os=linux ;;
+    Darwin) sprint_os=darwin ;;
+    *) echo "This example needs Linux or macOS" >&2; exit 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64) sprint_arch=amd64 ;;
+    arm64|aarch64) sprint_arch=arm64 ;;
+    *) echo "This example needs amd64 or arm64" >&2; exit 1 ;;
+  esac
+  sprint_trial=$(mktemp -d)
+  trap 'rm -rf "$sprint_trial"' EXIT
+  cd "$sprint_trial"
+  asset="nova-sprint_${NOVA_SPRINT_VERSION}_${sprint_os}_${sprint_arch}"
+  release="https://github.com/mas-bandwidth/nova-sprint/releases/download/$NOVA_SPRINT_VERSION"
+  curl --fail --location --silent --show-error "$release/$asset" -o "$asset"
+  curl --fail --location --silent --show-error "$release/SHA256SUMS" -o SHA256SUMS
+  awk -v asset="$asset" '$2 == asset { print; found++ } END { if (found != 1) exit 1 }' SHA256SUMS > selected.sha256
+  if [ "$sprint_os" = darwin ]; then
+    shasum -a 256 -c selected.sha256
+  else
+    sha256sum -c selected.sha256
+  fi
+  chmod u+x "$asset"
+  "./$asset" version
+  "./$asset" help
+  "./$asset" help up
+)
+```
+
+The checksum check must succeed before the executable runs. `version` identifies
+the release; `help` lists the verbs; `help up` describes setup. These explicit
+commands need no store, bus, login or credentials. Bare `nova-sprint` means
+`next`, and `check` inspects the configured fleet: neither is this first
+inspection step. The printed help does not establish that setup, workers or
+landing will work on your machines.
+
+To run real work, continue below and install the selected release through
+nova-fleet. Use the [worker route](#join-as-a-worker) instead if you are joining
+someone else's sprint. To build from source, use `make build` with the Go
+version in `go.mod`; it stamps the binaries with their source version.
 
 ## The concepts you need
 

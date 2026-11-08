@@ -1,0 +1,34 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "nova-sprint",
+  "description": "Coordinates AI coding tasks across models, harnesses and machines, with persistent cards, dependency scheduling, independent reviews, GitHub landing and a progress dashboard. Runs on a nova-tools fleet.",
+  "folders": [
+    "docs"
+  ],
+  "excludeFolders": [
+    "docs/assets",
+    "docs/reviews"
+  ],
+  "excludeFiles": [
+    "AGENTS.md",
+    "CARD-CONTRACT.md",
+    "CORRECT-USE.md",
+    "DASHBOARD-LESSONS.md",
+    "ENFORCED.md",
+    "LANDING.md",
+    "LAYER-1-STORE.md",
+    "LAYER-2-CARD-MACHINE.md",
+    "LAYER-3-STEPS.md",
+    "LAYER-4-EDGES.md",
+    "LAYER-5-POLICY.md",
+    "LAYER-6-RUN.md",
+    "LESSONS-PRIORITY-AND-MERGE.md",
+    "LESSONS.md",
+    "PLAYBOOK-COORDINATOR.md",
+    "PLAYBOOK-WORKER.md",
+    "SEAMS.md",
+    "SETUP.md",
+    "TESTING.md",
+    "llms.txt"
+  ]
+}
