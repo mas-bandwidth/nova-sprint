@@ -370,7 +370,6 @@ func TestKeyProxyAllowlistAndKeyInjection(t *testing.T) {
 	t.Parallel()
 	var seenAuth, seenHost string
 	p := &KeyProxy{
-		DefaultRoute: "deepseek",
 		Routes: map[string]ProxyRoute{
 			"deepseek": {
 				Name:         "deepseek",

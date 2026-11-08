@@ -26,9 +26,7 @@ func (r ReadOutcome) String() string { return r.v }
 // broken is a fix with its reason as the finding (the head does not meet
 // the card); no verdict at all (no result.json, one that does not parse or
 // names no verdict this worker knows, a kill) is a fault of the harness,
-// bounded by the fault limit and never a verdict on the head. A record
-// written before NoVerdict existed says so in its reason (it names
-// result.json), so a stale record heals at its next send.
+// bounded by the fault limit and never a verdict on the head.
 func ReadOutcomeOf(o Outcome) (ReadOutcome, Outcome) {
 	switch o.Result {
 	case "ok":
@@ -37,7 +35,7 @@ func ReadOutcomeOf(o Outcome) (ReadOutcome, Outcome) {
 		o.Finding = cmp.Or(o.Finding, o.Reason)
 		return ReadFix, o
 	case "fail":
-		if o.NoVerdict || strings.Contains(o.Reason, "result.json") {
+		if o.NoVerdict {
 			o.Result, o.NoVerdict = "fault", true
 			return ReadFault, o
 		}

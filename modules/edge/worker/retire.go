@@ -48,15 +48,9 @@ func (r *Runner) pushBranch_internal(ctx context.Context, rec *JobRecord, sha st
 
 // leaseFrom_internal is where a job's push expects the branch to be: the
 // head this job last pushed; before its first push, the tip it found at
-// stage ("" : absent); for a record from before StartTip, its prior head.
+// stage ("" : absent).
 func leaseFrom_internal(rec JobRecord) string {
-	switch {
-	case rec.PushedHead != "":
-		return rec.PushedHead
-	case rec.StartTipRead:
-		return rec.StartTip
-	}
-	return rec.PriorHead
+	return cmp.Or(rec.PushedHead, rec.StartTip)
 }
 
 // holds_internal: rec's job still holds its consumer as far as this worker
@@ -91,8 +85,8 @@ func (r *Runner) retiredDir_internal(rec JobRecord) string {
 // retireJob_internal removes the directory of a job that holds its card no
 // more, once, and pushes nothing. Its record goes first to RetiredDir; the
 // directory is then made writable and removed. A removal that fails is
-// raised (stderr and the step log) and the directory moved to
-// <root>/quarantine; with the record in RetiredDir it is not tried again.
+// raised and the directory set aside (setAside_internal); with the record in
+// RetiredDir it is not tried again.
 func (r *Runner) retireJob_internal(jobDir string, rec JobRecord, why string) {
 	keep := r.retiredDir_internal(rec)
 	if fileExists_internal(keep) {
@@ -102,32 +96,11 @@ func (r *Runner) retireJob_internal(jobDir string, rec JobRecord, why string) {
 	rec.State = JobCleaned
 	r.report("the retired record of "+rec.Consumer+" (its removal may be tried again next pass)", WriteJobRecord(keep, rec))
 	if err := r.removeDir_internal(jobDir); err != nil {
-		r.retireFailed_internal(jobDir, rec, why, err)
+		r.setAside_internal(jobDir, rec, fmt.Sprintf("retired (%s), its job directory could not be removed (%v)", why, err))
 		return
 	}
 	r.removeJobState_internal(rec.Consumer)
 	r.logStep_internal(rec.Row, rec.Consumer, "retire", "removed, nothing pushed: "+why, 0)
-}
-
-// retireFailed_internal raises a job directory that could not be removed
-// and moves it to <root>/quarantine, out of the jobs the passes read.
-func (r *Runner) retireFailed_internal(jobDir string, rec JobRecord, why string, cause error) {
-	dst := r.quarantineDir_internal(rec.Consumer, rec.Gen)
-	if fileExists_internal(dst) {
-		dst += fmt.Sprintf("-%d", r.Now().Unix())
-	}
-	where := dst
-	err := os.MkdirAll(filepath.Dir(dst), 0o755)
-	if err == nil {
-		err = os.Rename(jobDir, dst)
-	}
-	if err != nil {
-		where, cause = jobDir, fmt.Errorf("%w; moving it to quarantine: %w", cause, err)
-	}
-	msg := fmt.Errorf("%s@%d (%s): its job directory could not be removed (%w); it is left in %s and not tried again: remove it by hand with chmod -R u+w %s, then rm -rf %s",
-		rec.Consumer, rec.Gen, why, cause, where, where, where)
-	r.report("retire", msg)
-	r.logStep_internal(rec.Row, rec.Consumer, "retire", "removal failed: "+msg.Error(), 0)
 }
 
 func (r *Runner) removeDir_internal(dir string) error {

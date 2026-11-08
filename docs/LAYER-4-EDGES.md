@@ -633,8 +633,8 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
   * *Row 20.* The startup order is `Runner.ServeRow`: the bus hook (it claims
     the row's name and must say so), then `nova-sprint unhook --as <row>`
     (a refusal means no stale hook), then the probe (`ProbeRow`), then
-    `nova-sprint hook --as <row> --role worker`, and only then `next --json`,
-    served and `--once` alike; `StepRow` never hooks. The `nova-bus hook` is the one long-lived child
+    `nova-sprint hook --as <row> --role worker`, and only then `next --json`;
+    `StepRow` never hooks. The `nova-bus hook` is the one long-lived child
     (`OSBusHook`, `WakeHook`: edge.Exec returns only when its program ends,
     so the hook cannot be run through it and is the one child the worker
     starts itself, with only `NOVA_BUS_*` in its environment). A line is a
@@ -1000,10 +1000,10 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   `PassNeverWaitsOnJobs`, witness `RunnerPassWaitsOnJobs`); the trace walk
   emits the pass. Test: `TestLivePassTakesWhileAJobBlocks`,
   `TestLivePeriodicWakeRunsAPass`.
-- **Probe failure never exits (61).** `ServeRow` (served, not `--once`)
+- **Probe failure never exits (61).** `ServeRow`
   holds the row unhooked with the probe's reason on stderr and probes again
   after `ProbeBackoff` (30 s) doubling to `ProbeBackoffMax` (10 min), both
-  guesses; `--once` still exits on a failed probe.
+  guesses.
 - **Restart and stop (70, 73).** The take receipt is kept as
   `receipt.json` at take; a restart rebuilds the job from it (a re-take
   would replay the take's op id at the pre-take gen): taken is staged again,

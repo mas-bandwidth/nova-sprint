@@ -103,8 +103,8 @@ func runWorker(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (str
 	if !validName(in.actor) {
 		return "", misuse("worker", "worker takes --as <row>")
 	}
-	w := WorkerArgs{Row: in.actor, Host: in.str("host"), Root: in.str("root"), StateDir: in.str("state-dir"), Harness: in.str("harness"),
-		WorkRoot: in.str("work-root"), MirrorRoot: in.str("mirror-root"), Providers: in.str("providers"), WallReads: in.list("wall-read"), Once: in.has("once")}
+	w := WorkerArgs{Row: in.actor, Root: in.str("root"), StateDir: in.str("state-dir"), Harness: in.str("harness"),
+		WorkRoot: in.str("work-root"), MirrorRoot: in.str("mirror-root"), Providers: in.str("providers"), WallReads: in.list("wall-read")}
 	if err := e.Services.Worker(ctx, w); err != nil {
 		return "", err
 	}

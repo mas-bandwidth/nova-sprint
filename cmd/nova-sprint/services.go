@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/cost"
@@ -97,8 +95,7 @@ func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 	if err != nil {
 		return err
 	}
-	host, _ := os.Hostname()
-	w.Host = cmp.Or(strings.TrimSpace(w.Host), host)
+	w.Host, _ = os.Hostname()
 	w.SprintBin = self
 	home, err := os.UserHomeDir()
 	if err != nil {

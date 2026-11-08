@@ -31,7 +31,6 @@ type Config struct {
 	// wall reads, never writes (a toolchain and its module cache;
 	// CheckWallReads refuses the rest).
 	WallReads []string
-	Once      bool
 	// LookupEnv reads the worker's environment (os.LookupEnv when nil).
 	LookupEnv func(string) (string, bool)
 }
@@ -69,8 +68,7 @@ func (c Config) Check() error {
 }
 
 // Serve builds the OS adapters and serves the row (Runner.ServeRow: hook,
-// probe, then one pass or the wake loop) until ctx ends or the bus hook
-// dies. It writes the one-pass receipt to out.
+// probe, then the wake loop) until ctx ends or the bus hook dies.
 func Serve(ctx context.Context, c Config, out func(string)) error {
 	if err := c.Check(); err != nil {
 		return err
@@ -93,11 +91,7 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 	if err != nil {
 		return err
 	}
-	if err := r.ServeRow(ctx, c.Row, cmp.Or(c.Harness, "claude"), c.Once); err != nil || !c.Once {
-		return err
-	}
-	out(fmt.Sprintf("WORKER PASS %s host=%s\nnext: nothing; wait for the bus", c.Row, c.Host))
-	return nil
+	return r.ServeRow(ctx, c.Row, cmp.Or(c.Harness, "claude"))
 }
 
 // newOSRunner_internal is the runner on the real clock, git, wall and bus.

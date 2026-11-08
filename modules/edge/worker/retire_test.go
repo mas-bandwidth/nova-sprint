@@ -180,7 +180,7 @@ func staleWorkRecord_internal(state string, gen int) JobRecord {
 	return JobRecord{
 		Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: "vision.ds", Stream: "s1",
 		Branch: testBranch, BaseSHA: testBaseSHA, PushedHead: testWorkSHA, Gen: gen, Attempt: 1,
-		State: state, PID: 4242, Nonce: "n4242", StartTipRead: true,
+		State: state, PID: 4242, Nonce: "n4242",
 	}
 }
 
@@ -230,7 +230,7 @@ func TestRetireFailureIsRaisedOnceAndQuarantined(t *testing.T) {
 	if _, err := os.Stat(quarantined); err != nil || g.removes != 1 || len(g.git.pushes()) != 0 {
 		t.Fatalf("quarantine stat %v, removals %d, pushes %+v", err, g.removes, g.git.pushes())
 	}
-	if len(g.warns) != 1 || !strings.Contains(g.warns[0], "could not be removed (permission denied)") || !strings.Contains(g.warns[0], "chmod -R u+w .../p1.w1@1") {
+	if len(g.warns) != 1 || !strings.Contains(g.warns[0], "could not be removed (permission denied)") || !strings.Contains(g.warns[0], "set aside in .../p1.w1@1") {
 		t.Fatalf("want one warning naming the fix, got %q", g.warns)
 	}
 }

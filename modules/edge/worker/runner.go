@@ -376,32 +376,25 @@ func (r *Runner) sprintHook_internal(ctx context.Context, row string) error {
 // ServeRow is the binary's order: the bus hook and the self-unhook, then
 // the probe of the harness with every model the row would run (ProbeRow:
 // next --json names a row's models on the bus before its sprint hook),
-// then the sprint hook, then one pass (once) or the wake loop. Probing
+// then the sprint hook, then the wake loop. Probing
 // before the sprint hook makes a hooked row a probed one: its harness
 // lists the policy's models and its seat's provider keys reached it, which
 // is what up's step 7 proves by the row being hooked and up (admission,
-// intent rule 34). A failed probe leaves the row unhooked: once, it is the
-// exit; served, the row is held and the probe retried (probeHeld_internal).
-func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) error {
+// intent rule 34). A failed probe leaves the row unhooked and held, and the
+// probe is retried (probeHeld_internal).
+func (r *Runner) ServeRow(ctx context.Context, row, harness string) error {
 	hook, err := r.busHook_internal(ctx, row)
 	if err != nil {
 		return err
 	}
 	defer hook.Stop()
-	if once {
-		if err := r.ProbeRow(ctx, row, harness); err != nil {
-			return err
-		}
-	} else if !r.probeHeld_internal(ctx, row, harness) {
+	if !r.probeHeld_internal(ctx, row, harness) {
 		return nil // stopped while held: a clean stop
 	}
 	if err := r.sprintHook_internal(ctx, row); err != nil {
 		return err
 	}
 	r.advertise_internal(ctx, row)
-	if once {
-		return r.StepRow(ctx, row)
-	}
 	if r.Meter != nil && r.Beater != nil {
 		beatCtx, stop := context.WithCancel(ctx)
 		defer stop()
@@ -506,7 +499,6 @@ func (r *Runner) stageStep_internal(ctx context.Context, job *Job, rec *JobRecor
 		_, err := r.Git.StageWorktree(stageCtx, *job)
 		if err == nil && job.Kind == "work" {
 			rec.StartTip, err = r.Git.BranchTip(stageCtx, *job)
-			rec.StartTipRead = err == nil
 		}
 		cancel()
 		if err != nil {
