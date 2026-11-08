@@ -48,8 +48,9 @@ type RowFacts struct {
 }
 
 // RowsQuestion asks rows(card, kind, candidates): Kind is work or read;
-// Candidates are the rows up, not held, not rested, serving the card's tier
-// with room under the deal-ahead, the author excluded for a read.
+// Candidates are the rows up, on the bus, not held, not rested, serving the
+// card's tier (and routes), the author excluded for a read; room is not a
+// condition. The answer is the set the card may go to.
 type RowsQuestion struct {
 	Card       CardFacts
 	Kind       string

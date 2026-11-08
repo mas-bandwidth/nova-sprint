@@ -201,13 +201,12 @@ func (t *tick) rankIndex(r string) int {
 
 // rowsAnswer is policy's rows answer for c, read once per candidate (the
 // oracle records a miss per question whatever the candidate's fate); nil
-// when the engine's ranking decides.
+// when the engine's ranking decides (no usable answer).
 func (t *tick) rowsAnswer(c store.Card, kind string) []string {
 	return t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
 }
 
-// pickRow is one row for c among rows: the engine's best of the rows policy
-// answered with room, else of them all.
+// pickRow is one row for c among rows (pickRows).
 func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 	picks := t.pickRows(c, answered, rows, 1)
 	if len(picks) == 0 {
@@ -217,25 +216,19 @@ func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 }
 
 // pickRows is up to n distinct rows for c among rows (every one eligible,
-// with room): policy's answered rows are the set a card may go to, its order
-// no preference; the engine's ranking (which counts this tick's deals) picks
-// among them, then among the rest. An answer naming no row with room is a
-// miss, as an answer naming a row not offered is.
+// with room), by the engine's ranking (which counts this tick's deals).
+// policy's answer, when usable, is the set the card may go to
+// (LAYER-5-POLICY.md rows): only its rows are picked, its order no
+// preference, and with none of them in rows the card waits; no miss, since
+// the answer was in domain (tla/Steps.tla RowFor, RowsAnswerKept).
 func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
-	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
-		t.o.refuse("rows")
+	if answered != nil {
+		rows = slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return !slices.Contains(answered, r) })
 	}
 	if len(rows) == 0 || n <= 0 {
 		return nil
 	}
-	allowed := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return !slices.Contains(answered, r) })
-	out := t.ranked(c, kindOf(c), allowed, n)[:min(n, len(allowed))]
-	if len(out) >= n {
-		return out
-	}
-	rest := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return slices.Contains(out, r) })
-	out = append(out, t.ranked(c, kindOf(c), rest, n-len(out))[:min(n-len(out), len(rest))]...)
-	return out
+	return t.ranked(c, kindOf(c), rows, n)[:min(n, len(rows))]
 }
 
 func kindOf(c store.Card) string {

@@ -447,3 +447,59 @@ func TestTickStableOpIDs(t *testing.T) {
 	assert.Regexp(t, `^t1\.\d+\.[0-9a-f]{16}$`, a.Ops[0].ID)
 	_ = time.Second
 }
+
+// TestDealRowsAnswerIsTheSet (finding 2): policy's rows answer is the set a
+// card may go to (LAYER-5-POLICY.md rows), never a preference: with no
+// room in it the card waits, outside it nothing is dealt, and no policy
+// judgement opens, since the answer was in domain; the undealt judgement
+// names the answer (tla/Steps.tla RowFor, RowsAnswerKept, witness
+// StepsRowsPreference).
+func TestDealRowsAnswerIsTheSet(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.producer("p2", "s1", "pro", "a/y")
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Rows: map[string][]string{"p1": {"r1"}, "p2": {"r1"}}}}
+	s.tick() // resolve
+	s.tick() // the deal
+	s.requireState("p1", "working")
+	assert.Equal(t, "r1", s.card("p1.w1").Holder)
+	s.requireState("p2", "ready")
+	s.run(4)
+	s.requireState("p2", "ready")
+	for _, id := range s.openJudgements("policy") {
+		assert.NotContains(t, id, "rows", "an answer in domain is no miss")
+	}
+	und := s.openJudgements("undealt")
+	require.Equal(t, []string{"undealt.p2.1"}, und)
+	assert.Contains(t, s.snap().Judgements[und[0]].Question, "policy's rows answer (r1) names no row with room")
+}
+
+// TestDealReadsKeepTheRowsAnswer (finding 2): a review owed more reads than
+// the rows answer names rows with room gets reads only on those rows; the
+// rest are not topped up from outside the answer.
+func TestDealReadsKeepTheRowsAnswer(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.row("r3", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Reads: map[string]int{"p1": 2}, Rows: map[string][]string{"p1": {"r1"}}}}
+	s.run(2)
+	s.take("p1.w1")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Reads: map[string]int{"p1": 2}, Rows: map[string][]string{"p1": {"r2"}}}}
+	s.tick()
+	var reads []string
+	for _, c := range s.snap().Cards {
+		if c.Of == "p1" && c.Kind == "read" {
+			reads = append(reads, c.Holder)
+		}
+	}
+	assert.Equal(t, []string{"r2"}, reads, "two reads owed, one row in the answer: one read")
+}

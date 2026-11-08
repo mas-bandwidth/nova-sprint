@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -169,6 +170,8 @@ func (t *tick) undealt() {
 		why := "the deal skipped it: an engine defect, report it with this line"
 		if t.overBudget() {
 			why = fmt.Sprintf("the tick's budget of %d cards was spent before it", t.lim.Budget)
+		} else if ans := t.rowsAnswer(c, "work"); ans != nil && !slices.ContainsFunc(ans, func(r string) bool { return slices.Contains(rows, r) }) {
+			why = "policy's rows answer (" + strings.Join(ans, ", ") + ") names no row with room"
 		}
 		t.judge("undealt", p, fmt.Sprintf("producer %s has been ready %s with row %s open, serving tier %s with room, and is not dealt: %s",
 			p, since.Truncate(time.Second), rows[0], c.Tier, why))

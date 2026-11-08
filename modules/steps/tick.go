@@ -39,11 +39,13 @@ type tick struct {
 }
 
 // Tick plans one tick (docs/LAYER-3-STEPS.md "The tick"; tla/Steps.tla Tick).
-// The steps run in the model's order, each skipping the cards an earlier one
-// claimed: reports and takes from the inbox, preemption, land results, needs
-// (resolve, reached, drops), holds, retire and fail limits, fix, the deal,
-// land requests, judgements. Then the groups are ordered, budgeted, packed
-// into ops and the rest of the inbox is carried.
+// The steps run in this order, each skipping the cards an earlier one
+// claimed: reports from the inbox, preemption, land results, needs (resolve,
+// reached, drops), holds, retire and fail limits, fix, the deal, land
+// requests, judgements. Then the groups are ordered, budgeted, packed into
+// ops and the rest of the inbox is carried. The model covers preemption,
+// land results, resolve, the bounce-limit hold and the silence rules, fix,
+// the deal and land requests; tla/README.md lists what it leaves out.
 func Tick(v *View, in Inputs, ask Asker) Plan {
 	t := newTick(v, in)
 	t.o = newOracle(ask.Ask(t.questions()), Engine)
@@ -209,9 +211,10 @@ func (t *tick) streamFacts(s string) StreamFacts {
 }
 
 // candidates is the rows policy may name for c: open (up, not held), on the
-// bus (present; Steps.tla Eligible and ServingOpen), not resting, serving
+// bus (present; Steps.tla Candidate and ServingOpen), not resting, serving
 // c's tier, and for a read not c's author and not holding a live read of
-// c's head. Room is the engine's check at the deal. The work
+// c's head. Room is not a condition: the deal picks among the rows of the
+// answer with room, and with none of them c waits (pickRows). The work
 // list is built once per tier per tick (row claims are made before the
 // deal); a read's is filtered from it.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
