@@ -15,7 +15,8 @@
 (* stop (defect 73): each live harness is killed, its job kept at staged   *)
 (* (stopped) to be resumed, never a fault (StopIsNeverAFault). Release is  *)
 (* the restart's no-blame give-back of a job it cannot resume (a job       *)
-(* directory with no receipt): its commits pushed, the consumer withdrawn  *)
+(* directory with no receipt), or of a staged job that keeps finding no    *)
+(* slot (NoSlotLimit): its commits pushed, the consumer withdrawn          *)
 (* with no result and no report, the directory gone; the producer's redeal *)
 (* is a new consumer, the card machine's. A dealt card with no job         *)
 (* directory is no release: the pass acknowledges it and runs it.          *)
@@ -277,11 +278,13 @@ PassEnd ==
 \* receipt) is given back with no blame: its commits pushed once, by lease,
 \* while it still holds the card, then the consumer withdrawn with no result
 \* (no outcome, no bounce, no report), and its directory retired once the
-\* release is recorded.
+\* release is recorded. A staged job that keeps finding every slot held is
+\* given back the same way (NoSlotLimit runs with no slot, abstracted to
+\* every slot held), so a busy bench never holds a card for ever.
 Release(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
-  /\ env.crashes > 0
+  /\ (env.crashes > 0 \/ (jobState[c] = "staged" /\ slotsInUse = MaxSlots))
   /\ ~env.released
   /\ storeState[c] = "working"
   /\ jobState[c] \in {"staged", "harvested"}

@@ -29,9 +29,9 @@ const ReceiptName = "receipt.json"
 // owed is sent, finished cards' directories are cleaned, a live harness is
 // adopted, and every job a stopped runner left is resumed (and waited for).
 func (r *Runner) RecoverRow(ctx context.Context, row string) error {
-	resumes, err := r.recoverRow_internal(ctx, row)
+	resumes, unsent, err := r.recoverRow_internal(ctx, row)
 	if err != nil || len(resumes) == 0 {
-		return err
+		return cmp.Or(err, unsent)
 	}
 	next, err := r.Sprint.Next(ctx, row)
 	if err != nil {
@@ -43,23 +43,25 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 			launches = append(launches, l)
 		}
 	}
-	return r.runBatch_internal(ctx, next, launches)
+	return errors.Join(unsent, r.runBatch_internal(ctx, next, launches))
 }
 
 // recoverRow_internal does a pass's recovery and returns the jobs to
-// resume (not yet claimed). One record the sprint keeps refusing never
-// ends it (defect 69): it is logged, kept, and sent again next pass.
-func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_internal, error) {
+// resume (not yet claimed), and the reports it owed and could not send.
+// One record the sprint keeps refusing never ends it (defect 69): it is
+// logged, kept, and sent again next pass.
+func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_internal, error, error) {
 	next, err := r.Sprint.Next(ctx, row)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	disk, err := r.loadRowJobs_internal(row)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	workingByID, finalByID := r.holders_internal(next)
 	var out []launch_internal
+	var unsent []error
 	for id, rec := range disk {
 		if f, isFinal := finalByID[id]; isFinal {
 			if !r.isRunningInFlight_internal(id) { // a job in flight ends and retires itself
@@ -70,12 +72,14 @@ func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_
 				r.retireJob_internal(filepath.Join(r.RootDir, "jobs", id), rec, fmt.Sprintf("generation %d is stale: the row holds %s at %d", rec.Gen, id, w.Gen))
 			} else if !jobMatchesSummary_internal(next, w, rec) {
 				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
-			} else if rec, resume := r.recoverWorkingJob_internal(ctx, w, rec); resume {
+			} else if rec, resume, err := r.recoverWorkingJob_internal(ctx, w, rec); resume {
 				out = append(out, launch_internal{c: w, resume: &rec})
+			} else if err != nil {
+				unsent = append(unsent, err)
 			}
 		}
 	}
-	return out, nil
+	return out, errors.Join(unsent...), nil
 }
 
 // holders_internal is the row's working and final consumers by id, and
@@ -111,20 +115,19 @@ func (r *Runner) finalJob_internal(f ConsumerSummary, rec JobRecord) {
 // recoverWorkingJob_internal acts on a working card's record: a report it
 // owes is sent; a live harness is adopted (and killed past its deadline);
 // anything else (taken, staged, a harness gone, harvested) is resumed, which
-// the second result says.
-func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSummary, rec JobRecord) (JobRecord, bool) {
+// the second result says. The error is an owed report not sent.
+func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSummary, rec JobRecord) (JobRecord, bool, error) {
 	jobDir := filepath.Join(r.RootDir, "jobs", w.ID)
 	switch {
 	case rec.State == JobCleaned || rec.State == JobRecorded:
-		return rec, false
+		return rec, false, nil
 	case rec.State == JobCIWait || rec.State == JobReporting || rec.State == JobRebased:
-		r.resend_internal(ctx, jobDir, rec)
-		return rec, false
+		return rec, false, r.resend_internal(ctx, jobDir, rec)
 	case rec.State == JobRunning && r.Procs != nil && r.Procs.Alive(rec.PID, rec.Nonce):
 		r.adopt_internal(ctx, jobDir, w, rec)
-		return rec, false
+		return rec, false, nil
 	}
-	return rec, true
+	return rec, true, nil
 }
 
 // adopt_internal keeps a live harness a stopped runner left: its deadline is
@@ -154,7 +157,7 @@ func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal)
 	info, err := readReceipt_internal(jobDir)
 	if err != nil {
 		p.end = true
-		r.releaseNoBlame_internal(p.ctx, rec, "the job cannot be resumed: "+err.Error())
+		r.releaseNoBlame_internal(p.ctx, rec, "runner restarted: the job cannot be resumed: "+err.Error())
 		return
 	}
 	p.job, _ = buildJob_internal(next, info, jobDir, r.ProxyAddr, r.Now())
@@ -190,7 +193,7 @@ func (r *Runner) releaseNoBlame_internal(ctx context.Context, rec JobRecord, why
 			r.report("job record "+rec.Consumer, WriteJobRecord(jobDir, rec))
 		}
 	}
-	err := r.Sprint.Release(ctx, rec.Row, rec.Consumer, rec.Gen, rec.PushedHead, "runner restarted: "+why)
+	err := r.Sprint.Release(ctx, rec.Row, rec.Consumer, rec.Gen, rec.PushedHead, why)
 	if err != nil {
 		r.report(fmt.Sprintf("release of %s@%d (%s)", rec.Consumer, rec.Gen, why), err)
 		return
@@ -202,19 +205,24 @@ func (r *Runner) releaseNoBlame_internal(ctx context.Context, rec JobRecord, why
 	}
 }
 
-// resend_internal sends a report a record owes again.
-func (r *Runner) resend_internal(ctx context.Context, jobDir string, rec JobRecord) {
-	r.resendErr_internal(ctx, jobDir, rec, r.sendReportAndClean_internal(ctx, jobDir, rec))
+// resend_internal sends a report a record owes again; the error is the
+// send's.
+func (r *Runner) resend_internal(ctx context.Context, jobDir string, rec JobRecord) error {
+	err := r.sendReportAndClean_internal(ctx, jobDir, rec)
+	r.resendErr_internal(ctx, jobDir, rec, err)
+	return err
 }
 
 // resendErr_internal handles a send's error: a down store waits for the
-// next pass; a refusal is logged and counted on the record, and the record
-// refused the same way RefusalLimit times is set aside (quarantine_internal).
+// next pass; a refusal is said (a WORKER WARNING and the step log) and
+// counted on the record, and the record refused the same way RefusalLimit
+// times is set aside (quarantine_internal).
 func (r *Runner) resendErr_internal(ctx context.Context, jobDir string, rec JobRecord, err error) {
 	if err == nil || errors.Is(err, ErrStoreDown) || ctx.Err() != nil {
 		return
 	}
 	r.logStep_internal(rec.Row, rec.Consumer, "recover", "refused: "+err.Error(), 0)
+	r.report(fmt.Sprintf("report of %s@%d refused", rec.Consumer, rec.Gen), err)
 	if cur, rerr := ReadJobRecord(jobDir); rerr == nil {
 		rec = cur
 	}

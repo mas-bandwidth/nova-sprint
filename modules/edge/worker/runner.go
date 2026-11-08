@@ -608,9 +608,14 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	var last WallRunResult
 	var runErr error
 	for attempt := 1; attempt <= r.Timeouts.LaunchTries; attempt++ {
+		// a verdict is this run's: an earlier run's is never read as it
+		if err := os.Remove(filepath.Join(job.JobDir, "result.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return WallRunResult{}, fmt.Errorf("worker refused: an earlier run's result.json could not be removed: %w", err)
+		}
 		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, job.Deadline)
 		if errors.Is(runErr, ErrNoSlot) {
 			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
+			rec.NoSlots++
 			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 			return last, runErr
 		}
@@ -780,8 +785,8 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fe.Error()}
 				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return fe
-			default:
-				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "rebase failed: " + err.Error()}
+			default: // not a conflict: the worker's git, never the card's work
+				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "rebase fault: " + err.Error()}
 			}
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
@@ -789,19 +794,21 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		rec.Outcome.Head = cmp.Or(newSHA, rec.Outcome.Head)
 	}
 	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, Repo: rec.Repo, Forge: rec.Forge, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
-	if err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
+	if fault, err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
 		rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
+		if fault {
+			rec.Outcome.Result = "fault"
+		}
 		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 		return nil
 	}
 	for _, cmd := range rec.DoneWhen {
 		if strings.TrimSpace(cmd) != "" && r.Wall != nil {
 			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
-				why := TailBytes(tres.Output, MaxReasonBytes)
-				if err != nil {
-					why = TailBytes([]byte(err.Error()+": "+why), MaxReasonBytes)
+				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, TailBytes(tres.Output, MaxReasonBytes))}
+				if fault, why := isInfraFault_internal(tres, err); fault {
+					rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}
 				}
-				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, why)}
 				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return nil
 			}
@@ -824,20 +831,24 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 // applyRebased_internal checks the rebased head out in the job's tree,
 // inside the wall, before the done-when tests: Export from the worker's
 // clone, applyArgv_internal in the wall. Nothing to do with no rebase or
-// no tests.
-func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) error {
+// no tests. fault: the failure is the worker's or the wall's (the export,
+// or isInfraFault_internal), not the card's.
+func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) (bool, error) {
 	if r.Git == nil || r.Wall == nil || rec.StreamRef == "" || !slices.ContainsFunc(rec.DoneWhen, func(c string) bool { return strings.TrimSpace(c) != "" }) {
-		return nil
+		return false, nil
 	}
 	bundle := filepath.Join(j.JobDir, RebasedBundle)
 	if err := r.Git.Export(ctx, r.clonePath_internal(rec.Consumer), cmp.Or(rec.PriorHead, rec.BaseSHA), bundle); err != nil {
-		return err
+		return true, err
 	}
 	res, err := r.Wall.RunStep(ctx, j, applyArgv_internal(bundle), r.Timeouts.RebaseAndTest)
-	if err == nil && res.ExitCode != 0 {
-		err = fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
+	if fault, why := isInfraFault_internal(res, err); fault {
+		return true, errors.New(why)
 	}
-	return err
+	if res.ExitCode != 0 {
+		return false, fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
+	}
+	return false, nil
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	rec.State = JobReporting
@@ -1551,6 +1562,16 @@ func resolveToolBin_internal(name string) string {
 	return name
 }
 func fileExists_internal(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// noSlot_internal: res is nova-reserve's own refusal for want of a slot
+// within --wait (nova-reserve help: exit 1, refused): exit 1 with its first
+// stderr line "nova-reserve: no slot within <d>" or "nova-reserve: no
+// exclusive hold within <d>", printed before any HELD, so before the
+// command ran.
+func noSlot_internal(res edge.Result) bool {
+	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
+	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") || strings.HasPrefix(first, "nova-reserve: no exclusive hold within "))
+}
 func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg WallConfig, cmdArgv, env []string, timeout time.Duration) (WallRunResult, error) {
 	fallbackPID := nextWallPID_internal()
 	nonce := fmt.Sprintf("n-%d", fallbackPID)
@@ -1584,7 +1605,7 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	}
 	out := WallRunResult{Leftovers: leftovers, LeftoverErr: leftoverErr, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
-	if res.ExitCode == 1 && strings.Contains(combined, "nova-reserve:") && !strings.Contains(combined, "nova-reserve: HELD") {
+	if noSlot_internal(res) {
 		return out, fmt.Errorf("%w: %w", ErrNoSlot, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
 	}
 	if err != nil {
