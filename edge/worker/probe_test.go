@@ -182,7 +182,7 @@ func TestProbeFailureIsReadable(t *testing.T) {
 		"opencode with deepseek/deepseek-flash: exit 1: Error: Unexpected server error",
 		"the harness died inside the wall before writing a log; nova-sandbox show --write ",
 		"--unix --net-deny --net-allow 127.0.0.1:7000",
-		"known limits of opencode: through the key proxy",
+		"known limits of opencode: opencode 2.x starts a background service",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("want %q in %s", want, msg)
@@ -229,12 +229,12 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 		h          Harness
 		want, lack []string
 	}{
-		{&OpenCodeHarness{}, []string{"--read " + filepath.Dir(link), "--read " + realDir, "--unix", "--net-deny --net-allow 127.0.0.1:7000", "--env TMPDIR", "--env OPENAI_BASE_URL", "--env NOVA_WORKER_NONCE"}, []string{"--env PATH", "--env HOME"}},
+		{&OpenCodeHarness{}, []string{"--read " + filepath.Dir(link), "--read " + realDir, "--unix", "--net-deny --net-allow 127.0.0.1:7000", "--env TMPDIR", "--env OPENCODE_CONFIG_CONTENT", "--env NOVA_WORKER_NONCE"}, []string{"--env PATH", "--env HOME"}},
 		{&ClaudeHarness{ConfigDir: "/cfg/claude"}, []string{"--write /cfg/claude", "--env CLAUDE_CONFIG_DIR"}, []string{"--unix", "--net-deny"}},
 		{&ScriptHarness{}, []string{"--net-deny"}, []string{"--unix", "--net-allow"}},
 	}
 	for _, c := range cases {
-		j := Job{Consumer: "c1", JobDir: t.TempDir(), ProxyAddr: "127.0.0.1:7000", Model: "deepseek/deepseek-flash", Needs: c.h.Needs()}
+		j := Job{Consumer: "c1", JobDir: t.TempDir(), ProxyAddr: "127.0.0.1:7000", Routes: []string{"deepseek"}, Model: "deepseek/deepseek-flash", Needs: c.h.Needs()}
 		argv, env := c.h.Command(j)
 		res, err := wall.RunHarness(context.Background(), j, argv, env, time.Second)
 		if err != nil {
