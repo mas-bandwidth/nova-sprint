@@ -392,7 +392,12 @@ func Fold(s Snapshot, events []Event) Snapshot {
 			s.Identity = *e.After.Identity
 		}
 		overlay(s.Streams, e.After.Streams)
-		overlay(s.Cards, e.After.Cards)
+		for id, c := range e.After.Cards {
+			if old, ok := s.Cards[id]; ok {
+				c.Model = old.Model // set when the card is cut, never changed: putCard's upsert leaves it, whatever an after-image says (a pre-model binary's has none)
+			}
+			s.Cards[id] = c
+		}
 		overlay(s.Rows, e.After.Rows)
 		overlay(s.Judgements, e.After.Judgements)
 		overlay(s.Cursors, e.After.Cursors)
