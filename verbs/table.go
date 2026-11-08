@@ -93,7 +93,7 @@ func startVerbs() []*verb {
 			about: "sets the sprint up, step by step, re-verifying from step 1 each time; hooks you in as coordinator once the store exists",
 			needs: []string{"no --as: nova-sprint up --as <you>", "you are not on the bus: nova-bus hook --as <you> under your session's Monitor tool", "the first step that does not verify: its own fix"}},
 		{name: "hook", group: "start", usage: "--as <name> --role worker|coordinator", flags: "role=", max: 0, run: runHook,
-			about: "records your name and role in the sprint (a fresh session), subscribes you to its pushes, and prints the sprint's commit identity (its two git config lines) and your playbook",
+			about: "records your name and role in the sprint (a fresh session), subscribes you to its pushes, and prints the sprint's commit identity (its two git config lines) and the command that prints your playbook",
 			needs: []string{"not on the bus: nova-bus hook --as <name> under your session's Monitor tool", "already hooked: nova-sprint unhook --as <name>", "a second coordinator: the recorded one unhooks first", "a worker on a sprint with no commit identity: the coordinator runs nova-sprint identity"}},
 		{name: "wake", group: "start", usage: "--as <you> (nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>' runs it per message)", max: 0, run: runWake,
 			about: "takes every card a DEAL on stdin deals you, then prints the message with each deal line replaced by its TAKEN receipt or its refusal; any other message unchanged"},

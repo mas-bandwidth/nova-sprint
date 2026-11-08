@@ -46,13 +46,15 @@ LESSONS 2.15).
 
 ## Done-when and its gates
 
-Each done-when is run at the base before the deal, and a gate that would
-stay red after a correct fix is a brief defect, refused at add (LESSONS
-C.7). Every gate's negative control plants its fault in the real artifact
-the gate covers; a gate that skips, cannot compile, or excludes by default
-fails the lint, because three v1 schema gates passed while checking nothing
-(LESSONS C.8). The TEST line names a test absent at base, and the system
-runs it red at base and green at head as a gate (LESSONS C.9). A gate names
+Admission parses each done-when as one command and runs nothing (below);
+a bench's worker runs every done-when at the head after the work, and a
+red one fails the attempt. A gate that would stay red after a correct fix
+is a brief defect (LESSONS C.7) that no machine catches before the deal:
+the author writes it red at base and green at head. Every gate's negative
+control plants its fault in the real artifact the gate covers; a gate that
+skips, cannot compile, or excludes by default checks nothing, as three v1
+schema gates did (LESSONS C.8). The TEST line names a test absent at base,
+red at base and green at head (LESSONS C.9). A gate names
 the facts it needs (an OS, a tool), never a host: the lint refuses "ssh to
 hetzner2" (LESSONS C.11). Every gate keeps its command, exit code and full
 log; a finding names the path, and a read verdict without a file:line
@@ -77,7 +79,8 @@ identity").
 Cards are pro-sized from the start: the design piece lands first, and each
 later piece names a landed worked example; heavy is for design, model and
 standard pieces only (LESSONS C.12; PRIORITY D38, T5). A card that writes a
-new TLA+ model is admitted at heavy at least (PRIORITY T4). A card's base is
+new TLA+ model is written heavy at least (PRIORITY T4; the author's rule,
+not checked at add). A card's base is
 its stream branch, never another card's branch (LESSONS C.10). A read is
 staged detached at the exact head with push disabled (LESSONS C.14). A card
 whose work is already on its base is a duplicate brief, refused at add,
@@ -162,10 +165,9 @@ Then, against the roster and origin:
 branch requires (branch protection and rulesets, one `gh api` each) and,
 when one is named like a contributor agreement (`CLA`, `CAA`, "contributor",
 "assignment agreement", "license agreement"), prints a warning, never a
-refusal: the check, and the git identities the benches author commits as
-(`<row> <row@nova-sprint.local>`, from nova-config's benches with cores), for
-the human to sign before the first card lands; kin commit as their own git
-identity. Decided 2026-11-07 (directive 63): a forge exposes who has signed
+refusal: the check, and the sprint's one commit identity (`nova-sprint
+identity`) that every bench and kin commits as, for the human to sign
+before the first card lands. Decided 2026-11-07 (directive 63): a forge exposes who has signed
 only where the agreement's bot does, and most do not, so the signed identities
 are not listed and an unsigned one is not refused at add; the warning is the
 closest correct thing. A required-checks read that fails is itself a warning.
@@ -179,7 +181,8 @@ under a branch), the base is at origin, and with forge github this host's gh
 identity has write, maintain or admin on the repository.
 
 A restore refuses a card record whose state this build does not map (one of
-waiting, ready, working, review, merging, landed, fail, blocked, done),
+waiting, ready, working, review, merging, landed, fail, done; `blocked`
+was dropped in schema round 29),
 naming the record. A dump of another shape (a v1 store with a `landed`
 timestamp column) is refused before that by the backup header's schema
 hash; there is no import verb.

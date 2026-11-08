@@ -162,14 +162,16 @@ Monitor) is the earlier step it requires, because every push of the sprint trave
 sprint"). `hook` is the one defined entry point where an AI is fed how to use the sprint: it
 records the name and role in the row's session state in the store, which subscribes the name to
 the sprint's pushes over the bus (deals, read asks, withdraws, landing results, and for the
-coordinator every judgement), and prints the role's playbook first: `HOOKED <name> role=<role>`,
-then docs/PLAYBOOK-WORKER.md for a worker, or docs/PLAYBOOK-WORKER.md followed by
-docs/PLAYBOOK-COORDINATOR.md for the coordinator, who is a worker too ("so they get both
-playbooks!", Glenn 2026-11-06), then its `next:` line. Until it has run, every acting verb
-refuses with `hook in first: nova-sprint hook --as <name> --role worker` (or `coordinator` for a
-coordinator verb). `help playbook <role>` prints the same text for reading, compiled into the
-binary from those files, and a test holds every command line in them to a verb and flag that
-exists (LESSONS 6.7).
+coordinator every judgement), and prints `HOOKED <name> role=<role>`, the commit identity, the
+line `playbook: nova-sprint help playbook <role>`, then its `next:` line. The playbook itself is
+not printed on every hook (a hook follows every wrap-around; 23 to 53 KB each time, V2 fix list
+item 25): `help playbook <role>` prints docs/PLAYBOOK-WORKER.md for a worker, or
+docs/PLAYBOOK-WORKER.md followed by docs/PLAYBOOK-COORDINATOR.md for the coordinator, who is a
+worker too ("so they get both playbooks!", Glenn 2026-11-06), compiled into the binary from those
+files. Until the hook has run, every acting verb refuses with `hook in first: nova-sprint hook
+--as <name> --role worker` (or `coordinator` for a coordinator verb). `TestPlaybookCommandsParse`
+holds every `nova-sprint` command in the playbooks, CORRECT-USE, SETUP and CARD-CONTRACT to a
+verb and its flags (LESSONS 6.7).
 
 Every verb that can withdraw or fail other cards (`drop`, `hold` of a row, `clear`) takes
 explicit ids, never "all", has `--dry-run`, and prints what it withdraws and which
@@ -320,8 +322,8 @@ should be exactly matching what we currently have, visually. no changes except i
 added fail state." So v1's page (`index.html`, `app.js`, routes, JSON envelope) is carried as
 is behind the shim on branch `v2-dash-shim`, matched against the live v1 board at the shim
 README's widths, by eye and `tools/abshot`; any difference is a defect. `fail` is black, after
-landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); `blocked`
-is its own token, a red-brown column shown only when nonzero; the stats panel is left off.
+landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); there is
+no `blocked` column (2026-11-07: a held card is waiting); the stats panel is left off.
 
 **Served two ways, one poller each.** `run --listen <addr>` rebuilds the view once a tick
 from the tick's own local copy, adding no store read. `nova-sprint dash --listen <addr>` is
@@ -379,7 +381,7 @@ same op as the move that raised it.
   someone else answered. A second answer is refused naming the first.
 - **Expired.** At its deadline the step expires it and applies policy's declared safe
   default for that kind, which never drops, accepts, merges or lands (LESSONS 5.7), and
-  pushes `EXPIRED judgement=<id>: <what the default did>`. `blocked` has no deadline by
+  pushes `EXPIRED judgement=<id>: <what the default did>`. A `blocked` judgement has no deadline by
   Glenn's ruling ("sits there until you review it").
 
 Landings, a stream done, a red, a block, a stall and an orphan reach the coordinator by the

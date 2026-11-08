@@ -65,9 +65,9 @@ rows.
 nova-sprint and nova-tools release separately (Glenn, 2026-11-06: "We no longer
 pin nova-sprint and nova-tools together ... we'll need a pin to the nova-tools
 version the nova-sprint release wants"). The binary carries the minimum
-nova-tools version it needs; `nova-sprint check` reads the installed tools'
-versions (`nova-bus -h`, `nova-fleet -h`, and the rest) and refuses below the
-pin, naming the `nova-fleet up` that brings them up.
+nova-tools version it needs; `nova-sprint check` reads the installed release
+from the build info of `nova-config` on PATH (without running it), is red below
+the pin, naming `nova-fleet install --tag <pin> <machine>`, and warns above it.
 
 ## 5. What `nova-sprint up` does past the store (steps 6 to 8)
 
@@ -75,8 +75,8 @@ Nothing in this section is typed by the human.
 
 - **Services (6).** `--services none` is a valid answer. A chosen service's key is
   pasted once at a hidden prompt and proven by one model-list request.
-- **Workers (7).** Every machine with the bench role, except the one the sprint runs on,
-  gets a worker: its seat is granted the sprint's database credential, and nova-config
+- **Workers (7).** Every machine with the bench role, the one the sprint runs on included
+  when it has that role, gets a worker: its seat is granted the sprint's database credential, and nova-config
   gets one service record `sprint-worker-<machine>` running `nova-sprint worker --as
   <machine>` under that seat (the sprint and bus credentials and the provider keys the
   bench's seat holds). nova-fleet applies them all in one play. The step verifies when

@@ -168,18 +168,22 @@ func takenOutput(in *input, snap store.Snapshot, c store.Card, a policy.Answers)
 	return takenText(t, in.actor), nil
 }
 
+// takenText is take for a mind: the receipt line, the brief, and how the
+// card finishes, from the rules a bench's JOB.md carries (KinFinishRules).
 func takenText(t takeReceipt, row string) string {
 	ref := fmtCard(t.Consumer, t.Gen)
 	terms := fmt.Sprintf("deadline=%ds forge=%s", t.Deadline, orWord(t.Forge, "none"))
+	rules := "How this card finishes:\n" + strings.TrimRight(worker.KinFinishRules(worker.Job{Kind: t.Kind, Branch: t.Branch, Head: t.Head,
+		CommitName: t.CommitName, CommitEmail: t.CommitEmail}, worker.KinFinish{Ref: ref, Row: row, Epoch: t.Epoch}), "\n")
 	if t.Kind == "read" {
 		return done(fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, t.Epoch),
-			fmt.Sprintf("TAKEN %s repo=%s head=%s %s", t.Consumer, t.Repo, t.Head, terms), "Read detached at this head; do not edit or push.", t.Brief)
+			fmt.Sprintf("TAKEN %s repo=%s head=%s %s", t.Consumer, t.Repo, t.Head, terms), t.Brief, rules)
 	}
 	lines := []string{fmt.Sprintf("TAKEN %s repo=%s base=%s branch=%s %s", t.Consumer, t.Repo, t.BaseSHA, t.Branch, terms)}
 	if t.PriorHead != "" {
 		lines = append(lines, "continue from "+t.PriorHead+" (git fetch origin "+t.Branch+"); the finding: "+t.Finding)
 	}
-	lines = append(lines, strings.TrimRight(worker.CommitRules(t.CommitName, t.CommitEmail), "\n"), t.Brief)
+	lines = append(lines, t.Brief, rules)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
 }
 

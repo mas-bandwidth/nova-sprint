@@ -9,15 +9,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // runHook is `hook` (Stella's rulings, 2026-11-06): the name on the bus
 // first; the sprint mints the session; one hook per name and one
 // coordinator per sprint; a worker only once the sprint has a commit
-// identity; the identity's two git config lines and the role's playbook
-// printed. A worker's restart
+// identity; the identity's two git config lines and where the role's
+// playbook is printed (help playbook: the hook is run after every
+// wrap-around, and the playbook is read once). A worker's restart
 // is the bus hook, its own unhook, this hook, then next.
 func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	r := in.str("role")
@@ -65,8 +65,9 @@ func (e *Engine) originsReadable(ctx context.Context, snap store.Snapshot) error
 }
 
 // hookAs records name's session and role on snap and prints the sprint's
-// commit identity (the two git config lines) and its playbook:
-// the hook verb's, and up's and restore's for their coordinator.
+// commit identity (the two git config lines) and the command that prints
+// the role's playbook: the hook verb's, and up's and restore's for their
+// coordinator.
 func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string) (string, error) {
 	if row := snap.Rows[name]; row.Session != "" {
 		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then hook again")
@@ -86,8 +87,12 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 	if _, err := e.commit(ctx, op, "nova-sprint unhook --as "+name+", then hook again"); err != nil {
 		return "", err
 	}
-	text, _ := docs.Playbook(r)
-	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), identityLines(snap), text), nil
+	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), identityLines(snap), playbookLine(r)), nil
+}
+
+// playbookLine is where role's playbook is: read it once, not on every hook.
+func playbookLine(role string) string {
+	return "playbook: nova-sprint help playbook " + role + " (read it once; every output names its next command)"
 }
 
 func (e *Engine) newSession() (string, error) {

@@ -13,7 +13,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// runShow is `show`: the record a refusal named, as JSON. A card, a stream,
+// runShow is `show`: the record a refusal named, as JSON (a card's brief
+// once: its prose is the brief's task part). A card, a stream,
 // a row (with its worker bench's service, check_workers.go), `run` (who
 // holds the chooser lock), nothing (the whole snapshot),
 // or --stitch <stream> (every producer with its head, author, reads and
@@ -29,7 +30,11 @@ func runShow(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		}
 		v = stitchOf(snap, s)
 	case name == "":
-		v = snap
+		whole := wholeView{Snapshot: snap, Cards: map[string]shownCard{}}
+		for id, c := range snap.Cards {
+			whole.Cards[id] = briefOnce(c)
+		}
+		v = whole
 	case name == "run":
 		if e.Doctor == nil {
 			return "", broken("the store is not configured", "nova-sprint check")
@@ -55,9 +60,29 @@ func runShow(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	return done("nova-sprint next --as "+in.actor, string(b)), nil
 }
 
+// shownCard is a card as show prints it: the brief once. Prose is the
+// brief's task part (store.Card), so it is left out when the brief holds it.
+type shownCard struct {
+	store.Card
+	Prose string `json:"prose,omitempty"`
+}
+
+// wholeView is the snapshot with each card shown once.
+type wholeView struct {
+	store.Snapshot
+	Cards map[string]shownCard
+}
+
+func briefOnce(c store.Card) shownCard {
+	if strings.Contains(c.Brief, c.Prose) {
+		return shownCard{Card: c}
+	}
+	return shownCard{Card: c, Prose: c.Prose}
+}
+
 func record(snap store.Snapshot, name string) (any, bool) {
 	if c, ok := snap.Cards[name]; ok {
-		return c, true
+		return briefOnce(c), true
 	}
 	if s, ok := snap.Streams[name]; ok {
 		return s, true
