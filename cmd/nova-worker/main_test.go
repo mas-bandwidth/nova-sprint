@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 )
 
 func TestWorkerCLIFlagRefusals(t *testing.T) {
@@ -24,6 +27,21 @@ func TestWorkerCLIFlagRefusals(t *testing.T) {
 			t.Fatalf("%s: code=%d err=%q: want the flag set's refusal", gone, code, errBuf.String())
 		}
 	}
+}
+
+// The mirror layout is the worker's own: a bare mirror per repository,
+// <name>.git under the mirror root, cloned on first use and fetched per
+// job. No flag's help names the retired service.
+func TestHelpNamesNoRetiredService(t *testing.T) {
+	t.Parallel()
+	var c worker.Config
+	fs := newFlagSet(&c)
+	retired := "mirror-" + "refresh"
+	fs.VisitAll(func(f *flag.Flag) {
+		if strings.Contains(f.Usage, retired) {
+			t.Errorf("%s: usage names the retired service: %q", f.Name, f.Usage)
+		}
+	})
 }
 
 // The worker holds no provider route of its own (drift row 15): a route is
