@@ -16,6 +16,12 @@ import (
 // itself (the run service, the dashboard, a worker, which hooks itself).
 var gateExempt = map[string]bool{"help": true, "-h": true, "--help": true, "version": true, "run": true, "dash": true, "worker": true}
 
+// readsBusItself are the verbs that ask the bus themselves and answer its
+// absence in their own documented shape: wake never fails a message, check
+// reports the bus as its own red line, next answers exit 0 (JSON under
+// --json) and asks for a name when none is given.
+var readsBusItself = map[string]bool{"wake": true, "check": true, "next": true}
+
 // gateTimeout bounds the one presence lookup.
 const gateTimeout = 10 * time.Second
 
@@ -36,6 +42,9 @@ func hookGate(ctx context.Context, args []string, getenv func(string) string, wh
 	if !verbs.Known(args) {
 		return "SPRINT REFUSED nova-sprint: unknown verb " + verb + ": nova-sprint help", 2
 	}
+	if readsBusItself[verb] {
+		return "", 0
+	}
 	name := actingName(args, getenv("NOVA_SPRINT_AS"))
 	if name == "" {
 		return "SPRINT REFUSED " + verb + ": no acting name; pass --as <you> or set NOVA_SPRINT_AS=<you>, then hook in to the bus: nova-bus hook --as <you>", 1
@@ -44,9 +53,13 @@ func hookGate(ctx context.Context, args []string, getenv func(string) string, wh
 	defer cancel()
 	present, err := who.Who(ctx)
 	var op *verbs.OperationError
+	var run *edge.ExecError
 	switch {
 	case errors.As(err, &op):
 		return fmt.Sprintf("SPRINT REFUSED %s: %s: %s", verb, op.Problem, op.Fix), op.Exit
+	case errors.As(err, &run) && getenv("NOVA_BUS_REDIS") == "":
+		// nova-bus never ran: that is the cause, whatever the variable says
+		return fmt.Sprintf("SPRINT REFUSED %s: cannot run nova-bus: %s: %s, then export NOVA_BUS_REDIS=<host:port> and hook in: nova-bus hook --as %s", verb, edge.RedactN(run.Reason, edge.CommandMax), run.Fix, name), 2
 	case err != nil && getenv("NOVA_BUS_REDIS") == "":
 		return fmt.Sprintf("SPRINT REFUSED %s: cannot reach the bus: NOVA_BUS_REDIS is not set (%s): export NOVA_BUS_REDIS=<host:port>, then hook in: nova-bus hook --as %s", verb, edge.RedactN(err.Error(), edge.CommandMax), name), 2
 	case err != nil:

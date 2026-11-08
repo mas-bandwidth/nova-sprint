@@ -348,3 +348,14 @@ func TestReadPricedFromUsage(t *testing.T) {
 	}
 	want(t, w.do("bob", "help", "read"), 0, "--usage is the run's tokens", "a kin on a subscription seat (claude, codex, ...): free; pass nothing")
 }
+
+// A card release's --dry-run prints what it would withdraw and applies nothing.
+func TestReleaseDryRun(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	before := w.snap(t)
+	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "tier", "--dry-run"), 0, "RELEASE p1.w1@1 (dry run)", "without --dry-run")
+	if c := w.snap(t).Cards["p1.w1"]; c.State != before.Cards["p1.w1"].State || w.snap(t).Seq != before.Seq {
+		t.Fatalf("a dry run released the card: %+v", c)
+	}
+}

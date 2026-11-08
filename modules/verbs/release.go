@@ -48,6 +48,9 @@ func runRelease(e *Engine, ctx context.Context, in *input, snap store.Snapshot) 
 	if err != nil {
 		return "", err
 	}
+	if in.has("dry-run") {
+		return done("nova-sprint release "+fmtCard(id, gen)+" --reason \"<why>\" (without --dry-run)", "RELEASE "+fmtCard(id, gen)+" (dry run)"), nil
+	}
 	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: in.actor, Kind: "release", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: reason}
 	r, err := e.commit(ctx, op, "nova-sprint show "+id)
 	if err != nil {

@@ -86,23 +86,41 @@ func runHold(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if reason == "" {
 		return "", refuse("a "+in.verb+" needs its reason", "add --reason \"<why>\"")
 	}
+	for _, name := range in.args {
+		if _, err := holdRequest(in.verb == "hold", name, reason, snap); err != nil {
+			return "", err
+		}
+	}
 	var lines []string
 	for i, name := range in.args {
 		var err error
 		if snap, err = e.again(ctx, snap, i); err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
 		r, err := holdRequest(in.verb == "hold", name, reason, snap)
 		if err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
 		line, err := e.move(ctx, in, snap, r, name)
 		if err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
 		lines = append(lines, line)
 	}
 	return done(nextAfter(in), lines...), nil
+}
+
+// partial is a multi-target verb's error after some of its moves applied:
+// the applied lines print before the refusal, which says they stand, so a
+// refusal never reads as nothing moved.
+func partial(err error, applied []string) error {
+	if len(applied) == 0 {
+		return err
+	}
+	f := *classify(err)
+	f.Detail = strings.Join(applied, "\n") + "\n" + f.Detail
+	f.What += " (the moves above were applied; this one and any after it were not)"
+	return &f
 }
 
 func holdRequest(hold bool, name, reason string, snap store.Snapshot) (steps.Request, error) {
