@@ -15,7 +15,8 @@ import (
 // (TestViewFoldEqualsBuild). The facts a snapshot does not carry (when a
 // consumer was taken, when a stream last landed, when a row went down, when
 // a row faulted) are witnessed by the fold and are zero for records that
-// predate the view; every bound they feed is then measured from Since.
+// predate the view; every bound they feed is then measured from Since. Run
+// folds the epoch's events into them at a cold start (run.witness).
 type View struct {
 	Seq    int64
 	Epoch  int

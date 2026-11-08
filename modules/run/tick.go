@@ -124,6 +124,9 @@ func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time
 	}
 	t := &Ticker{store: st, health: h, policy: p, view: steps.Build(snap, now), snap: snapshotCopy(snap),
 		inflight: map[string]steps.EdgeRequest{}, seen: map[string]time.Time{}, push: NewPusher()}
+	if err := witness(ctx, st, t.view, now); err != nil {
+		return nil, err
+	}
 	// the epoch's landing times for the board's ETA, up to the cold snapshot's
 	// seq; a store that cannot answer leaves them unknown (the ETA is "-")
 	if r, ok := st.(interface {
@@ -134,6 +137,53 @@ func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time
 		}
 	}
 	return t, nil
+}
+
+// witness folds the epoch's events up to the view's seq into the facts a
+// snapshot does not carry (when a consumer was dealt, a producer went
+// ready, a stream landed, a row went down, a row faulted), so a restart
+// dates every bound as the run before it did instead of from now. The
+// epoch's first event is found by bisection on single-event reads: the
+// epoch is read, never a walk from seq 0 (drift row 23).
+func witness(ctx context.Context, st store.Store, v *steps.View, now time.Time) error {
+	epochOf := func(after int64) (int, error) { // the epoch of the first event above after
+		es, err := st.Events(ctx, after, 1)
+		if err != nil || len(es) == 0 {
+			return v.Epoch, err
+		}
+		return es[0].Epoch, nil
+	}
+	lo, hi := int64(0), v.Seq // the epoch's events begin above lo
+	for lo < hi {
+		mid := lo + (hi-lo+1)/2
+		e, err := epochOf(mid - 1)
+		if err != nil {
+			return fmt.Errorf("run: witnesses: %w", err)
+		}
+		if e < v.Epoch {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	w := steps.Build(store.Snapshot{Epoch: v.Epoch}, now)
+	for after := lo; after < v.Seq; {
+		events, err := st.Events(ctx, after, store.MaxEvents)
+		if err != nil {
+			return fmt.Errorf("run: witnesses: %w", err)
+		}
+		if len(events) == 0 {
+			break
+		}
+		full := len(events) == store.MaxEvents
+		after = events[len(events)-1].Seq
+		w.Fold(slices.DeleteFunc(events, func(e store.Event) bool { return e.Seq > v.Seq }))
+		if !full {
+			break
+		}
+	}
+	v.TakenAt, v.ReadyAt, v.Landed, v.Down, v.Faults = w.TakenAt, w.ReadyAt, w.Landed, w.Down, w.Faults
+	return nil
 }
 
 // Landings is the epoch's landing times as run has folded them, the caller's

@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -610,5 +611,57 @@ func TestServeRosterFailureFailsTheTickAndJudges(t *testing.T) {
 	}
 	if len(open) != 1 {
 		t.Fatalf("open roster engine judgements %v, want one: %+v", open, snap.Judgements)
+	}
+}
+
+// TestNewTickerFoldsTheEpochsWitnesses: the facts a snapshot does not carry
+// (when a producer went ready, a row went down) are folded from the
+// epoch's events at the cold start, so a restart does not reset every bound
+// to the restart's time (the view's Since).
+func TestNewTickerFoldsTheEpochsWitnesses(t *testing.T) {
+	t.Parallel()
+	f, _ := seeded(t)
+	must(t, f, "ready", store.SetCardState{Card: "p1", State: "ready"})
+	must(t, f, "down", store.SetRowState{Row: "alice", State: "down"})
+	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tk.view.ReadyAt["p1"]; !got.Equal(t0) {
+		t.Errorf("ReadyAt[p1] = %v, want %v", got, t0)
+	}
+	if got := tk.view.Down["alice"]; !got.Equal(t0) {
+		t.Errorf("Down[alice] = %v, want %v", got, t0)
+	}
+}
+
+// TestNewTickerWitnessesOnlyTheEpoch: after a clear the witnesses are the
+// new epoch's: the old epoch's events are skipped by the bisection, not
+// folded.
+func TestNewTickerWitnessesOnlyTheEpoch(t *testing.T) {
+	t.Parallel()
+	f, _ := seeded(t)
+	must(t, f, "ready", store.SetCardState{Card: "p1", State: "ready"})
+	ctx := context.Background()
+	if rc, err := f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "test", Kind: "clear", At: t0.Add(time.Minute)}); err != nil || !rc.Accepted {
+		t.Fatalf("clear: %+v %v", rc, err)
+	}
+	at := t0.Add(2 * time.Minute)
+	for i, ws := range [][]store.Write{{store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"}},
+		{store.PutCard{ID: "p2", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p2", Paths: []string{"a"}}},
+		{store.SetCardState{Card: "p2", State: "ready"}}} {
+		if rc, err := f.Apply(ctx, store.Op{ID: fmt.Sprint("e2-", i), Epoch: 2, Actor: "test", Kind: "test", At: at, Writes: ws}); err != nil || !rc.Accepted {
+			t.Fatalf("op %d: %+v %v", i, rc, err)
+		}
+	}
+	tk, err := NewTicker(ctx, f, &healthy{}, &answering{}, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tk.view.ReadyAt["p2"]; !got.Equal(at) {
+		t.Errorf("ReadyAt[p2] = %v, want %v", got, at)
+	}
+	if _, old := tk.view.ReadyAt["p1"]; old {
+		t.Error("the old epoch's p1 is witnessed")
 	}
 }
