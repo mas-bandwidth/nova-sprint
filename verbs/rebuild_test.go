@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,5 +62,49 @@ func TestEventPrefixDigestStableAfterMoreEvents(t *testing.T) {
 	longer, err := EventPrefixDigest(ctx, f, 2)
 	if err != nil || longer == first {
 		t.Fatal(first, longer, err)
+	}
+}
+
+// TestBackupFoldKeepsACutModel: the backup's verification folds the log as
+// the store does. A card cut with a model and reported by a worker binary
+// from before the model column (its after-image has none) keeps the cut's
+// model, as the table does (store.Fold); v2.0.8's backup refused the live
+// store on exactly that ("rebuild does not match snapshot").
+func TestBackupFoldKeepsACutModel(t *testing.T) {
+	t.Parallel()
+	cut := store.Card{ID: "p.w4", Kind: "work", Of: "p", Stream: "s", State: "working", Holder: "amd-2", Model: "inception/mercury-3"}
+	done := cut
+	done.State, done.Model, done.Gen = "done", "", 1
+	events := []store.Event{
+		{Seq: 1, Accepted: true, Kind: "tick", After: &store.State{Cards: map[string]store.Card{cut.ID: cut}}},
+		{Seq: 2, Accepted: true, Kind: "report", After: &store.State{Cards: map[string]store.Card{cut.ID: done}}},
+	}
+	fold := newEventFold()
+	for _, e := range events {
+		fold.add(e)
+	}
+	if got, want := fold.result(), store.Rebuild(events); !reflect.DeepEqual(got, want) || got.Cards[cut.ID].Model != cut.Model {
+		t.Fatalf("the backup's fold %+v, the store's %+v", got.Cards, want.Cards)
+	}
+}
+
+// TestSnapshotDifferenceNamesTheCardAndField: a mismatch names what differs.
+func TestSnapshotDifferenceNamesTheCardAndField(t *testing.T) {
+	t.Parallel()
+	a := store.Snapshot{Seq: 2, Cards: map[string]store.Card{"p.w4": {ID: "p.w4", State: "done", Model: "m"}, "p": {ID: "p"}}}
+	b := store.Snapshot{Seq: 2, Cards: map[string]store.Card{"p.w4": {ID: "p.w4", State: "done"}, "p": {ID: "p"}}}
+	got := snapshotDifference(a, b)
+	for _, want := range []string{"card p.w4", "Model", `"m"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q does not name %s", got, want)
+		}
+	}
+	if d := snapshotDifference(a, a); d != "" {
+		t.Fatalf("equal snapshots differ: %q", d)
+	}
+	b.Seq = 3
+	b.Cards = a.Cards
+	if d := snapshotDifference(a, b); !strings.Contains(d, "Seq") {
+		t.Fatalf("a top-level difference: %q", d)
 	}
 }

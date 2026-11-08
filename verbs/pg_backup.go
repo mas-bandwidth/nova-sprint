@@ -343,8 +343,8 @@ func verifyDatabase(ctx context.Context, dsn, dumpDigest string) (store.Snapshot
 	if err != nil {
 		return store.Snapshot{}, 0, "", "", err
 	}
-	if !reflect.DeepEqual(fold.result(), snap) {
-		return store.Snapshot{}, 0, "", "", fmt.Errorf("rebuild does not match snapshot")
+	if got := fold.result(); !reflect.DeepEqual(got, snap) {
+		return store.Snapshot{}, 0, "", "", fmt.Errorf("rebuild does not match snapshot: %s", snapshotDifference(got, snap))
 	}
 	seq := snap.Seq
 	last, err := pg.Events(ctx, snap.Seq-1, 1)

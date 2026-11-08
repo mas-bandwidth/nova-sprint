@@ -254,3 +254,60 @@ func TestFunctionalBackupRound25RunningWithNoStopEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestFunctionalBackupKeepsACutModel: a store holding a consumer cut with a
+// model, then reported by a worker binary from before the model column (an
+// after-image with no model; the table keeps the cut's), round-trips
+// through dump, restore and verify. v2.0.8 refused it: "rebuild does not
+// match snapshot".
+func TestFunctionalBackupKeepsACutModel(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
+		t.Skip("requires isolated PostgreSQL")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	_, dsn := startBackupPG(ctx, t)
+	pg, err := store.Open(ctx, dsn, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pg.Close()
+	if err = pg.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Unix(1000, 0)
+	for _, op := range []store.Op{
+		{ID: "cut", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "worker"},
+			store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "task"}, store.PutCard{ID: "p.w1", Kind: "work", Of: "p", Stream: "s", Tier: "pro", Holder: "worker", Attempt: 1, Brief: "task", Model: "inception/mercury-3"}}},
+		{ID: "report", Epoch: 1, Actor: "worker", Kind: "report", At: at, Writes: []store.Write{store.SetCardReason{Card: "p.w1", Reason: "reported"}}},
+	} {
+		if r, err := pg.Apply(ctx, op); err != nil || !r.Accepted {
+			t.Fatal(op.ID, r, err)
+		}
+	}
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	// The report as a pre-model binary logged it: its after-image has no
+	// model. The log is append-only, so the fixture lifts the trigger once.
+	for _, stmt := range []string{
+		"ALTER TABLE sprint.events DISABLE TRIGGER events_append_only",
+		`UPDATE sprint.events SET after = jsonb_set(after, '{cards,p.w1,model}', '""') WHERE op = 'report'`,
+		"ALTER TABLE sprint.events ENABLE TRIGGER events_append_only",
+	} {
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			t.Fatal(stmt, err)
+		}
+	}
+	snap, err := pg.Snapshot(ctx)
+	if err != nil || snap.Cards["p.w1"].Model != "inception/mercury-3" {
+		t.Fatalf("the table's model: %+v %v", snap.Cards["p.w1"], err)
+	}
+	b := PGBackups{DSN: dsn, Directory: t.TempDir(), Version: "v2.0.0", Loader: PGSQLLoader{}}
+	if _, err := b.Backup(ctx, ""); err != nil {
+		t.Fatalf("the backup of a store with a pre-model report: %v", err)
+	}
+}
