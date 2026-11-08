@@ -8,7 +8,7 @@ func coordinateVerbs() []*verb {
 		{name: "stream set", group: "coordinate", role: roleCoordinator, usage: "<s> [--mode auto|group|hand] [--forge github|none]", flags: "mode= forge=", min: 1, max: 1, run: runStreamSet,
 			about: "changes a stream's landing mode or forge",
 			needs: []string{"an unknown stream: nova-sprint stream add <s> --repo <org/repo>"}},
-		{name: "add", group: "coordinate", role: roleCoordinator, usage: "--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a,b>] [--priority <level>] [--dry-run] | --stream <s> --sentinel <id> --needs <a,b>", flags: "stream= brief-file=* needs= after= priority= sentinel= dry-run", max: 0, run: runAdd,
+		{name: "add", group: "coordinate", role: roleCoordinator, usage: "--stream <s> --brief-file <f>... [--dry-run] | --stream <s> --sentinel <id> --needs <a,b>", flags: "stream= brief-file=* needs= sentinel= dry-run", max: 0, run: runAdd,
 			about: "adds producers from briefs that pass the card contract, or a sentinel that lands when its needs land",
 			needs: []string{"an unknown stream: nova-sprint stream add", "a brief missing a contract section, by name", "an unknown need, or a cycle, named",
 				"admission (CARD-CONTRACT): the stream's base unreadable, no row serving the tier or a NEEDS-ROUTE route, a PATHS entry not at the base, a DONE-WHEN that is not one command, a retired mechanic, the work already at the base: each names its fix"}},
