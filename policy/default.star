@@ -105,7 +105,8 @@ def catalog():
     # model a bench runs per tier, as its harness names it (provider/model);
     # and the API-rate providers up --services offers and a worker routes to:
     # API base url (without /v1), key name, a probe endpoint answering 2xx to
-    # a GET only with a valid key, and an optional balance endpoint. The
+    # a GET only with a valid key, and an optional balance endpoint answering
+    # {"usd": "<decimal>"} (cost.BalanceShape; any other shape is unknown). The
     # built-in names none: providers and models are the sprint's own, set in
     # a copy of this policy (nova-sprint policy show, policy set), as:
     #   "models": {"<provider>": [{"name": "<model>", "tier": "flash"}]},

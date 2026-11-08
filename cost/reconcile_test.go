@@ -32,7 +32,7 @@ func (f *fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func balance(usd string) string {
-	return `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"1.00"},{"currency":"USD","total_balance":"` + usd + `","granted_balance":"0.00","topped_up_balance":"` + usd + `"}]}`
+	return `{"usd":"` + usd + `"}`
 }
 
 var t0 = time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
@@ -75,8 +75,13 @@ func TestBalanceReadsUSDBalance(t *testing.T) {
 	assert.Contains(t, r.Why, "nova-secrets exec --only ACME_API_KEY")
 	r = ds(&fakeTransport{bodies: []string{`{"error":"x"}`}, status: 401}, "sk-1").Read(context.Background())
 	assert.Equal(t, "GET https://api.acme.test/balance answered HTTP 401", r.Why)
-	r = ds(&fakeTransport{bodies: []string{`{"balance_infos":[{"currency":"CNY","total_balance":"5"}]}`}}, "sk-1").Read(context.Background())
-	assert.Equal(t, "the balance answer has no USD total_balance", r.Why)
+	// Another shape, a provider's own, is unknown; its text is not in the reason.
+	other := `{"balance_infos":[{"currency":"USD","total_balance":"5"}]}`
+	r = ds(&fakeTransport{bodies: []string{other}}, "sk-1").Read(context.Background())
+	assert.Equal(t, Reading{Provider: "acme", Why: "unknown: balance shape not understood (the endpoint must answer " + BalanceShape + ")", Raw: other}, r)
+	r = ds(&fakeTransport{bodies: []string{`{"usd":"five"}`}}, "sk-1").Read(context.Background())
+	assert.False(t, r.Known)
+	assert.Contains(t, r.Why, "unknown: balance shape not understood (usd is not a decimal")
 	assert.False(t, NoBalance{Provider: "zeta"}.Read(context.Background()).Known)
 }
 

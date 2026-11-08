@@ -63,16 +63,22 @@ type Reader interface {
 // Balance reads a provider's balance: GET URL with the provider's key,
 // named Key, from the environment, as the worker and the run loop get it
 // (nova-secrets exec puts it there; nothing here reads a secrets file). The
-// answer it reads is {"balance_infos": [{"currency": "USD",
-// "total_balance": "<decimal>"}]}. Transport and Getenv are seams: a unit
-// test answers with a fake.
+// answer must be BalanceShape, nova-sprint's own: a provider that answers
+// another is fronted by something that translates it, or declares no
+// balance endpoint. Any other answer is unknown, and its text is never in
+// the reason. Transport and Getenv are seams: a unit test answers with a
+// fake.
 type Balance struct {
 	Provider, URL, Key string
 	Transport          http.RoundTripper
 	Getenv             func(string) string
 }
 
-// Read is the balance in USD (balance_infos' USD total_balance).
+// BalanceShape is the JSON a balance endpoint answers: the account's
+// balance in USD as a decimal string.
+const BalanceShape = `{"usd": "<decimal>"}`
+
+// Read is the balance in USD (BalanceShape's usd).
 func (d Balance) Read(ctx context.Context) Reading {
 	r := Reading{Provider: d.Provider}
 	get := d.Getenv
@@ -105,24 +111,18 @@ func (d Balance) Read(ctx context.Context) Reading {
 		return r
 	}
 	var b struct {
-		Infos []struct {
-			Currency string `json:"currency"`
-			Total    string `json:"total_balance"`
-		} `json:"balance_infos"`
+		USD *string `json:"usd"`
 	}
-	if json.Unmarshal(body, &b) != nil {
-		r.Why = "the balance answer is not JSON with balance_infos"
+	if json.Unmarshal(body, &b) != nil || b.USD == nil {
+		r.Why = "unknown: balance shape not understood (the endpoint must answer " + BalanceShape + ")"
 		return r
 	}
-	for _, in := range b.Infos {
-		if in.Currency == "USD" {
-			if usd, err := usage.Decimal(in.Total); err == nil {
-				r.Known, r.USD = true, usd
-				return r
-			}
-		}
+	usd, err := usage.Decimal(*b.USD)
+	if err != nil {
+		r.Why = "unknown: balance shape not understood (usd is not a decimal: " + err.Error() + ")"
+		return r
 	}
-	r.Why = "the balance answer has no USD total_balance"
+	r.Known, r.USD = true, usd
 	return r
 }
 

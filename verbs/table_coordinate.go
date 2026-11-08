@@ -1,5 +1,7 @@
 package verbs
 
+import "github.com/mas-bandwidth/nova-sprint/cost"
+
 func coordinateVerbs() []*verb {
 	return []*verb{
 		{name: "stream add", group: "coordinate", role: roleCoordinator, usage: "<s> --repo <org/repo> [--base main] [--mode auto|group|hand] [--forge github]", flags: "repo= base= mode= forge=", min: 1, max: 1, run: runStreamAdd,
@@ -43,7 +45,7 @@ func coordinateVerbs() []*verb {
 			about: "the difference between two versions"},
 		{name: "cost reconcile", group: "coordinate", role: roleCoordinator, usage: "--as <coordinator>", max: 0, run: runCostReconcile,
 			about: "reads each provider's balance and sets its fall beside the store's priced API records; a gap over 5% and $1 opens one cost-gap judgement",
-			more: []string{"the providers are the active policy's catalog() \"providers\"; each one's \"balance\" endpoint is read with its \"key\"",
+			more: []string{"the providers are the active policy's catalog() \"providers\"; each one's \"balance\" endpoint is read with its \"key\" and must answer " + cost.BalanceShape + "; any other shape is printed unknown",
 				"run under nova-secrets exec --only <each provider's key> so the keys are in the environment; the run loop does this hourly",
 				"a provider with no balance endpoint is printed unknown, its spend the store's records alone"}},
 		{name: "policy check", group: "coordinate", role: roleWorker, usage: "<file|version>", min: 1, max: 1, run: runPolicy,

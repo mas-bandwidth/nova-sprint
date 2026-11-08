@@ -22,11 +22,11 @@ func runCostReconcile(e *Engine, ctx context.Context, in *input, snap store.Snap
 	}
 	readers := e.CostReaders
 	if readers == nil {
-		c, err := policy.ReadCatalog(ctx, e.Store, e.Policy, snap.Policy)
+		providers, err := policy.ReadProviders(ctx, e.Store, e.Policy)
 		if err != nil {
 			return "", RefusalOr(err, broken("cost reconcile: the providers of policy "+policy.Label(snap.Policy)+": "+clip(err.Error()), fmt.Sprintf("nova-sprint policy check %d", snap.Policy)))
 		}
-		readers = cost.Readers(c.Providers, nil)
+		readers = cost.Readers(providers, nil)
 	}
 	lines, err := cost.Reconcile(ctx, st, e.Now(), in.actor, readers)
 	if err != nil {

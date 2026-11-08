@@ -37,7 +37,8 @@ type Catalog struct {
 // worker's key proxy forwards to (without /v1); Key the name of the secret
 // holding its API key; Probe an endpoint that answers 2xx to a GET only
 // with a valid key, which proves a saved key; Balance, optional, the
-// endpoint cost reconcile reads the account's balance from.
+// endpoint cost reconcile reads the account's balance from, answering
+// cost.BalanceShape ({"usd": "<decimal>"}).
 type Provider struct{ URL, Key, Probe, Balance string }
 
 // Model is one model and a tier it serves; a model serving two tiers is two entries.
