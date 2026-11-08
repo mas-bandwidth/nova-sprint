@@ -365,7 +365,7 @@ when its row already holds as many working cards as its width),
 `SetCardPaths`, `SetCardDoneWhen`, `SetCardProse`, `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
-`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardReview` (+1, a producer's), `SetCardFinding` (a producer's), `SetCardRed` (a producer's), `SetCardCost` (cost
+`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardBounceBase` (a producer's, round 30), `SetCardReview` (+1, a producer's), `SetCardFinding` (a producer's), `SetCardRed` (a producer's), `SetCardCost` (cost
 and priced together, one field), `SetCardPriority` (refused on a consumer,
 normal included; `""` is normal, as at put card), `SetCardNeeds` and `SetCardAfter` (each refused on a
 consumer, nil included), `PutRow`

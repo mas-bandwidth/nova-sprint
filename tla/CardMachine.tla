@@ -94,6 +94,14 @@
 (* held card (HeldNeverDealt), and UnholdCard lifts it back to plain       *)
 (* waiting. A park into a held stream is the stream's hold (held), never a *)
 (* why, and HoldStream refuses a reason that would hold.                   *)
+(*                                                                         *)
+(* base is a producer's bounces at its last UnholdCard (the store's        *)
+(* bounce_base, round 30): the bounce limit counts bounces - base, so an   *)
+(* unhold is a fresh budget and the limit does not hold the card again     *)
+(* for the bounces it was held for (live 2026-11-08: it did, every tick).  *)
+(* bounces stays the whole count. The limit's hold is HoldCard (layer 3    *)
+(* calls it at the limit); the model's limit is BounceLimit, 1, so any    *)
+(* bounce spends it (UnholdFreshBudget).                                  *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets, Sequences, TLC
 
@@ -167,10 +175,10 @@ Findings == {"-", "fix"}
 NewProd(p) == [st |-> IF p \in Added THEN "absent" ELSE "waiting", att |-> 0, head |-> 0,
                author |-> None, bounces |-> 0, score |-> 0, prio |-> "normal",
                needs |-> Needs0[p], after |-> After0[p], review |-> 0, ncut |-> 0,
-               finding |-> "-", red |-> FALSE, why |-> "-"]
+               finding |-> "-", red |-> FALSE, why |-> "-", base |-> 0]
 
 VARIABLES
-  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding, red, why]
+  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding, red, why, base]
   cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review, prior, finding]
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
@@ -248,6 +256,11 @@ Init ==
 
 PEvents == {"Finished", "Broken", "Faulted", "Released"}
 
+\* The bounce limit (layer 3's limits step holds a producer at it): the
+\* bounces since its last unhold reach BounceLimit. The model's limit is 1.
+BounceLimit == 1
+OverLimit(rec) == rec.bounces - rec.base >= BounceLimit
+
 \* The condition a move keeps on its card's state, as read (the state the
 \* earlier moves of the op left): none when an earlier move of the op wrote
 \* that state (the code's keepExpects), so what is kept is the snapshot's.
@@ -299,6 +312,8 @@ StepRule(n, ev, p, c, r) ==
          ev = "Faulted" => /\ (ps'[p].why = "route" <=> cs[c].res = "route")
                            /\ (cs[c].res = "route" => ps'[p].st = "waiting")
     [] n = "HoldNoLive" -> ev = "HoldCard" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
+    [] n = "UnholdFreshBudget" ->
+         ev = "UnholdCard" => (ps'[p].bounces = ps[p].bounces /\ ~OverLimit(ps'[p]))
     [] n = "EditNoLive" -> ev = "Edit" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
     [] n = "SentinelLandsByReached" ->
          \A s \in Sentinels :
@@ -319,7 +334,7 @@ StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixK
               "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs",
               "ReadYesNeedsYes", "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
               "WaiveRedNeedsPriorRead", "FixCarriesFailure", "ReplaceByLive", "HeadNeverRepeats",
-              "FaultSpendsNothing", "RouteFaultWaits", "HoldNoLive", "EditNoLive",
+              "FaultSpendsNothing", "RouteFaultWaits", "HoldNoLive", "UnholdFreshBudget", "EditNoLive",
               "SentinelLandsByReached", "WaiveRedNeedsRed",
               "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
               "FencesOnSnapshot"}
@@ -672,7 +687,7 @@ HoldCard(p) ==
 UnholdCard(p) ==
   /\ ps[p].st = "waiting"
   /\ ps[p].why # "-"
-  /\ PStep("UnholdCard", p, NoC, [ps[p] EXCEPT !.why = "-"])
+  /\ PStep("UnholdCard", p, NoC, [ps[p] EXCEPT !.why = "-", !.base = ps[p].bounces])   \* a fresh bounce budget
 
 \* Add puts a new card (here the sentinel a): its needs are existing
 \* producers or sentinels, its after the same, and a cycle
@@ -914,7 +929,7 @@ Spec == Init /\ [][Next]_vars
 ProdRec == [st : PStates, att : 0..MaxAttempt, head : 0..MaxHead, author : Rows \cup {None},
             bounces : 0..MaxBounce, score : 0..1, prio : Prios, needs : SUBSET P,
             after : SUBSET P, review : 0..(MaxAttempt + MaxEnv), ncut : 0..K, finding : Findings,
-            red : BOOLEAN, why : Whys]
+            red : BOOLEAN, why : Whys, base : 0..MaxBounce]
 ConsRec == [st : CStates, kind : {"-", "work", "read"}, row : Rows \cup {NoR},
             att : 0..MaxAttempt, head : 0..MaxHead, res : Results,
             author : Rows \cup {None}, review : 0..(MaxAttempt + MaxEnv), prior : 0..MaxHead,
@@ -1089,6 +1104,7 @@ HeadNeverRepeats       == "HeadNeverRepeats" \notin last.bad
 FaultSpendsNothing     == "FaultSpendsNothing" \notin last.bad
 RouteFaultWaits        == "RouteFaultWaits" \notin last.bad
 HoldNoLive             == "HoldNoLive" \notin last.bad
+UnholdFreshBudget      == "UnholdFreshBudget" \notin last.bad
 EditNoLive             == "EditNoLive" \notin last.bad
 SentinelLandsByReached == "SentinelLandsByReached" \notin last.bad
 WaiveRedNeedsRed       == "WaiveRedNeedsRed" \notin last.bad
@@ -1117,6 +1133,8 @@ NeverFixed           ==
 NeverRed             == ~\E p \in Prods : AfterRed(p)
 NeverNeedFailed      == last.ev # "NeedFailed"
 NeverHeld            == \A p \in P : ps[p].why # "held"
+(* A producer held after a bounce is unheld with a fresh budget.          *)
+NeverUnheldBounced   == ~\E p \in Prods : ps[p].why = "-" /\ ps[p].base >= 1
 NeverPreempted       == last.ev # "Preempt"
 (* Only Reached lands a sentinel (SentinelLandsByReached); this one lands *)
 (* with its original needs landed, not waived away.                       *)

@@ -272,6 +272,8 @@ func (w *world) landedCard2(s store.Snapshot, x store.Write) bool {
 		assert.Equal(w.t, v.Attempt, s.Cards[v.Card].Attempt, "attempt of %s", v.Card)
 	case store.SetCardBounces:
 		assert.Equal(w.t, v.Bounces, s.Cards[v.Card].Bounces, "bounces of %s", v.Card)
+	case store.SetCardBounceBase:
+		assert.Equal(w.t, v.Base, s.Cards[v.Card].BounceBase, "bounce base of %s", v.Card)
 	case store.SetCardNeeds:
 		assert.ElementsMatch(w.t, v.Needs, s.Cards[v.Card].Needs, "needs of %s", v.Card)
 	case store.SetCardReview:

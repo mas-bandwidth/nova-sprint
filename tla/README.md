@@ -730,6 +730,7 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardDealOverWidth` | pre | Start has no room guard | WidthKept |
 | `witnesses/CardRouteRedealt` | life | a route fault goes back to ready | RouteFaultWaits |
 | `witnesses/CardHeldDealt` | life | Resolve takes a held producer | HeldNeverDealt |
+| `witnesses/CardUnholdBudgetSpent` | life | UnholdCard leaves the bounce base, so the limit holds it again | UnholdFreshBudget |
 | `witnesses/CardNeedsCycle` | deps | Relink without the cycle check | NeedsAcyclic |
 | `witnesses/CardWithdrawLeavesWorking` | life | Withdraw does not release the working producer | WithdrawReleasesInOneStep |
 | `witnesses/CardReadFixOnZero` | life | ReadFix without the fix-read check | ReadFixNeedsFix |
@@ -760,6 +761,7 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverYesAfterRed` | life | none | violated: a yes after a Red, on a new read |
 | `reach/CardNeverFaultRedealt` | life | none | violated: a faulted producer is started again |
 | `reach/CardNeverHeld` | life | none | violated: a producer waits on a hold |
+| `reach/CardNeverUnheldBounced` | life | none | violated: a producer held after a bounce is unheld with a fresh budget |
 | `reach/CardNeverRouteHeld` | life | none | violated: a route fault leaves its producer waiting on it |
 | `reach/CardNeverSentinelReached` | life | none | violated: the sentinel lands on its landed need |
 | `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |

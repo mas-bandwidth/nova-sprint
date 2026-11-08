@@ -207,6 +207,49 @@ func TestTickHoldAtLimit(t *testing.T) {
 	assert.True(t, s.snap().Judgements["held.p1.1"].Deadline.IsZero(), "held has no deadline")
 }
 
+// TestTickUnholdFreshBudget: the coordinator's unhold of a producer held at
+// the bounce limit gives it a fresh budget: the next ticks deal it rather
+// than hold it again, a further limit's worth of bounces holds it again, and
+// its total bounces stay as counted (live 2026-11-08: unhold was re-held on
+// the next tick, the only way out drop and re-add).
+func TestTickUnholdFreshBudget(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	limit, n := Engine.Limits.Bounces, 0
+	bounce := func() {
+		n++
+		s.requireState("p1", "working")
+		s.take(fmt.Sprintf("p1.w%d", n))
+		s.report(fmt.Sprintf("p1.w%d", n), "fail", "", "broke")
+		s.tick()
+	}
+	for range limit {
+		bounce()
+	}
+	s.requireState("p1", "waiting")
+	require.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
+	rc, ref := s.verb(Request{Actor: "rowan", Judgement: "held.p1.1", Answer: "unhold", Card: "p1", Event: card.UnholdCard{Reason: "reviewed"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.run(3)
+	require.Empty(t, s.rejected)
+	assert.Empty(t, s.openJudgements("held"), "an unhold is not held again by the same bounces")
+	assert.Equal(t, limit, s.snap().Cards["p1"].Bounces, "the total stays as counted")
+	for range limit - 1 {
+		bounce()
+	}
+	assert.Empty(t, s.openJudgements("held"), "a bounce short of a fresh limit")
+	bounce()
+	s.requireState("p1", "waiting")
+	assert.Equal(t, fmt.Sprintf("held: bounced %d times since its last unhold, the limit is %d", limit, limit), s.snap().Cards["p1"].Reason)
+	assert.Equal(t, 2*limit, s.snap().Cards["p1"].Bounces)
+	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
+}
+
 // TestTickBudgetAndCarry: results over the budget are carried in arrival
 // order, nothing lost, through in ceil(B/N) ticks (BudgetKept, CarryFIFO).
 func TestTickBudgetAndCarry(t *testing.T) {

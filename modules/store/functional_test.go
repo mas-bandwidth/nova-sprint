@@ -496,6 +496,42 @@ func TestFunctionalMigrateRound28(t *testing.T) {
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
 }
 
+// Round 30: a store made by round 29's schema (round29Hash: cards without
+// bounce_base, a producer bounced in it) is upgraded by Migrate: the column
+// is added (0 on the card), the new hash recorded, a second Migrate is a
+// no-op, the bounces are kept, an unhold's write then sets the base, the
+// column refuses a sentinel's, and the columns are in a new store's order.
+func TestFunctionalMigrateRound29(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round29.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round29Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, bounces, epoch) VALUES ('p1', 'producer', 's1', 'waiting', 4, 'pro', 'held: bounced 3 times, the limit is 3', 3, 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round29Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 29}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	p1 := h.snap().Cards["p1"]
+	assert.Equal(t, []int{3, 0}, []int{p1.Bounces, p1.BounceBase}, "the bounces are kept and the base starts at 0")
+	h.ok(h.op("unhold", nil, SetCardBounceBase{"p1", 3}))
+	assert.Equal(t, 3, h.snap().Cards["p1"].BounceBase)
+	_, err = c.Exec(ctx, "INSERT INTO sprint.cards (id, kind, stream, state, tier, bounce_base, epoch) VALUES ('t1', 'sentinel', 's1', 'waiting', 'pro', 1, 1)")
+	require.Error(t, err, "only a producer has a bounce base")
+	assert.Contains(t, err.Error(), "cards_bounce_base_check")
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
 // columns is every sprint table's columns in their order, the order a
 // positional INSERT (pg_dump --inserts) fills them in.
 func columns(t *testing.T, c *pgx.Conn) map[string][]string {

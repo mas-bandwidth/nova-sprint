@@ -771,6 +771,12 @@ func TestHoldCardWaits(t *testing.T) {
 	require.Nil(t, r)
 	assert.Equal(t, []store.Write{store.SetCardReason{Card: "p1", Reason: "held: stream s1 is held"}}, plan.Writes, "parked under the stream's hold")
 	assert.Contains(t, plan.Expect, store.Expect(store.StreamHeld{Stream: "s1", Held: true}))
+	spent := held
+	spent.Bounces, spent.BounceBase = 6, 2
+	plan, r = Move(spent, nil, rows(), Stream{Name: "s1"}, nil, UnholdCard{Reason: "reviewed"})
+	require.Nil(t, r)
+	assert.Equal(t, []store.Write{store.SetCardBounceBase{Card: "p1", Base: 6}, store.SetCardReason{Card: "p1", Reason: "reviewed"}}, plan.Writes,
+		"an unhold is a fresh bounce budget: the base is the bounces, which stay the total")
 	parked := pr(Waiting)
 	parked.Reason = "held: stream s1 is held"
 	assert.False(t, Held(parked), "a park into a held stream is the stream's hold, never the card's")

@@ -43,7 +43,9 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   `head text`, `pr integer`, `result text`
   (`""`, `ok`, `fix`, `fail`, `fault`), `bounces integer` (on a producer:
   the returns that count toward the bounce hold; a `fault` never raises it;
-  LESSONS 2.24), `cost bigint` (on a consumer: what its run cost, in
+  LESSONS 2.24), `bounce_base integer` (on a producer: its bounces at its
+  last unhold, so the bounce limit counts `bounces - bounce_base`; 0 on every
+  other kind; round 30), `cost bigint` (on a consumer: what its run cost, in
   micro-dollars) and `priced boolean` (false when the run's route has no
   price, so an unpriced run is shown as unpriced, never as $0; LESSONS 1.17),
   `priority text NOT NULL DEFAULT 'normal'` (checked against `low`,
@@ -236,7 +238,7 @@ condition, the write is the check. How many `ready` consumers a row may hold
 ahead of its width is policy's number (PRIORITY D21), never the store's;
 set card author; set
 card branch; set card base_sha; set card head; set card
-pr; set card result (a consumer only); set card bounces (a producer only); set card prior_head (a work consumer only); set card attempt (never a consumer: its attempt is set at add); set card cost (a consumer only; cost and priced
+pr; set card result (a consumer only); set card bounces (a producer only); set card bounce_base (`SetCardBounceBase`: a producer only; round 30); set card prior_head (a work consumer only); set card attempt (never a consumer: its attempt is set at add); set card cost (a consumer only; cost and priced
 together, one field; each kind-specific write is refused on the wrong kind, naming the kind and the write, and the schema carries the matching CHECKs); set card reason; set card score; set card red (`SetCardRed`: a producer only, refused on a consumer naming
 its producer as the place to record the verdict and on a sentinel as never
 read, whatever the value; a same-value write is refused like every set

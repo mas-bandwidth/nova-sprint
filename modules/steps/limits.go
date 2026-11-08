@@ -8,8 +8,9 @@ import (
 )
 
 // limits is the retire and fail limits step (LAYER-3 "Retire and fail
-// limits"): HoldCard with a held judgement when bounces reach the limit (a
-// fault never counts, LESSONS 2.24); Withdraw of a working consumer whose
+// limits"): HoldCard with a held judgement when bounces since the last
+// unhold reach the limit (a fault never counts, LESSONS 2.24; an unhold is a
+// fresh budget); Withdraw of a working consumer whose
 // row is silent past the bound, branch kept; Gone for a row unseen past its
 // bound, never for one missed challenge (LESSONS 4.7: the bound is policy's
 // and long); a flap judgement at the flap limit.
@@ -17,10 +18,14 @@ func (t *tick) limits() {
 	for _, state := range []string{"ready", "review"} {
 		for _, p := range t.v.Producers(state) {
 			c := t.v.Cards[p]
-			if c.Kind != "producer" || c.Bounces < t.lim.Bounces || !t.free(p) || t.hasLive(p) {
+			spent := c.Bounces - c.BounceBase // since its last unhold
+			if c.Kind != "producer" || spent < t.lim.Bounces || !t.free(p) || t.hasLive(p) {
 				continue
 			}
-			why := fmt.Sprintf("bounced %d times, the limit is %d", c.Bounces, t.lim.Bounces)
+			why := fmt.Sprintf("bounced %d times, the limit is %d", spent, t.lim.Bounces)
+			if c.BounceBase > 0 {
+				why = fmt.Sprintf("bounced %d times since its last unhold, the limit is %d", spent, t.lim.Bounces)
+			}
 			if g := t.group("hold", p, t.producerMove(p, card.HoldCard{Reason: card.HeldPrefix + why})); g != nil {
 				g.judge = t.riding("held", p, "producer "+p+" "+why+"; it waits held until you review it")
 			}

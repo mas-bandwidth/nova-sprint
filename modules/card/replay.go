@@ -213,6 +213,8 @@ func idleCard(w store.Write, cur records) bool {
 		return c.Attempt == x.Attempt
 	case store.SetCardBounces:
 		return c.Bounces == x.Bounces
+	case store.SetCardBounceBase:
+		return c.BounceBase == x.Base
 	case store.SetCardCost:
 		return c.Cost == x.Cost && c.Priced == x.Priced
 	case store.SetCardUsage:
@@ -962,6 +964,8 @@ func foldCard(s records, w store.Write) {
 		editCard(s, x.Card, func(c *Card) { c.Finding = x.Finding })
 	case store.SetCardBounces:
 		editCard(s, x.Card, func(c *Card) { c.Bounces = x.Bounces })
+	case store.SetCardBounceBase:
+		editCard(s, x.Card, func(c *Card) { c.BounceBase = x.Base })
 	case store.SetCardReview:
 		editCard(s, x.Card, func(c *Card) { c.Review++ })
 	case store.SetCardAuthor:

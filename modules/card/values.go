@@ -197,6 +197,8 @@ func cardValue(w store.Write) (string, func(v *vals)) {
 		return x.Card, func(v *vals) { v.num("attempt", x.Attempt) }
 	case store.SetCardBounces:
 		return x.Card, func(v *vals) { v.num("bounces", x.Bounces) }
+	case store.SetCardBounceBase:
+		return x.Card, func(v *vals) { v.num("bounce base", x.Base) }
 	case store.SetCardCost:
 		return x.Card, func(v *vals) {
 			if x.Cost < 0 {
@@ -306,6 +308,8 @@ func oneField(w store.Write) (id, col string, ok bool) {
 		return x.Card, "attempt", true
 	case store.SetCardBounces:
 		return x.Card, "bounces", true
+	case store.SetCardBounceBase:
+		return x.Card, "bounce_base", true
 	case store.SetCardCost:
 		return x.Card, "cost", true
 	case store.SetCardUsage:

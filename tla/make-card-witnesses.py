@@ -26,7 +26,7 @@ INVARIANTS = [
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "ReplaceByLive", "HeadNeverRepeats",
-    "FaultSpendsNothing", "RouteFaultWaits", "HoldNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
+    "FaultSpendsNothing", "RouteFaultWaits", "HoldNoLive", "UnholdFreshBudget", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
     "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
 ]
 
@@ -65,6 +65,7 @@ REACH = {
     "NeverFixed": ("life", "a review ends in ReadFix"),
     "NeverRed": ("life", "a merging producer goes red"),
     "NeverHeld": ("life", "a producer waits on a hold"),
+    "NeverUnheldBounced": ("life", "a producer held after a bounce is unheld with a fresh budget"),
     "NeverSentinelReached": ("life", "the sentinel lands by Reached"),
     "NeverFaultRedealt": ("life", "a faulted work consumer's producer is started again"),
     "NeverRouteHeld": ("life", "a fault naming a missing route leaves its producer waiting on it"),
@@ -163,6 +164,14 @@ WITNESSES = [
      "is a reason on waiting that the deal refuses).",
      [("  /\\ ps[p].why = \"-\"   \\* the code: \"the deal never takes a held card\"\n",
        "  /\\ TRUE   \\* FAULT: was ps[p].why = \"-\"\n", 1)]),
+    ("CardUnholdBudgetSpent", "UnholdFreshBudget", "life",
+     "UnholdCard leaves the bounce base where it was: a producer held at\n"
+     "the bounce limit is unheld with its budget still spent, so the limit\n"
+     "holds it again on the next tick (live 2026-11-08: gen 33 to 36, back\n"
+     "to \"held: bounced 12 times, the limit is 12\"; the only way out was\n"
+     "drop and re-add).",
+     [("[ps[p] EXCEPT !.why = \"-\", !.base = ps[p].bounces])",
+       "[ps[p] EXCEPT !.why = \"-\"])   \\* FAULT: was also !.base = ps[p].bounces;", 1)]),
     ("CardEditUnderLive", "EditNoLive", "life",
      "Edit is accepted while the producer has a live consumer.",
      [("  /\\ NonFinal(p)\n  /\\ NoLive(p)\n  /\\ PStep(\"Edit\"",

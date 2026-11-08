@@ -229,6 +229,14 @@ type SetCardBounces struct {
 	Bounces int
 }
 
+// SetCardBounceBase sets a producer's bounce base: its bounces at its last
+// unhold, so the bounce limit counts only the bounces since (round 30);
+// refused on any other kind.
+type SetCardBounceBase struct {
+	Card string
+	Base int
+}
+
 // SetCardReview raises a producer's review by one: it entered review again
 // (layer 2 says when); refused on any other kind. A read cut at an earlier
 // review no longer counts for ReadYes.
@@ -412,6 +420,8 @@ func (AnswerJudgement) isWrite()  {}
 func (ExpireJudgement) isWrite()  {}
 func (SetCursor) isWrite()        {}
 
+func (SetCardBounceBase) isWrite() {}
+
 // field names one field one write sets; two writes to one field in an op are
 // invalid.
 type field struct{ table, key, name string }
@@ -540,6 +550,8 @@ func kindSpec(w Write) spec {
 		return card(v.Card, "prior_head", func(k *Card) { k.Prior = v.Head }, func(c *checker) { c.text(v.Head) }).kinds("SetCardPriorHead", "a work consumer", func(k string) bool { return k == "work" })
 	case SetCardBounces:
 		return card(v.Card, "bounces", func(k *Card) { k.Bounces = v.Bounces }, func(c *checker) { c.num("bounces", v.Bounces) }).kinds("SetCardBounces", "a producer", func(k string) bool { return k == "producer" })
+	case SetCardBounceBase:
+		return card(v.Card, "bounce_base", func(k *Card) { k.BounceBase = v.Base }, func(c *checker) { c.num("bounce_base", v.Base) }).kinds("SetCardBounceBase", "a producer", func(k string) bool { return k == "producer" })
 	case SetCardReview:
 		s := card(v.Card, "review", func(k *Card) { k.Review++ }, nil).kinds("SetCardReview", "a producer", func(k string) bool { return k == "producer" })
 		kind := s.cardIf
