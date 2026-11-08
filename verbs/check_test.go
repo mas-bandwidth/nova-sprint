@@ -126,6 +126,7 @@ func TestCheckRedLines(t *testing.T) {
 					r.Version = "v2.0.6"
 					s.Rows[n] = r
 				}
+				s.Rows["dave"] = store.Row{Name: "dave", State: "up", Session: "s-dave", Role: "worker", Gen: 1} // a friend hooked as worker never beats: not a bench
 			},
 			want: []string{"CHECK worker binaries: 2 hooked rows at the run's v2.0.6 or above"}},
 		{name: "no commit identity", args: []string{"check"}, exit: 1, prep: healthy, snap: func(s *store.Snapshot) { s.Identity = store.Identity{} },

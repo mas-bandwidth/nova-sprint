@@ -37,7 +37,7 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 	e.checkCards(ctx, r, snap)
 	checkWorking(r, snap, who)
 	e.checkWorkers(ctx, r, snap, who)
-	checkWorkerVersions(r, snap, e.Version)
+	e.checkWorkerVersions(ctx, r, snap)
 	checkJudgements(r, snap)
 	running := e.checkRun(ctx, r, who)
 	ws := steps.Waits(snap.Cards)
@@ -175,15 +175,23 @@ func (e *Engine) checkRun(ctx context.Context, r *checkReport, who map[string]bu
 // (its beat's version) is below the run's release, which check takes as its
 // own build's (the one up installs as run): the tick deals that row nothing
 // (roster.Advertised; defect D3). A build that is not a release compares
-// nothing and prints no line, as the tick does.
-func checkWorkerVersions(r *checkReport, snap store.Snapshot, version string) {
-	if !roster.Behind("", version) {
+// nothing and prints no line, as the tick does. Only the roster's bench
+// machines are read, as Advertised pins only them: a friend hooks as a
+// worker too and never beats. An unreadable roster prints nothing here (the
+// width line names it).
+func (e *Engine) checkWorkerVersions(ctx context.Context, r *checkReport, snap store.Snapshot) {
+	version := e.Version
+	if !roster.Behind("", version) || e.Roster == nil {
+		return
+	}
+	ro, err := e.Roster.ReadRosterAt(ctx, 1)
+	if err != nil {
 		return
 	}
 	n, behind := 0, false
 	for _, name := range slices.Sorted(maps.Keys(snap.Rows)) {
 		row := snap.Rows[name]
-		if row.Role != "worker" || row.Session == "" {
+		if _, bench := ro.Workers[name]; !bench || row.Session == "" {
 			continue
 		}
 		n++
