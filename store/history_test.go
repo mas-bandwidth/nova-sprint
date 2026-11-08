@@ -56,3 +56,31 @@ func TestFunctionalValidateHistoryRefuses(t *testing.T) {
 		})
 	}
 }
+
+// TestRebuildKeepsAConsumersModel: a card's model is set when it is cut
+// and never changed (putCard's upsert leaves it). A worker binary from
+// before the column reported cards with no model in its after-image while
+// the table kept the cut's: the live store's 14 done cards (seq 4921-5018,
+// e.g. schema-moo-cards.w4: cut by tick 4934 with inception/mercury-3,
+// reported by amd-2 at 4942 with none). The rebuild keeps the cut's model.
+func TestRebuildKeepsAConsumersModel(t *testing.T) {
+	t.Parallel()
+	cut := Card{ID: "p1.w4", Kind: "work", Of: "p1", Stream: "s", State: "working", Holder: "amd-2", Model: "inception/mercury-3"}
+	done := cut
+	done.State, done.Model, done.Gen = "done", "", 1
+	got := Rebuild([]Event{
+		{Seq: 1, Accepted: true, Kind: "tick", After: &State{Cards: map[string]Card{cut.ID: cut}}},
+		{Seq: 2, Accepted: true, Kind: "report", After: &State{Cards: map[string]Card{cut.ID: done}}},
+	})
+	if c := got.Cards[cut.ID]; c.Model != cut.Model || c.State != "done" {
+		t.Fatalf("rebuilt %+v, want the cut's model %q and state done", c, cut.Model)
+	}
+	again := Rebuild([]Event{ // a card cut anew in a later epoch takes its own model
+		{Seq: 1, Accepted: true, Kind: "tick", After: &State{Cards: map[string]Card{cut.ID: cut}}},
+		{Seq: 2, Accepted: true, Kind: "clear", After: &State{Epoch: 2}},
+		{Seq: 3, Accepted: true, Kind: "tick", After: &State{Cards: map[string]Card{cut.ID: done}}},
+	})
+	if c := again.Cards[cut.ID]; c.Model != "" {
+		t.Fatalf("a new epoch's card kept the old one's model: %+v", c)
+	}
+}

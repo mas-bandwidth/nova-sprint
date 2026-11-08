@@ -275,7 +275,11 @@ func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[st
 	if len(shas) > MaxChecksBatch {
 		return nil, fmt.Errorf("forge refused: Checks batch size %d exceeds %d SHAs: split into batches of at most %d", len(shas), MaxChecksBatch, MaxChecksBatch)
 	}
-	owner, name, ok := strings.Cut(repo, "/")
+	path, err := RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	owner, name, ok := strings.Cut(path, "/")
 	if !ok || owner == "" || name == "" {
 		return nil, fmt.Errorf("forge refused: invalid repository %q: expected org/repo", repo)
 	}
@@ -538,4 +542,36 @@ func isFullSHA_internal(s string) bool {
 		}
 	}
 	return true
+}
+
+// RepoPath is the <owner>/<repo> a forge API path names repo by. A stream
+// may keep its repository as a clone URL (https://github.com/<owner>/<repo>.git,
+// ssh://git@github.com/..., or git@github.com:<owner>/<repo>.git); pasted
+// into repos/<r> that is no path at all. A URL of any host but github.com
+// is refused, naming it: its owner/repo is not github.com's. An owner/repo
+// is returned as it is, and so is anything that names no host (a local path).
+func RepoPath(repo string) (string, error) {
+	repo = strings.TrimSpace(repo)
+	host, path := "", ""
+	if _, rest, ok := strings.Cut(repo, "://"); ok {
+		host, path, _ = strings.Cut(rest, "/")
+	} else if at, colon := strings.Index(repo, "@"), strings.Index(repo, ":"); at >= 0 && colon > at {
+		host, path = repo[:colon], repo[colon+1:]
+	} else {
+		return repo, nil
+	}
+	if _, h, ok := strings.Cut(host, "@"); ok {
+		host = h
+	}
+	if h, _, ok := strings.Cut(host, ":"); ok {
+		host = h
+	}
+	if !strings.EqualFold(host, "github.com") {
+		return "", fmt.Errorf("forge refused: repository %s is not on github.com, the one forge the sprint's API calls reach", repo)
+	}
+	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	if owner, name, ok := strings.Cut(path, "/"); ok && owner != "" && name != "" && !strings.Contains(name, "/") {
+		return path, nil
+	}
+	return "", fmt.Errorf("forge refused: repository %s names no <owner>/<repo> on github.com", repo)
 }

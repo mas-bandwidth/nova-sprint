@@ -155,3 +155,45 @@ func TestAuthorsAndAgreements(t *testing.T) {
 		t.Fatalf("bad json: %v", err)
 	}
 }
+
+// TestAPIPathTakesOwnerRepoFromAURL: a stream whose repository is a clone
+// URL gets owner/repo in every api path, never the URL pasted in.
+func TestAPIPathTakesOwnerRepoFromAURL(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"o/r":                         "o/r",
+		"https://github.com/o/r":      "o/r",
+		"https://github.com/o/r.git":  "o/r",
+		"https://github.com/o/r.git/": "o/r",
+		"git@github.com:o/r.git":      "o/r",
+		"ssh://git@github.com/o/r":    "o/r",
+		"/srv/git/r.git":              "/srv/git/r.git",
+	} {
+		if got, err := RepoPath(in); got != want || err != nil {
+			t.Errorf("RepoPath(%q) = %q, %v, want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"https://gitlab.example.com/o/r.git", "git@gitlab.example.com:o/r.git"} { // another host is never github.com's o/r
+		if got, err := RepoPath(in); err == nil || !strings.Contains(err.Error(), in) {
+			t.Errorf("RepoPath(%q) = %q, %v, want a refusal naming the URL", in, got, err)
+		}
+	}
+	if _, err := c0_internal().JobLines(context.Background(), "https://gitlab.example.com/o/r", 1); err == nil || !strings.Contains(err.Error(), "gitlab.example.com") {
+		t.Fatalf("an api call for another host: %v", err)
+	}
+	var paths []string
+	c := actionsGH_internal(actionsCanned_internal(), &paths)
+	if _, err := c.Inheritance(context.Background(), "https://github.com/o/r.git", "sprint/schema-100", actTip, actHead); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.JobLines(context.Background(), "https://github.com/o/r", 121); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paths {
+		if !strings.HasPrefix(p, "repos/o/r/") && !strings.HasPrefix(p, "pr ") {
+			t.Fatalf("an api path from a URL: %q (all %q)", p, paths)
+		}
+	}
+}
+
+func c0_internal() *Client { var p []string; return actionsGH_internal(nil, &p) }

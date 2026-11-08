@@ -102,11 +102,15 @@ func (f hostForge) PR(ctx context.Context, repo string, n int) (string, bool, er
 // rulesets that apply to it. Both are readable with read access; either
 // failing is an error (a half read would hide a requirement).
 func (f hostForge) RequiredChecks(ctx context.Context, repo, branch string) ([]string, error) {
-	prot, err := f.gh(ctx, "api", "repos/"+repo+"/branches/"+branch, "--jq", ".protection.required_status_checks.contexts // [] | .[]")
+	rp, err := forge.RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	prot, err := f.gh(ctx, "api", "repos/"+rp+"/branches/"+branch, "--jq", ".protection.required_status_checks.contexts // [] | .[]")
 	if err != nil {
 		return nil, fmt.Errorf("the protection of %s's %s: %w", repo, branch, err)
 	}
-	rules, err := f.gh(ctx, "api", "repos/"+repo+"/rules/branches/"+branch, "--jq", `.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context`)
+	rules, err := f.gh(ctx, "api", "repos/"+rp+"/rules/branches/"+branch, "--jq", `.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context`)
 	if err != nil {
 		return nil, fmt.Errorf("the rulesets of %s's %s: %w", repo, branch, err)
 	}

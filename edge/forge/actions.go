@@ -135,7 +135,11 @@ func (c *Client) Inheritance(ctx context.Context, repo, base, baseTip, head stri
 }
 
 func (c *Client) mergeBase_internal(ctx context.Context, repo, baseTip, head string) (string, error) {
-	stdout, _, err := c.runGH_internal(ctx, "api", "repos/"+repo+"/compare/"+baseTip+"..."+head, "--jq", ".merge_base_commit.sha")
+	rp, err := RepoPath(repo)
+	if err != nil {
+		return "", err
+	}
+	stdout, _, err := c.runGH_internal(ctx, "api", "repos/"+rp+"/compare/"+baseTip+"..."+head, "--jq", ".merge_base_commit.sha")
 	if err != nil {
 		return "", err
 	}
@@ -147,7 +151,11 @@ func (c *Client) mergeBase_internal(ctx context.Context, repo, baseTip, head str
 }
 
 func (c *Client) runs_internal(ctx context.Context, repo, path string) ([]actionsRun, error) {
-	stdout, _, err := c.runGH_internal(ctx, "api", "repos/"+repo+"/"+path, "--jq", runsJQ)
+	rp, err := RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	stdout, _, err := c.runGH_internal(ctx, "api", "repos/"+rp+"/"+path, "--jq", runsJQ)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +168,11 @@ func (c *Client) runs_internal(ctx context.Context, repo, path string) ([]action
 
 func (c *Client) jobs_internal(ctx context.Context, repo string, run int64) ([]actionsJob, error) {
 	path := "actions/runs/" + strconv.FormatInt(run, 10) + "/jobs?per_page=100"
-	stdout, _, err := c.runGH_internal(ctx, "api", "repos/"+repo+"/"+path, "--jq", jobsJQ)
+	rp, err := RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	stdout, _, err := c.runGH_internal(ctx, "api", "repos/"+rp+"/"+path, "--jq", jobsJQ)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +260,11 @@ func (c *Client) readLines_internal(ctx context.Context, repo string, w *Workflo
 // actions/jobs/<id>/logs, readable once the job ends, even while its run
 // goes on), each without its timestamp and cut to LineMax.
 func (c *Client) JobLines(ctx context.Context, repo string, id int64) ([]string, error) {
-	stdout, _, err := c.runGHBytes_internal(ctx, LogMaxBytes, "api", "repos/"+repo+"/actions/jobs/"+strconv.FormatInt(id, 10)+"/logs")
+	rp, err := RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	stdout, _, err := c.runGHBytes_internal(ctx, LogMaxBytes, "api", "repos/"+rp+"/actions/jobs/"+strconv.FormatInt(id, 10)+"/logs")
 	if err != nil {
 		return nil, err
 	}

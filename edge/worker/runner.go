@@ -221,6 +221,20 @@ func (r *Runner) harnessFor_internal(name string) (Harness, error) {
 // a cleanup) on the worker's output: the step goes on, never silently.
 func (r *Runner) report(what string, err error) { reportTo(r.Warn, what, err) }
 
+// killTracked_internal kills the tracked harness pid carrying nonce, and
+// says so when no live process matched: Kill finds nothing then (a worker
+// restart on macOS), and a harness left running must not go unseen.
+func (r *Runner) killTracked_internal(what string, pid int, nonce string) {
+	if r.Procs == nil {
+		return
+	}
+	if !r.Procs.Alive(pid, nonce) {
+		r.report(what, fmt.Errorf("no live process matched pid %d with nonce %s", pid, nonce))
+		return
+	}
+	r.report(what, r.Procs.Kill(pid, nonce, r.Timeouts.TerminateGrace))
+}
+
 // reportTo writes err as a WORKER WARNING line to warn, or stderr when warn
 // is nil; nothing for a nil err.
 func reportTo(warn func(string), what string, err error) {
@@ -258,6 +272,12 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 				err = rerr
 			}
 		}
+		if err != nil && !errors.Is(err, ErrJobDirChanged) && !r.isRunningInFlight_internal(e.Name()) { // a job in flight is still writing its record
+			r.report("job record "+dir+" (unreadable: left as it is, nothing pushed or reported)", err)
+		}
+		if !e.IsDir() && errors.Is(err, ErrJobDirChanged) {
+			r.report("job "+e.Name()+" (a file, not a job directory: left as it is, nothing pushed or reported)", err)
+		}
 		if e.IsDir() && errors.Is(err, ErrJobDirChanged) && !r.isRunningInFlight_internal(e.Name()) { // a job in flight writes its own record
 			r.quarantineChanged_internal(dir, e.Name(), err)
 			continue
@@ -284,8 +304,8 @@ func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id stri
 func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
 	r.markGone_internal(rec.Epoch, rec.Consumer, math.MaxInt)
 	r.cancelRunning_internal(rec.Consumer)
-	if r.Procs != nil && rec.PID > 0 {
-		r.report("stopping the withdrawn harness of "+rec.Consumer, r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
+	if rec.PID > 0 {
+		r.killTracked_internal("stopping the withdrawn harness of "+rec.Consumer, rec.PID, rec.Nonce)
 	}
 	r.mu.Lock()
 	delete(r.adopted, rec.Consumer)
