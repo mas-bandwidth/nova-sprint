@@ -3,3 +3,7 @@ store-cursor-zero/
 store-fake-*/
 store-pg-*/
 card-walk-*/
+policy-walk-*/
+steps-walk-*/
+landedge-walk-*/
+runner-walk-*/
