@@ -56,7 +56,7 @@ jobs:
       # The silent-error lint (cmd/silentlint): no error dropped in an err
       # branch, no refusal re-wrapped, no unlisted `_ =` discard, no bare exit.
       - name: silentlint (every layer, bottom up)
-        run: go run ./cmd/silentlint modules cmd
+        run: go run ./cmd/silentlint modules/store modules/card modules/steps modules/edge modules/policy modules/roster modules/run modules/verbs cmd modules/dash
       - name: every test is parallel; no unit test uses real time, sleep, network or processes
         run: go run ./cmd/unitlint
 

@@ -29,7 +29,7 @@ test:
 lint:
 	test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 	go vet ./...
-	go run ./cmd/silentlint modules cmd
+	go run ./cmd/silentlint modules/store modules/card modules/steps modules/edge modules/policy modules/roster modules/run modules/verbs cmd modules/dash
 	go run ./cmd/unitlint
 
 version:

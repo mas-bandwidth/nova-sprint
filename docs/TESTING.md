@@ -17,7 +17,7 @@ Lint:
     test -z "$(gofmt -l .)" || gofmt -l .
     go build -ldflags "-X main.binaryVersion=$(git describe --always --dirty --tags --match 'v[0-9]*')" ./...
     go vet ./...
-    go run ./cmd/silentlint modules cmd
+    go run ./cmd/silentlint modules/store modules/card modules/steps modules/edge modules/policy modules/roster modules/run modules/verbs cmd modules/dash
     go run ./cmd/unitlint
 
 (`make lint` runs the same; `make build` stamps the version as CI does.)
