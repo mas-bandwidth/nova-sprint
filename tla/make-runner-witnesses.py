@@ -31,6 +31,9 @@ DROPPED = {
     "RunnerForcePushRewinds": ["NoPushAfterFinal"],
     "RunnerWithdrawnPushesRepeatedly": ["NoPushAfterFinal", "BranchOnlyByHolder"],
 }
+# The stale push the three above add is a push with no seal step: PushOnlySealed is not theirs to name.
+for _name in DROPPED:
+    DROPPED[_name] = DROPPED[_name] + ["PushOnlySealed"]
 
 # name, target invariant, fault, exact replacement pairs
 WITNESSES = [
@@ -52,6 +55,9 @@ WITNESSES = [
      [("PassEnd ==\n  /\\ ~env.crashed\n", "PassEnd ==\n  /\\ \\A c \\in Consumers : harnessAlive[c] = 0\n  /\\ ~env.crashed\n")]),
     ("RunnerStopIsAFault", "StopIsNeverAFault", "The worker's stop is reported as a fault.",
      [("[jobDir[c] EXCEPT !.pid = 0, !.stopped = TRUE] ELSE", "[jobDir[c] EXCEPT !.pid = 0, !.stopped = TRUE, !.outcome = \"fault\"] ELSE")]),
+    ("RunnerPushUnsealed", "PushOnlySealed", "A job's commits are pushed from a tree the seal step never ran on.",
+     [("  /\\ jobDir[c].sealed   \\* pushed from the worker's clone of the sealed tree\n", ""),
+      ("![c].outcome = \"ok\", ![c].sealed = TRUE]", "![c].outcome = \"ok\"]")]),
     ("RunnerWithdrawnPushes", "NoPushAfterFinal", "A withdrawn job's directory pushes its head by lease on every pass.",
      stale_push(True)),
     ("RunnerForcePushRewinds", "BranchOnlyByHolder", "A withdrawn job pushes its stale head with a plain force, rewinding the new holder.",

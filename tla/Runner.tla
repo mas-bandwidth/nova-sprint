@@ -129,7 +129,7 @@ Die(c) ==
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - 1
-  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "fault", ![c].bounced = FALSE, ![c].sealed = TRUE]   \* Die is a fault, never a fail that bounces; sealed after it
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].sealed = TRUE, ![c].outcome = "fault", ![c].bounced = FALSE]   \* Die is a fault, never a fail that bounces; sealed after it
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
