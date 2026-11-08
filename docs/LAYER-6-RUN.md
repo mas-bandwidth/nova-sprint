@@ -316,7 +316,7 @@ behind, takes a backup first and refuses if it fails. The first real store's `up
 
 ## 6. The dashboard
 
-Glenn, 2026-11-06, as docs/README "The dashboard" carries him: "The dashboard design should
+Glenn, 2026-11-06: "The dashboard design should
 be identical to the v1 in visual, excluding the unimplemented stats part at bottom", and "it
 should be exactly matching what we currently have, visually. no changes except i think you
 added fail state." So v1's page (`index.html`, `app.js`, routes, JSON envelope) is carried as
@@ -466,7 +466,7 @@ outside world (fail, fix, stuck, down, up, red, flap) through the real verbs (LE
 and the same driver at thousands of producers is the load test that measures the bar in
 section 2.
 
-**Dogfood gates.** By docs/README "The release gate for v2.0.0", v2.0.0 ships when every
+**Dogfood gates.** By the v2.0.0 release gate (Glenn, 2026-11-06), v2.0.0 ships when every
 layer is built, modelled, cold-read and green and gate 1 has happened at least once (one card
 dealt, worked, read, merged and shown landed on the live board); gates 2 to 5 are 2.0.x point
 releases, each one a gate met.

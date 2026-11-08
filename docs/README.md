@@ -37,8 +37,8 @@ come from your own sprint.
 | Policy | Versioned Starlark rules for scheduling, tiers, reviews, deadlines, model selection and pricing. Changing the active version changes the running sprint. |
 
 A producer normally goes from `waiting` to `ready`, `working`, `review`,
-`merging`, then `landed`. A fix can send it back for another attempt. A hold
-can make it `blocked`; a failure makes it `fail`. Dependencies become usable
+`merging`, then `landed`. A fix can send it back for another attempt. A held
+card waits with its reason; a failure makes it `fail`. Dependencies become usable
 when their producers land, not when a worker finishes them.
 
 Every dealt attempt has an id and generation, written `<card>@<gen>`, and a
@@ -256,8 +256,10 @@ and epoch. The environment variable supplies your row only when `--as` is absent
 
 A `DEAL` puts the card in your hand immediately. Run every card in your hand,
 each in an isolated child or session and clone, concurrently up to your row's
-width. A card left unacknowledged is nudged after ten seconds; after a minute
-the coordinator is told. Acknowledge it with the command from the deal:
+width. Until you acknowledge it you are nudged every second; after three
+minutes it is dealt to another row with room, or the coordinator is asked
+(policy's `ready_nag` and `ready_take`). Acknowledge it with the command from
+the deal:
 
 ```sh
 sprint_env nova-sprint take '<card>@<gen>' --epoch '<epoch>'
@@ -444,8 +446,8 @@ must exist. Keep the allowed paths as narrow as the task permits. Each
 `NEEDS` lists producer ids whose landed output this task actually consumes.
 Independent work should have no needs. `AFTER` is an optional soft landing
 order, not a start dependency. `PRIORITY` defaults to `normal`; producer levels
-are `low`, `normal`, `high`, `critical` and `blocker`. The `read` level is for
-review consumers. A blocker can preempt work, so use it for that intended effect.
+are `low`, `normal`, `high`, `critical` and `blocker`; reads are dealt between
+`high` and `critical`. A blocker can preempt work, so use it for that intended effect.
 Use `NEEDS-ROUTE` for a required execution capability rather than hardcoding a
 particular machine into the task.
 
