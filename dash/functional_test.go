@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 	"net"
 	"net/http/httptest"
 	"os"
@@ -17,10 +18,7 @@ import (
 
 func startPG(t *testing.T) string {
 	t.Helper()
-	bin, e := exec.LookPath("initdb")
-	if e != nil {
-		t.Skip("initdb required")
-	}
+	bin := filepath.Join(pgbin.Dir(t), "initdb")
 	dir := t.TempDir()
 	cmd := exec.Command(bin, "-D", dir, "-U", "nova", "--auth=trust", "--no-locale")
 	if out, e := cmd.CombinedOutput(); e != nil {

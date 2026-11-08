@@ -22,6 +22,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 )
 
 const wait = 30 * time.Second
@@ -35,19 +37,8 @@ func freePort(t *testing.T) string {
 	return port
 }
 
-// pgBin finds initdb: on PATH, else Homebrew's postgresql@18, else Debian's.
-func pgBin(t *testing.T) string {
-	if p, err := exec.LookPath("initdb"); err == nil {
-		return filepath.Dir(p)
-	}
-	found, _ := filepath.Glob("/opt/homebrew/opt/postgresql@18/bin/initdb") // ignored: a bad pattern is a constant's
-	debian, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb")          // ignored: as above
-	if found = append(found, debian...); len(found) > 0 {
-		return filepath.Dir(found[0])
-	}
-	t.Skip("functional tests need PostgreSQL: initdb is not on PATH, in /opt/homebrew/opt/postgresql@18/bin or /usr/lib/postgresql/*/bin")
-	return ""
-}
+// pgBin is the directory holding initdb and the other PostgreSQL programs.
+func pgBin(t *testing.T) string { return pgbin.Dir(t) }
 
 // startPG starts a PostgreSQL of this test's own and returns the dsn of its
 // postgres database. Unix sockets are off: a macOS temp path is too long for one.
@@ -372,7 +363,7 @@ func TestFunctionalMigrateRound25(t *testing.T) {
 // without cpu_peak_deci, a beaten row in it) is upgraded by Migrate: the column
 // is added (0 on the row), the new hash recorded, a second Migrate is a no-op,
 // the beat's values are kept, a beat then sets the peak, and the columns are in
-// a new store's order.
+// a new store's order, and the epoch row's commit identity is kept.
 func TestFunctionalMigrateRound26(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -381,6 +372,7 @@ func TestFunctionalMigrateRound26(t *testing.T) {
 	dsn := startPG(t)
 	c := connect(t, dsn)
 	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round26Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET commit_name = 'Bot', commit_email = '1+bot@users.noreply.example' WHERE id = 1",
 		"INSERT INTO sprint.rows (name, state, session, role, load1_centi, cores, slots_used, slots_total, tiers, epoch) VALUES ('w1', 'up', 'sess', 'worker', 250, 8, 2, 8, 'flash', 1)"} {
 		_, err = c.Exec(ctx, q)
 		require.NoError(t, err, q)
@@ -391,6 +383,7 @@ func TestFunctionalMigrateRound26(t *testing.T) {
 	p := openPG(t, dsn) // Migrate
 	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity, "the identity is kept")
 	r := h.snap().Rows["w1"]
 	assert.Equal(t, []int{250, 8, 2, 8, 0}, []int{r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.CPUPeakDeci}, "the beat is kept and the peak starts at 0")
 	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873}))

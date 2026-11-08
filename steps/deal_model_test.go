@@ -1,9 +1,11 @@
 package steps
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/stretchr/testify/assert"
@@ -152,4 +154,56 @@ func TestTickOverlapIsAFile(t *testing.T) {
 	for _, p := range []string{"a/**", "a/*.go", "a/b?.go", "a/[bc].go", "a/", ""} {
 		assert.False(t, Concrete(p), p)
 	}
+}
+
+// listRows is a policy whose rows answer names every candidate in name
+// order (what the default policy answers for rows at one rank): the set a
+// card may go to, never a first-fit order.
+type listRows struct{}
+
+func (listRows) Ask(q Questions) Answers {
+	a := benchAsk{}.Ask(q)
+	a.Version = 1
+	a.Rows = map[string][]string{}
+	for _, r := range q.Rows {
+		for _, c := range r.Candidates {
+			a.Rows[r.Card.ID] = append(a.Rows[r.Card.ID], c.Name)
+		}
+	}
+	return a
+}
+
+// TestTickBurstSpreadsAcrossAnsweredRows: five cards ready at once over a
+// width-2 and a width-4 row policy both allows are dealt in one tick with
+// no row taking a second card while another has none; the in-tick tally
+// counts, so the burst does not land on the first answered row until it is
+// full.
+func TestTickBurstSpreadsAcrossAnsweredRows(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.ask = listRows{}
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 4, "pro")
+	for i := 1; i <= 5; i++ {
+		id := fmt.Sprintf("p%d", i)
+		s.producer(id, "s1", "pro", "a/"+id)
+		s.move(s.plan(id, card.Resolve{}))
+	}
+	s.tick()
+	require.Empty(t, s.rejected)
+	held := map[string]int{"r1": 0, "r2": 0}
+	var order []string
+	for _, op := range s.last.Ops {
+		for _, w := range op.Writes {
+			if p, ok := w.(store.PutCard); ok && p.Kind == "work" {
+				for r, n := range held {
+					assert.False(t, r != p.Holder && n == 0 && held[p.Holder] > 0, "%s takes a second card while %s has none (deals so far %v)", p.Holder, r, order)
+				}
+				held[p.Holder]++
+				order = append(order, p.Holder)
+			}
+		}
+	}
+	assert.Equal(t, map[string]int{"r1": 2, "r2": 3}, held, "five cards in one tick, every one dealt")
 }

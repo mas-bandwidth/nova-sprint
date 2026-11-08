@@ -49,7 +49,7 @@ func TestFunctionalBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
 	}
 }
 
-// TestBreakExecSuccessWithBackgroundChildIsStartFailure
+// TestFunctionalBreakExecSuccessWithBackgroundChildIsStartFailure
 //
 // Sequence: Exec `sh -c '(sleep 2 &); exit 0'`: the program exits 0 at once
 // but a descendant keeps its stdout open. After WaitDelay (200 ms) Go's Wait
@@ -62,7 +62,7 @@ func TestFunctionalBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
 // Broken: Exec's contract that ExitCode is the program's exit status and that
 // ErrStart means the program could not be started (exec.go
 // classifyExecErr_internal).
-func TestBreakExecSuccessWithBackgroundChildIsStartFailure(t *testing.T) {
+func TestFunctionalBreakExecSuccessWithBackgroundChildIsStartFailure(t *testing.T) {
 	t.Parallel()
 	res, err := NewOSExec().Run(context.Background(), Cmd{
 		Argv:    []string{"sh", "-c", "(sleep 2 &); exit 0"},

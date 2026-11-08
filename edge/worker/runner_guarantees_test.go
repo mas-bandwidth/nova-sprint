@@ -8,16 +8,35 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Cold read, 2026-11-06, at 649d1b4c (Rowan). One failing probe per confirmed defect.
+// Probes of the runner's and the wall's guarantees, each against the package's
+// fakes: a fake sprint, a fake wall, and a fake edge.Exec in place of the
+// processes OSReserveWall starts.
+
+// wallExec stands in for the processes an OSReserveWall starts: it records
+// each argv and answers every command with res.
+type wallExec struct {
+	mu    sync.Mutex
+	argvs [][]string
+	res   edge.Result
+}
+
+func (e *wallExec) Run(_ context.Context, c edge.Cmd) (edge.Result, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.argvs = append(e.argvs, slices.Clone(c.Argv))
+	return e.res, nil
+}
 
 type crSprint struct {
 	mu       sync.Mutex
@@ -117,52 +136,62 @@ func TestColdreadDefectWallEnvKeepsDatabaseURLAndAgent(t *testing.T) {
 }
 
 // "A card can never, on a bench: reach the store or the bus ... write outside
-// its job directory". RunTest runs the card's done-when lines as `sh -c
-// <text>` under nova-reserve only, never nova-sandbox, even with UseSandbox
-// (runner.go:724-730). /bin/echo stands in for nova-reserve and prints argv.
-func TestColdreadDefectCardTestsRunOutsideSandbox(t *testing.T) {
+// its job directory": with UseSandbox, RunTest runs the card's done-when
+// command as its own argv (never a shell string) inside nova-sandbox, inside a
+// nova-reserve slot.
+func TestCardTestsRunInsideTheSandbox(t *testing.T) {
 	t.Parallel()
-	w := &OSReserveWall{UseSandbox: true, Config: WallConfig{ReserveBin: "/bin/echo", SandboxBin: "nova-sandbox", NetDeny: true}}
+	ex := &wallExec{}
+	w := &OSReserveWall{UseSandbox: true, Exec: ex, Config: WallConfig{ReserveBin: "/fixture/nova-reserve", SandboxBin: "/fixture/nova-sandbox", NetDeny: true}}
 	dir := t.TempDir()
-	res, _ := w.RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "make test", time.Minute)
-	out := string(res.Output)
-	if !strings.Contains(out, "nova-sandbox") {
-		t.Errorf("card test command ran as %q: no sandbox wall, shell string from card text", strings.TrimSpace(out))
+	res, err := w.RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "make test", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := res.Argv
+	if len(ex.argvs) != 1 || !slices.Equal(ex.argvs[0], argv) {
+		t.Fatalf("the wall ran %q, reported %q", ex.argvs, argv)
+	}
+	if argv[0] != "/fixture/nova-reserve" || !slices.Contains(argv, "/fixture/nova-sandbox") || !slices.Equal(argv[len(argv)-3:], []string{"--", "make", "test"}) {
+		t.Errorf("card test command ran as %q: want nova-reserve, then nova-sandbox, then make test", argv)
 	}
 }
 
 // Guarantee 8: "A harness runs only inside a nova-reserve slot". nova-worker
-// wires Wall: &worker.OSReserveWall{} (cmd/nova-worker/main.go:94); with no
-// ReserveBin and UseSandbox false, RunHarness execs the harness bare
-// (runner.go:713-722): no slot, no sandbox, no proxy.
-func TestColdreadDefectShippedWallRunsHarnessBare(t *testing.T) {
+// wires Wall: &worker.OSReserveWall{} (cmd/nova-worker/main.go); with no
+// ReserveBin and no SandboxBin configured, RunHarness still runs the harness
+// under nova-reserve and nova-sandbox.
+func TestDefaultWallRunsHarnessUnderReserveAndSandbox(t *testing.T) {
 	t.Parallel()
+	ex := &wallExec{}
 	dir := t.TempDir()
-	res, err := (&OSReserveWall{}).RunHarness(context.Background(), Job{JobDir: dir, WorktreeDir: dir}, []string{"/bin/echo", "harness-ran"}, nil, time.Minute)
-	if err == nil && strings.TrimSpace(string(res.Output)) == "harness-ran" {
-		t.Errorf("the wall nova-worker ships ran the harness directly, outside nova-reserve and nova-sandbox")
+	harness := func(string) (string, error) { return "/fixture/bin/harness", nil }
+	res, err := (&OSReserveWall{Exec: ex, LookPath: harness}).RunHarness(context.Background(), Job{JobDir: dir, WorktreeDir: dir}, []string{"harness", "run"}, nil, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := res.Argv
+	sandbox := slices.IndexFunc(argv, func(a string) bool { return filepath.Base(a) == "nova-sandbox" })
+	if filepath.Base(argv[0]) != "nova-reserve" || sandbox < 0 || !slices.Equal(argv[len(argv)-3:], []string{"--", "harness", "run"}) {
+		t.Errorf("the wall nova-worker ships ran the harness as %q: want nova-reserve, then nova-sandbox, then the harness", argv)
 	}
 }
 
-// Results: "fail: the result file says broken, no result file". Any non-zero
-// exit makes execBounded_internal return an *exec.ExitError (runner.go:768-783)
-// and harvestStep_internal turns every such run into a fault (runner.go:445-447).
-// A fault spends no attempt (guarantee 11), so a card that keeps failing is
-// retried forever instead of bouncing.
-func TestColdreadDefectNonZeroExitBecomesFault(t *testing.T) {
+// Results: a read's harness that exits non-zero and writes no result file is
+// a fault of the harness (ReadOutcome), bounded by the fault limit, never a
+// verdict on the head. A work job's is "fail: no verdict"
+// (TestNoVerdictIsAFailForWorkAndAFaultForAReadWithTheTail).
+func TestReadHarnessNonZeroExitWithNoResultIsAFault(t *testing.T) {
 	t.Parallel()
-	r := crRunner_internal(t, &crSprint{}, &OSReserveWall{})
+	wall := &OSReserveWall{Exec: &wallExec{res: edge.Result{ExitCode: 1, Stderr: "broken\n", PID: 4242}}}
+	r := crRunner_internal(t, &crSprint{}, wall)
 	dir := t.TempDir()
 	job := Job{Consumer: "p1.r1", Kind: "read", Row: "vision.ds", JobDir: dir, WorktreeDir: dir, HarnessName: "script"}
-	res, runErr := (&OSReserveWall{}).RunHarness(context.Background(), job, []string{"sh", "-c", "echo broken >&2; exit 1"}, nil, time.Minute)
+	res, runErr := wall.RunHarness(context.Background(), job, []string{"harness"}, nil, time.Minute)
 	var rec JobRecord
 	if err := r.harvestStep_internal(context.Background(), job, &rec, res, runErr); err != nil {
 		t.Fatal(err)
 	}
-	// A read reports ok, fix or fault (ReadOutcome, defect 67): a read's
-	// harness that exits with no verdict is a fault of the harness, bounded
-	// by the fault limit, never a verdict on the head. A work job's is
-	// "fail: no verdict" (TestNoVerdictIsAFailForWorkAndAFaultForAReadWithTheTail).
 	if rec.Outcome.Result != "fault" || !rec.Outcome.NoVerdict {
 		t.Errorf("read harness exited 1 with no result file: want fault, got %s (%s)", rec.Outcome.Result, rec.Outcome.Reason)
 	}
