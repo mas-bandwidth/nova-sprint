@@ -19,14 +19,10 @@ import (
 )
 
 var (
-	hA  = strings.Repeat("a", 40)
-	hB  = strings.Repeat("b", 40)
-	hC  = strings.Repeat("c", 40) // the base used by newWorld helpers (base)
-	hD  = strings.Repeat("d", 40)
-	hE  = strings.Repeat("e", 40)
-	hF  = strings.Repeat("f", 40)
-	h1x = strings.Repeat("1", 40)
-	h2x = strings.Repeat("2", 40)
+	hA = strings.Repeat("a", 40)
+	hB = strings.Repeat("b", 40)
+	hD = strings.Repeat("d", 40)
+	hE = strings.Repeat("e", 40)
 )
 
 type bk struct {
@@ -139,8 +135,6 @@ func (b *bk) noMerge(want string, steps ...cold4Step) {
 // ---- moves in words ----
 
 func (b *bk) P(id string, e Event) cold4Step { return cold4P(id, e) }
-
-func (b *bk) holder(cid string) string { return b.c(cid).Holder }
 
 // C is a consumer move by its holder (Report carries the row), the row
 // read when the step is planned.

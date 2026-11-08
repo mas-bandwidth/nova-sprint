@@ -33,14 +33,6 @@ func (t *tick) judge(kind, about, question string) {
 	t.addJudge(judgement{kind: kind, about: about, question: question})
 }
 
-// judgeAgain opens a new episode whether or not one is open (a base's red is
-// met again).
-func (t *tick) judgeAgain(kind, about, question string) {
-	if !t.pending(kind, about) {
-		t.addJudge(judgement{kind: kind, about: about, question: question})
-	}
-}
-
 // judgeAt opens episode n of kind about about once: a count that only grows
 // (a row's flaps) names its own episode.
 func (t *tick) judgeAt(kind, about string, n int, question string) {

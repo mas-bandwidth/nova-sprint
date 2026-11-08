@@ -31,6 +31,8 @@ lint:
 	go vet ./...
 	go run ./cmd/silentlint modules/store modules/card modules/steps modules/edge modules/policy modules/roster modules/run modules/verbs cmd modules/dash
 	go run ./cmd/unitlint
+	go tool staticcheck ./...
+	out=$$(go tool deadcode -test ./... | grep -v -e '_test\.go:' -e 'unreachable func: Cache\.SetRoster$$' || true); test -z "$$out" || { echo "$$out"; exit 1; }
 
 version:
 	@echo $(VERSION)

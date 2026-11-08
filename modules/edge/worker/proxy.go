@@ -176,6 +176,7 @@ func EnvKey(name string, lookup func(string) (string, bool)) func() (string, err
 		if v, ok := lookup(name); ok && strings.TrimSpace(v) != "" {
 			return v, nil
 		}
+		//lint:ignore ST1005 the trailing ",..." is the rest of the seat's --only list
 		return "", fmt.Errorf("%s is not in the worker's environment: grant it to this bench's seat (nova-secrets grant) and run the worker under nova-secrets exec --only %s,...", name, name)
 	}
 }

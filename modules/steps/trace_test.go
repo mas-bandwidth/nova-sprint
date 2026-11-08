@@ -57,7 +57,6 @@ type traceWalk struct {
 	counting bool // picks count toward the depth: a producer is not final
 	picked   int
 	legal    int
-	heads    int
 }
 
 // traceAsker answers as the model's oracle: every question in domain from

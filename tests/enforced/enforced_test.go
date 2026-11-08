@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -34,11 +33,7 @@ func loadTree(t *testing.T, root string) *treeIndex {
 		schemaCheck: map[string]bool{},
 	}
 
-	goBin := "go"
-	if gr := runtime.GOROOT(); gr != "" {
-		goBin = filepath.Join(gr, "bin", "go")
-	}
-	cmd := exec.Command(goBin, "test", "-list=^(Test|Fuzz)", "./modules/store", "./modules/card", "./modules/steps", "./modules/policy")
+	cmd := exec.Command("go", "test", "-list=^(Test|Fuzz)", "./modules/store", "./modules/card", "./modules/steps", "./modules/policy")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {

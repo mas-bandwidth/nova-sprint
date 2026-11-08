@@ -18,7 +18,7 @@ import (
 // any step", docs/LAYER-2-CARD-MACHINE.md; L2-M15) and "Merge is sequential
 // composition" (third cold read rulings).
 //
-// Root cause in modules/card/replay.go:95: compose mutates cur in-place via foldWrites
+// Root cause in modules/card/replay.go:95: compose mutates cur in-place via foldWrite
 // and stores the post-state in done.seen. When inner = Merge(unhold, hold) is
 // merged as the second argument of Merge(replace, inner), unionMissing copies
 // pReady from inner.seen where pReady.State is already Waiting (its post-state

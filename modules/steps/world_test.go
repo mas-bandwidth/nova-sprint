@@ -155,12 +155,6 @@ func (w *world) cardRow(r store.Row) card.Row {
 	return card.RowFromStore(r, width, tiers)
 }
 
-func (w *world) consumer(c string, e card.Event) (card.Plan, *card.Refusal) {
-	s := w.snap()
-	cc := card.FromStore(s.Cards[c])
-	return card.MoveConsumer(cc, card.FromStore(s.Cards[cc.Of]), w.cardRow(s.Rows[cc.Holder]), e)
-}
-
 // report applies a row's report with its producer move (ReportPlan).
 func (w *world) report(c, result, head, reason string) {
 	w.t.Helper()
