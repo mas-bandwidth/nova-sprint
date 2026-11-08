@@ -448,3 +448,28 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 		t.Fatalf("the run's tokens ride as one --usage argument: %q", calls[1])
 	}
 }
+
+// TestCLISprintClientHookNamesWhatFailed: a hook the sprint refused for
+// something other than the store (here a stream's origin) is never called
+// "store unreachable"; the store's own failure, or a sprint that printed
+// nothing, still is.
+func TestCLISprintClientHookNamesWhatFailed(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		out       string
+		storeDown bool
+	}{
+		"an origin":       {out: "SPRINT REFUSED hook: finish and read could not reach stream d from this process: git ls-remote of https://github.com/o/d.git failed (exit 128): give stream d --forge github, then hook again\n"},
+		"the store":       {out: "SPRINT REFUSED hook: the store did not answer (connection refused): nova-sprint check\n", storeDown: true},
+		"nothing printed": {storeDown: true},
+	} {
+		cli := &CLISprintClient{Run: func(context.Context, []string) ([]byte, int, error) { return []byte(tc.out), 2, nil }}
+		err := cli.Hook(context.Background(), "amd-1")
+		if err == nil || errors.Is(err, ErrStoreDown) != tc.storeDown || strings.Contains(err.Error(), "store unreachable") != tc.storeDown {
+			t.Fatalf("%s: err = %v, want store down %v", name, err, tc.storeDown)
+		}
+		if !tc.storeDown && !strings.Contains(err.Error(), "could not reach stream d") {
+			t.Fatalf("%s: err = %v lacks the sprint's line", name, err)
+		}
+	}
+}
