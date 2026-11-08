@@ -469,8 +469,8 @@ func TestRunnerProbeAndFullLifecycleWithLaunchRetry(t *testing.T) {
 		t.Fatalf("expected probe failure")
 	}
 	snap, _ := st.Snapshot(ctx)
-	if snap.Judgements["j-probe-"+row].State != "open" {
-		t.Fatalf("expected open probe judgement, got %+v", snap.Judgements)
+	if len(snap.Judgements) != 0 {
+		t.Fatalf("a failed probe wrote a judgement: %+v", snap.Judgements)
 	}
 	wall.calls = 0
 	wall.runFn = func(call int, j Job, _, _ []string) (WallRunResult, error) {

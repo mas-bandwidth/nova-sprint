@@ -101,7 +101,6 @@ func (s *loopSprint) Report(_ context.Context, req ReportRequest) (store.Receipt
 	s.next.Working = slices.DeleteFunc(slices.Clone(s.next.Working), func(c ConsumerSummary) bool { return c.ID == req.Consumer })
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
-func (s *loopSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
 func (s *loopSprint) Release(_ context.Context, _, id string, gen int, _, _ string) error {
 	s.note(fmt.Sprintf("release %s@%d", id, gen))
 	return nil
