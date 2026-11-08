@@ -104,21 +104,20 @@ func (t *tick) dealWork(c store.Card) {
 		return
 	}
 	answered := t.rowsAnswer(c, "work")
-	serving := t.serving(c)
-	if len(serving) == 0 {
+	d := t.dealable(c)
+	if len(d.serving) == 0 {
 		t.judge("unserved", unservedAbout(c), "no open row serves tier "+c.Tier+routesClause(c)+"; ready "+c.ID+" waits")
 		return
 	}
-	named := t.named(c, serving)
-	if len(named) == 0 {
-		t.noModel(c, serving)
+	if len(d.named) == 0 {
+		t.noModel(c, d.serving)
 		return
 	}
 	base, ok := t.base(c.Stream)
 	if !ok || (t.overBudget() && rung(c) != "blocker") {
 		return // past the budget nothing more is dealt; the judgements above are still opened
 	}
-	row := t.pickRow(c, t.named(c, answered), t.withRoom(named))
+	row := t.pickRow(c, t.named(c, answered), t.roomy(d))
 	if row == "" {
 		return
 	}
@@ -162,6 +161,34 @@ func (t *tick) dealRead(c store.Card) {
 		models[i] = t.model(c, r)
 	}
 	t.group("read", c.ID, t.producerMove(c.ID, card.AskReads{Rows: rows, Models: models}))
+}
+
+// dealable is the rows a work card of one tier and routes may be dealt to
+// this tick: those serving it, of them those it can be named a model on,
+// and of those the ones with room when last asked. Serving is the tick's
+// candidates for the tier and routes (built once), so the first two are
+// built once per tier and routes, never per card.
+type dealable struct{ serving, named, room []string }
+
+func (t *tick) dealable(c store.Card) *dealable {
+	key := candKey(c)
+	d, ok := t.dealCache[key]
+	if !ok {
+		d = &dealable{serving: t.serving(c)}
+		d.named = t.named(c, d.serving)
+		d.room = d.named
+		t.dealCache[key] = d
+	}
+	return d
+}
+
+// roomy is withRoom(d.named) now: a row's room only shrinks within a tick
+// (a deal adds to its tally, nothing takes from it), so the rows that had
+// room are filtered again, never all of them. With the fleet full a card
+// costs nothing here, where it cost the fleet.
+func (t *tick) roomy(d *dealable) []string {
+	d.room = t.withRoom(d.room)
+	return d.room
 }
 
 // withRoom keeps the rows with room: live consumers plus this tick's deals
@@ -222,13 +249,24 @@ func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 // among them, then among the rest. An answer naming no row with room is a
 // miss, as an answer naming a row not offered is.
 func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
-	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
-		t.o.refuse("rows")
-	}
-	if len(rows) == 0 || n <= 0 {
+	if len(rows) == 0 { // no answered row has room: a miss when there is an answer
+		if answered != nil {
+			t.o.refuse("rows")
+		}
 		return nil
 	}
-	allowed := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return !slices.Contains(answered, r) })
+	named := make(set, len(answered)) // the answer as a set: the checks below are linear, never answer times rows
+	for _, r := range answered {
+		named[r] = struct{}{}
+	}
+	isNamed := func(r string) bool { _, ok := named[r]; return ok }
+	if answered != nil && !slices.ContainsFunc(rows, isNamed) {
+		t.o.refuse("rows")
+	}
+	if n <= 0 {
+		return nil
+	}
+	allowed := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return !isNamed(r) })
 	out := t.ranked(c, kindOf(c), allowed, n)[:min(n, len(allowed))]
 	if len(out) >= n {
 		return out

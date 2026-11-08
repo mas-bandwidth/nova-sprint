@@ -39,6 +39,8 @@ type pending struct {
 type Pusher struct {
 	queue  map[string][]pending
 	nudges map[string][]Notice
+	coord  string // Coordinator of the last snapshot observed, once known
+	known  bool
 }
 
 func NewPusher() *Pusher {
@@ -54,10 +56,16 @@ func (p *Pusher) Nudge(ns []steps.Nudge) {
 }
 
 // Observe takes one folded event, with the snapshot after it, for every
-// recipient whose cursor is behind it.
+// recipient whose cursor is behind it. An event has notices only for the
+// holders of the consumers it writes and for the coordinator
+// (EventNotices.ForEvent), so only they are looked at: an event costs its
+// own size, never the fleet's.
 func (p *Pusher) Observe(e store.Event, after store.Snapshot) {
-	notices := EventNotices{Coordinator: Coordinator(after)}
-	for _, r := range recipients(after) {
+	notices := EventNotices{Coordinator: p.coordinator(e, after)}
+	for _, r := range concerned(e, notices.Coordinator) {
+		if row, ok := after.Rows[r]; !ok || r == "sprint" || row.Session == "" { // not a recipient (recipients)
+			continue
+		}
 		name, err := pushCursorName(r)
 		if err != nil || after.Cursors[name] >= e.Seq {
 			continue
@@ -72,11 +80,55 @@ func (p *Pusher) Observe(e store.Event, after store.Snapshot) {
 	}
 }
 
+// concerned is the rows event e can have a notice for, sorted: each holder
+// of a consumer it writes, and the coordinator.
+func concerned(e store.Event, coordinator string) []string {
+	if !e.Accepted || e.After == nil {
+		return nil
+	}
+	rs := []string{}
+	if coordinator != "" {
+		rs = append(rs, coordinator)
+	}
+	for _, c := range e.After.Cards {
+		if (c.Kind == "work" || c.Kind == "read") && c.Holder != "" {
+			rs = append(rs, c.Holder)
+		}
+	}
+	slices.Sort(rs)
+	return slices.Compact(rs)
+}
+
+// coordinator is Coordinator(after), kept from the last event observed: an
+// event changes it only through the rows it writes, so only those are read,
+// and every row only when it opens an epoch or unhooks the coordinator.
+func (p *Pusher) coordinator(e store.Event, after store.Snapshot) string {
+	if !p.known || (e.After != nil && e.After.Epoch != 0) {
+		p.coord, p.known = Coordinator(after), true
+		return p.coord
+	}
+	if e.After == nil {
+		return p.coord
+	}
+	for name := range e.After.Rows {
+		switch is := isCoordinator(after.Rows[name]); {
+		case name == p.coord && !is:
+			p.coord = Coordinator(after)
+			return p.coord
+		case is && (p.coord == "" || name < p.coord):
+			p.coord = name
+		}
+	}
+	return p.coord
+}
+
+func isCoordinator(r store.Row) bool { return r.Session != "" && r.Role == "coordinator" }
+
 // Coordinator is the row the sprint hook recorded as coordinator (one per
 // sprint; the hook refuses a second), or "".
 func Coordinator(s store.Snapshot) string {
 	for _, n := range slices.Sorted(maps.Keys(s.Rows)) {
-		if r := s.Rows[n]; r.Session != "" && r.Role == "coordinator" {
+		if isCoordinator(s.Rows[n]) {
 			return n
 		}
 	}

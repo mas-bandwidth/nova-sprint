@@ -23,6 +23,7 @@ type tick struct {
 	roster    map[string]RosterRow  // the roster's facts, once per row per tick
 	planned   int                   // cards touched by the non-blocker groups planned so far
 	candCache map[string][]RowFacts // candidates per tier and routes for work, once per tick
+	dealCache map[string]*dealable  // the deal's rows per tier and routes (dealable), once per tick
 	roomCache map[string]int        // room per row (policy's work), once per tick
 	rankCache map[string]int        // rank index per row, once per tick
 	resolvedP map[string]set        // stream + path -> producers resolved this tick (the overlap tally)
@@ -70,7 +71,7 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 func newTick(v *View, in Inputs) *tick {
 	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{},
 		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{},
-		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{}, resolvedP: map[string]set{}}
+		candCache: map[string][]RowFacts{}, dealCache: map[string]*dealable{}, roomCache: map[string]int{}, rankCache: map[string]int{}, resolvedP: map[string]set{}}
 }
 
 // overBudget says whether the non-blocker groups planned so far touch the
@@ -215,10 +216,10 @@ func (t *tick) streamFacts(s string) StreamFacts {
 // list is built once per tier per tick (row claims are made before the
 // deal); a read's is filtered from it.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
-	routes := card.NeedsRoutes(c.Brief) // only rows serving every route the card declares
-	key := c.Tier + "\x00" + strings.Join(routes, ",")
+	key := candKey(c)
 	work, ok := t.candCache[key]
 	if !ok {
+		routes := card.NeedsRoutes(c.Brief) // only rows serving every route the card declares
 		for _, n := range t.rowNames {
 			r := t.v.Rows[n]
 			if _, resting := t.rested[n]; resting || !t.v.Open(r) || !t.present(n) || !slices.Contains(t.tiers(n), c.Tier) || !t.in.Roster.ServesRoutes(n, routes) || !t.unclaimed(n) {
@@ -238,6 +239,12 @@ func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 		}
 	}
 	return out
+}
+
+// candKey is the key of c's work candidates: its tier and the routes it
+// declares.
+func candKey(c store.Card) string {
+	return c.Tier + "\x00" + strings.Join(card.NeedsRoutes(c.Brief), ",")
 }
 
 // present says whether row n is on the bus: seen within Engine.PresentGrace

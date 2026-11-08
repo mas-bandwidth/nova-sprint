@@ -162,7 +162,7 @@ func (t *tick) undealt() {
 		if since < seconds(Engine.UndealtAfter) {
 			continue
 		}
-		rows := t.withRoom(t.named(c, t.serving(c)))
+		rows := t.roomy(t.dealable(c))
 		if len(rows) == 0 {
 			continue
 		}

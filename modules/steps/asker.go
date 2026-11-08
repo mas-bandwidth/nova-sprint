@@ -170,9 +170,17 @@ var Engine = Defaults{
 // oracle is one tick's answers: the version's where usable, the defaults
 // where not, and the questions missed (one policy judgement each).
 type oracle struct {
-	a    Answers
-	d    Defaults
-	miss set
+	a     Answers
+	d     Defaults
+	miss  set
+	names map[candidateList]set // the names in each candidate list rows has checked an answer against
+}
+
+// candidateList is one candidates slice by identity: the tick builds a work
+// list once per tier and routes and offers it to every card of them.
+type candidateList struct {
+	first *RowFacts
+	n     int
 }
 
 func newOracle(a Answers, d Defaults) *oracle {
@@ -244,13 +252,36 @@ func (o *oracle) rows(q RowsQuestion) []string {
 		o.refuse("rows")
 		return nil
 	}
+	offered := o.offered(q.Candidates)
 	for _, r := range ans {
-		if !slices.ContainsFunc(q.Candidates, func(c RowFacts) bool { return c.Name == r }) {
+		if _, ok := offered[r]; !ok {
 			o.refuse("rows")
 			return nil
 		}
 	}
 	return ans
+}
+
+// offered is the names in cands, built once per candidate list a tick
+// offers: a card's answer is checked in its own length, never times the
+// candidates (the built-in names every candidate for every ready card).
+func (o *oracle) offered(cands []RowFacts) set {
+	k := candidateList{n: len(cands)}
+	if len(cands) > 0 {
+		k.first = &cands[0]
+	}
+	if s, ok := o.names[k]; ok {
+		return s
+	}
+	s := make(set, len(cands))
+	for _, c := range cands {
+		s[c.Name] = struct{}{}
+	}
+	if o.names == nil {
+		o.names = map[candidateList]set{}
+	}
+	o.names[k] = s
+	return s
 }
 
 // reads is reads(card): 1..5.
