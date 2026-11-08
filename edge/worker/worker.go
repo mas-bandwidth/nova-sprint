@@ -202,6 +202,9 @@ func readKept_internal(jobDir, name string) ([]byte, error) {
 		return os.ReadFile(filepath.Join(jobDir, name))
 	}
 	data, err := os.ReadFile(filepath.Join(kept, name))
+	if errors.Is(err, os.ErrNotExist) && fileExists_internal(filepath.Join(jobDir, name)) { // a job taken before kept copies, or one the job dir made up
+		return nil, fmt.Errorf("%s of %s: %w (the worker kept no copy: %w)", name, filepath.Base(jobDir), ErrJobDirChanged, err)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -499,6 +499,12 @@ func TestJobRecordIsReadOnlyFromTheKeptCopy(t *testing.T) {
 	if _, err := readReceipt_internal(jobDir); !errors.Is(err, ErrJobDirChanged) {
 		t.Fatalf("a changed receipt: %v", err)
 	}
+	if err := os.RemoveAll(filepath.Join(root, RecordsDir)); err != nil { // a job directory with no kept copy at all
+		t.Fatal(err)
+	}
+	if _, err := ReadJobRecord(jobDir); !errors.Is(err, ErrJobDirChanged) {
+		t.Fatalf("a job directory with no kept copy: %v", err)
+	}
 	var warns []string
 	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: newFakeGit_internal(), Wall: &fakeWall{}, Now: testClock_internal(), Sleep: noSleep_internal,
 		Warn: func(s string) { warns = append(warns, s) }})
