@@ -113,3 +113,21 @@ func TestStreamAddCreatesTheGroupBranch(t *testing.T) {
 			want: []string{"creating sprint-group/t at o/r failed", "push access"}},
 	})
 }
+
+// stream set admits the stream it makes as stream add does: a forge given
+// to a stream creates its group branch, and a branch that blocks it
+// refuses with nothing written.
+func TestStreamSetAdmitsAsAddDoes(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	want(t, w.do("carol", "stream", "set", "s", "--forge", "github"), 0, "STREAM s mode=auto forge=github applied")
+	if got := w.lander.created; len(got) != 1 || got[0] != "s@"+base {
+		t.Fatalf("created %v", got)
+	}
+	w = newWorld(t)
+	w.lander.heads = map[string]string{"refs/heads/sprint-group": base}
+	want(t, w.do("carol", "stream", "set", "s", "--forge", "github"), 1, "keeps the group branch sprint-group/s from being created")
+	if s := w.snap(t).Streams["s"]; s.Forge != "" {
+		t.Fatalf("a refused set wrote the forge: %+v", s)
+	}
+}

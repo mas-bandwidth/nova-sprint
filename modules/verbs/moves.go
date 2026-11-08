@@ -123,6 +123,10 @@ func partial(err error, applied []string) error {
 	return &f
 }
 
+// unheldPrefix starts an unheld card's reason, by unhold or by a held
+// judgement's unhold alike.
+const unheldPrefix = "unheld: "
+
 func holdRequest(hold bool, name, reason string, snap store.Snapshot) (steps.Request, error) {
 	if _, ok := snap.Rows[name]; ok {
 		if hold {
@@ -143,7 +147,7 @@ func holdRequest(hold bool, name, reason string, snap store.Snapshot) (steps.Req
 		if hold {
 			return steps.Request{Card: name, Event: card.HoldCard{Reason: card.HeldPrefix + reason}}, nil
 		}
-		return steps.Request{Card: name, Event: card.UnholdCard{Reason: "unheld: " + reason}}, nil
+		return steps.Request{Card: name, Event: card.UnholdCard{Reason: unheldPrefix + reason}}, nil
 	}
 	return steps.Request{}, refuse("no row, stream or card "+name, "nova-sprint show")
 }

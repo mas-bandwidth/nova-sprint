@@ -128,7 +128,7 @@ func TestJudge(t *testing.T) {
 	want(t, w.do("carol", "judge", "held.p3.1"), 0, "question: what now?")
 	want(t, w.do("carol", "judge", "held.p3.1", "unhold", "--reason", "fixed by hand"), 0, "judgement held.p3.1 answered unhold", "applied at seq")
 	p3 := w.snap(t).Cards["p3"]
-	if p3.State != "waiting" || p3.Reason != "fixed by hand" {
+	if p3.State != "waiting" || p3.Reason != unheldPrefix+"fixed by hand" { // as unhold <card> records it
 		t.Fatalf("unhold did not lift the card's hold: %s %q", p3.State, p3.Reason)
 	}
 	want(t, w.do("carol", "judge"), 0, "no open judgements")

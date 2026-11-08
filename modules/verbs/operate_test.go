@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,11 @@ func TestStopAndStart(t *testing.T) {
 	}
 	want(t, w.do("carol", "stop", "--reason", "again"), 0, "STOPPED already: the sprint is already stopped (deploy)", "next: nova-sprint start --as carol")
 	want(t, w.do("carol", "start"), 0, "STARTED applied at seq")
-	want(t, w.do("carol", "start"), 0, "RUNNING already: the sprint is already running", "next: nova-sprint next --as carol")
+	running := w.do("carol", "start")
+	want(t, running, 0, "RUNNING already: the sprint is already running; nothing to start", "next: nova-sprint next --as carol")
+	if strings.Contains(running.Output, "deploy") {
+		t.Fatalf("a running sprint is not described by its last stop's reason:\n%s", running.Output)
+	}
 	want(t, w.do("carol", "stop"), 1, "a stop needs its reason")
 }
 

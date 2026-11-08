@@ -66,22 +66,18 @@ func runUpWrapper(ctx context.Context, args []string) int {
 		return emit("SPRINT REFUSED up: --continuation is the second phase's own flag, never given by hand: nova-sprint help up\n", 1)
 	}
 	if os.Getenv("NOVA_PG_ADMIN_PASSWORD") != "" || os.Getenv("NOVA_SPRINT_PG_PASSWORD") != "" {
-		fmt.Fprintln(os.Stderr, upWithCredentials(input.Actor))
-		return 1
+		return emit(upWithCredentials(input.Actor)+"\n", 1)
 	}
 	cfg, err := productionSetupConfigFromEnv()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: setup configuration unavailable: "+edge.RedactN(err.Error(), edge.CommandMax))
-		return 1
+		return emit("SPRINT REFUSED up: setup configuration unavailable: "+edge.RedactN(err.Error(), edge.CommandMax)+"\n", 1)
 	}
 	p := productionSetup{cfg: cfg}
 	if err = p.configError(); err != nil {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: "+edge.RedactN(err.Error(), edge.CommandMax))
-		return 1
+		return emit("SPRINT REFUSED up: "+edge.RedactN(err.Error(), edge.CommandMax)+"\n", 1)
 	}
 	if _, err = setupRoleDSN(cfg.DSN, "nova_admin"); err != nil {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: configure a passwordless NOVA_PG_DSN ("+edge.RedactN(err.Error(), edge.CommandMax)+")")
-		return 1
+		return emit("SPRINT REFUSED up: configure a passwordless NOVA_PG_DSN ("+edge.RedactN(err.Error(), edge.CommandMax)+")\n", 1)
 	}
 	status, output, code := runUpChild(ctx, cfg, "NOVA_PG_ADMIN_PASSWORD", "--internal-up-phase1", args, true)
 	if code != 0 {
@@ -89,14 +85,12 @@ func runUpWrapper(ctx context.Context, args []string) int {
 	}
 	if status == "" {
 		if output == "" {
-			fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: the first phase exited 0 with no output and no continuation (a bug: take it to the project's own tracker)")
-			return 2
+			return emit("SPRINT REFUSED up: the first phase exited 0 with no output and no continuation (a bug: take it to the project's own tracker)\n", 2)
 		}
 		return emit(output, 0)
 	}
 	if !continuationID.MatchString(status) {
-		fmt.Fprintf(os.Stderr, "SPRINT REFUSED up: invalid continuation status %q (want 64 hex digits)\n", edge.Redact(status))
-		return 2
+		return emit(fmt.Sprintf("SPRINT REFUSED up: invalid continuation status %q (want 64 hex digits)\n", edge.Redact(status)), 2)
 	}
 	next := append(append([]string{}, args...), "--continuation", status)
 	_, output, code = runUpChild(ctx, cfg, "NOVA_SPRINT_PG_PASSWORD", "--internal-up-phase2", next, false)

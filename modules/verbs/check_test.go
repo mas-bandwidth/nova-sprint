@@ -344,8 +344,9 @@ func TestCheckWorkers(t *testing.T) {
 		{name: "a bench whose store row is down", args: []string{"check"}, exit: 1, prep: then(healthy, units(alice("WORKER alice up"))),
 			snap: func(s *store.Snapshot) { r := s.Rows["alice"]; r.State = "down"; s.Rows["alice"] = r },
 			want: []string{"CHECK RED worker alice: the store's row state is down (last log line \"WORKER alice up\")"}},
-		{name: "benches that cannot be read", args: []string{"check"}, exit: 0, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.unitsErr = errBroken }),
-			want: []string{"CHECK WARN workers: the benches cannot be read (connection refused): nova-config machine list --json on the control machine", "CHECK judgements: none open"}},
+		// an inventory that cannot be read is red: check never passes having checked no bench
+		{name: "benches that cannot be read", args: []string{"check"}, exit: 2, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.unitsErr = errBroken }),
+			want: []string{"CHECK RED workers: the benches cannot be read (connection refused): nova-config machine list --json on the control machine", "CHECK judgements: none open"}},
 		{name: "show carries the fact", as: "carol", args: []string{"show", "alice"}, exit: 0, prep: units(alice(refused)),
 			want: []string{`"role": "worker"`, `"service": "sprint-worker-alice"`, `"last_line": "` + refused + `"`, `"problem": "worker alice: \"` + refused + `\" (its unit exits on it and is restarted, forever)"`, `"fix": "nova-sprint up --as`}},
 		{name: "show of a serving bench", as: "carol", args: []string{"show", "alice"}, exit: 0, prep: units(alice("WORKER alice up")),

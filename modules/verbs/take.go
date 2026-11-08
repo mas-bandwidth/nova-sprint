@@ -131,13 +131,19 @@ func (e *Engine) acknowledge(ctx context.Context, row string, snap store.Snapsho
 		Expect: []store.Expect{store.CardGen{Card: c.ID, Gen: c.Gen}},
 		Writes: []store.Write{store.SetCursor{Name: steps.AckCursor(snap.Epoch, c.ID), Seq: max(snap.Seq, 1)}}}
 	r, err := applyOnce(ctx, e.Store, op, e.Store.Apply)
-	switch {
-	case err != nil:
+	if err != nil || r.Accepted {
 		return err
-	case !r.Accepted && !strings.Contains(r.Reason, "already at"):
-		return refuse(r.Reason, "nova-sprint show "+c.ID)
 	}
-	return nil
+	// refused: acknowledged all the same only if the cursor is written
+	// (a take that raced this one), read from the store, never the words
+	now, err := e.snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if _, acked := now.Cursors[steps.AckCursor(snap.Epoch, c.ID)]; acked {
+		return nil
+	}
+	return refuse(r.Reason, "nova-sprint show "+c.ID)
 }
 
 // working are the consumers row works on now, sorted.

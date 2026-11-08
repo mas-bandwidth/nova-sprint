@@ -102,3 +102,26 @@ func TestFunctionalPublishedBackupRoundTrip(t *testing.T) {
 		t.Fatalf("restore: %+v seq=%d digest=%s err=%v", snap, seq, digest, err)
 	}
 }
+
+// A second backup at the same epoch and seq (backup, then clear's own) gets
+// its own name: the first dump is kept and the second is published.
+func TestPublishAtSeqNamesASecondDumpApart(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	first, err := publishAtSeq([]byte("one\n"), dir, 3, 7)
+	if err != nil || filepath.Base(first) != "sprint-e3-s7.sql" {
+		t.Fatalf("first %q %v", first, err)
+	}
+	second, err := publishAtSeq([]byte("two\n"), dir, 3, 7)
+	if err != nil || second == first {
+		t.Fatalf("second %q %v", second, err)
+	}
+	if ok, _ := filepath.Match("sprint-e*-s*.sql", filepath.Base(second)); !ok {
+		t.Fatalf("second %q is not a backup name the setup walk finds", second)
+	}
+	for path, want := range map[string]string{first: "one\n", second: "two\n"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Fatalf("%s: %q %v", path, got, err)
+		}
+	}
+}

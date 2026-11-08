@@ -290,15 +290,20 @@ func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strin
 // the walk does not set: the commit identity (no worker hooks without it)
 // and a bench model for each tier a bench serves (no bench is dealt
 // without it), each with its fix, as check's red lines say them. A store
-// Migrate upgraded has neither until the coordinator sets them.
+// Migrate upgraded has neither until the coordinator sets them. What it
+// cannot check (the store or the policy unreadable) is named the same way,
+// so UP DONE never stands on a check that was skipped.
 func (e *Engine) upNeeds(ctx context.Context, out *strings.Builder) {
 	snap, err := e.snapshot(ctx)
 	if err != nil {
-		return // check says why the store cannot be read
+		f := classify(err)
+		out.WriteString("UP NEEDS identity and bench models unchecked: " + oneLine(f.What) + ": " + oneLine(f.Fix) + "\n")
+		return
 	}
 	_, identity := identityCheck(snap)
-	bench := e.checkPolicy(ctx, &checkReport{}, snap) // its other lines are check's to print
-	for _, f := range []*Fail{identity, bench} {
+	policy := &checkReport{} // its ok lines are check's to print; its reds are needs
+	e.checkPolicy(ctx, policy, snap)
+	for _, f := range append([]*Fail{identity}, policy.reds...) {
 		if f != nil {
 			out.WriteString("UP NEEDS " + oneLine(f.What) + ": " + oneLine(f.Fix) + "\n")
 		}

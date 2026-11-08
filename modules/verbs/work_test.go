@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -357,5 +358,77 @@ func TestReleaseDryRun(t *testing.T) {
 	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "tier", "--dry-run"), 0, "RELEASE p1.w1@1 (dry run)", "without --dry-run")
 	if c := w.snap(t).Cards["p1.w1"]; c.State != before.Cards["p1.w1"].State || w.snap(t).Seq != before.Seq {
 		t.Fatalf("a dry run released the card: %+v", c)
+	}
+}
+
+// failedAnswers is a policy engine whose active version failed: it answers
+// from the built-in fallback and says so.
+type failedAnswers struct{ fakeAnswers }
+
+func (f failedAnswers) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
+	a, _ := f.fakeAnswers.AnswerContext(ctx, vs, snap, ro, q)
+	return a, []policy.Failure{{Version: 1, Label: "v1", Msg: "boom"}}
+}
+
+// policyless is the store with its active policy version unreadable.
+type policyless struct{ *store.Fake }
+
+func (policyless) Policy(context.Context, int) (store.PolicyVersion, error) {
+	return store.PolicyVersion{}, errors.New("connection reset")
+}
+
+// A report whose billing or price sheet cannot be read is recorded unpriced
+// with the reason, never priced from the wrong sheet or billed by guess.
+func TestReadUnpricedWhenBillingCannotBeRead(t *testing.T) {
+	t.Parallel()
+	sheet := map[string]policy.Price{"deepseek-flash": {In: 270_000, Out: 1_100_000}}
+	words := "input=1000 output=10 model=deepseek/deepseek-flash"
+	for _, c := range []struct {
+		name, why string
+		prep      func(*world)
+	}{
+		{"roster unreadable", "roster-unreadable", func(w *world) { w.roster.err = errors.New("nova-config down") }},
+		{"policy failed", "policy-unreadable", func(w *world) { w.e.Answers = failedAnswers{fakeAnswers{prices: sheet}} }},
+		{"policy version unreadable", "policy-unreadable", func(w *world) { activePolicy(t, w); w.e.Store = policyless{w.f} }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newWorld(t)
+			w.e.Answers = fakeAnswers{prices: sheet}
+			takeR1(t, w)
+			c.prep(w)
+			want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", words), 0, "READ p2.r1")
+			if card := w.snap(t).Cards["p2.r1"]; card.Priced || card.Cost != 0 || !strings.HasSuffix(card.Usage, "unpriced="+c.why) {
+				t.Fatalf("read card %+v", card)
+			}
+		})
+	}
+}
+
+// refusingStore refuses every op with reason, writing nothing.
+type refusingStore struct {
+	*store.Fake
+	reason string
+}
+
+func (s refusingStore) Apply(_ context.Context, op store.Op) (store.Receipt, error) {
+	return store.Receipt{Op: op.ID, Reason: s.reason}, nil
+}
+
+// A take's acknowledgement refused is a refusal unless the cursor is in fact
+// written: the refusal's words are never read as success.
+func TestTakeRefusedAcknowledgementIsARefusal(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.e.Store = refusingStore{w.f, "cursor ack is already at 3"}
+	want(t, w.do("alice", "take", "p1.w1@1"), 1, "cursor ack is already at 3", "nova-sprint show p1.w1")
+}
+
+func TestFinishTakesAnUppercaseHead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	takeW1(t, w)
+	want(t, w.do("alice", "finish", "p1.w1@1", "--head", strings.ToUpper(head)), 0, "FINISHED p1.w1 head="+head)
+	if c := w.snap(t).Cards["p1.w1"]; c.Head != head {
+		t.Fatalf("head recorded %q", c.Head)
 	}
 }

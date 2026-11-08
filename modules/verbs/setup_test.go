@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -106,4 +107,51 @@ func TestSetupNamesTheBenchModel(t *testing.T) {
 		strings.Contains(r.Output, "commit identity") {
 		t.Fatal(r.Output)
 	}
+}
+
+// up never prints UP DONE with its UP NEEDS checks skipped: a roster it
+// cannot read is named (checkPolicy's red), as is a store it cannot read
+// after the walk, each pointing at its fix.
+func TestSetupNeedsNamesWhatItCouldNotCheck(t *testing.T) {
+	t.Parallel()
+	f := upStore(true)
+	applyTest(t, f, store.Op{ID: "policy-up", Epoch: 1, Actor: "rowan", Kind: "policy", At: t0,
+		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "old", Body: "script"}, store.SetActivePolicy{Version: 1}, store.SetIdentity{Name: "Bot", Email: "1+bot@users.noreply.example.test"}}})
+	ro := newRoster()
+	ro.err = errors.New("nova-config down")
+	e := Engine{Actor: "rowan", Store: f, Bus: upBus(), Now: upNow, Setup: &setupFake{}, Lock: setupLeaseFake{}, Answers: fakeAnswers{}, Roster: ro}
+	r := e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
+	if r.Exit != 0 || !strings.Contains(r.Output, "UP 8/8\nUP NEEDS nova-config's roster cannot be read (nova-config down): nova-config check, then nova-sprint check\n") {
+		t.Fatal(r.Output)
+	}
+	gone := &snapshotGone{Fake: upStore(true)}
+	e = Engine{Actor: "rowan", Store: gone, Bus: upBus(), Now: upNow, Setup: &goneAfterWalk{setupFake: &setupFake{}, gone: gone}, Lock: setupLeaseFake{}}
+	r = e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
+	if r.Exit != 0 || !strings.Contains(r.Output, "UP 8/8\nUP NEEDS identity and bench models unchecked: the store did not answer (connection reset): nova-sprint check\n") {
+		t.Fatal(r.Output)
+	}
+}
+
+// snapshotGone is a store whose snapshot fails once gone is set.
+type snapshotGone struct {
+	*store.Fake
+	gone bool
+}
+
+func (s *snapshotGone) Snapshot(ctx context.Context) (store.Snapshot, error) {
+	if s.gone {
+		return store.Snapshot{}, errors.New("connection reset")
+	}
+	return s.Fake.Snapshot(ctx)
+}
+
+// goneAfterWalk is the setup walk that loses the store at its completion.
+type goneAfterWalk struct {
+	*setupFake
+	gone *snapshotGone
+}
+
+func (g *goneAfterWalk) Completion(ctx context.Context) (string, error) {
+	g.gone.gone = true
+	return g.setupFake.Completion(ctx)
 }

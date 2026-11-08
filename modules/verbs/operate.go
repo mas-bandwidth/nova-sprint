@@ -40,11 +40,10 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 // success that changes nothing, saying the state and the next verb (defect
 // 23: start on a running sprint printed "STARTED already").
 func alreadyStopped(snap store.Snapshot, actor string) string {
-	reason := orWord(snap.StopReason, "no reason given")
 	if snap.Stopped {
-		return done("nova-sprint start --as "+actor+" --reason \"<why>\"", "STOPPED already: the sprint is already stopped ("+reason+"); nothing changed")
+		return done("nova-sprint start --as "+actor+" --reason \"<why>\"", "STOPPED already: the sprint is already stopped ("+orWord(snap.StopReason, "no reason given")+"); nothing changed")
 	}
-	return done("nova-sprint next --as "+actor, "RUNNING already: the sprint is already running ("+reason+"); nothing to start")
+	return done("nova-sprint next --as "+actor, "RUNNING already: the sprint is already running; nothing to start")
 }
 
 // atLeast compares releases vMAJOR.MINOR.PATCH; a prerelease or a

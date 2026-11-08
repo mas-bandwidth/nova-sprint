@@ -77,7 +77,11 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 	if cfg.BusUser != "" {
 		keys = append(keys, "NOVA_BUS_PASSWORD")
 	}
-	runDSN, _ := setupRoleDSN(cfg.DSN, "nova_sprint")
+	runDSN, err := setupRoleDSN(cfg.DSN, "nova_sprint")
+	if err != nil && cfg.DSN != "" { // unset, the store step says so; set and malformed, nothing can run
+		bad := verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN cannot be used (" + err.Error() + ")", Fix: "export NOVA_PG_DSN=postgres://<host>:<port>/<database> with no password in it, then nova-sprint up again", Exit: 1})
+		return failedProductionSetup{bad}, productionSetupLock{err: bad}
+	}
 	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
@@ -465,37 +469,68 @@ func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader
 	if err := dec.Decode(&extra); err != io.EOF {
 		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("more than one request", int(dec.InputOffset()), data))
 	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return "", edge.Cause("continuation unavailable: snapshot", err)
-	}
-	existing, found, err := findSetupContinuation(ctx, st, snap, request.ID)
-	if err != nil {
-		return "", edge.Cause("continuation unavailable", err)
-	}
-	if found {
-		if existing.Version == 1 && existing.Epoch == snap.Epoch && existing.Actor == request.Actor && existing.Digest == request.Digest {
+	// The write is fenced on the seq it read; a live run's tick between the
+	// read and the write moves the seq, so a refusal logged past an op of
+	// someone else's reads again (each try its own op id: a refused op
+	// replays as refused). A refusal logged right after the read is final.
+	var refused *handoffRefused
+	for try := range handoffTries {
+		snap, err := st.Snapshot(ctx)
+		if err != nil {
+			return "", edge.Cause("continuation unavailable: snapshot", err)
+		}
+		existing, found, err := findSetupContinuation(ctx, st, snap, request.ID)
+		if err != nil {
+			return "", edge.Cause("continuation unavailable", err)
+		}
+		if found {
+			if existing.Version == 1 && existing.Epoch == snap.Epoch && existing.Actor == request.Actor && existing.Digest == request.Digest {
+				return request.ID, nil
+			}
+			return "", fmt.Errorf("continuation unavailable: id %s is already recorded with other content", request.ID[:12])
+		}
+		record := handoffRecord{Version: 1, Epoch: snap.Epoch, Actor: request.Actor, Digest: request.Digest}
+		body, err := json.Marshal(record)
+		if err != nil {
+			return "", err
+		}
+		opID := "up-handoff-" + request.ID
+		if try > 0 {
+			opID += fmt.Sprintf("-%d", try)
+		}
+		op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: request.Actor, Kind: "setup continuation", At: at, Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: "setup:continuation:" + request.ID, Body: string(body)}}}
+		err = applyHandoff(ctx, st, op)
+		if !errors.As(err, &refused) {
+			if err != nil {
+				return "", err
+			}
 			return request.ID, nil
 		}
-		return "", fmt.Errorf("continuation unavailable: id %s is already recorded with other content", request.ID[:12])
+		if refused.at <= snap.Seq+1 {
+			return "", refused // nothing came between the read and the write
+		}
 	}
-	record := handoffRecord{Version: 1, Epoch: snap.Epoch, Actor: request.Actor, Digest: request.Digest}
-	body, err := json.Marshal(record)
-	if err != nil {
-		return "", err
-	}
-	op := store.Op{ID: "up-handoff-" + request.ID, Epoch: snap.Epoch, Actor: request.Actor, Kind: "setup continuation", At: at, Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: "setup:continuation:" + request.ID, Body: string(body)}}}
-	if err = applyHandoff(ctx, st, op); err != nil {
-		return "", err
-	}
-	return request.ID, nil
+	return "", refused
 }
+
+// handoffTries bounds the continuation write's reads against a live run.
+const handoffTries = 5
+
+// handoffRefused is the store's refusal of the continuation op, and the seq
+// the refusal was logged at.
+type handoffRefused struct {
+	reason string
+	at     int64
+}
+
+func (r *handoffRefused) Error() string { return "continuation refused: " + r.reason }
+
 func applyHandoff(ctx context.Context, st store.Store, op store.Op) error {
 	for range 3 {
 		receipt, err := st.Apply(ctx, op)
 		if err == nil {
 			if !receipt.Accepted {
-				return fmt.Errorf("continuation refused: %s", edge.Redact(cmp.Or(receipt.Reason, "no reason given")))
+				return &handoffRefused{reason: edge.Redact(cmp.Or(receipt.Reason, "no reason given")), at: receipt.Seq}
 			}
 			return nil
 		}
@@ -508,7 +543,7 @@ func applyHandoff(ctx context.Context, st store.Store, op store.Op) error {
 		}
 		if found {
 			if !receipt.Accepted {
-				return fmt.Errorf("continuation refused: %s", edge.Redact(cmp.Or(receipt.Reason, "no reason given")))
+				return &handoffRefused{reason: edge.Redact(cmp.Or(receipt.Reason, "no reason given")), at: receipt.Seq}
 			}
 			return nil
 		}
