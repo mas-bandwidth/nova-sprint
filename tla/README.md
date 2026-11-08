@@ -799,6 +799,7 @@ invariant violated (60 runs).
 | `CardFaultBounces` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 26s |
 | `CardFaultBumpsAttempt` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 22s |
 | `CardHandPlanPartial` | AttemptOnlyOnStart violated | 820 / 367 | 4 | 18s |
+| `CardHeldDealt` | HeldNeverDealt violated | 175 / 155 | 5 | <1s (2026-11-07, hetzner2) |
 | `CardHeldStreamReady` | ParkedUnderHold violated | 10428 / 3649 | 7 | 27s |
 | `CardInThisOpAlone` | InThisOpOnFailedNeed violated | 22 / 10 | 2 | 11s |
 | `CardLandedMoves` | FinalNeverMoves violated | 56 / 46 | 3 | 9s |
@@ -830,7 +831,7 @@ invariant violated (60 runs).
 | `CardYesOnZero` | ReadYesNeedsYes violated | 10703 / 3786 | 7 | 25s |
 | reach `CardNeverAdded` | NeverAdded violated | 27 / 21 | 2 | 14s |
 | reach `CardNeverAskReads` | NeverAskReads violated | 1333 / 666 | 7 | 16s |
-| reach `CardNeverBlocked` | NeverBlocked violated | 35 / 30 | 3 | 11s |
+| reach `CardNeverHeld` | NeverHeld violated | 164 / 150 | 5 | <1s (2026-11-07, hetzner2) |
 | reach `CardNeverFaultRedealt` | NeverFaultRedealt violated | 10458 / 3662 | 7 | 24s |
 | reach `CardNeverFindingCarried` | NeverFindingCarried violated | 408827 / 130955 | 11 | 1min 07s |
 | reach `CardNeverFixed` | NeverFixed violated | 200192 / 67405 | 10 | 46s |
