@@ -925,10 +925,11 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
 - `modules/edge/worker/beat.go`: with a `Meter` and a `Beater` set (`Serve` sets both), `ServeRow` pushes
   `nova-sprint beat` (layer 6) after the probe and then every `BeatEvery` (30 s, a guess) until
   the worker ends, on the runner's `Sleep`. `OSMeter` reads the 1-minute load average
-  (`/proc/loadavg` on Linux, `sysctl -n vm.loadavg` on macOS and the BSDs, nothing on Windows:
-  no load, no beat, and the warning says so), the logical cores (`runtime.NumCPU`), and the slots
-  from `nova-reserve status`'s `free=n/N` line. A bench with no readable slots still beats, with
-  0 of 0 and a warning. Each distinct failure is warned once, not every period. The worker
+  (`/proc/loadavg` on Linux, `sysctl -n vm.loadavg` on macOS and the BSDs, nothing on Windows),
+  the logical cores (`runtime.NumCPU`), and the slots from `nova-reserve status`'s `free=n/N`
+  line. A bench with no readable load still beats, with load 0 and a warning, and one with no
+  readable slots beats with 0 of 0 and a warning: the cores, tiers and version the deal needs
+  are always sent. Each distinct failure is warned once, not every period. The worker
   keeps only the last warning's text; a beat that repeats the last one writes nothing.
 - Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
   and carries no numbers) and not a read verb that writes. Tests: `modules/edge/worker/beat_test.go`.

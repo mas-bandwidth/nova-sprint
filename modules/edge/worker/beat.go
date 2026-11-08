@@ -38,9 +38,9 @@ type (
 	Beater interface {
 		Beat(ctx context.Context, row string, hb Heartbeat) error
 	}
-	// Meter measures the bench. A failure to read the load is an error and
-	// no beat; a failure to read the slots is the beat with 0 of 0 and the
-	// error beside it (BeatReading).
+	// Meter measures the bench. What it could not read comes back as the
+	// error beside the beat: an unread load as load 0, unread slots as 0 of
+	// 0, so the cores and tiers the deal needs are still sent.
 	Meter interface {
 		Sample(ctx context.Context) (Heartbeat, error)
 	}
@@ -61,13 +61,11 @@ type (
 
 var reserveFree = regexp.MustCompile(`(?m)^free=(\d+)/(\d+)\s*$`)
 
-// Sample reads the load, then the slots. The slots' failure comes back with
-// the beat the load made, so a bench without nova-reserve still reports.
+// Sample reads the load, then the slots. Either failure comes back with the
+// beat the rest made (an unread load as 0, unread slots as 0 of 0), so a
+// bench without a load average or nova-reserve still reports.
 func (m OSMeter) Sample(ctx context.Context) (Heartbeat, error) {
-	load, err := m.load1_internal(ctx)
-	if err != nil {
-		return Heartbeat{}, err
-	}
+	load, lerr := m.load1_internal(ctx)
 	hb := Heartbeat{Load1: load, Cores: runtime.NumCPU()}
 	peak, ok := 0.0, false
 	if m.CPU != nil {
@@ -80,11 +78,11 @@ func (m OSMeter) Sample(ctx context.Context) (Heartbeat, error) {
 	hb.CPUPeak = cpuPeakOrLoad(peak, ok, load, hb.Cores)
 	res, err := cmp.Or[edge.Exec](m.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: []string{resolveToolBin_internal(cmp.Or(m.ReserveBin, "nova-reserve")), "status"}, Timeout: 5 * time.Second})
 	if err != nil || res.ExitCode != 0 {
-		return hb, fmt.Errorf("nova-reserve status: %w", edge.Failure([]string{"nova-reserve", "status"}, nil, res.ExitCode, res.Stdout, res.Stderr, err))
+		return hb, errors.Join(lerr, fmt.Errorf("nova-reserve status: %w", edge.Failure([]string{"nova-reserve", "status"}, nil, res.ExitCode, res.Stdout, res.Stderr, err)))
 	}
 	used, total, perr := ParseReserveStatus(res.Stdout)
 	hb.SlotsUsed, hb.SlotsTotal = used, total
-	return hb, perr
+	return hb, errors.Join(lerr, perr)
 }
 
 func (m OSMeter) load1_internal(ctx context.Context) (float64, error) {
