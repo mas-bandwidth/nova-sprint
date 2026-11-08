@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -251,6 +252,53 @@ func TestLastServiceLogLineReadsTheUnitLogOverSSH(t *testing.T) {
 	p.command = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("no route") }
 	if got = p.lastServiceLogLine(context.Background(), "amd-2", "sprint-worker-amd-2"); !strings.Contains(got, "unreadable") || !strings.Contains(got, "no route") {
 		t.Fatal(got)
+	}
+}
+
+// The doctor's worker benches are the inventory's, each with its unit's
+// last log line over ssh (check's worker lines, D14); one machine's alone
+// for show; a process with no fleet configuration says so.
+func TestDoctorReadsEveryBenchWorkerUnit(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var seen [][]string
+	p := productionSetup{cfg: configForSetup(), command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		mu.Lock()
+		seen = append(seen, append([]string{name}, args...))
+		mu.Unlock()
+		switch {
+		case name == "nova-config" && args[0] == "machine":
+			return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":3},"items":[` + workloadMachines + `]}`), nil
+		case name == "nova-config":
+			return []byte(`{"ansible_host":"100.100.1.` + map[string]string{"amd-1": "5", "amd-2": "6"}[args[2]] + `","ansible_user":"nova"}`), nil
+		case slices.Contains(args, "nova@100.100.1.5"):
+			return []byte("SPRINT REFUSED worker: unknown flag --work-clone: nova-sprint help worker\n"), nil
+		}
+		return nil, errors.New("no route")
+	}}
+	p.runtime.Services = verbs.FleetServices{Command: p.command}
+	d := fleetDoctor(credentials{}, p)
+	units, err := d.Workers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []verbs.WorkerUnit{{Machine: "amd-1", Service: "sprint-worker-amd-1", LastLine: "SPRINT REFUSED worker: unknown flag --work-clone: nova-sprint help worker"},
+		{Machine: "amd-2", Service: "sprint-worker-amd-2", Unread: "unreadable over ssh to nova@100.100.1.6 (no route)"}}
+	if !slices.Equal(units, want) {
+		t.Fatalf("%+v", units)
+	}
+	u, ok, err := d.Worker(context.Background(), "amd-1")
+	if err != nil || !ok || u != want[0] {
+		t.Fatalf("%+v %v %v", u, ok, err)
+	}
+	if u, ok, err = d.Worker(context.Background(), "studio"); err != nil || ok {
+		t.Fatalf("%+v %v %v", u, ok, err)
+	}
+	if _, err = fleetDoctor(credentials{}, failedProductionSetup{errors.New("no hostname")}).Workers(context.Background()); err == nil || !strings.Contains(err.Error(), "no fleet configuration: no hostname") {
+		t.Fatal(err)
+	}
+	if _, err = fleetDoctor(credentials{}, nil).Workers(context.Background()); err == nil || !strings.Contains(err.Error(), "no fleet configuration") {
+		t.Fatal(err)
 	}
 }
 

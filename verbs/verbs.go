@@ -98,6 +98,11 @@ type Doctor interface {
 	Schema(ctx context.Context) (bool, error)           // the store at this build's schema
 	History(ctx context.Context) error                  // the event log rebuilds the tables (read only)
 	Run(ctx context.Context) (run.ChooserStatus, error) // who holds the chooser lock (show run)
+	// Workers is every worker bench's service (the benches in nova-config's
+	// inventory, each unit's last log line); Worker is machine's, false
+	// when it is no bench (check_workers.go).
+	Workers(ctx context.Context) ([]WorkerUnit, error)
+	Worker(ctx context.Context, machine string) (WorkerUnit, bool, error)
 }
 
 // Services are the long-running verbs, the binary's.
