@@ -102,6 +102,10 @@ type failingTree struct{ *fakeOrigin }
 
 func (o *failingTree) Tree(context.Context, string, string) ([]string, error) { return nil, errBroken }
 
+// readsJobMD is the sentence the live briefs carry (D5, 2026-11-07): it
+// names JOB.md as the file the harness reads, which the worker writes.
+const readsJobMD = "Read $JOB/JOB.md first: it names the staged checkout (a full clone at BASE) and how this card finishes.\n"
+
 // TestBriefContractLint: the parser refuses the new fields' bad forms and
 // the retired mechanics, naming the line and the fix.
 func TestBriefContractLint(t *testing.T) {
@@ -117,7 +121,8 @@ func TestBriefContractLint(t *testing.T) {
 		"must contain a valid PR section":                                                                        strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nPR: -3", 1),
 		"line 2 is a retired WHO line":                                                                           strings.Replace(good, "PATHS: a.go", "WHO: alice\nPATHS: a.go", 1),
 		"line 2 is a retired LOCK line":                                                                          strings.Replace(good, "PATHS: a.go", "LOCK: build\nPATHS: a.go", 1),
-		"line 7 names JOB.md, a retired mechanic":                                                                good + "Write JOB.md when done.\n",
+		"line 7 names a JOB.md to write, a retired mechanic":                                                     good + "Write JOB.md when done.\n",
+		"line 7 names a JOB.md to write, a retired":                                                              good + "JOB.md is written by you at the end.\n",
 		"line 7 names a lock (winlock), a retired":                                                               good + "Take the winlock first.\n",
 		"line 7 names a host to ssh to (ssh to bench9)":                                                          good + "Then ssh to bench9 and run it.\n",
 		"line 4 names a gate that runs on a named host":                                                          strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: ssh -o BatchMode=yes bench1 make", 1),
@@ -130,6 +135,11 @@ func TestBriefContractLint(t *testing.T) {
 		if f := classify(err); strings.Contains(rule, "retired") && !strings.Contains(f.Fix, "the take receipt is the job") {
 			t.Fatalf("%q: fix %q", rule, f.Fix)
 		}
+	}
+	// The worker writes JOB.md for its harness (edge/worker/jobmd.go), so a
+	// brief that sends the harness to read it is right, not retired (D5).
+	if _, err := parseBrief("b1", good+readsJobMD); err != nil {
+		t.Fatalf("a brief that reads JOB.md: %v", err)
 	}
 	a, err := parseBrief("b1", strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nNEEDS-ROUTE: ipad\nNEEDS-ROUTE: usb\nHEAD: "+tip+"\nPR: 12", 1))
 	if err != nil || len(a.DoneWhen) != 1 {
