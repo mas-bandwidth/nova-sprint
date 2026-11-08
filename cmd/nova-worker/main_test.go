@@ -37,3 +37,16 @@ func TestWorkerCLIProviderRoutesAreFlags(t *testing.T) {
 		}
 	}
 }
+
+// --wall-read repeats, and a relative or missing directory is refused
+// naming the flag before the worker starts.
+func TestWorkerCLIWallReadRefusals(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, c := range []struct{ arg, why string }{{"sdk/go", "not an absolute path"}, {dir + "/missing", "not a directory"}} {
+		var out, errBuf bytes.Buffer
+		if code := run_internal([]string{"--host", "b1", "--as", "amd-1", "--harness", "script", "--wall-read", dir, "--wall-read", c.arg}, &out, &errBuf); code != 1 || !strings.Contains(errBuf.String(), "--wall-read") || !strings.Contains(errBuf.String(), c.why) {
+			t.Fatalf("--wall-read %s: code=%d err=%q", c.arg, code, errBuf.String())
+		}
+	}
+}

@@ -800,6 +800,21 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   `--read` on the directory `exec.LookPath` finds the harness binary in and,
   when that is a symlink, on its target's directory (`HarnessDirs`); a binary
   it cannot find is left to the wall's own refusal, which names the path.
+- **Toolchain grants (`--wall-read`).** A card's done-when (`go test ...`)
+  runs in its own wall (`OSReserveWall.RunTest`), and the harness may run it
+  in its wall too; neither could read a toolchain outside the system
+  directories. `--wall-read <dir>` (repeatable) is `WallConfig.ReadPaths`:
+  `--read`, never `--write`, on every job, test, step and probe wall.
+  `CheckWallReads` refuses a relative path, a missing directory, the home or
+  a directory holding it, anything under a dot-directory of the home, and
+  any overlap with `--root`, `--state-dir`, `--work-root`, `--mirror-root`
+  or `NOVA_SECRETS_STORE` when set. At start the worker runs
+  `go env GOROOT GOMODCACHE` outside the wall (`DetectGo`; no go on PATH is
+  no Go); `GoWallEnv` sets `GOROOT`, `GOTOOLCHAIN=local` and `GOROOT/bin`
+  first on `PATH` inside every wall only when a grant covers GOROOT, and
+  `GOMODCACHE` with `GOPROXY=off` only when a grant covers the cache.
+  `GOCACHE` stays go's default under the job's own home. An ungranted go
+  or cache is one start line naming the `--wall-read` that grants it.
 - **The cause line (25).** `edge.CauseLine`: escapes stripped
   (`edge.StripANSI`), the first line holding error, refused or failed, else
   the last non-empty line, bounded; `edge.StderrLines` strips escapes too.
@@ -885,8 +900,8 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   `--mirror` and `--origin`.
 - **The flag set** of `nova-worker` and `nova-sprint worker`: `--as <row>`,
   `--host`, `--root`, `--state-dir`, `--harness`, `--work-root`,
-  `--mirror-root`, `--providers`, `--once`, and `--sprint-bin` on
-  `nova-worker` only.
+  `--mirror-root`, `--providers`, `--wall-read` (repeatable), `--once`, and
+  `--sprint-bin` on `nova-worker` only.
 - **Owed.** A bench's tiers: the roster gives every bench every tier, so a
   bench whose harness serves no model of a tier is still dealt its cards,
   which fault and return to ready; the roster (or policy) needs a bench's

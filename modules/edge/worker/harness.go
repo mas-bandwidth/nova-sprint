@@ -2,6 +2,7 @@ package worker
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -596,6 +597,10 @@ type WallConfig struct {
 	// <WorkRoot>/<name>/.git and <MirrorRoot>/<name>.git, worked out from
 	// the job's repo, never from what the job's tree says.
 	WorkRoot, MirrorRoot string
+	// GoRoot and GoModCache are what `go env` said outside the wall at
+	// start (DetectGo); GoWallEnv sets them inside it only under a
+	// ReadPaths grant.
+	GoRoot, GoModCache string
 }
 
 // wallKeeps are the names nova-sandbox passes into the wall without --env;
@@ -728,4 +733,149 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 		clean = append(clean, "HOME="+filepath.Join(jobDir, "home"), "TMPDIR="+filepath.Join(jobDir, "tmp"), "XDG_DATA_HOME="+filepath.Join(jobDir, "data"))
 	}
 	return clean
+}
+
+// CheckWallReads is the operator's --wall-read directories as the wall
+// grants them, read-only, to every job and probe (WallConfig.ReadPaths),
+// each resolved through its symlinks; or the refusal of the first that
+// would let a job read what is not a toolchain's: a relative path, one that
+// is not a directory, the home or a directory holding it, anything under a
+// dot-directory of the home (credentials and configuration, a secrets
+// store's default among them), or one that holds or lies under a directory
+// of the worker's own (own: a flag and its directory; a job would read
+// other jobs' trees or the worker's state).
+func CheckWallReads(reads []string, home string, own [][2]string) ([]string, error) {
+	var out []string
+	homeR := resolvePath_internal(home)
+	for _, raw := range reads {
+		d := strings.TrimSpace(raw)
+		if err := checkWallReadForm_internal(d); err != nil {
+			return nil, err
+		}
+		r := resolvePath_internal(d)
+		if homeR != "" && pathUnder_internal(homeR, r) {
+			return nil, fmt.Errorf("worker refused: --wall-read %s is the worker's home or holds it, and the home holds its credentials and state: grant the toolchain's own directory under it", d)
+		}
+		if rel, err := filepath.Rel(homeR, r); homeR != "" && err == nil && pathUnder_internal(r, homeR) && strings.HasPrefix(rel, ".") {
+			return nil, fmt.Errorf("worker refused: --wall-read %s is under %s, a dot-directory of the home, where credentials and configuration live: grant a directory outside it", d, filepath.Join(home, strings.Split(rel, string(filepath.Separator))[0]))
+		}
+		for _, o := range own {
+			if oR := resolvePath_internal(o[1]); o[1] != "" && (pathUnder_internal(r, oR) || pathUnder_internal(oR, r)) {
+				return nil, fmt.Errorf("worker refused: --wall-read %s overlaps the worker's own %s %s, and a job would read other jobs' trees or the worker's state: grant only a toolchain's directory", d, o[0], o[1])
+			}
+		}
+		if !slices.Contains(out, r) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// checkWallReadForm_internal refuses a --wall-read that is not an absolute
+// path to an existing directory.
+func checkWallReadForm_internal(d string) error {
+	if !filepath.IsAbs(d) {
+		return fmt.Errorf("worker refused: --wall-read %q is not an absolute path: pass the directory's absolute path", d)
+	}
+	st, err := os.Stat(d)
+	if err != nil {
+		return fmt.Errorf("worker refused: --wall-read %s is not a directory on this bench: pass a directory that exists: %w", d, err)
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("worker refused: --wall-read %s is not a directory on this bench: pass a directory, not a file", d)
+	}
+	return nil
+}
+
+// resolvePath_internal is p cleaned and, when it exists, through its
+// symlinks; "" stays "".
+func resolvePath_internal(p string) string {
+	if p == "" {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
+}
+
+// pathUnder_internal is true when p is dir or under it (both resolved).
+func pathUnder_internal(p, dir string) bool {
+	if p == "" || dir == "" {
+		return false
+	}
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// goWallGrant_internal is the Go toolchain's names inside the wall, and
+// the worker's start lines about them. cfg.GoRoot and cfg.GoModCache are
+// what `go env` said outside the wall at start (DetectGo); each is admitted
+// only when a --wall-read grant (cfg.ReadPaths) covers it, so they widen
+// nothing: GOROOT with GOTOOLCHAIN=local (no toolchain download), and
+// GOMODCACHE with GOPROXY=off (the cache is read-only and the wall has no
+// network: a module missing from it fails at once, named). GOCACHE is left
+// to go's default under the job's own home.
+func goWallGrant_internal(cfg WallConfig) (vars, notes []string) {
+	root, cache := resolvePath_internal(cfg.GoRoot), resolvePath_internal(cfg.GoModCache)
+	granted := func(p string) bool {
+		return filepath.IsAbs(p) && slices.ContainsFunc(cfg.ReadPaths, func(d string) bool { return pathUnder_internal(p, resolvePath_internal(d)) })
+	}
+	if root == "" {
+		return nil, nil
+	}
+	if !granted(root) {
+		return nil, []string{fmt.Sprintf("worker: go is on the worker's PATH (GOROOT %s) and no --wall-read grants it, so a card's go commands are denied inside the wall: pass --wall-read %s", cfg.GoRoot, cfg.GoRoot)}
+	}
+	vars = []string{"GOROOT=" + root, "GOTOOLCHAIN=local"}
+	switch {
+	case cache != "" && granted(cache):
+		vars = append(vars, "GOMODCACHE="+cache, "GOPROXY=off")
+		notes = []string{fmt.Sprintf("worker: the wall reads go at %s and its module cache at %s (GOPROXY=off, GOTOOLCHAIN=local)", root, cache)}
+	case cache != "":
+		notes = []string{fmt.Sprintf("worker: the wall reads go at %s; its module cache %s is not granted, so a card's go commands that need a module fail inside the wall: pass --wall-read %s", root, cfg.GoModCache, cfg.GoModCache)}
+	}
+	return vars, notes
+}
+
+// GoWallEnv is env (a sanitized wall environment) with the Go toolchain's
+// granted names (goWallGrant_internal) and GOROOT/bin first on its PATH;
+// env as it is when go is not granted.
+func GoWallEnv(env []string, cfg WallConfig) []string {
+	vars, _ := goWallGrant_internal(cfg)
+	if len(vars) == 0 {
+		return env
+	}
+	bin := filepath.Join(strings.TrimPrefix(vars[0], "GOROOT="), "bin")
+	out := make([]string, 0, len(env)+len(vars))
+	for _, kv := range env {
+		name, val, _ := strings.Cut(kv, "=")
+		switch strings.ToUpper(name) {
+		case "GOROOT", "GOTOOLCHAIN", "GOMODCACHE", "GOPROXY":
+		case "PATH":
+			out = append(out, "PATH="+bin+string(os.PathListSeparator)+val)
+		default:
+			out = append(out, kv)
+		}
+	}
+	return append(out, vars...)
+}
+
+// DetectGo is `go env GOROOT GOMODCACHE` on the worker's PATH, outside the
+// wall, once at start: both "" when go is not on it (a bench without Go).
+func DetectGo(ctx context.Context, ex edge.Exec, timeout time.Duration) (goroot, modcache string, err error) {
+	argv := []string{"go", "env", "GOROOT", "GOMODCACHE"}
+	res, runErr := ex.Run(ctx, edge.Cmd{Argv: argv, Timeout: timeout})
+	var ee *edge.ExecError
+	if errors.As(runErr, &ee) && ee.Kind == edge.ErrMissingBinary {
+		return "", "", nil
+	}
+	if runErr != nil || res.ExitCode != 0 {
+		return "", "", edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, runErr)
+	}
+	lines := strings.Split(strings.TrimSpace(res.Stdout), "\n")
+	if len(lines) != 2 {
+		return "", "", fmt.Errorf("%s printed %d lines, want GOROOT and GOMODCACHE: %q", strings.Join(argv, " "), len(lines), TailBytes([]byte(res.Stdout), 200))
+	}
+	return strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1]), nil
 }

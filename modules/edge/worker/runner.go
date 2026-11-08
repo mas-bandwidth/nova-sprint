@@ -1554,7 +1554,7 @@ func fileExists_internal(p string) bool { _, err := os.Stat(p); return err == ni
 func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg WallConfig, cmdArgv, env []string, timeout time.Duration) (WallRunResult, error) {
 	fallbackPID := nextWallPID_internal()
 	nonce := fmt.Sprintf("n-%d", fallbackPID)
-	env = append(slices.Clone(env), "NOVA_WORKER_NONCE="+nonce)
+	env = append(GoWallEnv(slices.Clone(env), w.Config), "NOVA_WORKER_NONCE="+nonce)
 	argv := BuildWallArgv(cfg, j, env, cmdArgv)
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
 		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: timeout,

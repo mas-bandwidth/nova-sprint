@@ -27,6 +27,10 @@ type Config struct {
 	SprintBin            string
 	// Providers is --providers: the key proxy's routes (ParseProviders).
 	Providers string
+	// WallReads is --wall-read, repeatable: directories every job and probe
+	// wall reads, never writes (a toolchain and its module cache;
+	// CheckWallReads refuses the rest).
+	WallReads []string
 	Once      bool
 	// LookupEnv reads the worker's environment (os.LookupEnv when nil).
 	LookupEnv func(string) (string, bool)
@@ -52,6 +56,11 @@ func (c Config) Check() error {
 	}
 	if _, err := ParseProviders(c.Providers); err != nil {
 		return err
+	}
+	for _, d := range c.WallReads {
+		if err := checkWallReadForm_internal(strings.TrimSpace(d)); err != nil {
+			return err
+		}
 	}
 	if c.lookupEnv_internal(forge.TokenEnv) == "" {
 		return fmt.Errorf("worker refused: %s is not in the worker's environment, and it is the one github credential of the worker's git clones, fetches and pushes: on the control machine run nova-secrets grant %s --to %s --pins <dir> --store <dir> --key <file>, push the secrets store (grant does not), then nova-sprint up --as <coordinator>", forge.TokenEnv, forge.TokenEnv, strings.TrimSpace(c.Row))
@@ -80,7 +89,7 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 		return err
 	}
 	defer func() { reportTo(out, "key proxy close", srv.Close()) }()
-	r, err := newOSRunner_internal(c, home, proxy, proxyAddr, out)
+	r, err := newOSRunner_internal(ctx, c, home, proxy, proxyAddr, out)
 	if err != nil {
 		return err
 	}
@@ -94,7 +103,7 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 // newOSRunner_internal is the runner on the real clock, git, wall and bus.
 // It holds no forge: the worker's contract ends at a pushed head, and the
 // run's landing opens the PR with the host's identity (intent rules 16, 32).
-func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr string, out func(string)) (*Runner, error) {
+func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *KeyProxy, proxyAddr string, out func(string)) (*Runner, error) {
 	h, err := NewHarness(cmp.Or(c.Harness, "claude"))
 	if err != nil {
 		return nil, err
@@ -102,20 +111,47 @@ func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr stri
 	ex, timeouts := edge.NewOSExec(), DefaultTimeouts()
 	root := cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row))
 	workRoot, mirrorRoot := cmp.Or(c.WorkRoot, filepath.Join(root, "clones")), cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror"))
+	stateDir := cmp.Or(c.StateDir, filepath.Join(home, ".local", "state"))
+	wall, err := osWallConfig_internal(ctx, c, ex, timeouts.Stage, home, [][2]string{{"--root", root}, {"--state-dir", stateDir}, {"--work-root", workRoot}, {"--mirror-root", mirrorRoot}, {"secrets store", c.lookupEnv_internal("NOVA_SECRETS_STORE")}}, out)
+	if err != nil {
+		return nil, err
+	}
+	wall.ReserveBin, wall.SandboxBin, wall.ReserveWait, wall.NetDeny, wall.WorkRoot, wall.MirrorRoot = "nova-reserve", "nova-sandbox", timeouts.ReserveWait, true, workRoot, mirrorRoot
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,
-		StateDir: cmp.Or(c.StateDir, filepath.Join(home, ".local", "state")),
+		StateDir: stateDir,
 		Sprint:   sprint, Beater: sprint,
 		Git: &OSGitOps{WorkRoot: workRoot, MirrorRoot: mirrorRoot, Exec: ex, Timeouts: timeouts,
 			Token: c.lookupEnv_internal(forge.TokenEnv), GitHubCredential: "gh"},
 		Now: time.Now, Sleep: time.Sleep, After: time.After, WakeEvery: WakeEvery,
 		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
-		Wall: &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: timeouts.ReserveWait, NetDeny: true,
-			WorkRoot: workRoot, MirrorRoot: mirrorRoot}},
-		Procs: OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
+		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, Config: wall},
+		Procs:   OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
 		Warn: out, Meter: OSMeter{Exec: ex, ReserveBin: "nova-reserve", CPU: NewOSCPUSampler(ex)},
 	})
+}
+
+// osWallConfig_internal is the wall's operator grants (--wall-read,
+// CheckWallReads against the worker's own directories) and the Go
+// toolchain `go env` names on the worker's PATH, with its start lines
+// (goWallGrant_internal: granted, or the --wall-read that would grant it).
+// A go that is there and does not answer is said, never fatal: cards that
+// need no go still run.
+func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout time.Duration, home string, own [][2]string, out func(string)) (WallConfig, error) {
+	reads, err := CheckWallReads(c.WallReads, home, own)
+	if err != nil {
+		return WallConfig{}, err
+	}
+	cfg := WallConfig{ReadPaths: reads}
+	if cfg.GoRoot, cfg.GoModCache, err = DetectGo(ctx, ex, timeout); err != nil {
+		out("worker: go is on the worker's PATH and go env failed, so the wall is given no Go toolchain: " + edge.RedactN(err.Error(), edge.FailureMax))
+	}
+	_, notes := goWallGrant_internal(cfg)
+	for _, n := range notes {
+		out(n)
+	}
+	return cfg, nil
 }
 
 // SplitList is a comma-separated flag as a list, blanks dropped.
