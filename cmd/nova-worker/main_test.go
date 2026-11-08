@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 )
 
 func TestWorkerCLIFlagRefusals(t *testing.T) {
@@ -24,6 +27,30 @@ func TestWorkerCLIFlagRefusals(t *testing.T) {
 			t.Fatalf("%s: code=%d err=%q: want the flag set's refusal", gone, code, errBuf.String())
 		}
 	}
+}
+
+// The flag help names no retired service: the v1 fleet service is retired,
+// and the worker itself manages its mirrors.
+func TestHelpNamesNoRetiredService(t *testing.T) {
+	t.Parallel()
+	retired := "mirror-" + "refresh"
+	fs := flag.NewFlagSet("nova-worker", flag.ContinueOnError)
+	var c worker.Config
+	fs.StringVar(&c.Row, "as", "", "worker row name (a machine nova-config gives the bench role)")
+	fs.StringVar(&c.Host, "host", "", "bench hostname (defaults to os.Hostname)")
+	fs.StringVar(&c.Root, "root", "", "worker root directory for job and probe directories")
+	fs.StringVar(&c.StateDir, "state-dir", "", "state directory for logs")
+	fs.StringVar(&c.Harness, "harness", "claude", "harness adapter (claude, codex, opencode)")
+	fs.StringVar(&c.WorkRoot, "work-root", "", "directory of the work clones, one per stream repo, made on first use (default <root>/clones)")
+	fs.StringVar(&c.MirrorRoot, "mirror-root", "", "directory of the bare mirrors, one per repository as <name>.git, cloned on first use and fetched per job (default ~/nova-bench/mirror)")
+	fs.StringVar(&c.SprintBin, "sprint-bin", "nova-sprint", "nova-sprint binary (run directly: the worker's environment holds the sprint's credentials)")
+	fs.StringVar(&c.Providers, "providers", "", "key proxy routes, <name>=<upstream url>@<KEY NAME>[,...]; each key is read from the environment")
+	fs.BoolVar(&c.Once, "once", false, "run one reconciliation/step pass and exit")
+	fs.VisitAll(func(f *flag.Flag) {
+		if strings.Contains(f.Usage, retired) {
+			t.Errorf("flag --%s usage mentions the retired service: %q", f.Name, f.Usage)
+		}
+	})
 }
 
 // The worker holds no provider route of its own (drift row 15): a route is

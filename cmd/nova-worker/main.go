@@ -29,7 +29,7 @@ func run_internal(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&c.StateDir, "state-dir", "", "state directory for logs")
 	fs.StringVar(&c.Harness, "harness", "claude", "harness adapter (claude, codex, opencode)")
 	fs.StringVar(&c.WorkRoot, "work-root", "", "directory of the work clones, one per stream repo, made on first use (default <root>/clones)")
-	fs.StringVar(&c.MirrorRoot, "mirror-root", "", "directory of the bare mirrors, <repo>.git as mirror-refresh keeps them (default ~/nova-bench/mirror)")
+	fs.StringVar(&c.MirrorRoot, "mirror-root", "", "directory of the bare mirrors, one per repository as <name>.git, cloned on first use and fetched per job (default ~/nova-bench/mirror)")
 	fs.StringVar(&c.SprintBin, "sprint-bin", "nova-sprint", "nova-sprint binary (run directly: the worker's environment holds the sprint's credentials)")
 	fs.StringVar(&c.Providers, "providers", "", "key proxy routes, <name>=<upstream url>@<KEY NAME>[,...]; each key is read from the environment")
 	fs.BoolVar(&c.Once, "once", false, "run one reconciliation/step pass and exit")
