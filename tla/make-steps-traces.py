@@ -7,7 +7,7 @@
 witnesses (w-<name>.log), as ci-tlc.sh leaves them. Each fixture is a
 directory traces/steps-<name>/ with StepsTraceLog.tla (TraceLog, the record
 shape the Go walk emits: i, action, the action's arguments, and the logged
-variables w, inbox, inflight and js; snap, phase, split and the Tick's
+variables w, inbox, inflight, js and bus; snap, phase, split and the Tick's
 answer are left out, which StepsTrace allows) and StepsTrace.cfg (the
 scenario's constants, TraceSpec, TraceMatched, and an
 "expect:" comment line that ci-tlc.sh reads).
@@ -48,9 +48,10 @@ FIXTURES = {
     "bad-no-overlap":   ("w-StepsNoOverlapCheck.log", "deal", "forbidden"),
     "bad-tier":         ("w-StepsTierUnchecked.log", "deal", "forbidden"),
     "bad-carry-dropped": ("w-StepsCarryDropped.log", "burst", "forbidden"),
+    "bad-dealt-absent": ("w-StepsDealtAbsent.log", "deal", "forbidden"),
 }
 
-LOGGED = ["w", "inbox", "inflight", "js"]
+LOGGED = ["w", "inbox", "inflight", "js", "bus"]
 
 
 def states(text):

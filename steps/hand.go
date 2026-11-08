@@ -83,8 +83,12 @@ func (t *tick) unacked() []Nudge {
 					untaken, len(live)-untaken, t.room(n), id, since.Truncate(time.Second), cmd)})
 			}
 			if since >= seconds(t.tmo.ReadyTake) {
-				t.judge("unacked", id, fmt.Sprintf("row %s has not acknowledged card %s, dealt %s ago and nudged each tick since %ds, and no other row with room serves it: is the row's session alive? (nova-sprint release %s@%d --reason <why> deals it again)",
-					n, id, since.Truncate(time.Second), t.tmo.ReadyNag, id, c.Gen))
+				nudged := fmt.Sprintf("nudged each tick since %ds", t.tmo.ReadyNag)
+				if !t.present(n) {
+					nudged = "not nudged: the row is absent from the bus"
+				}
+				t.judge("unacked", id, fmt.Sprintf("row %s has not acknowledged card %s, dealt %s ago and %s, and no other row with room serves it: is the row's session alive? (nova-sprint release %s@%d --reason <why> deals it again)",
+					n, id, since.Truncate(time.Second), nudged, id, c.Gen))
 			}
 		}
 	}

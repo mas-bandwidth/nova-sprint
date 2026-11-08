@@ -256,11 +256,39 @@ func TestHandAbsentRowNotNudgedAndRedealt(t *testing.T) {
 	require.Empty(t, s.rejected)
 	assert.Empty(t, p.Nudges)
 	s.requireState("p1.w1", "working") // the only other row is absent too: not re-dealt there
-	assert.Len(t, s.openJudgements("unacked"), 1)
+	js := s.openJudgements("unacked")
+	require.Len(t, js, 1)
+	assert.Contains(t, s.snap().Judgements[js[0]].Question, "not nudged: the row is absent from the bus")
 	delete(s.away, other)
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1.w1", "fail")
 	s.requireState("p1.w2", "working")
 	assert.Equal(t, other, s.card("p1.w2").Holder, "re-dealt to the present row")
+}
+
+// TestDealPresentThroughOneFailedWho (D1' cold read): a `nova-bus who` read
+// that fails leaves every row as the last good read saw it, within
+// PresentGrace: the row is still dealt and no unserved judgement opens.
+// Past the grace the row is absent: nothing is dealt and unserved opens.
+func TestDealPresentThroughOneFailedWho(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.producer("p2", "s1", "pro", "b/x")
+	s.lapse = time.Second // the read this tick failed; the last good one was a tick ago
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	assert.Empty(t, s.openJudgements("unserved"), "one failed read judges nothing")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.lapse = time.Duration(Engine.PresentGrace+1) * time.Second
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p2", "ready")
+	assert.Len(t, s.openJudgements("unserved"), 1, "absent past the grace: no row serves")
 }

@@ -190,10 +190,14 @@ func (l *loop) reconcile(ctx context.Context) {
 	}
 }
 
-// present is who is on the bus, by name; a failed read is no one seen.
+// present is who is on the bus, by name; a failed read is no one seen
+// this tick, logged. The steps count a row present for PresentGrace after
+// it was last seen, so one failed read deals and judges as the last good
+// one did.
 func (l *loop) present(ctx context.Context) []string {
 	who, err := l.cfg.Bus.Who(ctx)
 	if err != nil {
+		l.log.EdgeFault("nova-bus who", err)
 		return nil
 	}
 	return slices.Sorted(maps.Keys(who))
