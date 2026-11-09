@@ -148,6 +148,15 @@ func TestFinishFailedRecordsPushedHead(t *testing.T) {
 	takeW1(t, w)
 	w.origin.tips["o/r sprint/s/p1"] = base
 	want(t, w.do("alice", failed...), 0, "FAILED p1.w1 head= ")
+	s := sprint()
+	setCard("p1.w1", func(c *store.Card) { c.Prior = head })(&s)
+	w = worldFrom(t, s)
+	takeW1(t, w)
+	want(t, w.do("alice", failed...), 0, "FAILED p1.w1 head= ") // the prior head: nothing new was pushed
+	w = newWorld(t)
+	takeW1(t, w)
+	delete(w.origin.tips, "o/r sprint/s/p1")
+	want(t, w.do("alice", failed...), 0, "FAILED p1.w1 head= ")
 	w = newWorld(t)
 	takeW1(t, w)
 	w.origin.err = errBroken
