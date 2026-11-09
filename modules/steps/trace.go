@@ -38,7 +38,7 @@ import (
 // count the walk keeps, id the request's model id (ReqID), out the outcome
 // (ack for a stop). inflight is the requests in flight as [id, stream, sent].
 // js is the open judgements of the model's kinds (unserved, cannot-read,
-// policy, overlap, no-policy) as [kind, about], about a tier as its model
+// policy, land, no-policy) as [kind, about], about a tier as its model
 // name ("t1", "t2"), the coordinator's row as "coord", a card or a question
 // as is. The Tick's answer is [rows |-> r]: the row the
 // walk's asker prefers, or "failed" (no answer, or no question asked).
@@ -210,7 +210,7 @@ func JudgementsTLA(v *View, sc TraceScenario) string {
 	var out []string
 	for _, id := range sortedKeys(v.Judgements) {
 		j := v.Judgements[id]
-		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy", "land", "overlap", "no-policy", "admission"}, j.Kind) {
+		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy", "land", "no-policy", "admission"}, j.Kind) {
 			continue
 		}
 		about := j.About

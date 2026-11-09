@@ -1002,10 +1002,10 @@ result once or twice (layer 4 may redeliver).
 2. **Land results**, in arrival order: Landed or Red for a producer still
    merging at the request's head; an ack, a stale or a repeated result is
    consumed with no move.
-3. **Needs**: Resolve in id order: needs landed, stream not held, no
-   producer of the stream overlapping its paths that is started (working,
-   review, merging) or ready, counting those resolved earlier in the tick.
-   Never a function of rows.
+3. **Needs**: Resolve in id order: needs landed, stream not held. Never a
+   function of rows, and never of paths: two producers that name one file
+   both start (only a NEEDS orders starts; the overlap hold was removed
+   2026-11-08).
 4. **Fix**: ReadYes or ReadFix (the default verdict) once every read of the
    current review is final and one is done.
 5. **Deal and reads**: blocker work, every read owed, normal work, in id
@@ -1058,9 +1058,9 @@ Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and 2
 
 | Scenario | Cards | Start | Environment | Constants |
 |---|---|---|---|---|
-| pre | b blocker (s2), p, q (s1, disjoint paths) | all waiting, s2 held, r1 down | lift s2's hold; r2 down and up | K 2, MaxAtt 2, MaxEnv 2, MaxArrive 2, Budget 2, Pack 2 |
+| pre | b blocker (s2), p, q (s1) | all waiting, s2 held, r1 down | lift s2's hold; r2 down and up | K 2, MaxAtt 2, MaxEnv 2, MaxArrive 2, Budget 2, Pack 2 |
 | pre1 | as pre | as pre | as pre | as pre, Pack 1 |
-| deal | p, q (s1, overlapping), b (s2, tier 2, needs p) | all waiting | r1 down and up | K 4, MaxAtt 2, MaxBounce 1 (p only), MaxEnv 1, MaxArrive 1, Budget 2, Pack 2 |
+| deal | p, q (s1, free to start together), b (s2, tier 2, needs p) | all waiting | r1 down and up | K 4, MaxAtt 2, MaxBounce 1 (p only), MaxEnv 1, MaxArrive 1, Budget 2, Pack 2 |
 | land | p (s1), q (s2, after p) | both merging at head 1 | hold and lift s1 | K 2, MaxAtt 1, MaxEnv 2, MaxArrive 3, Budget 2, Pack 2 |
 | burst | as land | as land | none | K 1, MaxAtt 1, MaxArrive 4, Budget 1, Pack 1 |
 
@@ -1077,7 +1077,6 @@ Named as the design names its guarantees. State invariants:
 | `NeverDealtTwice` | guarantee 1 | at most one live work consumer per producer, of its current attempt, only while it works |
 | `WidthKept` | guarantee 2 | working consumers on a row never exceed its width |
 | `ReadyNeverFlipsWithLoad` | guarantee 8, LESSONS 2.20, 3.2 | the ready rule answers the same for the store and for the store with no consumers and every row down |
-| `NeverOverlapStarted` | Sentinels and needs (LESSONS 2.20) | two producers of one stream with overlapping paths are never ready or started together |
 | `NeverBelowTier` | Escalation | every live consumer is on a row that serves its card's tier (no tier is ever written) |
 | `CarryFIFO` | guarantee 7, list item 6 | the inbox is in arrival order and nothing that arrived is lost |
 | `EdgeAfterAccepted` | Plan.Edges | an in-flight stop names a withdrawn consumer; an in-flight land a producer merging at that head |
@@ -1137,7 +1136,6 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsCarryNewestFirst` | burst | the carry is put back newest first | CarryFIFO |
 | `witnesses/StepsStopEarly` | pre | stop requests from refused ops too | EdgeAfterAccepted |
 | `witnesses/StepsReadyOnRoom` | deal | Resolve requires room on a row | ReadyNeverFlipsWithLoad |
-| `witnesses/StepsNoOverlapCheck` | deal | Resolve without the overlap check | NeverOverlapStarted |
 | `witnesses/StepsTierUnchecked` | deal | the tier checked nowhere (answer and Start) | NeverBelowTier |
 | `witnesses/StepsAfterIgnored` | land | the land step ignores after | AfterKept |
 | `witnesses/StepsAfterHolds` | land | the land step holds on any target not landed | AfterNeverHolds |
@@ -1149,8 +1147,6 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsLandAfterHoldsUntilLanded` | land | the after hold lasts until the earlier card lands | MergingCovered |
 | `witnesses/StepsDealsWithoutPolicy` | pre | the policy gate ignored | NoDealWithoutPolicy |
 | `witnesses/StepsResolveOnEvent` | deal | resolve only on a landed result's event | ResolveFromState |
-| `witnesses/StepsGlobOverlaps` | pre | a glob both list counts as overlap | ResolveFromState |
-| `witnesses/StepsHeldUnshown` | deal | no overlap judgement for a held producer | HeldBehindShown |
 | `witnesses/StepsYesOnFault` | deal | the verdict default is yes unless a read said fix | VerdictHasItsRead |
 | `witnesses/StepsDealtAbsent` | deal | the deal reads the store's up as presence | NeverDealtAbsent |
 | `witnesses/StepsFaultCounted` | deal | a faulted read counts as a read | FaultedReadReadAgain (liveness, TLC exit 13) |
@@ -1176,7 +1172,7 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `reach/StepsNeverUndealt` | burst | none | violated: an undealt judgement is opened |
 | `reach/StepsNeverLandJudged` | land | none | violated: a land judgement is opened |
 | `reach/StepsNeverGated` | pre | none | violated: the policy gate opens no-policy |
-| `reach/StepsNeverHeldBehind` | deal | none | violated: an overlap judgement is opened |
+| `reach/StepsNeverBothStarted` | deal | none | violated: p and q, naming one file, both started |
 | `reach/StepsNeverHandLanded` | deal | none | violated: a store op lands a producer by hand |
 | `reach/StepsNeverReadAgain` | deal | none | violated: a review whose read faulted is read again |
 | `reach/StepsNeverAbsent` | deal | none | violated: a tick runs with an up row off the bus serving a ready card |
@@ -1222,7 +1218,6 @@ witnesses and reach checks); state counts move a little with `rg`.
 | StepsCarryNewestFirst | CarryFIFO | 1,526 / 905 | 18 | 9s |
 | StepsStopEarly | EdgeAfterAccepted | 4,231 / 1,680 | 15 | 26s |
 | StepsReadyOnRoom | ReadyNeverFlipsWithLoad | initial state | 1 | 1s |
-| StepsNoOverlapCheck | NeverOverlapStarted | 4 / 4 | 3 | 1s |
 | StepsTierUnchecked | NeverBelowTier | 1,755 / 986 | 22 | 8s |
 | StepsAfterIgnored | AfterKept | 4 / 4 | 3 | 1s |
 | StepsAfterHolds | AfterNeverHolds | 152 / 82 | 8 | 3s |
@@ -1278,8 +1273,6 @@ the correct model never makes (the passing runs show that).
   runner goes out: in flight for a consumer that is done, not withdrawn.
 - **StepsReadyOnRoom:** the initial state: p is resolvable, and the
   faulted rule says ready with rows up and not ready with them down.
-- **StepsNoOverlapCheck:** the first tick resolves p and q, whose paths
-  overlap: both ready.
 - **StepsTierUnchecked:** p is dealt to r1, finishes, is read on r2, merges
   and lands; b (tier 2) and q resolve, and policy's answer r1 deals b to r1,
   which serves tier 1 only.

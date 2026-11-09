@@ -232,10 +232,11 @@ gate each time.
 
 ## Kept from the first design
 
-- **Conflicts are prevented, not resolved.** Every card declares its paths;
-  two live cards in one stream never overlap in paths (the deal refuses the
-  second, layer 3). Merges inside a stream are then textually clean; one
-  that is not is a rung-3 judgement.
+- **Conflicts are stitched, not prevented.** Every card declares its paths
+  (admission and the worker's confinement), but two cards that edit one
+  file both start: only a NEEDS orders starts (2026-11-08). Their heads meet
+  on the group rung; a conflict there is a rung-3 judgement, and the
+  coordinator stitches it in the holistic merge.
 - **In-order landing.** Producers land in score order; the soft `after`
   orders landings across streams only among cards both queued to land, and
   an `after` whose target is not merging never holds a landing (LESSONS

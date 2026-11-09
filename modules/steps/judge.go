@@ -22,7 +22,7 @@ var choices = map[string]string{
 	"held": "unhold | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
 	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
-	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "undealt": "retry", "admission": "retry",
+	"no-model": "retry", "no-policy": "retry", "undealt": "retry", "admission": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once); an
@@ -51,9 +51,8 @@ func (t *tick) judgeAt(kind, about string, n int, question string) {
 func (t *tick) engine(about, why string) { t.judge("engine", about, why) }
 
 // addJudge plans j and indexes it by kind and about, so pending is one lookup
-// however many the tick opens (thousands of held producers each open an
-// overlap judgement; a scan per open was quadratic, measured 52 ms for
-// 4,908 on the working machine).
+// however many the tick opens (a scan per open was quadratic, measured
+// 52 ms for 4,908 opens on the working machine).
 func (t *tick) addJudge(j judgement) {
 	t.judges = append(t.judges, j)
 	if t.pend == nil {
@@ -256,16 +255,10 @@ func (t *tick) cleared(j store.Judgement) string {
 	return t.clearedDeal(j)
 }
 
-// clearedDeal is cleared for the deal's own kinds: a held producer no longer
-// held behind the card its judgement names, a tier a model can now be named
-// for, the policy gate lifted (or the coordinator's row changed).
+// clearedDeal is cleared for the deal's own kinds: a tier a model can now be
+// named for, the policy gate lifted (or the coordinator's row changed).
 func (t *tick) clearedDeal(j store.Judgement) string {
 	switch j.Kind {
-	case "overlap":
-		c, ok := t.v.Cards[j.About]
-		if !ok || c.State != "waiting" || t.heldBehind(c) != j.Question {
-			return j.About + " is no longer " + j.Question
-		}
 	case "no-model":
 		if t.modelServed(j.About) {
 			return "an open row serving " + j.About + " can be named a model"
@@ -331,7 +324,7 @@ func (t *tick) load() (open, working int) {
 // idleCauses is the idle judgement's facts: the ready producers in held
 // streams and with no serving row; when no ready producer is dealable and
 // none resolved this tick,
-// "nothing dealable" with the chains and overlaps the waiting ones sit on
+// "nothing dealable" with the chains the waiting ones sit on
 // (Waits, as check and the board say them) and the command that moves the
 // most. It is built only when the judgement would open.
 func (t *tick) idleCauses() string {

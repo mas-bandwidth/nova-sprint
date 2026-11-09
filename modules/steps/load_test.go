@@ -236,23 +236,14 @@ func bar(t *testing.T, name string, ok bool, format string, args ...any) {
 
 // TestFunctionalLoadResolve times the needs step alone (section 64b: the tick resolves
 // from the state, every tick) on 5,000 waiting producers whose needs a store
-// op landed (no land step, no edge result), in three worlds: free (every
-// producer names its own file, so all 5,000 resolve), held (each names two
-// of 50 files per stream and a glob all list, so most are held behind
-// another on a file and open an overlap judgement), and held-open (held
-// after one tick applied: the overlap judgements open, each checked for
-// clearing). The view is not applied between the timed ticks, so every tick
-// is the same worst case.
+// op landed (no land step, no edge result): all 5,000 resolve. The view is
+// not applied between the timed ticks, so every tick is the same worst case.
 func TestFunctionalLoadResolve(t *testing.T) {
 	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (on a Linux bench, never in per-commit CI)")
 	}
-	timeResolve(t, "free", resolveWorld(t, false))
-	s := resolveWorld(t, true)
-	timeResolve(t, "held", s)
-	s.tick()
-	timeResolve(t, "held-open", s)
+	timeResolve(t, "free", resolveWorld(t))
 }
 
 func timeResolve(t *testing.T, name string, s *sim) {
@@ -284,7 +275,7 @@ func timeResolve(t *testing.T, name string, s *sim) {
 
 // resolveWorld is 100 landed producers (landed by a store op) and 5,000
 // producers waiting on one of them each, in 20 streams over 100 rows.
-func resolveWorld(t *testing.T, held bool) *sim {
+func resolveWorld(t *testing.T) *sim {
 	s := newSim(t)
 	for i := 0; i < loadStreams; i++ {
 		s.stream(fmt.Sprintf("s%02d", i))
@@ -306,11 +297,7 @@ func resolveWorld(t *testing.T, held bool) *sim {
 	writes = nil
 	for i := 0; i < loadProducers; i++ {
 		id := fmt.Sprintf("p%05d", i)
-		paths := []string{fmt.Sprintf("a/%05d", i)}
-		if held {
-			paths = []string{fmt.Sprintf("a/%02d", i%50), fmt.Sprintf("a/%02d", (i*7)%50), "a/*"}
-		}
-		writes = append(writes, store.PutCard{ID: id, Kind: "producer", Stream: fmt.Sprintf("s%02d", i%loadStreams), Tier: "pro", Brief: "do " + id, Paths: paths, Needs: []string{fmt.Sprintf("n%03d", i%100)}, Score: i})
+		writes = append(writes, store.PutCard{ID: id, Kind: "producer", Stream: fmt.Sprintf("s%02d", i%loadStreams), Tier: "pro", Brief: "do " + id, Paths: []string{fmt.Sprintf("a/%05d", i)}, Needs: []string{fmt.Sprintf("n%03d", i%100)}, Score: i})
 		if len(writes) == 500 {
 			s.must("seed", writes...)
 			writes = nil

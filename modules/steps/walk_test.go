@@ -408,19 +408,4 @@ func (w *walk) check(where string) {
 		_, width, _, _ := w.roster.Row(row)
 		assert.LessOrEqual(w.t, n, width, "%s: WidthKept on %s", where, row)
 	}
-	w.checkOverlap(s, where)
-}
-
-func (w *walk) checkOverlap(s store.Snapshot, where string) {
-	w.t.Helper()
-	for a, ca := range s.Cards {
-		if isConsumer(ca) || !slices.Contains(started, ca.State) {
-			continue
-		}
-		for b, cb := range s.Cards {
-			if a < b && !isConsumer(cb) && cb.Stream == ca.Stream && slices.Contains(started, cb.State) {
-				assert.False(w.t, shares(ca.Paths, cb.Paths), "%s: NeverOverlapStarted: %s and %s", where, a, b)
-			}
-		}
-	}
 }

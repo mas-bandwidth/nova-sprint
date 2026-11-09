@@ -10,8 +10,8 @@ import (
 )
 
 // chained is the sprint with p1 working on x.go and four producers waiting:
-// p3 -> p4 -> p5 on p1 (a chain of four with p1), and p6 held behind p1 on
-// x.go.
+// p3 -> p4 -> p5 on p1 (a chain of four with p1), and p6, which names p1's
+// file x.go and waits on nothing.
 func chained(s *store.Snapshot) {
 	p1 := s.Cards["p1"]
 	p1.Paths = []string{"x.go"}
@@ -37,8 +37,8 @@ func landTwo(t *testing.T, w *world) {
 }
 
 // TestCheckSaysWhyTheFleetIsIdle: with nothing ready and the fleet under
-// its width, the width line warns "nothing dealable" with the chains and
-// overlaps, each stream says why its producers wait, and a chain of four
+// its width, the width line warns "nothing dealable" with the chains, each
+// stream says why its producers wait, and a chain of four
 // or more warns with its time at the stream's land rate.
 func TestCheckSaysWhyTheFleetIsIdle(t *testing.T) {
 	t.Parallel()
@@ -46,8 +46,8 @@ func TestCheckSaysWhyTheFleetIsIdle(t *testing.T) {
 		{name: "no land rate yet", args: []string{"check"}, exit: 0, snap: chained,
 			prep: then(healthy, func(_ *testing.T, w *world) { w.origin.tree = []string{"x.go"} }),
 			want: []string{
-				"CHECK WARN width: working 2 (2 dealt) of 4 open on 3 rows; 0 ready; nothing dealable: 1 chain (longest 4, top: p1 blocks 3), 1 overlap (top: p1 holds 1 on x.go): each stream's waits and chains: nova-sprint check; the top: nova-sprint show p1 (it is working; its landing frees the chain); a NEEDS that is not an output the card consumes: nova-sprint replace <card> --by <its brief without it> --reason \"<why>\"\n",
-				"CHECK waits s: 3 wait on p1 (working); 1 held behind x.go of p1\n",
+				"CHECK WARN width: working 2 (2 dealt) of 4 open on 3 rows; 0 ready; nothing dealable: 1 chain (longest 4, top: p1 blocks 3): each stream's waits and chains: nova-sprint check; the top: nova-sprint show p1 (it is working; its landing frees the chain); a NEEDS that is not an output the card consumes: nova-sprint replace <card> --by <its brief without it> --reason \"<why>\"\n",
+				"CHECK waits s: 3 wait on p1 (working)\n",
 				"CHECK WARN stream s: its longest NEEDS chain is 4 cards: p1 -> p3 -> p4 -> p5; no land rate yet (fewer than two landings in the store's recent history): flatten it before the deal",
 			}},
 		{name: "at the stream's land rate", args: []string{"check"}, exit: 0, snap: chained,

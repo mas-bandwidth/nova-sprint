@@ -876,8 +876,7 @@ github.com credential is always gh as the host's login (no switch on
 - `check` (`check_waits.go`, `check_width.go`): with nothing ready and the
   fleet under its open width, the width line is a `CHECK WARN ... nothing
   dealable: <steps.IdleWhy>` naming the command for the top card; then one
-  `CHECK waits <s>: <n> wait on <card> (<state>), ...; <n> held behind <file>
-  of <card>` per stream whose producers wait (the three largest of each, then
+  `CHECK waits <s>: <n> wait on <card> (<state>), ...` per stream whose producers wait (the three largest of each, then
   a count), and a `CHECK WARN stream <s>: its longest NEEDS chain is K cards:
   a -> b -> ... -> z; at the stream's land rate (R an hour over its last N
   landings) that is about H hours` per stream longer than the policy's
