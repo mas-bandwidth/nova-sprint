@@ -553,7 +553,41 @@ func TestTickRestingRowIsNotDealtTo(t *testing.T) {
 	_, dealt := s.snap().Cards[next]
 	assert.False(t, dealt, "%s was dealt to resting row r1", next)
 	s.requireState("p1", "ready")
-	assert.Len(t, s.openJudgements("unserved"), 1)
+	open := s.openJudgements("unserved")
+	require.Len(t, open, 1)
+	// The rest holds: the judgement stays open (a resting row does not clear
+	// it), with no new episode, and nothing is dealt.
+	s.tick()
+	s.tick()
+	assert.Equal(t, open, s.openJudgements("unserved"), "unserved closed or reopened while r1 rests")
+	_, dealt = s.snap().Cards[next]
+	assert.False(t, dealt, "%s was dealt to resting row r1", next)
+}
+
+// TestTickRowsNamingRestingRowIsNoMiss: policy names a row it was offered
+// that rests after faults; the engine deals to another serving row and no
+// policy miss is opened.
+func TestTickRowsNamingRestingRowIsNoMiss(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Rows: map[string][]string{"p1": {"r1"}}}}
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	for i := 1; i <= Engine.Limits.RouteRestAfter; i++ {
+		s.run(3)
+		id := fmt.Sprintf("p1.w%d", i)
+		require.Equal(t, "r1", s.card(id).Holder, id)
+		s.take(id)
+		s.report(id, "fault", "", "the harness crashed")
+	}
+	s.run(3)
+	next := fmt.Sprintf("p1.w%d", Engine.Limits.RouteRestAfter+1)
+	assert.Equal(t, "r2", s.card(next).Holder, "r1 rests: the engine deals to r2")
+	for _, id := range s.openJudgements("policy") {
+		assert.NotContains(t, s.snap().Judgements[id].Question, "rows(p1)", "%s: naming a resting row it was offered is no policy miss", id)
+	}
 }
 
 // TestTickEscalateAfterFromPolicy: escalation's bounces are policy's.
