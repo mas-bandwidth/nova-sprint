@@ -734,6 +734,11 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	if rec.Kind != "work" || rec.Outcome.Result != "ok" {
 		return nil
 	}
+	if rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead { // the store refuses the prior head as a report's head
+		rec.Outcome = Outcome{Result: "fail", Reason: "harness reported ok but committed nothing over the prior head"}
+		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
+		return nil
+	}
 	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
 	if r.Git != nil && rec.StreamRef != "" {
 		remote, err := r.jobRemote_internal(*rec)
