@@ -633,7 +633,6 @@ a repair for an ordinary refused command.
 | `drop` | Fail work that should not be done, with explicit treatment of its dependants. | `nova-sprint help drop` |
 | `relink` | Redirect a dependant's failed need to another producer. | `nova-sprint help relink` |
 | `stream set` | Change a stream's landing mode or forge. | `nova-sprint help stream set` |
-| `cost reconcile` | Compare provider balance changes with recorded API costs and raise a cost-gap judgement when required. | `nova-sprint help cost reconcile` |
 | `wake` | Consume a bus message on stdin and acknowledge each dealt card before printing its receipt or refusal. | `nova-sprint help wake` |
 
 For a Monitor-based bus hook that acknowledges deals before waking the session,

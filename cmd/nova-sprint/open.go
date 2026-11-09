@@ -196,24 +196,6 @@ func (s *lazyStore) Restored(ctx context.Context) (string, time.Time, bool, erro
 	return p.Restored(ctx)
 }
 
-// AddBalance and LastBalance are the provider balances cost reconcile keeps
-// (store.Balances).
-func (s *lazyStore) AddBalance(ctx context.Context, b store.Balance) error {
-	p, err := s.get(ctx)
-	if err != nil {
-		return err
-	}
-	return p.AddBalance(ctx, b)
-}
-
-func (s *lazyStore) LastBalance(ctx context.Context, provider string) (store.Balance, bool, error) {
-	p, err := s.get(ctx)
-	if err != nil {
-		return store.Balance{}, false, err
-	}
-	return p.LastBalance(ctx, provider)
-}
-
 func with[T any](s *lazyStore, ctx context.Context, f func(*store.PG) (T, error)) (T, error) {
 	p, err := s.get(ctx)
 	if err != nil {

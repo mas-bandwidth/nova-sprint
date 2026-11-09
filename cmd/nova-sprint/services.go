@@ -10,14 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/modules/cost"
 	"github.com/mas-bandwidth/nova-sprint/modules/dash"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
-	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
@@ -53,24 +51,7 @@ func (s services) Run(ctx context.Context, listen string) error {
 	busEnv := toolEnvironment(os.Environ(), "nova-bus")
 	return run.Serve(ctx, run.Config{Store: s.store, DSN: dsn, Password: s.creds.password, Roster: ro,
 		Bus: busEdge(), Hook: run.SprintHook{Bin: busBinary(), Env: busEnv, Reply: self}, Policy: s.policy,
-		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(), Version: versionString(),
-		Reconcile: func(ctx context.Context, now time.Time, snap store.Snapshot) error {
-			lines, err := cost.Reconcile(ctx, s.store, now, coordinatorOf(snap), cost.Readers(nil))
-			for _, l := range lines {
-				fmt.Fprintln(os.Stderr, l.Text())
-			}
-			return err
-		}})
-}
-
-// coordinatorOf is the hooked coordinator's row ("" when none is hooked).
-func coordinatorOf(snap store.Snapshot) string {
-	for name, r := range snap.Rows {
-		if r.Role == "coordinator" && r.Session != "" {
-			return name
-		}
-	}
-	return ""
+		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(), Version: versionString()})
 }
 
 // runMachine is the machine run records the chooser lock under: the

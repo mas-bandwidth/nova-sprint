@@ -15,7 +15,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 
-	"github.com/mas-bandwidth/nova-sprint/modules/cost"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
@@ -46,9 +45,6 @@ type Engine struct {
 	// ReportContinuation, SetupObserver: the up walk's handoff and trace (setup.go).
 	ReportContinuation func(context.Context, string, SetupInput) error
 	SetupObserver      func(SetupObservation)
-
-	// CostReaders are the providers cost reconcile reads (nil: cost.Readers).
-	CostReaders []cost.Reader
 
 	Now     func() time.Time
 	Session func() (string, error) // a fresh hook session

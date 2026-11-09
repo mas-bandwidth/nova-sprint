@@ -348,10 +348,9 @@ func TestFunctionalMigrateRound25(t *testing.T) {
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
 	assert.Equal(t, []any{true, "pause", Identity{}}, []any{h.snap().Stopped, h.snap().StopReason, h.snap().Identity})
 	assert.Equal(t, []any{int64(5), "input=3 billing=api charged=0.000005", ""}, []any{h.snap().Cards["u1"].Cost, h.snap().Cards["u1"].Usage, h.snap().Cards["u1"].Model}, "the usage is kept; an old consumer has no model")
-	b, found, err := p.LastBalance(ctx, "deepseek")
-	require.NoError(t, err)
-	assert.True(t, found)
-	assert.Equal(t, "12.5", b.USD, "the balances are kept")
+	var usd string
+	require.NoError(t, c.QueryRow(ctx, `SELECT balance_usd::text FROM sprint.balances WHERE provider = 'deepseek'`).Scan(&usd))
+	assert.Equal(t, "12.5", usd, "the balances are kept")
 	h.ok(h.op("set", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}))
 	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity)
 	h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "read", ID: "u2", Of: "c1", Stream: "s1", Holder: "w1", Model: "inception/mercury-3"}))
