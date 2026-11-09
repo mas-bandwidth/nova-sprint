@@ -316,9 +316,15 @@ type fakeArchive struct {
 	err     error
 	loaded  string
 	lockErr error
+	during  func() // runs inside Backup: writes that land while the dump is made
 }
 
-func (a *fakeArchive) Backup(context.Context, string) (BackupInfo, error) { return a.info, a.err }
+func (a *fakeArchive) Backup(context.Context, string) (BackupInfo, error) {
+	if a.during != nil {
+		a.during()
+	}
+	return a.info, a.err
+}
 func (a *fakeArchive) Verify(context.Context, string) (BackupInfo, error) { return a.info, a.err }
 func (a *fakeArchive) AcquireRestore(context.Context) (run.RestoreLock, error) {
 	if a.lockErr != nil {
