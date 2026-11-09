@@ -23,7 +23,7 @@ func (t *tick) preempt() {
 	used := set{}
 	for _, b := range t.v.Producers("ready") {
 		c := t.v.Cards[b]
-		if c.Kind != "producer" || rung(c) != "blocker" || !t.free(b) || t.v.Streams[c.Stream].Held {
+		if c.Kind != "producer" || rung(c) != "blocker" || !t.free(b) || t.v.Streams[c.Stream].Held || !t.admitted(b) {
 			continue
 		}
 		serving := t.named(c, t.serving(c))

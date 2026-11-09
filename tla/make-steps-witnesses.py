@@ -26,7 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
-    "NeverDealtAbsent",
+    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -70,6 +70,7 @@ REACH = {
     "StepsNeverHandLanded": ("deal", "a store op lands a producer by hand"),
     "StepsNeverReadAgain": ("deal", "a review whose read faulted is read again"),
     "StepsNeverAbsent": ("deal", "a tick runs with an up row absent from the bus serving a ready card"),
+    "StepsNeverUnadmitted": ("deal", "a producer failing admission opens its stream's admission judgement"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
@@ -89,8 +90,8 @@ WITNESSES = [
      "no row has room, so the deal could not place it either; the second\n"
      "fault, a preemption that fires with free width, makes the first\n"
      "reachable, and the Free guard is what then keeps the deal off it.",
-     [("LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ Free(p, cl))",
-       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE)   \\* FAULT: was Free(p, cl)", 1),
+     [("LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ Free(p, cl) /\\ admitted[p])",
+       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE /\\ admitted[p])   \\* FAULT: was Free(p, cl)", 1),
       ("  /\\ NoFreeWidth(W, b)\n", "  /\\ TRUE   \\* FAULT 2: was NoFreeWidth(W, b)\n", 1)]),
     ("StepsTwoGroups", "OneGroupPerCard", "land",
      "The land-result step ignores cards already claimed: a result\n"
@@ -251,6 +252,16 @@ WITNESSES = [
      "hooked and up but gone from the bus is dealt a card it never takes.",
      [("  /\\ bus[r]   \\* on the bus this tick: a configured row is not a present one (D1')\n",
        "  /\\ TRUE   \\* FAULT: was bus[r]\n", 1)]),
+    ("StepsDealtUnadmitted", "NeverDealtUnadmitted", "deal",
+     "The deal reads no admission (item 4, 2026-11-08): a producer whose\n"
+     "PATHS left its stream's base is dealt, and fails on its row.",
+     [("                                          /\\ admitted[p])   \\* a producer that failed admission is never dealt",
+       "                                          /\\ TRUE)   \\* FAULT: was admitted[p]", 1)]),
+    ("StepsAdmissionUnshown", "AdmissionShown", "deal",
+     "A failed admission opens no judgement: the card waits undealt and\n"
+     "only check run by hand says why (item 4, 2026-11-08).",
+     [("                   \\cup {[kind |-> \"admission\", about |-> s] : s \\in {s \\in Streams : Unadmitted(V, s) # {}}}\n",
+       "", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"

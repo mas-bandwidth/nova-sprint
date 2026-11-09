@@ -43,6 +43,9 @@ type Config struct {
 	PID           int
 	ReposDir      string
 	Version       string // this build's release; worker rows behind it are dealt nothing (defect D3)
+	// Admit is check's admission of a stream's waiting and ready producers
+	// (Admission.Admit); nil proves nothing again after add.
+	Admit func(ctx context.Context, snap store.Snapshot, stream string) (map[string]string, error)
 }
 
 // Serve is the `run` verb: the chooser lock and the sprint hook, the cold
@@ -61,6 +64,7 @@ type loop struct {
 	cfg     Config
 	ticker  *Ticker
 	edges   *Edges
+	admit   *Admission
 	board   *dash.Cache
 	log     *WriterLogger
 	mu      sync.Mutex
@@ -121,6 +125,7 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
 		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Landings: t.Landings(), At: now}, cfg.Clock.Now)}
 	l.edges.Fault = l.log.EdgeFault
+	l.admit = &Admission{Admit: cfg.Admit, Fault: l.log.EdgeFault}
 	l.setStreams(t.snap.Streams)
 	return l, nil
 }
@@ -162,7 +167,8 @@ func (l *loop) tick(ctx context.Context, n int) error {
 		}
 	} else {
 		var reqs []steps.EdgeRequest
-		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version})
+		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version,
+			Unadmitted: l.admit.Unadmitted()})
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
 	cancel()
@@ -175,6 +181,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
+	l.admit.Prove(ctx, snap, l.edges.Heads())
 	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows, ""), RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
 		err = perr
 	}

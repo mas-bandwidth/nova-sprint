@@ -35,7 +35,8 @@
 (* record stays small whatever K is; a record may log w whole instead. rg  *)
 (* is each row's generation less its generation at Init.                   *)
 (* A record that logs nothing of w leaves it to the model. bus, who is on *)
-(* nova-bus (the walk's away rows), is logged whole or left to the model. *)
+(* nova-bus (the walk's away rows), is logged whole or left to the model; *)
+(* so is admitted, the producers that passed the walk's re-proof.        *)
 (***************************************************************************)
 EXTENDS Steps, StepsTraceLog, TLC
 
@@ -44,7 +45,7 @@ VARIABLE l
 traceVars == <<vars, l>>
 
 TraceActions == {"Init", "Snap", "Tick", "Report", "Hold", "Unhold", "Gone", "Seen",
-                 "Leave", "Return", "EnvMove", "EdgeResult", "Answer"}
+                 "Leave", "Return", "Refuse", "Admit", "EnvMove", "EdgeResult", "Answer"}
 
 Has(r, f) == f \in DOMAIN r
 
@@ -69,6 +70,7 @@ Logged(r) ==
   /\ Has(r, "js")       => js = r.js
   /\ Has(r, "split")    => split = r.split
   /\ Has(r, "bus")      => bus = r.bus
+  /\ Has(r, "admitted") => admitted = r.admitted
 
 \* The same after a step (written out, so the record index is not primed).
 LoggedNext(r) ==
@@ -81,6 +83,7 @@ LoggedNext(r) ==
   /\ Has(r, "js")       => js' = r.js
   /\ Has(r, "split")    => split' = r.split
   /\ Has(r, "bus")      => bus' = r.bus
+  /\ Has(r, "admitted") => admitted' = r.admitted
 
 \* The environment move a record names (EnvMove leaves it to the model).
 EnvKind(r) ==
@@ -90,6 +93,8 @@ EnvKind(r) ==
     [] r.action = "Seen"   -> \E x \in Rows : ~w.up[x] /\ w'.up[x]
     [] r.action = "Leave"  -> \E x \in Rows : bus[x] /\ ~bus'[x]   \* off nova-bus (D1')
     [] r.action = "Return" -> \E x \in Rows : ~bus[x] /\ bus'[x]
+    [] r.action = "Refuse" -> \E p \in Prods : admitted[p] /\ ~admitted'[p]   \* the base moved: admission refused
+    [] r.action = "Admit"  -> \E p \in Prods : ~admitted[p] /\ admitted'[p]
     [] OTHER               -> TRUE
 
 \* The model action a record names, with its arguments.
@@ -99,7 +104,7 @@ StepAs(r) ==
                                     /\ Has(r, "answer") => a = r.answer
                                     /\ Tick(a)
     [] r.action = "Report"     -> Report(r.card, r.res)
-    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "EnvMove"} -> EnvMove /\ EnvKind(r)
+    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "Refuse", "Admit", "EnvMove"} -> EnvMove /\ EnvKind(r)
     [] r.action = "EdgeResult" -> \E f \in inflight : f.id = r.id /\ EdgeResult(f, r.out, r.n)
     [] r.action = "Answer"     -> Answer(r.p, r.choice)
     [] OTHER                   -> FALSE

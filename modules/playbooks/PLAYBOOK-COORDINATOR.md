@@ -112,6 +112,11 @@ What each judgement kind asks of you, and where to look before you choose:
   than a tick. The message names the row, the card and the cause: the tick's budget spent before
   it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the
   project's own tracker (section 11).
+- `admission`: a stream's base moved and some of its waiting or ready cards no longer pass
+  `add`'s admission (a PATHS entry gone, its work already at the base, a tier no row serves).
+  One per stream; it names the cards and the first refusal with its fix. Those cards are not
+  dealt until they pass: correct them (`nova-sprint replace <card> --by <brief> --reason
+  "<why>"`) or drop them; it clears when none fails.
 - `land`: a merging card did not land automatically (red CI, no CI within the wait, a conflict,
   a refused merge, a PR that could not be opened, a branch that could not be pushed, a branch
   missing or moved, a stream landed by hand, a fault). The question carries the facts: the

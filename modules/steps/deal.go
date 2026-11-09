@@ -61,7 +61,7 @@ func (t *tick) cands() []cand {
 			}
 		} else {
 			for p := range t.v.byRung[level] {
-				if c := t.v.Cards[p]; c.State == "ready" && c.Kind == "producer" {
+				if c := t.v.Cards[p]; c.State == "ready" && c.Kind == "producer" && t.admitted(p) {
 					rung = append(rung, cand{c: c, kind: "work", key: t.o.order(t.facts(c))})
 				}
 			}
