@@ -38,7 +38,7 @@ func TestDefaultBodyIsTheBuiltIn(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, defaultBody, DefaultBody())
 	assert.True(t, strings.HasPrefix(DefaultBody(), "# nova-sprint default policy."))
-	for _, key := range []string{`"ready_nag": 1,`, `"ready_take": 180,`} { // named, not the older-version fallback (checkTimeouts)
+	for _, key := range []string{`"ready_nag": 1,`, `"ready_take": 180,`, `"chain_limit": 3,`} { // named, not the older-version fallback (checkTimeouts)
 		assert.Contains(t, DefaultBody(), key)
 	}
 	w := fakeWorld(t)
@@ -204,4 +204,17 @@ func TestFunctionalEvaluatorReleaseMidAnswer(t *testing.T) {
 	gone := e.proc.cmd == nil
 	e.proc.mu.Unlock()
 	assert.True(t, gone)
+}
+
+// TestChainLimitDefaultsForAnOlderVersion: a limits() without chain_limit
+// (a version stored before it) answers 3, the default's value.
+func TestChainLimitDefaultsForAnOlderVersion(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	body := strings.Replace(defaultBody, `"chain_limit": 3,`, "", 1)
+	require.NotEqual(t, defaultBody, body)
+	a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	require.Empty(t, fs)
+	assert.Equal(t, 2, a.Version)
+	assert.Equal(t, 3, a.Limits.ChainLimit)
 }

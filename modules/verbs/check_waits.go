@@ -9,10 +9,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// chainWarn is the NEEDS chain length at which add and check warn
-// (steps.ChainWarn, the board's too).
-const chainWarn = steps.ChainWarn
-
 // landLookback is how many of the store's last events the land rate reads:
 // on a busy sprint about an hour (a guess, not measured), and a bounded
 // read however long the sprint has run.
@@ -25,16 +21,17 @@ const flattenFix = "flatten it before the deal: a NEEDS only on an output the ca
 // checkWaits is one line per stream with producers waiting, why they wait
 // (steps.Waits: the front of the chain they wait on, the producer and file
 // they are held behind), and a warning for each stream whose longest NEEDS
-// chain is chainWarn cards or more, with what it takes at the stream's land
-// rate.
+// chain is longer than the policy's chain_limit (add refuses one), with
+// what it takes at the stream's land rate.
 func (e *Engine) checkWaits(ctx context.Context, r *checkReport, snap store.Snapshot, ws []steps.StreamWaits) {
 	var times map[string][]time.Time
 	var terr error
+	lim, _, lerr := e.rules(ctx, snap) // an unreadable policy is checkPolicy's red line
 	for _, s := range ws {
 		if line := s.Line(); line != "" {
 			r.ok("waits %s: %s", s.Stream, line)
 		}
-		if len(s.Chain) < chainWarn {
+		if lerr != nil || len(s.Chain) <= lim.ChainLimit {
 			continue
 		}
 		if times == nil && terr == nil {

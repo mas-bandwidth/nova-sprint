@@ -169,3 +169,32 @@ func BenchmarkWaits5000(b *testing.B) {
 		Waits(cs)
 	}
 }
+
+// TestChainThrough: the longest chain through the named cards runs both up
+// their needs and down their dependants, skips landed cards and sentinels,
+// and ignores a longer chain elsewhere in the stream.
+func TestChainThrough(t *testing.T) {
+	t.Parallel()
+	p := func(id, state string, needs ...string) store.Card {
+		return store.Card{ID: id, Kind: "producer", Stream: "s", State: state, Needs: needs}
+	}
+	cards := map[string]store.Card{
+		"l": p("l", "landed"), "a": p("a", "working", "l"), "b": p("b", "waiting", "a"), "c": p("c", "waiting", "b"),
+		"z": {ID: "z", Kind: "sentinel", Stream: "s", State: "waiting", Needs: []string{"c"}}, "d": p("d", "waiting", "z"),
+		"x1": p("x1", "ready"), "x2": p("x2", "waiting", "x1"), "x3": p("x3", "waiting", "x2"), "x4": p("x4", "waiting", "x3"), "x5": p("x5", "waiting", "x4"),
+		"e": p("e", "ready"),
+	}
+	for _, tc := range []struct {
+		ids  []string
+		want string
+	}{
+		{[]string{"b"}, "a -> b -> c -> d"},
+		{[]string{"e"}, "e"},
+		{[]string{"e", "a"}, "a -> b -> c -> d"},
+		{[]string{"x3"}, "x1 -> x2 -> x3 -> x4 -> x5"},
+	} {
+		if got := strings.Join(ChainThrough(cards, tc.ids), " -> "); got != tc.want {
+			t.Errorf("ChainThrough(%v) = %q, want %q", tc.ids, got, tc.want)
+		}
+	}
+}
