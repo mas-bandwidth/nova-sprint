@@ -582,8 +582,14 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	return last, runErr
 }
 func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
-	if strings.Contains(string(res.Output), "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
+	out := string(res.Output)
+	if strings.Contains(out, "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
 		return true, fmt.Sprintf("wall/binary fault (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
+	}
+	for _, needle := range []string{"command not found", ": not found", "No such file or directory: 'elixir'", "No such file or directory: 'luau'", "No such file or directory: 'sbcl'", "No such file or directory: 'dart'", "No such file or directory: 'dotnet'"} {
+		if strings.Contains(out, needle) && (strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")) {
+			return true, fmt.Sprintf("missing-route: test toolchain missing in wall (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
+		}
 	}
 	if runErr != nil {
 		return true, "wall execution fault: " + runErr.Error()
@@ -630,11 +636,17 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 		return out
 	case sha != "" && sha != job.BaseSHA && sha != job.PriorHead:
 		if perr := r.pushBranch_internal(ctx, rec, sha); perr != nil {
-			if out.Result == "ok" {
+			if out.Result == "ok" || out.NoVerdict {
 				return Outcome{Result: "fault", Head: rec.PushedHead, Reason: "push fault: " + perr.Error()}
 			}
 			return out
 		}
+		if out.NoVerdict {
+			return Outcome{Result: "ok", Head: sha}
+		}
+		out.Head = sha
+	case out.Result == "ok" && sha != "" && sha != job.BaseSHA && sha == job.PriorHead:
+		rec.PushedHead = cmp.Or(rec.PushedHead, sha)
 		out.Head = sha
 	case out.Result == "ok":
 		return Outcome{Result: "fail", Reason: "harness reported ok without advancing HEAD past base_sha and prior_head, and left nothing to commit"}
