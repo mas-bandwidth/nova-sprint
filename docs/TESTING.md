@@ -57,7 +57,7 @@ What runs where:
   tests behind it start their own PostgreSQL: backup round trips, clear,
   setup lock, sprint role, schema identity, and the `up` child test) and
   `NOVA_CONFIG_SCHEMA_FILE` set to nova-config's `config/schema.sql` from
-  nova-tools v2.0.2, the version the roster test pins by sha256. The end to
+  the nova-tools version go.mod links (the roster test pins its sha256). The end to
   end test and the bus tests also need `redis-server`, `nova-bus`, `pg_ctl`,
   `pg_dump`, `git` and `go` on PATH.
 - Nightly (`nightly.yml`, the `functional` job): `TestFunctionalSetupBusRedis`
@@ -70,8 +70,8 @@ When `CI` is set, a functional test whose tool is missing fails and names
 the tool; without `CI` it skips.
 
     command -v initdb
-    go mod download github.com/mas-bandwidth/nova-tools/v2@v2.0.2
-    export NOVA_CONFIG_SCHEMA_FILE=$(go env GOMODCACHE)/github.com/mas-bandwidth/nova-tools/v2@v2.0.2/config/schema.sql
+    go mod download github.com/mas-bandwidth/nova-tools/v2
+    export NOVA_CONFIG_SCHEMA_FILE=$(go list -m -f '{{.Dir}}' github.com/mas-bandwidth/nova-tools/v2)/config/schema.sql
     NOVA_FUNCTIONAL=1 go test -count=1 -race -run Functional ./...                                       # per commit
     NOVA_FUNCTIONAL_BUS=1 go test -count=1 -race -run '^TestFunctionalSetupBusRedis$' ./cmd/nova-sprint  # nightly
     NOVA_FUNCTIONAL_SSH=1 go test -count=1 -race -run '^TestFunctionalPublicVersionSSH$' ./cmd/nova-sprint # by hand

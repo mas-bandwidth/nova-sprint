@@ -120,13 +120,13 @@ jobs:
       # Each functional test starts its own PostgreSQL. This runner is Linux, so
       # the default parallelism is fine; on macOS run with -parallel 4, because
       # its System V shared memory limits run out (docs/TESTING.md).
-      # The roster test reads nova-config's schema.sql at the version it pins
-      # (nova-tools v2.0.2, checked by its sha256).
-      - name: the pinned nova-config schema for the roster test
+      # The roster test reads nova-config's schema.sql from the nova-tools
+      # version go.mod links (the test checks its sha256).
+      - name: the linked nova-config schema for the roster test
         shell: bash
         run: |
-          go mod download github.com/mas-bandwidth/nova-tools/v2@v2.0.2
-          echo "NOVA_CONFIG_SCHEMA_FILE=$(go env GOMODCACHE)/github.com/mas-bandwidth/nova-tools/v2@v2.0.2/config/schema.sql" >> "$GITHUB_ENV"
+          go mod download github.com/mas-bandwidth/nova-tools/v2
+          echo "NOVA_CONFIG_SCHEMA_FILE=$(go list -m -f '{{.Dir}}' github.com/mas-bandwidth/nova-tools/v2)/config/schema.sql" >> "$GITHUB_ENV"
       # NOVA_FUNCTIONAL=1 runs the tests that start their own PostgreSQL behind
       # that gate. Under CI a missing tool a functional test needs (redis-server,
       # nova-bus, pg_ctl, pg_dump, go) fails the test, it does not skip.

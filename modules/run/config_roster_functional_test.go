@@ -13,7 +13,8 @@ import (
 	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
 )
 
-// The env path must name config/schema.sql from nova-tools v2.0.2. The
+// The env path must name config/schema.sql from nova-tools v2.0.3, the
+// version go.mod links (config.Open refuses any other schema). The
 // fixture applies it only to chooserTestPG's isolated temporary database.
 func configSchemaFixture(t *testing.T) []byte {
 	t.Helper()
@@ -28,8 +29,8 @@ func configSchemaFixture(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(b)
-	if hex.EncodeToString(sum[:]) != "67b6692fa70a0fe80e82bc09e889973449eb9632ad41988b91baf48f3453b8d3" {
-		t.Fatal("config schema does not match pinned nova-tools v2.0.2")
+	if hex.EncodeToString(sum[:]) != "bc3b542184c19e2b09338199b87184695eab1a26856a3ffee1cde7294ee07e96" {
+		t.Fatal("config schema does not match pinned nova-tools v2.0.3")
 	}
 	return b
 }
