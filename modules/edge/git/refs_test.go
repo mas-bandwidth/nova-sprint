@@ -74,3 +74,31 @@ func TestCommits(t *testing.T) {
 		t.Fatalf("a failed log: %v", err)
 	}
 }
+
+// TestListTreeBeyondDefaultCap: a git listing is read with a cap far above
+// edge.DefaultMaxBytes, so a tree listing larger than 64 KiB comes back
+// whole; a run whose output was still truncated is a failure naming the
+// command and the cap, never a partial listing.
+func TestListTreeBeyondDefaultCap(t *testing.T) {
+	t.Parallel()
+	var names []string
+	for i := 0; len(strings.Join(names, "\x00")) <= 2*edge.DefaultMaxBytes; i++ {
+		names = append(names, "make/dir/file-"+strings.Repeat("x", 40)+"-"+string(rune('a'+i%26))+strings.Repeat("y", i%7)+".json")
+	}
+	listing := strings.Join(names, "\x00") + "\x00"
+	truncate := false
+	c := New(Config{Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		if cmd.MaxBytes < len(listing) {
+			return edge.Result{Stdout: listing[:edge.DefaultMaxBytes], Truncated: true}, nil
+		}
+		return edge.Result{Stdout: listing, Truncated: truncate}, nil
+	})})
+	files, err := c.ListTree(context.Background(), "/repo", "main")
+	if err != nil || len(files) != len(names) {
+		t.Fatalf("ListTree = %d files, %v; want %d", len(files), err, len(names))
+	}
+	truncate = true
+	if _, err := c.ListTree(context.Background(), "/repo", "main"); err == nil || !strings.Contains(err.Error(), "ls-tree") || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("a truncated ls-tree: %v", err)
+	}
+}

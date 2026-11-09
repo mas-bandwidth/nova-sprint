@@ -148,14 +148,21 @@ func (c *Client) gitEnv_internal(ctx context.Context, extra ...string) []string 
 	return append(append(env, CredentialEnv(c.cfg.Token, c.cfg.GitHubCredential)...), extra...)
 }
 
+// gitMaxBytes_internal caps a git run's output: far above edge's 64 KiB
+// default, since callers parse whole listings (ls-tree of a large repo).
+const gitMaxBytes_internal = 256 << 20
+
 // runGitEnv_internal runs git; a run that could not complete (a timeout, a
-// missing binary) is an edge.CommandError naming the command, so every
-// caller's err carries it.
+// missing binary) or whose output was truncated is an edge.CommandError
+// naming the command, so every caller's err carries it.
 func (c *Client) runGitEnv_internal(ctx context.Context, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, string, int, error) {
-	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, args...), Dir: dir, Env: c.gitEnv_internal(ctx, extraEnv...), Timeout: timeout}
+	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, args...), Dir: dir, Env: c.gitEnv_internal(ctx, extraEnv...), Timeout: timeout, MaxBytes: gitMaxBytes_internal}
 	res, err := c.cfg.Exec.Run(ctx, cmd)
 	if err != nil {
 		return res.Stdout, res.Stderr, res.ExitCode, c.failed_internal(res.ExitCode, res.Stdout, res.Stderr, err, args...)
+	}
+	if res.Truncated {
+		return res.Stdout, res.Stderr, res.ExitCode, c.failed_internal(res.ExitCode, res.Stdout, res.Stderr, fmt.Errorf("output truncated at the %d-byte cap", gitMaxBytes_internal), args...)
 	}
 	return res.Stdout, res.Stderr, res.ExitCode, nil
 }
