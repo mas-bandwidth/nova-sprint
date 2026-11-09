@@ -141,7 +141,7 @@ func (s *sim) take(c string) {
 }
 
 func (s *sim) land(req EdgeRequest) {
-	s.landWith(req, InboxItem{Kind: "land", Request: req.ID, Outcome: "landed", Landed: req.Heads})
+	s.landWith(req, InboxItem{Kind: "land", Request: req.ID, Outcome: "landed", Landed: req.Heads, Main: true})
 }
 
 func (s *sim) landWith(req EdgeRequest, it InboxItem) {

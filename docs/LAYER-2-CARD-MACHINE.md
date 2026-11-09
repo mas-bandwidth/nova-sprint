@@ -101,7 +101,8 @@ Producer events:
 | `AskRead{row}` | review | review | **cuts** a read consumer: kind read, of p, holder row, head=p.head, author=p.author, state **working** | row up and not held; stream not held; row != p.author; width as `Start`'s, the dealer's |
 | `ReadYes` | review | merging | state | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy, which reads all of them (LESSONS 3.7) |
 | `ReadFix{reason}` | review | ready | state, reason=the findings policy chose, bounces+1 | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy from all the reads of that head, never automatically on the first fix (LESSONS 3.7); p.head is kept, so the next `Start` continues from it (LESSONS 3.9) |
-| `Landed{head}` | merging | landed | state | head equals p.head |
+| `Landed{head}` | merging | landed | state, reason `landed on main at <merge>` | head equals p.head; raised only when the merge is on main (LANDING.md "Landed means on main") |
+| `OnBase{head, merge, base}` | merging | merging | reason `on base <merge>: merged onto <base>; landed when that merge is on main` | head equals p.head; base not empty; the merge onto a base that is not main (LANDING.md "Landed means on main") |
 | `Red{head, reason}` | merging | ready (waiting when the stream is held): **fix** | state, review+1, red=true, finding=reason (the failing checks and their URLs), reason; bounces unchanged | head equals p.head; reason is not empty (intent rule 30: a red landing goes to fix, never to a terminal state) |
 | `Released` | working | ready | state, reason, head=the consumer's last pushed head when there is one; score and bounces unchanged | p's work consumer of this attempt is `fail` (withdrawn, after a silence or preempted by a blocker) |
 | `Cancel{reason}` / `Replace{by, reason}` | any non-final | fail | state, reason | no live consumer of p |

@@ -40,14 +40,17 @@ type InboxItem struct {
 
 	Request string   // an edge result: the request it answers
 	Outcome string   // land: landed, or what kept it from landing (a judgement); stop: ack
-	Landed  []string // land: the heads that landed (all of the request's)
+	Landed  []string // land: the heads that landed (all of the request's); promote: the merges now on main
 	Merge   string   // land: the merge commit base has now
+	Main    bool     // land: base is main, so the merge is on main (LANDING.md, "Landed means on main")
 }
 
 // EdgeRequest is work for layer 4: a landing (Kind land: Heads of Cards on
 // their Branches, one head rung 1, more rung 2; Base the stream's base tip
 // as the tick saw it; Wait the seconds a gated sha may have no CI at all,
-// policy's) or a runner stop (Kind stop: the Row's run of Consumer, after a
+// policy's), a promotion of the base to main (Kind promote: Cards on base,
+// at Heads, with their recorded base Merges, a card's head where none is
+// recorded) or a runner stop (Kind stop: the Row's run of Consumer, after a
 // preemption). After names the op whose acceptance it waits for ("" waits
 // for none): a stop goes out only with its preemption (EdgeAfterAccepted).
 // ID is stable across ticks, so a restart reissues the same request and a
@@ -55,6 +58,7 @@ type InboxItem struct {
 type EdgeRequest struct {
 	ID, Kind, Stream       string
 	Cards, Heads, Branches []string
+	Merges                 []string
 	Base                   string
 	Wait                   int
 	Row, Consumer          string

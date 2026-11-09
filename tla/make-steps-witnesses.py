@@ -26,7 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
-    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown",
+    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -76,6 +76,9 @@ REACH = {
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
     "StepsNeverLandJudged": ("land", "a result other than landed opens a land judgement"),
     "StepsNeverAfterHeld": ("land", "a landing waits on a queued after target"),
+    "StepsNeverOnBase": ("land", "a landed result on a workstream base records the base merge"),
+    "StepsNeverPromoteRequested": ("land", "a promote request is dispatched for a producer on base"),
+    "StepsNeverLandedOffMainBase": ("land", "a producer of a workstream base lands (on main)"),
     "StepsNeverCarried": ("burst", "the budget carries inbox items to the next tick"),
     "StepsNeverUndealt": ("burst", "a producer left ready with room two ticks opens undealt"),
 }
@@ -202,6 +205,11 @@ WITNESSES = [
      "with no request and no judgement.",
      [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
        "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT: was # \"merging\"", 1)]),
+    ("StepsLandedBeforeMain", "LandedOnMain", "land",
+     "A landed result is a Landed whatever the stream's base: a merge\n"
+     "onto a workstream base records landed before it is on main.",
+     [("LandKind(k, p) == IF k = \"promote\" \\/ MainBase[Stream[p]] THEN \"landed\" ELSE \"onbase\"",
+       "LandKind(k, p) == \"landed\"   \\* FAULT: was onbase off a main base", 1)]),
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",

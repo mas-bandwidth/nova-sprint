@@ -60,9 +60,9 @@ type steps.Inputs struct {
     Roster   roster.Roster
 }
 type steps.Plan struct { Ops []store.Op; Edges []steps.EdgeRequest; Answers []steps.RowAnswer; Carry []steps.InboxItem }
-type steps.EdgeRequest struct { ID, Kind, Stream string; Cards, Heads []string; Base, Row, Consumer, After string }
+type steps.EdgeRequest struct { ID, Kind, Stream string; Cards, Heads, Merges []string; Base, Row, Consumer, After string }
 type steps.InboxItem struct { ID, Kind, Row, Session, Consumer, Result, Head, Reason string; Cost int64; Priced bool;
-                              Request, Outcome string; Landed []string; Blamed, Base string }
+                              Request, Outcome string; Landed []string; Blamed, Base string; Main bool }
 type steps.Asker interface { Ask(steps.Questions) steps.Answers }
 ```
 
@@ -125,6 +125,7 @@ tick's: no tick that second, and the board shows the failure (section 7).
 ```go
 type bus.Bus interface { Send(ctx, to, subject, body string) (msgID string, err error); Who(ctx) (map[string]bus.Presence, error) }
 func git.LandPass(ctx, g git.Git, fg forge.Forge, req git.LandRequest) (git.LandResult, error)
+func git.PromotePass(ctx, g git.Git, fg forge.Forge, req git.PromoteRequest) (git.LandResult, error)
 func forge.New(forge.Config) *forge.Client
 func git.New(git.Config) *git.Client
 ```
@@ -147,7 +148,11 @@ landed heads and the merge sha; every other outcome (`ci_red`, `no-ci`,
 `missing_head`, `head_moved`, `hand`) keeps its name and carries the facts
 in `Reason` (rung, base tip, group tip, gated sha, PR, failing checks, their
 URL and first lines, conflicts, the pass's reason); an error is `fault`.
-Layer 3 opens one `land` judgement per card for each of those. A request of
+Layer 3 opens one `land` judgement per card for each of those. A landed
+result says whether its merge is on main (`Main`, read with `Git.Main`
+after the pass); a request of kind `promote` (`Merges`) runs `PromotePass`
+under the same clone lock and comes back the same way, always `Main`
+(LANDING.md "Landed means on main"). A request of
 kind `stop` is one bus message to the row (`STOP <consumer>`) and, once
 sent, an inbox item `{Kind: "stop", Request: req.ID, Outcome: "ack"}`.
 `Inputs.Heads` is the base tip of each stream as the edge last read it

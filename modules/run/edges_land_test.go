@@ -105,3 +105,40 @@ func TestLandByHandStreamTouchesNothing(t *testing.T) {
 		}
 	}
 }
+
+// onGit is a repository where every head and merge is already on every
+// tip, and main is origin's default branch.
+type onGit struct{ git.Git }
+
+func (onGit) Clone(context.Context, string, string) error    { return nil }
+func (onGit) Fetch(context.Context, string, ...string) error { return nil }
+func (onGit) IsAncestor(context.Context, string, string, string) (bool, error) {
+	return true, nil
+}
+func (onGit) LsRemote(context.Context, string, string) (string, bool, error) {
+	return strings.Repeat("b", 40), true, nil
+}
+func (onGit) Main(context.Context, string) (string, string, error) {
+	return "main", strings.Repeat("b", 40), nil
+}
+
+// A landing onto main says its merge is on main; onto any other base it
+// does not, so layer 3 records the base merge and not landed; a promotion
+// of that base dispatches PromotePass and its landed merges are on main
+// (LANDING.md, "Landed means on main").
+func TestLandSaysWhetherTheMergeIsOnMain(t *testing.T) {
+	t.Parallel()
+	h := strings.Repeat("a", 40)
+	for _, c := range []struct {
+		kind, base string
+		main       bool
+	}{{"land", "main", true}, {"land", "sprint/w", false}, {"promote", "sprint/w", true}} {
+		e := &Edges{Git: onGit{}, Forge: pendingForge{}, ReposDir: t.TempDir(), Pause: func(context.Context, time.Duration) error { return nil }}
+		e.land(context.Background(), steps.EdgeRequest{ID: c.kind + ".s1.x", Kind: c.kind, Stream: "s1", Heads: []string{h}, Branches: []string{"sprint/s1/x"}, Merges: []string{h}},
+			store.Stream{Name: "s1", Repo: "o/r", Base: c.base, Forge: "github"})
+		got := e.Results()
+		if len(got) != 1 || got[0].Outcome != "landed" || got[0].Main != c.main || len(got[0].Landed) != 1 {
+			t.Fatalf("%s onto %s: results %+v, want landed with main %v", c.kind, c.base, got, c.main)
+		}
+	}
+}

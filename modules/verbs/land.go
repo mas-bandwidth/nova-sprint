@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -28,6 +29,8 @@ type Lander interface {
 	// CreateGroup creates the stream's group branch at sha (its base tip);
 	// it fails when the branch exists.
 	CreateGroup(ctx context.Context, s store.Stream, sha string) error
+	// OnMain is whether sha is on the default branch at the stream's origin.
+	OnMain(ctx context.Context, s store.Stream, sha string) (bool, error)
 }
 
 // runLand is `land <card> --reason <why> [--head <sha>]`: the hand merge of
@@ -61,20 +64,40 @@ func (e *Engine) handLand(ctx context.Context, in *input, snap store.Snapshot, i
 		return "", broken("the landing edge is not configured", "nova-sprint check")
 	}
 	// a merge the hand landing makes is the store's identity (round 24), never a literal
-	merge, err := e.Lander.Land(git.WithIdentity(ctx, snap.Identity.Name, snap.Identity.Email), snap.Streams[c.Stream], branchOf(snap, c), c.Head)
+	ctx = git.WithIdentity(ctx, snap.Identity.Name, snap.Identity.Email)
+	s := snap.Streams[c.Stream]
+	merge, onBase := store.BaseMerge(c.Reason)
+	if !onBase {
+		var err error
+		if merge, err = e.Lander.Land(ctx, s, branchOf(snap, c), c.Head); err != nil {
+			return "", RefusalOr(err, broken("the hand landing of "+id+" failed: "+errText(err), "fix what it names, then nova-sprint land "+id+" --reason \"<why>\" again"))
+		}
+	}
+	// landed means on main: a merge onto another base is recorded on base
+	on, err := e.Lander.OnMain(ctx, s, cmp.Or(merge, c.Head))
 	if err != nil {
-		return "", RefusalOr(err, broken("the hand landing of "+id+" failed: "+errText(err), "fix what it names, then nova-sprint land "+id+" --reason \"<why>\" again"))
+		return "", RefusalOr(err, broken("reading whether "+id+" is on main failed: "+errText(err), "make "+s.Repo+" readable from this host, then nova-sprint land "+id+" --reason \"<why>\" again"))
+	}
+	if !on && onBase {
+		return "", refuse(id+" is on "+s.Base+" but not on main yet", "merge "+s.Base+" into main, then nova-sprint land "+id+" --reason \"<why>\" again")
 	}
 	if judgement == "" {
 		judgement = openLand(snap, id)
 	}
-	r := steps.Request{Card: id, Event: card.Landed{Head: c.Head, Merge: merge, Reason: "by hand: " + reason}, Judgement: judgement}
+	var ev card.Event = card.Landed{Head: c.Head, Merge: merge, Reason: "by hand: " + reason}
+	if !on {
+		ev = card.OnBase{Head: c.Head, Merge: merge, Base: s.Base}
+	}
+	r := steps.Request{Card: id, Event: ev, Judgement: judgement}
 	if judgement != "" {
 		r.Answer = "land"
 	}
 	line, err := e.move(ctx, in, snap, r, id)
 	if err != nil {
 		return "", RefusalOr(err, broken("merged at "+merge+" but not recorded: "+errText(err), "nova-sprint land "+id+" --reason \"<why>\" again (the head is on base, so it records at once)"))
+	}
+	if !on {
+		return fmt.Sprintf("ON BASE %s head=%s merge=%s by hand (landed when %s is on main): %s", id, c.Head, merge, s.Base, line), nil
 	}
 	return fmt.Sprintf("LANDED %s head=%s merge=%s by hand: %s", id, c.Head, merge, line), nil
 }

@@ -96,6 +96,12 @@ func TestLandedInCountsProducersBecomingLanded(t *testing.T) {
 	if got := store.LandedIn(e); got != 0 {
 		t.Fatalf("relanded %d", got)
 	}
+	// moved back to merging by the landed-means-main migration: it was
+	// counted when it first landed, so reaching main is not counted again
+	e.Before.Cards["a"] = store.Card{ID: "a", Kind: "producer", State: "merging", Reason: store.OnBaseReason("sprint/w", "") + "; " + store.MigratedNote}
+	if got := store.LandedIn(e); got != 0 {
+		t.Fatalf("migrated card counted again: %d", got)
+	}
 }
 
 func TestCoordinatorName(t *testing.T) {

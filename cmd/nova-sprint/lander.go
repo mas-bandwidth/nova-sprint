@@ -52,6 +52,21 @@ func (l *lander) CreateGroup(ctx context.Context, s store.Stream, sha string) er
 	return errors.Join(l.clones.git.Push(ctx, dir, sha, git.GroupRef(s.Name), ""), lock.Close())
 }
 
+// OnMain is whether sha is on the default branch at the stream's origin
+// (git.Client.Main), read in the clone after a fetch of origin's refs.
+func (l *lander) OnMain(ctx context.Context, s store.Stream, sha string) (bool, error) {
+	dir, lock, err := l.locked(ctx, s)
+	if err != nil {
+		return false, err
+	}
+	_, tip, err := l.clones.git.Main(ctx, dir)
+	on := false
+	if err == nil {
+		on, err = l.clones.git.IsAncestor(ctx, dir, sha, tip)
+	}
+	return on, errors.Join(err, lock.Close())
+}
+
 // Land merges head (the tip of branch) into the stream's base: base's tip
 // when head is on it already; else the PR branch -> base merged by the
 // repository's allowed method (opened when there is none), or, with no
