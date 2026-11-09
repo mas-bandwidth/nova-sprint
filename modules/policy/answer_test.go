@@ -127,10 +127,10 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 		a, fs := testEngine().Answer(Versions{}, s, ros[i], FullQuestions(s, nil))
 		require.Empty(t, fs, "shape %d", i)
 		assert.Equal(t, 0, a.Version)
-		assert.Equal(t, Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
-			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, FleetWidthCap: 8, ChainLimit: 3, IdleFloor: 0.5, LandTarget: 0.9}, a.Limits)
-		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800,
-			Tick: 10, ReadyNag: 1, ReadyTake: 180, JudgementUnseen: 300, Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}}, a.Timeouts)
+		assert.Equal(t, Limits{Bounces: 12, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
+			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, FleetWidthCap: 8, ChainLimit: 3, IdleFloor: 0.5, LandTarget: 0.3}, a.Limits)
+		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 1200, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800,
+			Tick: 10, ReadyNag: 30, ReadyTake: 180, JudgementUnseen: 300, Consumer: map[string]int{"flash": 3600, "pro": 7200, "heavy": 7200, "frontier": 7200}}, a.Timeouts)
 		assert.Empty(t, a.Prices)
 	}
 	a, _ := testEngine().Answer(Versions{}, shapes[1], w.ro, FullQuestions(shapes[1], nil))
@@ -144,7 +144,7 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	assert.Equal(t, []any{int64(0), int64(10)}, a.Order["p2"], "a fix attempt first")
 	assert.Equal(t, "yes", a.Verdict["p3"])
 	assert.Equal(t, Width{Work: 2, Ahead: 0}, a.Width["r1"], "no deal-ahead for a worker (defect 74)")
-	assert.Equal(t, Landing{BackedUp: 2, Flowing: 1, CIWait: 600}, a.Landing["s1"])
+	assert.Equal(t, Landing{BackedUp: 4, Flowing: 1, CIWait: 600}, a.Landing["s1"])
 	assert.Equal(t, map[string]bool{"s1": true, "s2": true}, a.Stitch)
 	a, _ = testEngine().Answer(Versions{}, shapes[2], w.ro, FullQuestions(shapes[2], nil))
 	assert.Equal(t, []string{"r1"}, a.Rows[RowsQuestion{"p1", KindWork}], "p1 at 4 bounces wants frontier; none is up, so any rank at or above pro")

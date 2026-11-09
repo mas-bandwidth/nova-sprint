@@ -35,7 +35,10 @@ func AckCursor(epoch int, c string) string {
 
 // Nudge is one push run sends to a row this tick, outside the event log: a
 // dealt card the row has not acknowledged, and the command that does.
-type Nudge struct{ Row, Card, Line string }
+type Nudge struct {
+	Row, Card, Line string
+	Every           time.Duration
+}
 
 // dealtAt is when consumer c was dealt (went working): the fold's witness,
 // else the view's start.
@@ -82,7 +85,7 @@ func (t *tick) unacked() []Nudge {
 			}
 			if t.present(n) { // the bus only queues a nudge to an absent row
 				cmd := fmt.Sprintf("nova-sprint take %s@%d --as %s --epoch %d", id, c.Gen, n, t.v.Epoch)
-				out = append(out, Nudge{Row: n, Card: id, Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
+				out = append(out, Nudge{Row: n, Card: id, Every: seconds(t.tmo.ReadyNag), Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
 					untaken, len(live)-untaken, t.room(n), id, since.Truncate(time.Second), cmd)})
 			}
 		}

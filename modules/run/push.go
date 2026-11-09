@@ -38,18 +38,26 @@ type pending struct {
 // no cursor, and one not sent is derived again by the next tick.
 type Pusher struct {
 	queue  map[string][]pending
-	nudges map[string][]Notice
+	nudges map[string][]steps.Nudge
+	nudged map[string]time.Time
 }
 
 func NewPusher() *Pusher {
-	return &Pusher{queue: map[string][]pending{}, nudges: map[string][]Notice{}}
+	return &Pusher{queue: map[string][]pending{}, nudges: map[string][]steps.Nudge{}, nudged: map[string]time.Time{}}
 }
 
 // Nudge queues this tick's nudges, replacing the last tick's.
 func (p *Pusher) Nudge(ns []steps.Nudge) {
-	p.nudges = map[string][]Notice{}
+	p.nudges = map[string][]steps.Nudge{}
+	live := map[string]bool{}
 	for _, n := range ns {
-		p.nudges[n.Row] = append(p.nudges[n.Row], Notice{Subject: "NUDGE", Line: n.Line})
+		p.nudges[n.Row] = append(p.nudges[n.Row], n)
+		live[n.Row+"\x00"+n.Card] = true
+	}
+	for k := range p.nudged {
+		if !live[k] {
+			delete(p.nudged, k)
+		}
 	}
 }
 
@@ -129,8 +137,16 @@ func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int,
 	}
 	for _, r := range slices.Sorted(maps.Keys(to)) {
 		q := p.queue[r]
+		var sentNudges []string
 		for _, n := range p.nudges[r] {
-			q = append(q, pending{0, n})
+			key := n.Row + "\x00" + n.Card
+			if n.Every > 0 {
+				if last, ok := p.nudged[key]; ok && !now.IsZero() && now.Sub(last) < n.Every {
+					continue
+				}
+			}
+			q = append(q, pending{0, Notice{Subject: "NUDGE", Line: n.Line}})
+			sentNudges = append(sentNudges, key)
 		}
 		if len(q) == 0 {
 			continue
@@ -140,6 +156,9 @@ func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int,
 			failed = append(failed, PushFailure{To: r, Err: err})
 			continue
 		}
+		for _, key := range sentNudges {
+			p.nudged[key] = now
+		}
 		if events := p.queue[r]; len(events) > 0 {
 			if err := setCursor(ctx, st, r, events[len(events)-1].seq, epoch, now); err != nil {
 				failed = append(failed, PushFailure{To: r, Err: err})
@@ -148,7 +167,7 @@ func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int,
 		}
 		delete(p.queue, r)
 	}
-	p.nudges = map[string][]Notice{}
+	p.nudges = map[string][]steps.Nudge{}
 	return failed
 }
 
