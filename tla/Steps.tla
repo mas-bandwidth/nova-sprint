@@ -109,6 +109,15 @@
 (* are not here: the model has no take (below), so they stay layer 6's    *)
 (* and Go's.                                                              *)
 (*                                                                         *)
+(* Admission (2026-11-08): admitted is whether each producer passed add's  *)
+(* admission (check's re-proof) when layer 6 last proved its stream at the *)
+(* base it has now (Inputs.Unadmitted). A producer that failed is never    *)
+(* dealt nor preempted for, never counted undealt, and its stream has an   *)
+(* open admission judgement until none fails. In deal the base of s1 may   *)
+(* move under p (an environment move). NeverDealtUnadmitted: no accepted   *)
+(* Start or preemption is of a producer that failed; AdmissionShown: a     *)
+(* waiting or ready one has its stream's judgement.                        *)
+(*                                                                         *)
 (* last is the step monitor of the last tick: bad is the set of checks    *)
 (* the tick broke (each computed from the view, the store before and      *)
 (* after, and the plan, independently of the planning operators where     *)
@@ -218,9 +227,10 @@ VARIABLES
   last,      \* the step monitor: [tags, bad]
   rdy,       \* producer -> ticks in a row it was left ready with room (0..UndealtTicks)
   ju,        \* producers with an open undealt judgement
-  bus        \* row -> on nova-bus this tick (Present; not the store's up)
+  bus,       \* row -> on nova-bus this tick (Present; not the store's up)
+  admitted   \* producer -> passed admission at its stream's base (layer 6's re-proof)
 
-vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last, rdy, ju, bus>>
+vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last, rdy, ju, bus, admitted>>
 aux  == <<rdy, ju>>
 Clean == [tags |-> {}, bad |-> {}]
 
@@ -394,6 +404,7 @@ Cards(gs) == UNION {gs[i].cards : i \in 1..Len(gs)}
 \* open serving row has free width (working under width).
 NoFreeWidth(W, b) == \A r \in ServingOpen(W, b) : Cardinality(Working(W, r)) >= Width[r]
 BlockerDue(W, b) ==
+  /\ admitted[b]   \* a producer that failed admission is preempted for by no one
   /\ W.ps[b].prio = "blocker"
   /\ W.ps[b].st = "ready"
   /\ ~W.sh[Stream[b]]
@@ -522,11 +533,12 @@ DealFold(V, cands, i, acc, ar, useAns) ==
                       ELSE [acc EXCEPT !.miss = @ \cup mi, !.uns = @ \cup un, !.cr = @ \cup cr],
                 ar, useAns)
 Cands(V, cl) ==
-  LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "blocker" /\ V.ps[p].st = "ready" /\ Free(p, cl))
+  LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "blocker" /\ V.ps[p].st = "ready" /\ Free(p, cl) /\ admitted[p])
       \* a held stream asks no read (the code's dealRead returns first; found
       \* by the trace check, steps-walk-land-1, 2026-11-07)
       rd == SelectSeq(ProdSeq, LAMBDA p : ReadOwed(V, p) /\ ~V.sh[Stream[p]] /\ Free(p, cl))
-      nm == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "normal" /\ V.ps[p].st = "ready" /\ Free(p, cl))
+      nm == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "normal" /\ V.ps[p].st = "ready" /\ Free(p, cl)
+                                          /\ admitted[p])   \* a producer that failed admission is never dealt
   IN [i \in 1..Len(bl) |-> [p |-> bl[i], kind |-> "work"]]
        \o [i \in 1..Len(rd) |-> [p |-> rd[i], kind |-> "read"]]
        \o [i \in 1..Len(nm) |-> [p |-> nm[i], kind |-> "work"]]
@@ -602,7 +614,7 @@ AsApplied(W, W1, g) == \A k \in g.cards : Same(ApplyG(W, g), W1, k)
 \* ready, startable blocker and every open serving row at width (working
 \* consumers only; ready ones hold no width).
 DueByDesign(V, b) ==
-  /\ V.ps[b].prio = "blocker" /\ V.ps[b].st = "ready" /\ ~V.sh[Stream[b]]
+  /\ V.ps[b].prio = "blocker" /\ V.ps[b].st = "ready" /\ ~V.sh[Stream[b]] /\ admitted[b]
   /\ V.ps[b].att < MaxAtt /\ V.ps[b].ncut < K
   /\ \A r \in Rows : (V.up[r] /\ bus[r] /\ Serves(r, b)) =>
        Cardinality({c \in CIds : V.cs[c].st = "working" /\ V.cs[c].row = r}) >= Width[r]
@@ -628,7 +640,7 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
              "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
              "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
              "NoDealWithoutPolicy", "ResolveFromState", "HeldBehindShown",
-             "VerdictHasItsRead", "NeverDealtAbsent"} :
+             "VerdictHasItsRead", "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -687,7 +699,12 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
                                   /\ V.cs[c].st = "done" /\ V.cs[c].res = out
                IN IF g.kind = "yes" THEN said("ok") /\ ~said("fix") ELSE said("fix")
         [] n = "NeverDealtAbsent" ->
-             \A g \in accd : g.kind \in {"pre", "start", "read"} => bus[g.r]}
+             \A g \in accd : g.kind \in {"pre", "start", "read"} => bus[g.r]
+        [] n = "NeverDealtUnadmitted" ->
+             \A g \in accd : g.kind \in {"pre", "start"} => admitted[g.p]
+        [] n = "AdmissionShown" ->
+             \A p \in Prods : (V.ps[p].st \in {"waiting", "ready"} /\ ~admitted[p])
+                              => [kind |-> "admission", about |-> Stream[p]] \in jsn}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
@@ -713,6 +730,7 @@ Init ==
   /\ rdy = [p \in Prods |-> 0]
   /\ ju = {}
   /\ bus = [r \in Rows |-> TRUE]
+  /\ admitted = [p \in Prods |-> TRUE]
 
 Snap ==
   /\ phase = "idle"
@@ -721,7 +739,10 @@ Snap ==
   /\ jsnap' = js
   /\ last' = Clean
   /\ UNCHANGED <<w, inbox, inflight, js, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, bus, admitted>>
+
+\* A stream's waiting and ready producers that failed admission.
+Unadmitted(V, s) == {p \in Prods : Stream[p] = s /\ V.ps[p].st \in {"waiting", "ready"} /\ ~admitted[p]}
 
 \* Judgements the tick opens (unserved per tier, cannot-read per producer,
 \* policy per question, overlap per held producer, no-policy on the
@@ -733,7 +754,8 @@ Expired(V, J) ==
              \/ j.kind = "overlap" /\ \E p \in Prods :
                   p = j.about /\ ~(V.ps[p].st = "waiting" /\ \E q \in Prods : Overlap(p, q)
                                                             /\ V.ps[q].st \in Started \cup {"ready"})
-             \/ j.kind = "no-policy" /\ V.pol}
+             \/ j.kind = "no-policy" /\ V.pol
+             \/ j.kind = "admission" /\ Unadmitted(V, j.about) = {}}
 
 Tick(a) ==
   /\ phase = "snapped"
@@ -773,12 +795,13 @@ Tick(a) ==
                    \cup jl
                    \cup {[kind |-> "overlap", about |-> p] : p \in Held(V, inb.cl, res)}
                    \cup (IF V.pol THEN {} ELSE {[kind |-> "no-policy", about |-> "coord"]})
+                   \cup {[kind |-> "admission", about |-> s] : s \in {s \in Streams : Unadmitted(V, s) # {}}}
          jsn  == (js \ Expired(V, js)) \cup jnew
          accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
          \* Left ready with room: a candidate of the view the tick did not deal.
          \* A run with no active policy deals nothing and says so (no-policy),
          \* so the gate counts nothing toward undealt.
-         und  == {p \in Prods : V.pol /\ V.ps[p].st = "ready" /\ ~V.sh[Stream[p]] /\ RoomIn(V, p)
+         und  == {p \in Prods : V.pol /\ V.ps[p].st = "ready" /\ ~V.sh[Stream[p]] /\ RoomIn(V, p) /\ admitted[p]
                                 /\ ap.w.ps[p].st = "ready"}
          tags == (IF \E g \in accd : g.kind = "pre" THEN {"pre"} ELSE {})
                  \cup (IF ap.ref # {} THEN {"refused"} ELSE {})
@@ -811,7 +834,7 @@ Tick(a) ==
   /\ phase' = "idle"
   /\ snap' = W0
   /\ jsnap' = {}
-  /\ UNCHANGED <<arrived, env, bus>>
+  /\ UNCHANGED <<arrived, env, bus, admitted>>
 
 \* There is no Take (defect 52): a consumer is dealt working, in its row's
 \* hand; the row's acknowledgement moves nothing the steps read.
@@ -837,7 +860,7 @@ Report(c, res) ==
                             !.ps[c[1]] = ReportMove(w, c[1], c, res)]
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, bus, admitted>>
 
 \* The coordinator's hold (with Park of the stream's ready producers in the
 \* same op, LESSONS 2.20) and its lifting; a row's Gone and Seen.
@@ -850,6 +873,9 @@ FlipsOf  == CASE Scenario = "pre" -> {"r2"} [] Scenario = "deal" -> {"r1"} [] OT
 \* In deal r2's hook drops and comes back: it leaves the bus and returns,
 \* the store's up untouched (D1').
 BusFlipsOf == CASE Scenario = "deal" -> {"r2"} [] OTHER -> {}
+\* In deal s1's base moves under p: layer 6's re-proof refuses it, and a
+\* later move admits it again.
+AdmFlipsOf == CASE Scenario = "deal" -> {"p"} [] OTHER -> {}
 \* In pre the active policy fails (a question errors or no version is
 \* active) and a fixed one is set; in deal a store op lands p by hand
 \* (land <card>), between ticks and with no land request in
@@ -866,7 +892,7 @@ HandLandOK(p) ==
 EnvMove ==
   /\ env < MaxEnv
   /\ env' = env + 1
-  /\ \/ /\ bus' = bus
+  /\ \/ /\ bus' = bus /\ admitted' = admitted
         /\ \/ \E s \in HoldsOf :
                 /\ ~w.sh[s]
                 /\ w' = [w EXCEPT !.sh[s] = TRUE,
@@ -877,7 +903,8 @@ EnvMove ==
            \/ \E r \in FlipsOf : w' = [w EXCEPT !.up[r] = ~w.up[r], !.rg[r] = @ + 1]
            \/ PolFlips /\ w' = [w EXCEPT !.pol = ~w.pol]
            \/ \E p \in HandLandsOf : HandLandOK(p) /\ w' = [w EXCEPT !.ps[p].st = "landed"]
-     \/ \E r \in BusFlipsOf : bus' = [bus EXCEPT ![r] = ~@] /\ w' = w
+     \/ \E r \in BusFlipsOf : bus' = [bus EXCEPT ![r] = ~@] /\ w' = w /\ admitted' = admitted
+     \/ \E p \in AdmFlipsOf : admitted' = [admitted EXCEPT ![p] = ~@] /\ w' = w /\ bus' = bus
   \* The hand land is tagged for its reach check (StepsNeverHandLanded).
   /\ last' = IF \E p \in Prods : w.ps[p].st # "landed" /\ w'.ps[p].st = "landed"
              THEN [tags |-> {"handland"}, bad |-> {}] ELSE Clean
@@ -896,7 +923,7 @@ EdgeResult(f, out, n) ==
   /\ inflight' = (inflight \ {f}) \cup {[f EXCEPT !.sent = TRUE]}
   /\ last' = Clean
   /\ UNCHANGED <<w, snap, jsnap, phase, js, split, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, bus, admitted>>
 
 \* The coordinator answers a land judgement (intent rule 32): land is the
 \* hand merge (Landed at its head), fix the producer to fix with the
@@ -916,7 +943,7 @@ Answer(p, choice) ==
   /\ js' = js \ {LandJ(p)}
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, bus, admitted>>
 
 Next ==
   \/ Snap
@@ -945,6 +972,7 @@ TypeOK ==
   /\ w.cs \in [CIds -> ConsRec]
   /\ w.up \in [Rows -> BOOLEAN]
   /\ bus \in [Rows -> BOOLEAN]
+  /\ admitted \in [Prods -> BOOLEAN]
   /\ w.rg \in [Rows -> 0..MaxEnv]
   /\ w.sh \in [Streams -> BOOLEAN]
   /\ w.pol \in BOOLEAN
@@ -1050,13 +1078,15 @@ ResolveFromState         == "ResolveFromState" \notin last.bad
 HeldBehindShown          == "HeldBehindShown" \notin last.bad
 VerdictHasItsRead        == "VerdictHasItsRead" \notin last.bad
 NeverDealtAbsent         == "NeverDealtAbsent" \notin last.bad
+NeverDealtUnadmitted     == "NeverDealtUnadmitted" \notin last.bad
+AdmissionShown           == "AdmissionShown" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width) is     *)
 (* eventually dealt, unless the room goes. The model's bounds (attempts,  *)
 (* slots) are exempt, as in CardMachine, and so is a run with no active   *)
 (* policy (the gate deals nothing).                                       *)
-RoomFor(p) == w.pol /\ RoomIn(w, p)
+RoomFor(p) == w.pol /\ RoomIn(w, p) /\ admitted[p]
 ReadyDealtWhenRoom ==
   \A p \in Prods : (w.ps[p].st = "ready" /\ RoomFor(p)) ~> (w.ps[p].st # "ready" \/ ~RoomFor(p))
 
@@ -1104,6 +1134,7 @@ StepsNeverHeldBehind  == ~\E j \in js : j.kind = "overlap"
 StepsNeverHandLanded  == "handland" \notin last.tags
 StepsNeverUndealt     == ju = {}
 StepsNeverAbsent      == "absent" \notin last.tags
+StepsNeverUnadmitted  == ~\E j \in js : j.kind = "admission"
 StepsNeverReadAgain   == ~\E p \in Prods : \E c, d \in CurReads(w, p) :
                            Faulted(w, c) /\ d # c /\ w.cs[d].st \in {"working", "done"} /\ ~Faulted(w, d)
 

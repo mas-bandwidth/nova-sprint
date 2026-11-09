@@ -18,6 +18,10 @@ type Inputs struct {
 	Seen     map[string]time.Time // row -> when it was last seen on the bus (layer 6 keeps it)
 	Refused  []RefusedOp          // the last tick's refused ops, from their receipts (OpGroups)
 	Roster   roster.Roster        // nova-config: each row's kind, width and tiers, by name
+	// Unadmitted is each producer that failed add's admission (check's
+	// re-proof) when layer 6 last proved its stream, at the base it has now,
+	// and the refusal with its fix: it is never dealt (admission.go).
+	Unadmitted map[string]string
 }
 
 // InboxItem is one thing that arrived for the tick: a row's report or take

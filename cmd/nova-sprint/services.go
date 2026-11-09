@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
@@ -28,6 +29,7 @@ type services struct {
 	policy *policy.Engine
 	git    *git.Client
 	forge  *forge.Client
+	admit  func(context.Context, store.Snapshot, string) (map[string]string, error) // the verbs' admission, re-proved by run at each base move
 }
 
 // Run is run.Serve over the real seams (SEAMS 8).
@@ -51,7 +53,7 @@ func (s services) Run(ctx context.Context, listen string) error {
 	busEnv := toolEnvironment(os.Environ(), "nova-bus")
 	return run.Serve(ctx, run.Config{Store: s.store, DSN: dsn, Password: s.creds.password, Roster: ro,
 		Bus: busEdge(), Hook: run.SprintHook{Bin: busBinary(), Env: busEnv, Reply: self}, Policy: s.policy,
-		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(), Version: versionString()})
+		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(), Version: versionString(), Admit: s.admit})
 }
 
 // runMachine is the machine run records the chooser lock under: the

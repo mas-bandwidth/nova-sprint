@@ -185,7 +185,7 @@ func (w *traceWalk) record(action string, args []string) {
 	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
 	fields = append(fields, args...)
 	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
-		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA())
+		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA(), "admitted |-> "+w.admTLA())
 	w.records = append(w.records, "["+strings.Join(fields, ", ")+"]")
 }
 
@@ -334,9 +334,23 @@ func (w *traceWalk) busTLA() string {
 	return "[" + strings.Join(out, ", ") + "]"
 }
 
+// admTLA is the model's admitted: every producer but the ones the walk's
+// admission re-proof refuses.
+func (w *traceWalk) admTLA() string {
+	var out []string
+	for _, id := range sortedKeys(w.snap().Cards) {
+		if c := w.snap().Cards[id]; c.Kind == "producer" {
+			_, refused := w.unadmitted[id]
+			out = append(out, fmt.Sprintf("%s |-> %s", id, tlaBool(!refused)))
+		}
+	}
+	return "[" + strings.Join(out, ", ") + "]"
+}
+
 // envOne is the scenario's environment: pre lifts s2's hold and flips r2;
-// deal flips r1 or takes r2 off the bus and back (D1'); land holds and
-// lifts s1; burst has none.
+// deal flips r1, takes r2 off the bus and back (D1'), or moves s1's base
+// under p so the re-proof refuses it and admits it again (Refuse, Admit);
+// land holds and lifts s1; burst has none.
 func (w *traceWalk) envOne() {
 	w.pick()
 	s := w.snap()
@@ -348,11 +362,14 @@ func (w *traceWalk) envOne() {
 		}
 		w.flip("r2")
 	case "deal":
-		if w.rng.Intn(2) == 0 {
+		switch w.rng.Intn(3) {
+		case 0:
 			w.presence("r2")
-			return
+		case 1:
+			w.admission("p")
+		default:
+			w.flip("r1")
 		}
-		w.flip("r1")
 	case "land":
 		if s.Streams["s1"].Held {
 			w.unhold("s1")
@@ -521,6 +538,23 @@ func (w *traceWalk) presence(row string) {
 	}
 	w.away[row] = struct{}{}
 	w.moved("Leave", nil)
+}
+
+// admission flips producer p's re-proof: refused at its stream's base (the
+// base moved and its PATHS went), or admitted again. The store is untouched;
+// only the tick's Inputs.Unadmitted changes.
+func (w *traceWalk) admission(p string) {
+	w.ok()
+	if _, refused := w.unadmitted[p]; refused {
+		delete(w.unadmitted, p)
+		w.moved("Admit", nil)
+		return
+	}
+	if w.unadmitted == nil {
+		w.unadmitted = map[string]string{}
+	}
+	w.unadmitted[p] = "card " + p + ": PATHS a/x: neither it nor its directory a/ is there: the walk"
+	w.moved("Refuse", nil)
 }
 
 // module is the StepsTraceLog module of the records, and cfg the trace cfg:

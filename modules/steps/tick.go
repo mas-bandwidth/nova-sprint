@@ -62,6 +62,7 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 	t.deal()
 	t.undealt()
 	t.landRequests()
+	t.unadmitted()
 	nudges := t.unacked()
 	t.judgements()
 	plan := t.pack()

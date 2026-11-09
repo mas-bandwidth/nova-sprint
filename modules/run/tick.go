@@ -251,6 +251,9 @@ type Observed struct {
 	Heads   map[string]string
 	Results []steps.InboxItem
 	Version string // the run's release: a worker row behind it is dealt nothing (roster.Advertised); "" pins nothing
+	// Unadmitted is each producer the latest admission proof of its stream
+	// refused, and why (Admission.Unadmitted).
+	Unadmitted map[string]string
 }
 
 // Tick is one tick: check the lock, fold, and, unless the sprint is stopped,
@@ -282,7 +285,7 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	}
 	o.Roster = o.Roster.Advertised(t.snap.Rows, o.Version) // a worker's own width and tiers (defect 74), none when its binary is behind the run's (D3)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
-		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster}
+		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted}
 	a := t.asker(ctx, o.Roster)
 	plan := steps.Tick(t.view, in, a)
 	t.push.Nudge(plan.Nudges)

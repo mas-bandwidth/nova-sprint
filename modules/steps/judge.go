@@ -22,7 +22,7 @@ var choices = map[string]string{
 	"held": "unhold | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
 	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
-	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "unacked": "retry", "undealt": "retry",
+	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "unacked": "retry", "undealt": "retry", "admission": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once).
@@ -186,6 +186,10 @@ func (t *tick) cleared(j store.Judgement) string {
 	case "undealt":
 		if c, ok := t.v.Cards[j.About]; !ok || c.State != "ready" {
 			return j.About + " was dealt or left ready"
+		}
+	case "admission":
+		if len(t.unadmittedIn(j.About)) == 0 {
+			return "stream " + j.About + "'s waiting and ready cards pass admission at its base"
 		}
 	case "stall":
 		if at, ok := t.v.Landed[j.About]; ok && at.After(j.OpenedAt) {

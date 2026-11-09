@@ -155,7 +155,7 @@ func (t *tick) undealt() {
 	}
 	for _, p := range t.v.Producers("ready") {
 		c := t.v.Cards[p]
-		if c.Kind != "producer" || t.v.Streams[c.Stream].Held || !t.free(p) {
+		if c.Kind != "producer" || t.v.Streams[c.Stream].Held || !t.free(p) || !t.admitted(p) {
 			continue
 		}
 		since := t.in.Now.Sub(t.readyAt(p))

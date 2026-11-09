@@ -91,12 +91,7 @@ func benchModelCheck(version int, cat policy.Catalog, ro roster.Roster) *Fail {
 // paths at the base, DONE-WHEN as one command, its work not
 // at the base. A restore or an old add is held to today's rule here.
 func (e *Engine) checkCards(ctx context.Context, r *checkReport, snap store.Snapshot) {
-	var facts []cardFacts
-	for _, c := range snap.Cards {
-		if c.Kind == "producer" && (c.State == "waiting" || c.State == "ready") {
-			facts = append(facts, factsOfCard(c))
-		}
-	}
+	facts := undealtFacts(snap, "")
 	if len(facts) == 0 {
 		r.ok("cards: none waiting or ready")
 		return
@@ -116,6 +111,42 @@ func (e *Engine) checkCards(ctx context.Context, r *checkReport, snap store.Snap
 	if len(ids) == 0 {
 		r.ok("cards: %d waiting or ready, each admitted (stream live, tier served, paths at base, gates parse, not at base)", len(facts))
 	}
+}
+
+// undealtFacts is the producers not yet dealt (waiting or ready), of
+// stream ("" every stream).
+func undealtFacts(snap store.Snapshot, stream string) []cardFacts {
+	var facts []cardFacts
+	for _, c := range snap.Cards {
+		if c.Kind == "producer" && (c.State == "waiting" || c.State == "ready") && (stream == "" || c.Stream == stream) {
+			facts = append(facts, factsOfCard(c))
+		}
+	}
+	return facts
+}
+
+// ReproveStream is checkCards for one stream, for run (run.Admission, at
+// each move of the stream's base): each refused card's refusal and fix as
+// one line, by id. A read that could not be made (an I/O failure, exit 2)
+// fails the proof rather than refusing the stream's cards.
+func (e *Engine) ReproveStream(ctx context.Context, snap store.Snapshot, stream string) (map[string]string, error) {
+	facts := undealtFacts(snap, stream)
+	if len(facts) == 0 {
+		return nil, nil
+	}
+	refused, err := e.admitCards(ctx, snap, facts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(refused))
+	for id, why := range refused {
+		f := classify(why)
+		if f.Exit == exitFailed {
+			return nil, f
+		}
+		out[id] = f.Error()
+	}
+	return out, nil
 }
 
 // checkWorking is each working consumer's job: the store records the

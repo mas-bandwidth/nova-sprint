@@ -179,6 +179,15 @@ high, normal, low; within a rung, policy's order.
   its tier has room, opens one judgement naming the row, the card and the
   cause (the tick's budget spent before it, or an engine defect). Checked
   after the deal, so a producer dealt this tick is skipped.
+- `admission`: layer 6 re-proves a stream's waiting and ready producers
+  with check's admission each time the stream's base moves (run's
+  `Admission`, verbs `ReproveStream`) and passes the refused ones in
+  `Inputs.Unadmitted`. Such a producer is never dealt nor preempted for, and
+  is not counted undealt; each stream with one has one `admission`
+  judgement naming its cards and the first refusal and fix, cleared when
+  none fails or waits (Steps.tla `admitted`: `NeverDealtUnadmitted`,
+  `AdmissionShown`; witnesses `StepsDealtUnadmitted`,
+  `StepsAdmissionUnshown`; the walk's `Refuse` and `Admit`).
 - `held` for a route: a producer a `missing-route:` fault held waiting
   (LAYER-2, defect 48) gets one `held` judgement naming the row, the card
   and what is missing; it waits, never dealt again by itself, until
@@ -253,7 +262,7 @@ for each candidate, and the engine refuses one below the card's tier.
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,
-  `no-policy`, `unacked`, `undealt` (`conflict`, `base-red`,
+  `no-policy`, `unacked`, `undealt`, `admission` (`conflict`, `base-red`,
   `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
   the tick (LESSONS 3.17).
