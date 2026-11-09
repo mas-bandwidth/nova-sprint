@@ -351,6 +351,20 @@ func TestReleaseDryRun(t *testing.T) {
 	}
 }
 
+// A card stored with a shell character in its id (admission refuses one
+// now; an older store may hold it) is printed as one quoted shell word in
+// the command a verb tells its caller to run. Seeded below admission.
+func TestPrintedRefIsOneShellWord(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	c := s.Cards["p1.w1"]
+	delete(s.Cards, "p1.w1")
+	c.ID = "a;b.w1"
+	s.Cards[c.ID] = c
+	w := worldFrom(t, s)
+	want(t, w.do("alice", "release", "a;b.w1@1", "--reason", "tier", "--dry-run"), 0, "RELEASE 'a;b.w1@1' (dry run)", "nova-sprint release 'a;b.w1@1' --reason")
+}
+
 // failedAnswers is a policy engine whose active version failed: it answers
 // from the built-in fallback and says so.
 type failedAnswers struct{ fakeAnswers }
