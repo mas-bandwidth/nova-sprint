@@ -43,6 +43,7 @@ type Ticker struct {
 	inflight   map[string]steps.EdgeRequest
 	refused    []steps.RefusedOp
 	seen       map[string]time.Time
+	last       time.Time // the last tick's Now
 	prev       int
 	counts     TickCounts
 	push       *Pusher
@@ -247,6 +248,7 @@ func (t *Ticker) Fold(ctx context.Context) error {
 type Observed struct {
 	Now     time.Time
 	Present []string
+	Unread  bool // the who read failed: Present is unknown, not empty
 	Roster  roster.Roster
 	Heads   map[string]string
 	Results []steps.InboxItem
@@ -274,6 +276,12 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	if err := t.Fold(ctx); err != nil {
 		return nil, err
 	}
+	if o.Unread && !t.last.IsZero() { // a failed read is no evidence of silence: every row's silence holds across it
+		for name, at := range t.seen {
+			t.seen[name] = at.Add(o.Now.Sub(t.last))
+		}
+	}
+	t.last = o.Now
 	for _, name := range o.Present {
 		t.seen[name] = o.Now
 	}

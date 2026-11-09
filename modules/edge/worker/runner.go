@@ -842,7 +842,7 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	if err != nil {
 		return err
 	}
-	if !receipt.Accepted || receipt.Op != req.ResultID {
+	if !receipt.Accepted || !store.IsConsumerOp(receipt.Op, req.ResultID) {
 		return fmt.Errorf("%w: report %s was not accepted (accepted=%v op=%q reason=%q): keeping job directory",
 			ErrRefused, req.ResultID, receipt.Accepted, receipt.Op, receipt.Reason)
 	}
