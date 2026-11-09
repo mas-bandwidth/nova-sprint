@@ -533,6 +533,29 @@ func TestTickRouteRestWindowFromPolicy(t *testing.T) {
 	}
 }
 
+// TestTickRestingRowIsNotDealtTo: after route_rest_after faults on its only
+// serving row, the next tick deals the producer nowhere (the rest is a deal
+// filter, LPM R34) and opens unserved; the card stays ready.
+func TestTickRestingRowIsNotDealtTo(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	for i := 1; i <= Engine.Limits.RouteRestAfter; i++ {
+		s.run(3)
+		id := fmt.Sprintf("p1.w%d", i)
+		s.take(id)
+		s.report(id, "fault", "", "the harness crashed")
+	}
+	s.tick()
+	next := fmt.Sprintf("p1.w%d", Engine.Limits.RouteRestAfter+1)
+	_, dealt := s.snap().Cards[next]
+	assert.False(t, dealt, "%s was dealt to resting row r1", next)
+	s.requireState("p1", "ready")
+	assert.Len(t, s.openJudgements("unserved"), 1)
+}
+
 // TestTickEscalateAfterFromPolicy: escalation's bounces are policy's.
 func TestTickEscalateAfterFromPolicy(t *testing.T) {
 	t.Parallel()

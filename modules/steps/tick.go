@@ -215,11 +215,12 @@ func (t *tick) streamFacts(s string) StreamFacts {
 }
 
 // candidates is the rows policy may name for c: open (up, not held), on the
-// bus (present; Steps.tla Eligible and ServingOpen), not resting, serving
-// c's tier, and for a read not c's author and not holding a live read of
-// c's head. Room is the engine's check at the deal. The work
-// list is built once per tier per tick (row claims are made before the
-// deal); a read's is filtered from it.
+// bus (present; Steps.tla Eligible and ServingOpen), serving c's tier, and
+// for a read not c's author and not holding a live read of c's head. Room
+// is the engine's check at the deal. The work list is built once per tier
+// per tick, by questions() before the rest and before any claim, so it is
+// what policy was asked; serving drops the resting and claimed rows. A
+// read's is filtered from it.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	routes := card.NeedsRoutes(c.Brief) // only rows serving every route the card declares
 	key := c.Tier + "\x00" + strings.Join(routes, ",")
@@ -227,7 +228,7 @@ func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	if !ok {
 		for _, n := range t.rowNames {
 			r := t.v.Rows[n]
-			if _, resting := t.rested[n]; resting || !t.v.Open(r) || !t.present(n) || !slices.Contains(t.tiers(n), c.Tier) || !t.in.Roster.ServesRoutes(n, routes) || !t.unclaimed(n) {
+			if !t.v.Open(r) || !t.present(n) || !slices.Contains(t.tiers(n), c.Tier) || !t.in.Roster.ServesRoutes(n, routes) {
 				continue
 			}
 			work = append(work, t.rowFacts(r))
