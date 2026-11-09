@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -138,6 +139,65 @@ func TestClear(t *testing.T) {
 	want(t, w.do("carol", "clear", "--confirm", "1"), 0, "CLEARED epoch=2 opened; backup /b/1.dump")
 	if got := w.snap(t); got.Epoch != 2 || len(got.Cards) != 0 {
 		t.Fatalf("snapshot %+v", got)
+	}
+}
+
+// beating is the store with a row beating once before the first Clear
+// lands: a worker's heartbeat racing the clear's fence.
+type beating struct {
+	*store.Fake
+	t     *testing.T
+	raced bool
+}
+
+func (b *beating) Clear(ctx context.Context, op store.Op) (store.Receipt, error) {
+	if !b.raced {
+		b.raced = true
+		beat(b.t, b.Fake, "alice", 99)
+	}
+	return b.Fake.Clear(ctx, op)
+}
+
+// beat applies one worker heartbeat (`beat`'s op: the row's load columns).
+func beat(t *testing.T, f *store.Fake, row string, load int) {
+	t.Helper()
+	op := store.Op{ID: fmt.Sprintf("beat.%s.%d", row, load), Epoch: 1, Actor: row, Kind: "beat", At: t0,
+		Writes: []store.Write{store.SetRowLoad{Row: row, Load1Centi: load, Cores: 8}}}
+	if r, err := f.Apply(context.Background(), op); err != nil || !r.Accepted {
+		t.Fatalf("beat %s: %+v %v", row, r, err)
+	}
+}
+
+// TestClearWithWorkersBeating: workers' heartbeats land while the backup is
+// made and between the backup and the clear; a beat writes only its row,
+// which the clear carries into the new epoch, so the clear still lands. A
+// card write in the same window still refuses.
+func TestClearWithWorkersBeating(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	quiet(&s)
+	w := worldFrom(t, s)
+	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
+	w.arch.during = func() { beat(t, w.f, "alice", 1); beat(t, w.f, "bob", 2); beat(t, w.f, "alice", 3) }
+	w.e.Store = &beating{Fake: w.f, t: t}
+	want(t, w.do("carol", "clear", "--confirm", "1"), 0, "CLEARED epoch=2 opened; backup /b/1.dump")
+	if got := w.snap(t); got.Epoch != 2 || len(got.Cards) != 0 || got.Rows["alice"].Load1Centi != 99 {
+		t.Fatalf("snapshot %+v", got)
+	}
+
+	w = worldFrom(t, s)
+	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
+	w.arch.during = func() {
+		beat(t, w.f, "alice", 1)
+		op := store.Op{ID: "judge", Epoch: 1, Actor: "sprint", Kind: "judge", At: t0,
+			Writes: []store.Write{store.PutJudgement{ID: "engine.s.1", Kind: "engine", About: "s", Question: "q", Group: "engine"}}}
+		if r, err := w.f.Apply(context.Background(), op); err != nil || !r.Accepted {
+			t.Fatalf("judgement write: %+v %v", r, err)
+		}
+	}
+	want(t, w.do("carol", "clear", "--confirm", "1"), 1, "the store changed while the backup was made")
+	if got := w.snap(t); got.Epoch != 1 {
+		t.Fatalf("cleared over a card write: epoch %d", got.Epoch)
 	}
 }
 
