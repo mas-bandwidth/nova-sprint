@@ -129,8 +129,8 @@ func TestLandEveryOtherOutcomeLandsNothing(t *testing.T) {
 		if err != nil || res.Outcome != c.want || res.Reason == "" || gf.OriginRef("v2") != root {
 			t.Fatalf("%s: %+v err=%v, want %s with a reason and base unmoved", c.name, res, err, c.want)
 		}
-		if c.want == OutcomeRed && (!slices.Equal(res.FailingCI, []string{"unit"}) || len(res.NewRed) != 1 || len(res.NewRed[0].Jobs[0].Lines) == 0) {
-			t.Fatalf("red carries no failing checks, new red or lines: %+v", res)
+		if c.want == OutcomeRed && (!slices.Equal(res.FailingCI, []string{"unit"}) || len(res.FailingLines) == 0) {
+			t.Fatalf("red carries no failing checks or lines: %+v", res)
 		}
 	}
 }

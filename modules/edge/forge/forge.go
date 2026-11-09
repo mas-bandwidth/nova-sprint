@@ -89,11 +89,6 @@ type Forge interface {
 	// commit base now has.
 	Merge(ctx context.Context, repo string, pr int, sha string) (string, error)
 	FailedLines(ctx context.Context, repo, url string) ([]string, error)
-	// Inheritance splits head's failing workflows into those red on the
-	// base too and those that are not (actions.go).
-	Inheritance(ctx context.Context, repo, base, baseTip, head string) (RedSplit, error)
-	// Authors is PR pr's distinct commit author identities.
-	Authors(ctx context.Context, repo string, pr int) ([]string, error)
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on
