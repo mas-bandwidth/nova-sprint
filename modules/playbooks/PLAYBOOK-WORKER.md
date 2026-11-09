@@ -162,7 +162,9 @@ Each message is a wake. Handle it, then wait for the bus again.
    `git checkout -b <branch> <base>`. If it prints a sha, an earlier attempt pushed work (a fix,
    a withdraw, a release or a fault): `git fetch origin <branch>`, then
    `git checkout -b <branch> origin/<branch>`, and continue from that work with the brief's
-   finding in hand; never restart from the base and never throw the earlier work away.
+   finding in hand; never restart from the base and never throw the earlier work away. If the
+   finding is a merge conflict, fetch the base, merge it into your branch and resolve the
+   conflicts; never rebase: your next head must descend from the prior head.
 3. Before you change anything, run the brief's DONE-WHEN gates once at the commit you start
    from (the base, or the earlier attempt's head), so you know what was already red. A red the
    brief's base-reds table already lists is cited, never fixed on this card and never re-run
@@ -192,8 +194,8 @@ Each message is a wake. Handle it, then wait for the bus again.
    group branch when several heads land together); `finish` needs only your pushed head.
 9. Before you finish, check that the remote tip is your head: `git ls-remote origin <branch>`
    prints the full sha you will report. You need not chase the base: a head behind it lands
-   through the group branch, merged onto the base's tip. Rebase onto the base only if your own
-   gates need it, then push with `git push --force-with-lease origin <branch>`.
+   through the group branch, merged onto the base's tip. Merge the base in only if your own
+   gates need it, never rebase, then push with `git push origin <branch>`.
 10. Do not wait for CI. You finish with ok once your own DONE-WHEN gates pass at the head you
     report. CI runs on the landing's PR, which is the coordinator's business; a red there comes
     back to you, or to another row, as a fix deal by push, with the head and the finding.
@@ -295,8 +297,8 @@ answer, never a thing to route round.
   push with `--force-with-lease`, and finish with the new head.
 - `the sprint has no commit identity`: nothing may commit yet; tell the coordinator.
 - `head <x> is the base; nothing was done`: an empty head is never a finish.
-- `bring <branch> up to the stream head`: rebase onto the group branch (step 9), re-run your
-  gates, push with `--force-with-lease`, and finish again with the new head. A red gate that is
+- `bring <branch> up to the stream head`: merge the group branch in (step 9), never rebase,
+  re-run your gates, push, and finish again with the new head. A red gate that is
   not your card's (already red at base, outside PATHS) is a `finish --failed` naming it. A CI
   red at landing is the coordinator's; it reaches you only as a fix deal.
 - `<you> wrote the head and cannot read it`: you were never meant to read it; wait for the bus.
