@@ -246,7 +246,7 @@ func (m *mover) park(e Park) *Refusal {
 	}
 	m.state(m.p.ID, Waiting)
 	if e.Reason == "" {
-		e.Reason = "stream " + m.s.Name + " is held"
+		e.Reason = holdPhrase(m.s)
 	}
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	return nil
@@ -1293,7 +1293,7 @@ func holdStream(s Stream, v HoldStream) (Plan, *Refusal) {
 	m := &mover{}
 	m.expect(store.StreamHeld{Stream: s.Name, Held: false}, store.AtSeq{Seq: v.Seq})
 	m.write(store.SetStreamHeld{Stream: s.Name, Held: true})
-	why := cmp.Or(v.Reason, "stream "+s.Name+" is held")
+	why := cmp.Or(v.Reason, holdPhrase(s))
 	for _, p := range v.Ready {
 		m.expect(store.CardGen{Card: p.ID, Gen: p.Gen})
 		m.state(p.ID, Waiting)

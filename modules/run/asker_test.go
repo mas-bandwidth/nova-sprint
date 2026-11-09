@@ -34,3 +34,44 @@ func TestNoDealNamesTheStoredVersionToActivate(t *testing.T) {
 	}
 	assert.Equal(t, 3, tk.storedPolicy(context.Background()), "the newest stored version")
 }
+
+// TestStepsAnswersAttributesFailuresToTheirOwnVersion: v5 failed its verdict
+// question and v4 answered the tick; v4's verdicts are the tick's and no
+// failure is filed under v4 (v5's failure is its own policy judgement).
+func TestStepsAnswersAttributesFailuresToTheirOwnVersion(t *testing.T) {
+	t.Parallel()
+	p := policy.Answers{Version: 4, Verdict: map[string]string{"c1": "accept"}}
+	fs := []policy.Failure{{Version: 5, Label: "v5", Question: "verdict", Subject: "c1", Line: 3, Msg: "verdict: not a string"}}
+	a := stepsAnswers(p, fs)
+	assert.Equal(t, 4, a.Version)
+	assert.Equal(t, "accept", a.Verdict["c1"])
+	assert.Empty(t, a.Failed, "v5's failure is not v4's")
+}
+
+// TestJudgementOpLeavesTheAnsweringVersionToSteps: a failed question of the
+// version that answered is the steps' policy judgement (one per question,
+// group policy:v4), so run's op opens none for it; a version that failed
+// and did not answer (v5) is run's, one judgement.
+func TestJudgementOpLeavesTheAnsweringVersionToSteps(t *testing.T) {
+	t.Parallel()
+	a := &asker{snap: store.Snapshot{Seq: 7}, answers: policy.Answers{Version: 4}, failures: []policy.Failure{
+		{Version: 4, Label: "v4", Question: "verdict", Subject: "c1", Line: 3, Msg: "verdict: not a string"},
+		{Version: 5, Label: "v5", Line: 1, Msg: "syntax error"}}}
+	op, ok := judgementOp(a, Observed{})
+	require.True(t, ok)
+	require.Len(t, op.Writes, 1)
+	assert.Equal(t, policy.Group(5), op.Writes[0].(store.PutJudgement).Group)
+}
+
+// TestStepsAnswersCarryEveryLimit: every limit policy validates reaches the
+// steps (the steering numbers were dropped, so the engine's ran whatever
+// the policy said).
+func TestStepsAnswersCarryEveryLimit(t *testing.T) {
+	t.Parallel()
+	p := policy.Answers{Version: 1, Limits: policy.Limits{Bounces: 4, Faults: 5, SameFinding: 3, ReportsPerTick: 7, RouteRestWindow: 9, RouteRestAfter: 2,
+		EscalateAfter: 3, FrontierAfter: 6, FlapLimit: 8, FleetWidthCap: 4, IdleFloor: 0.25, LandTarget: 0.75}}
+	l := stepsAnswers(p, nil).Limits
+	require.NotNil(t, l)
+	assert.Equal(t, [9]any{4, 5, 3, 7, 9, 2, 3, 6, 8}, [9]any{l.Bounces, l.Faults, l.SameFinding, l.ReportsPerTick, l.RouteRestWindow, l.RouteRestAfter, l.EscalateAfter, l.FrontierAfter, l.FlapLimit})
+	assert.Equal(t, [2]float64{0.25, 0.75}, [2]float64{l.IdleFloor, l.LandTarget})
+}

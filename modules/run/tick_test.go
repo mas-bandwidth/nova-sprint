@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -294,8 +295,8 @@ func TestStopIsOneMessageThenAck(t *testing.T) {
 	var said []string
 	e.Fault = func(what string, err error) { said = append(said, what+": "+err.Error()) }
 	e.stop(context.Background(), steps.EdgeRequest{ID: "stop.2", Kind: "stop", Row: "alice", Consumer: "p1.w1"})
-	if got := e.Results(); len(got) != 0 {
-		t.Fatalf("an unsent stop was acknowledged: %+v", got)
+	if got := e.Results(); len(got) != 1 || got[0].Outcome != "fault" || got[0].Request != "stop.2" {
+		t.Fatalf("an unsent stop must leave flight by a fault result, or a later stop of the card is never sent: %+v", got)
 	}
 	if len(said) != 1 || !strings.HasPrefix(said[0], "stop stop.2 to alice: ") {
 		t.Fatalf("the unsent stop's cause was not said: %q", said)
@@ -557,5 +558,110 @@ func TestTickDealsNothingToAStaleRow(t *testing.T) {
 	}
 	if s := tk.Snapshot(); s.Cards["p1"].State != "working" {
 		t.Fatalf("p1 is %s after the row came up to the run's release", s.Cards["p1"].State)
+	}
+}
+
+// TestServeRosterFailureFailsTheTickAndJudges: every roster read fails, so
+// no tick plans; each TICK line says status=error with the cause, and one
+// engine judgement about the roster is open (opened once, not per tick).
+func TestServeRosterFailureFailsTheTickAndJudges(t *testing.T) {
+	t.Parallel()
+	f := started(t)
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{err: errors.New("config: connection refused")}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &watched{beats: &beats{now: t0, tick: make(chan time.Time)}, read: make(chan struct{})}
+	b := &fakeBus{who: map[string]bus.Presence{}}
+	var log strings.Builder
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, ReposDir: t.TempDir(), Clock: clock, Log: &log}, &healthy{})
+	}()
+	for range 3 {
+		clock.tick <- t0
+	}
+	clock.tick <- t0 // the third tick has finished once the fourth beat is taken
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	out := log.String()
+	for _, n := range []string{"1", "2", "3"} {
+		var line string
+		for _, l := range strings.Split(out, "\n") {
+			if strings.HasPrefix(l, "TICK n="+n+" ") {
+				line = l
+			}
+		}
+		if !strings.Contains(line, "status=error") || !strings.Contains(line, "roster read") || !strings.Contains(line, "connection refused") {
+			t.Fatalf("tick %s does not report the failed roster read: %q\n%s", n, line, out)
+		}
+	}
+	snap, err := f.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var open []string
+	for id, j := range snap.Judgements {
+		if j.Kind == "engine" && j.About == "roster" && j.State == "open" {
+			open = append(open, id)
+		}
+	}
+	if len(open) != 1 {
+		t.Fatalf("open roster engine judgements %v, want one: %+v", open, snap.Judgements)
+	}
+}
+
+// TestNewTickerFoldsTheEpochsWitnesses: the facts a snapshot does not carry
+// (when a producer went ready, a row went down) are folded from the
+// epoch's events at the cold start, so a restart does not reset every bound
+// to the restart's time (the view's Since).
+func TestNewTickerFoldsTheEpochsWitnesses(t *testing.T) {
+	t.Parallel()
+	f, _ := seeded(t)
+	must(t, f, "ready", store.SetCardState{Card: "p1", State: "ready"})
+	must(t, f, "down", store.SetRowState{Row: "alice", State: "down"})
+	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tk.view.ReadyAt["p1"]; !got.Equal(t0) {
+		t.Errorf("ReadyAt[p1] = %v, want %v", got, t0)
+	}
+	if got := tk.view.Down["alice"]; !got.Equal(t0) {
+		t.Errorf("Down[alice] = %v, want %v", got, t0)
+	}
+}
+
+// TestNewTickerWitnessesOnlyTheEpoch: after a clear the witnesses are the
+// new epoch's: the old epoch's events are skipped by the bisection, not
+// folded.
+func TestNewTickerWitnessesOnlyTheEpoch(t *testing.T) {
+	t.Parallel()
+	f, _ := seeded(t)
+	must(t, f, "ready", store.SetCardState{Card: "p1", State: "ready"})
+	ctx := context.Background()
+	if rc, err := f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "test", Kind: "clear", At: t0.Add(time.Minute)}); err != nil || !rc.Accepted {
+		t.Fatalf("clear: %+v %v", rc, err)
+	}
+	at := t0.Add(2 * time.Minute)
+	for i, ws := range [][]store.Write{{store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"}},
+		{store.PutCard{ID: "p2", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p2", Paths: []string{"a"}}},
+		{store.SetCardState{Card: "p2", State: "ready"}}} {
+		if rc, err := f.Apply(ctx, store.Op{ID: fmt.Sprint("e2-", i), Epoch: 2, Actor: "test", Kind: "test", At: at, Writes: ws}); err != nil || !rc.Accepted {
+			t.Fatalf("op %d: %+v %v", i, rc, err)
+		}
+	}
+	tk, err := NewTicker(ctx, f, &healthy{}, &answering{}, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tk.view.ReadyAt["p2"]; !got.Equal(at) {
+		t.Errorf("ReadyAt[p2] = %v, want %v", got, at)
+	}
+	if _, old := tk.view.ReadyAt["p1"]; old {
+		t.Error("the old epoch's p1 is witnessed")
 	}
 }

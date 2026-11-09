@@ -98,8 +98,9 @@ func (t *tick) unacked() []Nudge {
 // redeal withdraws work consumer c, unacknowledged on row n past
 // ready_take, and plans its producer's Start to another row with room in
 // the same group; false when no other serving row has room, the producer
-// is claimed this tick, the base is unknown or the stream is held, and
-// the card stays where it is.
+// is claimed this tick, the base is unknown, the stream is held or the
+// group plans nothing (the budget is spent, or the card machine refused
+// it), and the card stays where it is.
 func (t *tick) redeal(n string, c store.Card, since time.Duration) bool {
 	p, base := t.v.Cards[c.Of], t.in.Heads[c.Stream]
 	if c.Kind != "work" || !t.unclaimed(c.ID) || !t.free(c.Of) || base == "" || t.v.Streams[c.Stream].Held {
@@ -110,9 +111,8 @@ func (t *tick) redeal(n string, c store.Card, since time.Duration) bool {
 		return false
 	}
 	t.tally[row]++
-	t.group("withdraw", c.ID, t.withdraw(c.ID, fmt.Sprintf("in %s's hand %d s, not taken; dealt again", n, int(since/time.Second))),
-		t.releasedStart(p, c.ID, card.Start{Row: row, Branch: branch(p), Base: base, Model: t.model(p, row)}))
-	return true
+	return t.group("withdraw", c.ID, t.withdraw(c.ID, fmt.Sprintf("in %s's hand %d s, not taken; dealt again", n, int(since/time.Second))),
+		t.releasedStart(p, c.ID, card.Start{Row: row, Branch: branch(p), Base: base, Model: t.model(p, row)})) != nil
 }
 
 // releasedStart is producer p's Start planned on the records the withdraw

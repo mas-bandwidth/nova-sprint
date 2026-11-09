@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -36,6 +37,7 @@ type tick struct {
 	pend      set               // kind and about of every judgement in judges (addJudge)
 	jidx      judgedIndex       // the view's judgements by kind and about (judged)
 	expires   map[string]string // judgement id -> why it expires
+	leftOut   map[string]string // refusedAlone key -> the store's reason ("" for one already judged), built once (leaveOut)
 }
 
 // Tick plans one tick (docs/LAYER-3-STEPS.md "The tick"; tla/Steps.tla Tick).
@@ -117,6 +119,9 @@ func (t *tick) group(kind, about string, moves ...move) *group {
 	g, r := t.newGroup(kind, about, moves...)
 	if r != nil {
 		t.engine(about, kind+" of "+about+" refused by the card machine on the view: "+r.Reason)
+		return nil
+	}
+	if t.leaveOut(g.key) {
 		return nil
 	}
 	if kind != "pre" && !(kind == "start" && rung(t.v.Cards[about]) == "blocker") {
@@ -273,5 +278,81 @@ func sortedKeys[V any](m map[string]V) []string {
 		out = append(out, k)
 	}
 	slices.Sort(out)
+	return out
+}
+
+// refusedAlone names a group by its kind, cards (card@gen for those it
+// read), row and the hash of its conditions and writes: a group planned
+// again on the same state has the same name, and one a race moved a fence
+// of (a row's gen, a card's) does not.
+func refusedAlone(k GroupKey) string {
+	parts := make([]string, len(k.Cards))
+	for i, c := range k.Cards {
+		parts[i] = c
+		if g, read := k.Gens[c]; read {
+			parts[i] = fmt.Sprintf("%s@%d", c, g)
+		}
+	}
+	name := k.Kind + " of " + strings.Join(parts, ",")
+	if k.Row != "" {
+		name += " on row " + k.Row
+	}
+	return name + " (" + k.Body + ")" + aloneWords
+}
+
+// aloneChanged is the card a refused-alone engine judgement read that has
+// moved since (its cause cleared: the group is planned again), or "".
+func (t *tick) aloneChanged(question string) string {
+	before, _, ok := strings.Cut(question, aloneWords)
+	if !ok {
+		return ""
+	}
+	before, _, _ = strings.Cut(before, " (")
+	before, _, _ = strings.Cut(before, " on row ")
+	_, list, _ := strings.Cut(before, " of ")
+	for _, part := range strings.Split(list, ",") {
+		if id, gen, read := strings.Cut(part, "@"); read {
+			if c, ok := t.v.Cards[id]; !ok || fmt.Sprint(c.Gen) != gen {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+const aloneWords = " refused alone by the store"
+
+// leaveOut is the refused-op rule's second half (LAYER-3 tick step 7): a
+// group the store refused alone, planned again at the same gens (no race
+// moved its cards: a defect here or in layer 2), is left out with one engine
+// judgement naming it and the store's reason, and stays out while that
+// judgement is open and its cards are unchanged.
+func (t *tick) leaveOut(k GroupKey) bool {
+	if t.leftOut == nil {
+		t.leftOut = map[string]string{}
+		for _, j := range t.v.Judgements {
+			if before, _, ok := strings.Cut(j.Question, aloneWords); ok && j.Kind == "engine" && j.State == "open" {
+				t.leftOut[before+aloneWords] = ""
+			}
+		}
+		for _, r := range t.in.Refused {
+			if len(r.Groups) != 1 {
+				continue
+			}
+			if _, judged := t.leftOut[refusedAlone(r.Groups[0])]; !judged {
+				t.leftOut[refusedAlone(r.Groups[0])] = r.Reason
+			}
+		}
+	}
+	name := refusedAlone(k)
+	why, out := t.leftOut[name]
+	if out && why != "" {
+		about := k.Row
+		if len(k.Cards) > 0 {
+			about = k.Cards[0]
+		}
+		t.engine(about, name+": "+why+"; left out until its cards change")
+		t.leftOut[name] = ""
+	}
 	return out
 }

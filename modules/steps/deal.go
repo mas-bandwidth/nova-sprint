@@ -296,9 +296,9 @@ func (t *tick) desired(c store.Card, kind string) int {
 	}
 	want := tierIndex(c.Tier)
 	switch {
-	case c.Bounces >= Engine.FrontierAfter:
+	case c.Bounces >= t.lim.FrontierAfter:
 		want = top
-	case c.Bounces >= Engine.EscalateAfter:
+	case c.Bounces >= t.lim.EscalateAfter:
 		want++
 	}
 	return min(want, top)

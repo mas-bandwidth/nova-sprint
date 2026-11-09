@@ -104,7 +104,7 @@ func TestAskerOutOfRange(t *testing.T) {
 // TestAskerInDomain: valid answers of a version are used as given.
 func TestAskerInDomain(t *testing.T) {
 	t.Parallel()
-	l := Limits{Bounces: 3, Faults: 2, SameFinding: 1, ReportsPerTick: 100, RouteRestWindow: 5, RouteRestAfter: 2, Budget: 40, Pack: 5}
+	l := Limits{Bounces: 3, Faults: 2, SameFinding: 1, ReportsPerTick: 100, RouteRestWindow: 5, RouteRestAfter: 2, EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 40, Pack: 5}
 	tm := Timeouts{RowSilentGone: 60, RowSilentWithdraw: 60, LandingStall: 30, Judgement: 86400, RouteRestFor: 1, ReadyNag: 5, ReadyTake: 90, BaseRegate: []int{1, 2, 3}}
 	o := newOracle(Answers{Version: 1, Limits: &l, Timeouts: &tm}, Engine)
 	assert.Equal(t, l, o.limits())

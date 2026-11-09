@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"slices"
@@ -137,7 +138,8 @@ func (t *Ticker) seed(ctx context.Context) {
 // tick is one tick (LAYER-6 section 2): the roster and who is on the bus,
 // read once; the Ticker's fold and plan; the edge requests out; the
 // envelopes; the board. A failed roster read plans nothing (an empty
-// roster would judge every row unknown) but still folds, pushes and shows;
+// roster would judge every row unknown) but still folds, pushes and shows,
+// fails the tick's status and opens the engine judgement (RosterUnread);
 // so does a failed who read before any row was ever seen (no row would be
 // present, and every ready tier would be judged unserved).
 func (l *loop) tick(ctx context.Context, n int) error {
@@ -152,6 +154,12 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	var err error
 	if rerr != nil || (werr != nil && !l.ticker.Seen()) {
 		err = l.ticker.Fold(tctx)
+		if rerr != nil { // logged on the TICK line, status error, and judged
+			if err == nil {
+				err = l.ticker.RosterUnread(tctx, start, rerr)
+			}
+			err = errors.Join(err, fmt.Errorf("run: roster read: %w", rerr))
+		}
 	} else {
 		var reqs []steps.EdgeRequest
 		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version})

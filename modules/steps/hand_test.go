@@ -300,3 +300,28 @@ func TestDealPresentThroughOneFailedWho(t *testing.T) {
 	s.requireState("p2", "ready")
 	assert.Len(t, s.openJudgements("unserved"), 1, "absent past the grace: no row serves")
 }
+
+// TestHandRedealOverBudgetStillNudges: past ready_take with another row
+// with room, a re-deal the tick's spent budget refuses plans nothing, so
+// the card is still in its row's hand and the row is still nudged; a
+// redeal that planned nothing never reports that it dealt.
+func TestHandRedealOverBudgetStillNudges(t *testing.T) { // unitlint: serial, it writes the package's Engine, which every tick reads
+	was := Engine.Limits
+	Engine.Limits.Budget = 1
+	t.Cleanup(func() { Engine.Limits = was })
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	s.producer("p2", "s1", "pro", "a/y") // its Resolve spends the budget before the re-deal
+	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
+	p := s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	assert.Len(t, p.Nudges, 1, "not re-dealt, so still nudged")
+}

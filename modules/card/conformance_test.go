@@ -463,7 +463,7 @@ func TestConformanceHoldAndPark(t *testing.T) {
 	w.refused("p1", Start{Row: "r1", Branch: "b", Base: base}, "stream s1 is held; no new consumers start in a held stream")
 	w.move("p1", Park{})
 	p := w.card("p1")
-	assert.Equal(t, []any{Waiting, "stream s1 is held"}, []any{p.State, p.Reason})
+	assert.Equal(t, []any{Waiting, "held: stream s1 is held"}, []any{p.State, p.Reason})
 }
 
 func TestConformanceNeeds(t *testing.T) {

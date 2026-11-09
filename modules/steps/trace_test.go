@@ -30,9 +30,9 @@ import (
 // write it, and they are serial: a serial top-level test ends before any
 // parallel one starts.
 func modelDefaults(t *testing.T) {
-	was := Engine.EscalateAfter
-	Engine.EscalateAfter = 1
-	t.Cleanup(func() { Engine.EscalateAfter = was })
+	was := Engine.Limits.EscalateAfter
+	Engine.Limits.EscalateAfter = 1
+	t.Cleanup(func() { Engine.Limits.EscalateAfter = was })
 }
 
 // traceScenarios are the model's four, with the constants its cfgs carry.
@@ -104,7 +104,7 @@ func (a traceAsker) Ask(q Questions) Answers {
 	}
 	day := 86400
 	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
-		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
+		EscalateAfter: 1, FrontierAfter: 100, FlapLimit: 100, Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
 	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyNag: day, ReadyTake: day, BaseRegate: []int{day}}
 	return out
 }

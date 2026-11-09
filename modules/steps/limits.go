@@ -50,8 +50,8 @@ func (t *tick) hasLive(p string) bool {
 // Seen is unknown, and nothing fires on it.
 func (t *tick) rowLimits(n string) {
 	r := t.v.Rows[n]
-	if r.Flaps >= Engine.FlapLimit {
-		t.judgeAt("flap", n, r.Flaps, fmt.Sprintf("row %s has flapped %d times (down and up); the limit is %d", n, r.Flaps, Engine.FlapLimit))
+	if r.Flaps >= t.lim.FlapLimit {
+		t.judgeAt("flap", n, r.Flaps, fmt.Sprintf("row %s has flapped %d times (down and up); the limit is %d", n, r.Flaps, t.lim.FlapLimit))
 	}
 	seen, known := t.in.Seen[n]
 	if !known {
@@ -71,15 +71,16 @@ func (t *tick) rowLimits(n string) {
 }
 
 // rest marks the rows resting after faults (LPM R34, LESSONS 4.24): the
-// limit's count of faults within the rest bound rests the row for the rest
-// bound after the last; a deal filter, never a stored hold (R37).
+// limit's count of faults among the row's last route_rest_window finishes,
+// within the rest bound, rests the row for the rest bound after the last; a
+// deal filter, never a stored hold (R37).
 func (t *tick) rest() {
-	for n, faults := range t.v.Faults {
+	for n, ends := range t.v.Ends {
 		window := seconds(t.tmo.RouteRestFor)
 		recent := 0
 		var last time.Time
-		for _, at := range faults {
-			if !at.Before(t.in.Now.Add(-window)) {
+		for _, e := range ends[max(0, len(ends)-t.lim.RouteRestWindow):] {
+			if at := e.At; e.Fault && !at.Before(t.in.Now.Add(-window)) {
 				recent++
 				if at.After(last) {
 					last = at

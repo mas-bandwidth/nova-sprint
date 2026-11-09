@@ -13,9 +13,10 @@ import (
 // producer and row, dependants by need, live paths by stream), advanced by
 // Fold. After any fold it equals a fresh Build at the same seq
 // (TestViewFoldEqualsBuild). The facts a snapshot does not carry (when a
-// consumer was taken, when a stream last landed, when a row went down, when
-// a row faulted) are witnessed by the fold and are zero for records that
-// predate the view; every bound they feed is then measured from Since.
+// consumer was taken, when a stream last landed, when a row went down, a
+// row's last finishes) are witnessed by the fold and are zero for records that
+// predate the view; every bound they feed is then measured from Since. Run
+// folds the epoch's events into them at a cold start (run.witness).
 type View struct {
 	Seq    int64
 	Epoch  int
@@ -34,17 +35,26 @@ type View struct {
 	dependants map[string]set            // producers whose needs name the key
 	paths      map[string]map[string]set // stream -> file -> producers ready or started (concrete paths only)
 
-	TakenAt map[string]time.Time   // consumer -> when it went working: when it was dealt
-	ReadyAt map[string]time.Time   // producer -> when it last went ready
-	Landed  map[string]time.Time   // stream -> when a producer of it last landed
-	Down    map[string]time.Time   // row -> when it last went down
-	Faults  map[string][]time.Time // row -> when its consumers reported fault
-	acks    set                    // the acknowledgement cursors written (AckCursor)
-	born    map[string]int64       // card -> the seq that put it (0: before the view)
-	touched map[string]int64       // card -> the seq that last wrote it (0: before the view)
+	TakenAt map[string]time.Time // consumer -> when it went working: when it was dealt
+	ReadyAt map[string]time.Time // producer -> when it last went ready
+	Landed  map[string]time.Time // stream -> when a producer of it last landed
+	Down    map[string]time.Time // row -> when it last went down
+	Ends    map[string][]End     // row -> its consumers' last finishes, oldest first (at most maxEnds)
+	acks    set                  // the acknowledgement cursors written (AckCursor)
+	born    map[string]int64     // card -> the seq that put it (0: before the view)
+	touched map[string]int64     // card -> the seq that last wrote it (0: before the view)
 }
 
 type set = map[string]struct{}
+
+// End is one consumer's finish on its row: when, and whether it faulted.
+type End struct {
+	At    time.Time
+	Fault bool
+}
+
+// maxEnds is the finishes kept per row: policy's largest route_rest_window.
+const maxEnds = 100
 
 // started is the producer states that hold their paths against an overlap:
 // ready and the started ones (working, review, merging).
@@ -83,7 +93,7 @@ func (v *View) reset(epoch int) {
 	v.paths = map[string]map[string]set{}
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
 	v.ReadyAt = map[string]time.Time{}
-	v.Faults, v.born, v.touched = map[string][]time.Time{}, map[string]int64{}, map[string]int64{}
+	v.Ends, v.born, v.touched = map[string][]End{}, map[string]int64{}, map[string]int64{}
 	if v.acks == nil { // the store keeps cursors across epochs; so does the view
 		v.acks = set{}
 	}
@@ -159,8 +169,9 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 	switch {
 	case isConsumer(c) && c.State == "working" && (!had || old.State != "working"):
 		v.TakenAt[c.ID] = e.At
-	case isConsumer(c) && c.State == "done" && c.Result == "fault" && (!had || old.State != "done"):
-		v.Faults[c.Holder] = append(v.Faults[c.Holder], e.At)
+	case isConsumer(c) && c.State == "done" && (!had || old.State != "done"):
+		ends := append(v.Ends[c.Holder], End{At: e.At, Fault: c.Result == "fault"})
+		v.Ends[c.Holder] = ends[max(0, len(ends)-maxEnds):]
 	case !isConsumer(c) && c.State == "ready" && (!had || old.State != "ready"):
 		v.ReadyAt[c.ID] = e.At
 	case !isConsumer(c) && c.State == "landed" && (!had || old.State != "landed"):

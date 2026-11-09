@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -64,11 +65,12 @@ func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []PushFailu
 }
 
 // judgementOp is the tick's policy judgements (policy.Judgements): one per
-// failing version (a row the roster does not name is the steps'), as one op on
-// the snapshot the questions were asked on; its id is that seq's, so a
-// replay applies it once.
+// failing version that did not answer (the answering version's failed
+// questions are the steps' policy judgements, one each; a row the roster
+// does not name is the steps'), as one op on the snapshot the questions
+// were asked on; its id is that seq's, so a replay applies it once.
 func judgementOp(a *asker, o Observed) (store.Op, bool) {
-	js := policy.Judgements(a.snap, o.Roster, a.failures)
+	js := policy.Judgements(a.snap, o.Roster, slices.DeleteFunc(slices.Clone(a.failures), func(f policy.Failure) bool { return f.Version == a.answers.Version }))
 	if len(js) == 0 {
 		return store.Op{}, false
 	}
@@ -77,6 +79,37 @@ func judgementOp(a *asker, o Observed) (store.Op, bool) {
 		op.Writes = append(op.Writes, j)
 	}
 	return op, true
+}
+
+// RosterUnread opens the engine judgement for a failed roster read, once
+// while one is open: the tick planned nothing (an empty roster would judge
+// every row unknown), so nothing is dealt until nova-config reads again. It
+// carries the judgement deadline and expires there (steps' judgements). The
+// refusals the last plan left are kept for the next plan.
+func (t *Ticker) RosterUnread(ctx context.Context, now time.Time, cause error) error {
+	n := 1
+	for _, j := range t.snap.Judgements {
+		if j.Kind != "engine" || j.About != "roster" {
+			continue
+		}
+		if j.State == "open" {
+			return nil
+		}
+		n++
+	}
+	tmo := t.timeouts.Judgement
+	if tmo <= 0 {
+		tmo = steps.Engine.Timeouts.Judgement
+	}
+	id := fmt.Sprintf("engine.roster.%d", n)
+	op := store.Op{ID: fmt.Sprintf("judge.engine.roster.%d.%d", t.snap.Epoch, t.snap.Seq), Epoch: t.snap.Epoch, Actor: "sprint", Kind: "judgement", At: now,
+		Writes: []store.Write{store.PutJudgement{ID: id, Kind: "engine", About: "roster", Group: "engine",
+			Question: "the roster read from nova-config failed, so nothing is planned or dealt: " + edge.RedactN(cause.Error(), edge.FailureMax),
+			Command:  "nova-sprint judge " + id + " <choice> --reason <why>   choices: retry", Deadline: now.Add(time.Duration(tmo) * time.Second)}}}
+	refused := t.refused
+	_, err := t.apply(ctx, []store.Op{op}, false)
+	t.refused = refused
+	return err
 }
 
 // NewTicker reads the one cold snapshot; later reads are Events only
@@ -91,6 +124,9 @@ func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time
 	}
 	t := &Ticker{store: st, health: h, policy: p, view: steps.Build(snap, now), snap: snapshotCopy(snap),
 		inflight: map[string]steps.EdgeRequest{}, seen: map[string]time.Time{}, push: NewPusher()}
+	if err := witness(ctx, st, t.view, now); err != nil {
+		return nil, err
+	}
 	// the epoch's landing times for the board's ETA, up to the cold snapshot's
 	// seq; a store that cannot answer leaves them unknown (the ETA is "-")
 	if r, ok := st.(interface {
@@ -101,6 +137,53 @@ func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time
 		}
 	}
 	return t, nil
+}
+
+// witness folds the epoch's events up to the view's seq into the facts a
+// snapshot does not carry (when a consumer was dealt, a producer went
+// ready, a stream landed, a row went down, a row's last finishes), so a restart
+// dates every bound as the run before it did instead of from now. The
+// epoch's first event is found by bisection on single-event reads: the
+// epoch is read, never a walk from seq 0 (drift row 23).
+func witness(ctx context.Context, st store.Store, v *steps.View, now time.Time) error {
+	epochOf := func(after int64) (int, error) { // the epoch of the first event above after
+		es, err := st.Events(ctx, after, 1)
+		if err != nil || len(es) == 0 {
+			return v.Epoch, err
+		}
+		return es[0].Epoch, nil
+	}
+	lo, hi := int64(0), v.Seq // the epoch's events begin above lo
+	for lo < hi {
+		mid := lo + (hi-lo+1)/2
+		e, err := epochOf(mid - 1)
+		if err != nil {
+			return fmt.Errorf("run: witnesses: %w", err)
+		}
+		if e < v.Epoch {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	w := steps.Build(store.Snapshot{Epoch: v.Epoch}, now)
+	for after := lo; after < v.Seq; {
+		events, err := st.Events(ctx, after, store.MaxEvents)
+		if err != nil {
+			return fmt.Errorf("run: witnesses: %w", err)
+		}
+		if len(events) == 0 {
+			break
+		}
+		full := len(events) == store.MaxEvents
+		after = events[len(events)-1].Seq
+		w.Fold(slices.DeleteFunc(events, func(e store.Event) bool { return e.Seq > v.Seq }))
+		if !full {
+			break
+		}
+	}
+	v.TakenAt, v.ReadyAt, v.Landed, v.Down, v.Ends = w.TakenAt, w.ReadyAt, w.Landed, w.Down, w.Ends
+	return nil
 }
 
 // Landings is the epoch's landing times as run has folded them, the caller's
@@ -339,7 +422,10 @@ func (t *Ticker) retire(plan steps.Plan, accepted map[string]bool) {
 }
 
 // dispatch is the plan's edge requests whose After op was accepted, now in
-// flight; one not sent is not kept (steps reissues it by the same id).
+// flight; one whose After op was refused is not kept (steps plan it again by
+// the same id). A dispatched request leaves flight when a result for it is
+// consumed; a stop whose send failed has a fault result and is not reissued
+// (its withdrawal landed; the row learns of it from its WITHDRAWN notice).
 func (t *Ticker) dispatch(edges []steps.EdgeRequest, accepted map[string]bool) []steps.EdgeRequest {
 	var out []steps.EdgeRequest
 	for _, e := range edges {
