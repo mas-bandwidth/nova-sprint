@@ -1016,7 +1016,10 @@ result once or twice (layer 4 may redeliver).
    desired rank exactly (the card's tier; one up once its bounces reach
    `escalate_after`; for a read, the rank above its author's row), then
    above it, then an idle lane, most room, name. A row below the card's
-   tier is never eligible. No open serving row: `unserved`; a review no
+   tier is never eligible. An answer that is not eligible is a `rows` miss
+   (one `policy` judgement), except an offered row named while no row has
+   room: the candidate waits, and that is no miss (`FullAnswer`).
+   No open serving row: `unserved`; a review no
    row may read: `cannot-read`.
 6. **Land requests**: per stream with none in flight, the first merging
    producer none of whose `after` targets is merging (a hold never touches
