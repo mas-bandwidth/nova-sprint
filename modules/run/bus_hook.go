@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 )
 
 // SprintHook holds the nova-bus hook for the name sprint while run holds
@@ -44,7 +45,7 @@ func (b SprintHook) Acquire(ctx context.Context, name string) (HookLease, error)
 	if !filepath.IsAbs(b.Bin) || !filepath.IsAbs(b.Reply) {
 		return nil, fmt.Errorf("run: the sprint hook needs absolute nova-bus and nova-sprint paths; pass them in run.Config")
 	}
-	cmd := exec.Command(b.Bin, "hook", "--as", name, "--exec", shellWord(b.Reply)+" bus-reply")
+	cmd := exec.Command(b.Bin, "hook", "--as", name, "--exec", steps.ShellWord(b.Reply)+" bus-reply")
 	cmd.Env = b.Env
 	cmd.Stdout = io.Discard
 	stderr, err := cmd.StderrPipe()

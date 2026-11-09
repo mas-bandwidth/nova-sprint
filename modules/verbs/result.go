@@ -8,6 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -164,4 +165,5 @@ func clip(s string) string {
 	return s
 }
 
-func fmtCard(id string, gen int) string { return fmt.Sprintf("%s@%d", id, gen) }
+// fmtCard is the card ref id@gen as one word of a printed command.
+func fmtCard(id string, gen int) string { return steps.ShellWord(fmt.Sprintf("%s@%d", id, gen)) }

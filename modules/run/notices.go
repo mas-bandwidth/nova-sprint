@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -65,8 +66,8 @@ func sortedCardIDs(cards map[string]store.Card) []string {
 // a read's head), the brief clipped, the finish or read command, and take,
 // the acknowledgement that stops the nudges and prints the whole brief.
 func dealNotice(c store.Card, s store.Stream, epoch int) Notice {
-	ref, row := shellWord(fmt.Sprintf("%s@%d", c.ID, c.Gen)), shellWord(c.Holder)
-	line := fmt.Sprintf("DEAL card=%s attempt=%d kind=%s stream=%s tier=%s model=%s epoch=%d repo=%s", c.ID, c.Attempt, c.Kind, c.Stream, c.Tier, shellWord(cmp.Or(c.Model, "none")), epoch, s.Repo)
+	ref, row := steps.ShellWord(fmt.Sprintf("%s@%d", c.ID, c.Gen)), steps.ShellWord(c.Holder)
+	line := fmt.Sprintf("DEAL card=%s attempt=%d kind=%s stream=%s tier=%s model=%s epoch=%d repo=%s", c.ID, c.Attempt, c.Kind, c.Stream, c.Tier, steps.ShellWord(cmp.Or(c.Model, "none")), epoch, s.Repo)
 	finish := fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, epoch)
 	if c.Kind == "read" {
 		line += " head=" + c.Head
@@ -122,7 +123,7 @@ func judgementNotices(e store.Event, coordinator string) []Notice {
 }
 
 // clipText caps free text in bytes without splitting UTF-8; the full value stays in the store.
-func clipText(s, id string) string  { return clipWith(s, "nova-sprint show "+shellWord(id)) }
+func clipText(s, id string) string  { return clipWith(s, "nova-sprint show "+steps.ShellWord(id)) }
 func clipJudgement(s string) string { return clipWith(s, "nova-sprint judge") }
 func clipWith(s, command string) string {
 	s = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(s)
@@ -134,13 +135,6 @@ func clipWith(s, command string) string {
 		s = s[:len(s)-1]
 	}
 	return s + "… full text: " + command
-}
-
-func shellWord(s string) string {
-	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:@/-") == "" {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func safeCommand(command string) string {
@@ -182,6 +176,6 @@ func terminalNotice(s store.Snapshot, stream string) (Notice, bool) {
 			line += fmt.Sprintf(" (+%d more)", len(failed)-len(shown))
 		}
 	}
-	line += "; run: nova-sprint show " + shellWord(stream) + " --stitch"
+	line += "; run: nova-sprint show " + steps.ShellWord(stream) + " --stitch"
 	return Notice{Subject: subject, Line: line}, true
 }
