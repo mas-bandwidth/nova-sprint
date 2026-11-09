@@ -385,7 +385,7 @@ func TestStagePerStreamRepo(t *testing.T) {
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
 		args := c.Cmd.Argv[gitArg0_internal:] // after gitPrefix_internal
 		switch {
-		case args[0] == "clone":
+		case args[0] == "init":
 			_ = os.MkdirAll(args[len(args)-1], 0o755)
 		case args[0] == "remote" && args[1] == "get-url":
 			return edge.FakeOutcome{Stdout: "https://github.com/o/other.git\n"}
@@ -410,7 +410,7 @@ func TestStagePerStreamRepo(t *testing.T) {
 	var clones, config []string
 	for _, c := range fx.Calls()[before:] {
 		switch c.Cmd.Argv[gitArg0_internal] {
-		case "clone":
+		case "clone", "init", "remote", "fetch":
 			clones = append(clones, strings.Join(c.Cmd.Argv[gitArg0_internal:], " "))
 		case "config":
 			if c.Cmd.Argv[gitArg0_internal+1] != "--local" { // the config guard's read
@@ -422,9 +422,18 @@ func TestStagePerStreamRepo(t *testing.T) {
 		t.Fatalf("the job's clone is configured as %q, not the sprint's identity", config)
 	}
 	mirror, work := filepath.Join(roots, "mirror", "r.git"), filepath.Join(roots, "clones", "r")
-	if len(clones) != 3 || clones[0] != "clone --quiet --mirror https://github.com/o/r.git "+mirror ||
-		clones[1] != "clone --quiet --no-checkout --reference "+mirror+" https://github.com/o/r.git "+work || !strings.HasPrefix(clones[2], "clone --shared --no-checkout "+work) {
-		t.Fatalf("first use: %q", clones)
+	// First use makes the mirror and the work clone empty, never a clone of
+	// the repo (staging fetches shallow, into them, with Fetch), and the
+	// job's tree shares the work clone's objects.
+	wt := filepath.Join(roots, "job", "repo")
+	want := []string{"init --quiet --bare " + mirror, "init --quiet " + work, "remote add origin https://github.com/o/r.git",
+		"init --quiet " + wt, "remote add origin " + work, "remote set-url origin https://github.com/o/r.git"}
+	if strings.Join(clones, ";") != strings.Join(want, ";") {
+		t.Fatalf("first use: %q, want %q", clones, want)
+	}
+	alt, err := os.ReadFile(filepath.Join(wt, ".git", "objects", "info", "alternates"))
+	if err != nil || string(alt) != filepath.Join(work, ".git", "objects")+"\n"+filepath.Join(mirror, "objects")+"\n" {
+		t.Fatalf("the job's tree borrows %q (%v), want the work clone's objects then the mirror's", alt, err)
 	}
 	g2 := &OSGitOps{WorkRoot: g.WorkRoot, MirrorRoot: g.MirrorRoot, Exec: fx}
 	if _, err := g2.StageWorktree(context.Background(), j); err == nil || !strings.Contains(err.Error(), "is of \"https://github.com/o/other.git\", not \"https://github.com/o/r.git\"") {

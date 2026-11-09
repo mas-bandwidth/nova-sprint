@@ -372,7 +372,8 @@ func TestLiveRefusedRecordIsQuarantinedAndThePassGoesOn(t *testing.T) {
 	}
 }
 
-// 72: one fetch per repo per pass, before any job stages from it.
+// 72: one fetch per repo per pass, before any job stages from it, for all
+// the pass's jobs of that repo.
 func TestLiveOneFetchPerRepoPerPass(t *testing.T) {
 	t.Parallel()
 	sp := &liveSprint{cr2Sprint: cr2Sprint{kind: "work", next: NextResponse{Row: "vision.ds", State: card.Up, Width: 3, Working: []ConsumerSummary{
@@ -384,6 +385,9 @@ func TestLiveOneFetchPerRepoPerPass(t *testing.T) {
 	defer g.mu.Unlock()
 	if g.fetches["o/x"] != 1 || g.fetches["o/y"] != 1 || len(g.stagedJobs) != 3 {
 		t.Fatalf("fetches %v staged %d: want one fetch per repo and three stages", g.fetches, len(g.stagedJobs))
+	}
+	if g.fetchedJobs["o/x"] != 2 || g.fetchedJobs["o/y"] != 1 { // a repo's one fetch is for every job of it (shallow: it fetches only theirs)
+		t.Fatalf("fetched for jobs %v: want o/x's fetch for both its jobs", g.fetchedJobs)
 	}
 }
 

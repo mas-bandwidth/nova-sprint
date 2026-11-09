@@ -291,27 +291,26 @@ func (r *Runner) runJobs_internal(ctx context.Context, next NextResponse, launch
 // repoKey_internal groups jobs by the work clone they stage from.
 func repoKey_internal(j Job) string { return j.Forge + "|" + j.Repo }
 
-// fetchRepos_internal fetches each repo the prepared jobs stage from, once,
-// the repos at once; the error per repo (nil: fetched).
+// fetchRepos_internal fetches each repo the prepared jobs stage from, once
+// with all its jobs (each fetches only what they check out), the repos at
+// once; the error per repo (nil: fetched).
 func (r *Runner) fetchRepos_internal(ctx context.Context, ps []prepared_internal) map[string]error {
-	first := map[string]Job{}
+	byRepo := map[string][]Job{}
 	for _, p := range ps {
 		if !p.end && p.stage {
-			if _, ok := first[repoKey_internal(p.job)]; !ok {
-				first[repoKey_internal(p.job)] = p.job
-			}
+			byRepo[repoKey_internal(p.job)] = append(byRepo[repoKey_internal(p.job)], p.job)
 		}
 	}
-	out := make(map[string]error, len(first))
+	out := make(map[string]error, len(byRepo))
 	if r.Git == nil {
 		return out
 	}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	for key, j := range first {
+	for key, js := range byRepo {
 		wg.Go(func() {
 			fetchCtx, cancel := context.WithTimeout(ctx, r.Timeouts.Stage)
-			err := r.Git.Fetch(fetchCtx, j)
+			err := r.Git.Fetch(fetchCtx, js...)
 			cancel()
 			mu.Lock()
 			out[key] = err
