@@ -265,7 +265,13 @@ for each candidate, and the engine refuses one below the card's tier.
   group key (one push for a shared cause; LESSONS 4.9), policy's deadline and
   the command that answers it; `ExpireJudgement` when the cause clears, or
   at the deadline with the kind's safe default, which never drops, accepts,
-  merges or lands (LESSONS 5.7).
+  merges or lands (LESSONS 5.7). At the deadline a judgement whose cause a
+  step detected this tick is never closed silently: it expires as
+  `reopened as <kind.about.n+1> (repeat n)` and that episode opens in the
+  same op, its question headed `UNANSWERED n TIMES, ESCALATED: `, so it is
+  pushed again as NEEDS YOU; one whose cause no step detects closes as
+  `cleared` (tla/Steps.tla `ExpiryNeverSilent`, witness
+  `StepsExpiresSilently`).
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,
