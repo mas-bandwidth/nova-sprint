@@ -122,6 +122,14 @@ func ConsumerOpID(kind string, epoch int, consumer string, gen int) string {
 	return fmt.Sprintf("consumer:%x", sum)
 }
 
+// ConsumerRetryID is the id a row's op is applied under after the store
+// refused it at seq under id or one of id's retries: the next link of id's
+// chain, the same for every retry, so an accepted retry replays too.
+func ConsumerRetryID(id string, seq int64) string { return fmt.Sprintf("%s.%d", id, seq) }
+
+// IsConsumerOp is whether op is id or one of its retries (ConsumerRetryID).
+func IsConsumerOp(op, id string) bool { return op == id || strings.HasPrefix(op, id+".") }
+
 // Stream is a row of sprint.streams. Mode and Forge are its landing
 // settings (round 22): stream state, read with the snapshot, never policy
 // data or a scan of the log. Mode is how its producers land, one of
