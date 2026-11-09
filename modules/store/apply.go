@@ -142,8 +142,11 @@ func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 }
 
 // runClear is run for a clear: the epoch and the seq fence, then the new
-// epoch with every row carried into it, down and with no flaps; the clear
-// writes the row, so its gen rises by one.
+// epoch with every row carried into it, down, with no flaps and not held
+// (a hold is the coordinator's decision for one epoch: on 2026-11-08 three
+// friends came up in epoch 2 still held with epoch 1's reasons and sat idle;
+// the coordinator holds again if it wants to); the clear writes the row, so
+// its gen rises by one.
 func runClear(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	r, _, _, err := run(tx, epoch, Op{Epoch: op.Epoch, Expect: op.Expect})
 	if r != "" || err != nil {
@@ -162,7 +165,7 @@ func runClear(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	}
 	after := &State{Epoch: n}
 	for _, row := range rows {
-		row.State, row.Flaps = "down", 0
+		row.State, row.Flaps, row.Held, row.Reason = "down", 0, false, ""
 		if row.Gen, err = next("row "+row.Name+" gen", row.Gen); err != nil {
 			return "", nil, nil, err
 		}
