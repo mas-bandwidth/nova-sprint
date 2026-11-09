@@ -27,6 +27,7 @@ INVARIANTS = [
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
     "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
+    "LapsedReleased",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -72,6 +73,7 @@ REACH = {
     "StepsNeverAbsent": ("deal", "a tick runs with an up row absent from the bus serving a ready card"),
     "StepsNeverUnadmitted": ("deal", "a producer failing admission opens its stream's admission judgement"),
     "StepsNeverReopened": ("deal", "a judgement whose cause still holds at its deadline is reopened"),
+    "StepsNeverReleased": ("pre", "a lapsed working consumer is withdrawn back to the queue"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
@@ -226,8 +228,8 @@ WITNESSES = [
      "default rows while no active policy answers.",
      [("         pre  == IF V.pol THEN PreStep(V, a) ELSE NoPlan",
        "         pre  == PreStep(V, a)   \\* FAULT: was gated on V.pol", 1),
-      ("         dl   == IF V.pol THEN DealStep(V, cl3, a.rows, TRUE) ELSE NoPlan",
-       "         dl   == DealStep(V, cl3, a.rows, TRUE)   \\* FAULT: was gated on V.pol", 1)]),
+      ("         dl   == IF V.pol THEN DealStep(V, cl3r, a.rows, TRUE) ELSE NoPlan",
+       "         dl   == DealStep(V, cl3r, a.rows, TRUE)   \\* FAULT: was gated on V.pol", 1)]),
     ("StepsResolveOnEvent", "ResolveFromState", "deal",
      "Resolve is driven by the land step's events, not the state: a\n"
      "producer with needs resolves only in a tick that consumes its need's\n"
@@ -276,6 +278,12 @@ WITNESSES = [
      "cause is still there and nothing says so until a later tick reopens it.",
      [("         Lapsed == dueJ \\ jnew\n",
        "         Lapsed == dueJ   \\* FAULT: was dueJ \\ jnew\n", 1)]),
+    ("StepsLapsedKept", "LapsedReleased", "pre",
+     "A card whose row is off the bus, past its deadline or that was never\n"
+     "taken stays in the row's hand until the coordinator releases it by hand\n"
+     "(item 2, 2026-11-08: 15 untaken, 14 off the bus, 8 past the deadline).",
+     [("       IN IF L # {} /\\ Free(p, cl)\n",
+       "       IN IF FALSE   \\* FAULT: was L # {} /\\ Free(p, cl)\n", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"
