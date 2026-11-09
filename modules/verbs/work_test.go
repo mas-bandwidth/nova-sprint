@@ -163,6 +163,32 @@ func TestFinishFailedRecordsPushedHead(t *testing.T) {
 	want(t, w.do("alice", failed...), 2, "git ls-remote of o/r failed", "--head <sha>")
 }
 
+// secondAttempt is p1 at attempt 2: p1.w1 reported result at head, which
+// p1.w2, dealt to alice, continues from as its prior head.
+func secondAttempt(result string) func(*store.Snapshot) {
+	return func(s *store.Snapshot) {
+		p, w1 := s.Cards["p1"], s.Cards["p1.w1"]
+		w2 := w1
+		p.Attempt, p.Head = 2, head
+		w1.State, w1.Result, w1.Head = "done", result, head
+		w2.ID, w2.Attempt, w2.Prior = "p1.w2", 2, head
+		s.Cards["p1"], s.Cards["p1.w1"], s.Cards["p1.w2"] = p, w1, w2
+	}
+}
+
+// A later attempt finishes at a prior head no attempt finished (an earlier
+// attempt pushed it, then faulted); a prior head already finished, sent back
+// for a finding, is refused: nothing was done about it.
+func TestFinishAtThePriorHead(t *testing.T) {
+	t.Parallel()
+	take := func(t *testing.T, w *world) { w.ok(t, "alice", "take", "p1.w2@1") }
+	finish := []string{"finish", "p1.w2@1", "--head", head}
+	runCases(t, []tcase{
+		{name: "never finished", as: "alice", snap: secondAttempt("fault"), prep: take, args: finish, exit: 0, want: []string{"FINISHED p1.w2 head=" + head}},
+		{name: "already finished", as: "alice", snap: secondAttempt("ok"), prep: take, args: finish, exit: 1, want: []string{"head " + head + " is the prior head; nothing new was pushed"}},
+	})
+}
+
 func TestFinishRefusals(t *testing.T) {
 	t.Parallel()
 	finish := []string{"finish", "p1.w1@1", "--head", head}

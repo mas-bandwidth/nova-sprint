@@ -686,10 +686,13 @@ func sealMove(m *mover, e Event) (Plan, *Refusal) {
 	return stamped(out, e, r)
 }
 
-func sealConsumer(m *mover, prod Card, row Row, e Event) (Plan, *Refusal) {
+func sealConsumer(m *mover, prod Card, cons []Card, row Row, e Event) (Plan, *Refusal) {
 	seen := records{cards: map[string]Card{}, rows: map[string]Row{}, streams: map[string]Stream{}}
 	addCard(seen, m.p)
 	addCard(seen, prod)
+	for _, k := range cons {
+		addCard(seen, k)
+	}
 	if row.Name != "" {
 		seen.rows[row.Name] = cloneRow(row)
 	}
@@ -704,7 +707,7 @@ func sealConsumer(m *mover, prod Card, row Row, e Event) (Plan, *Refusal) {
 				got = folded
 			}
 		}
-		return MoveConsumer(cardOr(cur, c), cardOr(cur, prod), got, foldedWithdraw(e, cur, prod.Stream))
+		return MoveConsumer(cardOr(cur, c), cardOr(cur, prod), overlayCons(cons, cur, prod.ID), got, foldedWithdraw(e, cur, prod.Stream))
 	})
 	return stamped(out, e, r)
 }

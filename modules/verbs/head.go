@@ -11,7 +11,7 @@ import (
 )
 
 // headReady is finish's check of the head at origin (CORRECT-USE, "Finish
-// is checked, not trusted"): a full sha, not the base or the prior head, and
+// is checked, not trusted"): a full sha, not the base, and
 // the tip of the dealt branch at origin, every commit since the base made as
 // the sprint's commit identity. That is all finish needs (intent
 // rule 32): no PR, no forge and no token on the worker; the landing opens
@@ -20,7 +20,7 @@ func (e *Engine) headReady(ctx context.Context, snap store.Snapshot, c store.Car
 	if !fullSHA(head) {
 		return refuse("head "+head+" is not a full commit sha", "pass the 40-hex sha git ls-remote origin "+c.Branch+" prints")
 	}
-	if head == c.BaseSHA || head == c.Prior {
+	if head == c.BaseSHA {
 		return refuse("head "+head+" is where this attempt started; nothing was done", "commit the work on "+c.Branch+", push it, and finish with its head")
 	}
 	s, url, tip, ok, err := e.branchTip(ctx, snap, c, "then finish again")
