@@ -5,7 +5,12 @@
 #               handoff, choices, the 64 installer walks), each checked by TLC
 #   tlc         every model, witness and reach check (tla/ci-tlc.sh), split
 #               over six jobs on the runners labelled tlc
-# The functional tier runs per commit in full; it is not repeated here.
+#   functional  the functional test that needs tools the per-commit job does
+#               not install (age-keygen, nova-secrets, nova-bus, redis-server):
+#               TestFunctionalSetupBusRedis, behind NOVA_FUNCTIONAL_BUS=1
+# The rest of the functional tier runs per commit; it is not repeated here.
+# TestFunctionalPublicVersionSSH (NOVA_FUNCTIONAL_SSH=1) is run by hand
+# (docs/TESTING.md).
 
 name: nightly
 
@@ -47,6 +52,17 @@ jobs:
           echo "no Go toolchain on this runner" >&2; exit 1
       - name: unit tests, every seed (no -short)
         run: go test -count=1 -race -timeout 60m -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...
+
+  functional:
+    runs-on: [self-hosted, linux, x64, bench]
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: the bus setup against a throwaway Redis and secrets store (a missing tool fails it)
+        run: go test -count=1 -race -run '^TestFunctionalSetupBusRedis$' ./cmd/nova-sprint
+        env:
+          NOVA_FUNCTIONAL_BUS: "1"
 
   trace:
     runs-on: [self-hosted, linux, x64, bench]

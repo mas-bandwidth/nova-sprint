@@ -46,7 +46,9 @@ const sprintPassword = "e2e-sprint-password" // trust auth: the server never che
 
 func TestFunctionalEndToEnd(t *testing.T) { // unitlint: serial, setUp sets the process environment (t.Setenv)
 	for _, tool := range []string{"initdb", "pg_ctl", "pg_dump", "redis-server", "nova-bus", "git", "go"} {
-		if _, err := exec.LookPath(tool); err != nil {
+		if _, err := exec.LookPath(tool); err != nil && os.Getenv("CI") != "" {
+			t.Fatal(tool + " required: missing on a CI runner")
+		} else if err != nil {
 			t.Skip(tool + " required")
 		}
 	}
