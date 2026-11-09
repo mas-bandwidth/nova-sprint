@@ -248,9 +248,9 @@ prints `ADD <id> kind=producer stream=<s> tier=<t> priority=<level> needs=<ids>`
 **Keep everybody at width.** The fleet works in parallel only as far as the cards let it.
 Keep NEEDS chains flat (a NEEDS only on a consumed output), PATHS concrete (the files the card
 edits; a shared glob or directory holds nothing), and one card per file set. `add` prints the
-stream's longest NEEDS chain once the cards are in (`CHAIN stream <s>: its longest NEEDS chain
-is <k> cards: a -> b -> ...`), and from 4 cards a `WARN CHAIN` with what it takes at the
-stream's land rate: flatten it before `start`. During a sprint the steps' `idle` judgement
+longest NEEDS chain through the cards it adds (`CHAIN stream <s>: the longest NEEDS chain
+through these cards is <k> cards (chain_limit 3): a -> b -> ...`), and refuses an add whose
+chain is longer than the policy's `chain_limit`, with the chain and how to flatten it. During a sprint the steps' `idle` judgement
 says "nothing dealable: N chains (longest K, top: <card> blocks M), H overlaps" with the
 command for the top card, and the board's Why waiting panel shows the same lines as `check`.
 

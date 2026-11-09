@@ -26,6 +26,10 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	if err != nil {
 		return "", err
 	}
+	chain, err := e.chainAfterAdd(ctx, snap, adds)
+	if err != nil {
+		return "", err
+	}
 	if err := e.admitAdds(ctx, snap, adds); err != nil {
 		return "", err
 	}
@@ -33,7 +37,7 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	for i, a := range adds {
 		lines[i] = fmt.Sprintf("ADD %s kind=%s stream=%s tier=%s priority=%s needs=%s", a.ID, a.Kind, a.Stream, a.Tier, orWord(a.Priority, "normal"), orWord(strings.Join(a.Needs, ","), "-"))
 	}
-	lines = append(lines, e.chainAfterAdd(ctx, snap, adds))
+	lines = append(lines, chain)
 	if in.has("dry-run") {
 		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
 	}
@@ -208,19 +212,26 @@ func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card
 	return nil
 }
 
-// chainAfterAdd is the stream's longest NEEDS chain once adds are in, and
-// what it takes at the stream's land rate: a warning (never a refusal) at
-// chainWarn cards or more, so the coordinator flattens it before the deal.
-func (e *Engine) chainAfterAdd(ctx context.Context, snap store.Snapshot, adds []card.Add) string {
+// chainAfterAdd is the longest NEEDS chain through the added cards once they
+// are in (steps.ChainThrough), or add's refusal when it is longer than the
+// policy's chain_limit (Glenn, 2026-11-08: "avoid going super-serial"),
+// naming the chain, what it takes at the stream's land rate and how to
+// flatten it, so the coordinator flattens it before the deal.
+func (e *Engine) chainAfterAdd(ctx context.Context, snap store.Snapshot, adds []card.Add) (string, error) {
+	lim, _, err := e.rules(ctx, snap)
+	if err != nil {
+		return "", err
+	}
 	cards := maps.Clone(snap.Cards)
-	for _, a := range adds {
-		cards[a.ID] = store.Card{ID: a.ID, Kind: a.Kind, Stream: a.Stream, State: "waiting", Needs: a.Needs}
+	ids := make([]string, len(adds))
+	for i, a := range adds {
+		cards[a.ID], ids[i] = store.Card{ID: a.ID, Kind: a.Kind, Stream: a.Stream, State: "waiting", Needs: a.Needs}, a.ID
 	}
 	stream := adds[0].Stream
-	chain := steps.LongestChain(cards, stream)
-	if len(chain) < chainWarn {
-		return fmt.Sprintf("CHAIN stream %s: its longest NEEDS chain is %d cards: %s", stream, len(chain), steps.ChainText(chain))
+	chain := steps.ChainThrough(cards, ids)
+	if len(chain) <= lim.ChainLimit {
+		return fmt.Sprintf("CHAIN stream %s: the longest NEEDS chain through these cards is %d cards (chain_limit %d): %s", stream, len(chain), lim.ChainLimit, steps.ChainText(chain)), nil
 	}
-	times, err := e.landTimes(ctx, snap)
-	return "WARN CHAIN " + chainLine(stream, chain, times[stream], err) + ": " + flattenFix
+	times, terr := e.landTimes(ctx, snap)
+	return "", refuse(fmt.Sprintf("stream %s: this add makes a NEEDS chain of %d cards, over the policy's chain_limit of %d: %s; %s", stream, len(chain), lim.ChainLimit, steps.ChainText(chain), chainTime(times[stream], len(chain), terr)), flattenFix)
 }

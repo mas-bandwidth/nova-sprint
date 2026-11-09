@@ -95,10 +95,11 @@ type Width struct{ Work, Ahead int }
 // working under which the idle alarm opens, LandTarget the first-time land
 // rate under which the land-rate alarm opens.
 // FleetWidthCap bounds a worker machine's width (its cores, at most this):
-// the roster's cap, policy's number (drift row 26).
+// the roster's cap, policy's number (drift row 26). ChainLimit is the
+// longest NEEDS chain, in cards, add admits (optional, default 3).
 type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
-	EscalateAfter, FrontierAfter, FlapLimit, FleetWidthCap                        int
+	EscalateAfter, FrontierAfter, FlapLimit, FleetWidthCap, ChainLimit            int
 	IdleFloor, LandTarget                                                         float64
 }
 

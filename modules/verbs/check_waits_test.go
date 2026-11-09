@@ -69,19 +69,25 @@ func TestCheckQuietWithoutWaits(t *testing.T) {
 	}
 }
 
-// TestAddReportsTheLongestChain: add (and --dry-run) prints the stream's
-// longest NEEDS chain once the cards are in; at four cards or more it is a
-// warning naming the fix, never a refusal.
-func TestAddReportsTheLongestChain(t *testing.T) {
+// TestAddRefusesALongChain: add (and --dry-run) prints the longest NEEDS
+// chain through the cards it adds; one longer than the policy's chain_limit
+// (3 by default) is refused, naming the chain and how to flatten it, and
+// nothing is added. A card that needs nothing is added beside a long chain.
+func TestAddRefusesALongChain(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	healthy(t, w)
-	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a1", "p1")), 0, "CHAIN stream s: its longest NEEDS chain is 2 cards: p1 -> a1\n")
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a1", "p1")), 0, "CHAIN stream s: the longest NEEDS chain through these cards is 2 cards (chain_limit 3): p1 -> a1\n")
 	r := w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a2", "a1"), "--brief-file", brief(t, "a3", "a2"), "--dry-run")
-	want(t, r, 0, "WARN CHAIN stream s: its longest NEEDS chain is 4 cards: p1 -> a1 -> a2 -> a3; no land rate yet", "flatten it before the deal", "(dry run)")
+	want(t, r, 1, "stream s: this add makes a NEEDS chain of 4 cards, over the policy's chain_limit of 3: p1 -> a1 -> a2 -> a3; no land rate yet", "flatten it before the deal")
 	landTwo(t, w)
-	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a2", "a1"), "--brief-file", brief(t, "a3", "a2")), 0,
-		"about 4.0 hours", "ADDED 2 cards")
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a2", "a1"), "--brief-file", brief(t, "a3", "a2")), 1, "about 4.0 hours")
+	if _, ok := w.snap(t).Cards["a2"]; ok {
+		t.Fatal("a refused add put a2")
+	}
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a2", "a1")), 0, "ADDED 1 cards")
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a3", "a2")), 1, "chain_limit of 3")
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "b1", "")), 0, "through these cards is 1 cards", "ADDED 1 cards")
 }
 
 // TestChainTime: the land rate over the landings' span, none below two

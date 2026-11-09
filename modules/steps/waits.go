@@ -19,11 +19,6 @@ import (
 // check, the board and the idle judgement all read these, so the three say
 // the same thing.
 
-// ChainWarn is the NEEDS chain length, in cards, at which add, check and
-// the board warn: four landings one after another while the rest of the
-// fleet can only wait (a guess, not measured). It steers nothing.
-const ChainWarn = 4
-
 // StreamWaits is one stream's waiting producers, explained.
 type StreamWaits struct {
 	Stream   string
@@ -104,6 +99,54 @@ func LongestChain(cards map[string]store.Card, stream string) []string {
 		}
 	}
 	return nil
+}
+
+// ChainThrough is the longest NEEDS chain over cards that runs through one
+// of ids, of cards not landed or failed, the first to land first: what add
+// holds to the policy's chain_limit, so an add beside a long chain is not
+// refused for it.
+func ChainThrough(cards map[string]store.Card, ids []string) []string {
+	w := newWaitScan(cards)
+	deps := map[string][]string{}
+	for _, id := range sortedKeys(cards) {
+		if c := cards[id]; !isConsumer(c) && !isFinal(c) {
+			for _, n := range c.Needs {
+				deps[n] = append(deps[n], id)
+			}
+		}
+	}
+	down := map[string][]string{} // card -> its longest chain of dependants after it
+	var after func(string, set) []string
+	after = func(id string, seen set) []string {
+		if d, ok := down[id]; ok {
+			return d
+		}
+		seen[id] = struct{}{}
+		var best []string
+		for _, n := range deps[id] {
+			if _, loop := seen[n]; loop {
+				continue
+			}
+			d := after(n, seen)
+			if w.cards[n].Kind != "sentinel" {
+				d = append([]string{n}, d...)
+			}
+			if len(d) > len(best) {
+				best = d
+			}
+		}
+		delete(seen, id)
+		down[id] = best
+		return best
+	}
+	var best []string
+	for _, id := range ids {
+		w.depthOf(id, set{})
+		if c := append(w.chain(id), after(id, set{})...); len(c) > len(best) {
+			best = c
+		}
+	}
+	return best
 }
 
 func newWaitScan(cards map[string]store.Card) *waitScan {
