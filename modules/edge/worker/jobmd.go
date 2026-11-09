@@ -83,7 +83,7 @@ func finishRules(j Job, k *KinFinish) string {
 				"A run that exits without " + res + " is reported a fault.\n"
 		}
 		return "1. Commit your work in " + j.WorktreeDir + " on branch " + j.Branch + " (git add, then git commit -F <message file>). Run no git push and no gh: the worker pushes the branch after you exit, and the landing opens the pull request.\n" +
-			mergeNeverRebase +
+			"   Never rebase or reset the branch: the head must descend from where this attempt started, or the worker refuses it; the worker brings it onto the base after you exit.\n" +
 			commitIdentity_internal(j) +
 			"2. Run every done-when command in the checkout; each must exit 0.\n" +
 			"3. Write " + res + ", then exit 0. Its forms:\n" +
@@ -102,7 +102,7 @@ func finishRules(j Job, k *KinFinish) string {
 			fault
 	}
 	return "1. In a fresh clone of your own, commit your work on branch " + j.Branch + " (from the prior head when there is one, else the base), then git push origin " + j.Branch + ". Open no pull request: the landing opens it.\n" +
-		mergeNeverRebase +
+		"   To take in a newer base (a merge conflict), merge it into the branch, never rebase: the head must descend from the prior head.\n" +
 		kinIdentity(j) +
 		"2. Run every done-when command at the head you pushed; each must exit 0.\n" +
 		"3. Report with one of:\n" +
@@ -110,11 +110,6 @@ func finishRules(j Job, k *KinFinish) string {
 		"   nova-sprint finish " + k.Ref + " --failed --reason \"<what is not done, and why>\"" + tail + ": you could not finish it; say what you found.\n" +
 		fault
 }
-
-// mergeNeverRebase is how a work job takes in a newer base (a merge
-// conflict at landing): the head must descend from where the attempt
-// started, or collect refuses it.
-const mergeNeverRebase = "   To take in a newer base (a merge conflict), merge it into the branch, never rebase: the head must descend from where this attempt started.\n"
 
 // commitIdentity_internal is the sprint's commit identity rule for a work
 // job (CommitRules), which the worker has already configured in the

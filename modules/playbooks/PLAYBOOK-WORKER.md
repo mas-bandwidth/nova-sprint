@@ -187,7 +187,8 @@ Each message is a wake. Handle it, then wait for the bus again.
    since the base by another author or committer email.
    Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
    withdraw never costs work. Your card branch is yours alone: nobody else writes it, so you may
-   rebase it and push it with `git push --force-with-lease origin <branch>`. Never force-push any
+   rewrite your own commits on it (never rebase it past a prior head, step 2) and push it with
+   `git push --force-with-lease origin <branch>`. Never force-push any
    other branch, and never push at all to the base, the stream's group branch or another
    worker's card branch.
 8. Open no PR. The landing opens the PR itself (from your card's branch, or from the stream's
