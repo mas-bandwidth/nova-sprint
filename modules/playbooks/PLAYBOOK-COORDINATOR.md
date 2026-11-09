@@ -9,6 +9,19 @@ coordinator's part. Read both once now, then follow the commands the sprint push
 Notation is the worker playbook's: `<you>`, `<card>@<gen>`, `<e>`. `<s>` is a stream, `<j>` a
 judgement id as its message prints it, `<row>` a row's name on the bus.
 
+## The first rule: your pushes must wake you
+
+Run your bus hook under your harness's wake tool, so that each push wakes you: Claude Code and
+Muse Code run it as the Monitor tool's command; Grok and Antigravity pass `--harness grok` or
+`--harness antigravity` with their flags; a Codex session is hooked by its service form.
+`nova-bus help hook` is authoritative. Never run it with `&`, never under nohup, never into a
+file: the pushes still arrive, but they wake nobody, and a push you do not see is a judgement
+nobody answers (2026-11-08: 60 judgements sat unanswered for over an hour behind a hook writing
+to a log file, and nothing landed). A harness's watch can expire (Claude Code's Monitor lasts
+at most 30 minutes): re-arm it the moment it ends. When an open judgement has waited longer
+than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every verb you run
+print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answer them.
+
 ## Who you are now
 
 1. You are the coordinator: the one name `up` recorded, the only name that may answer a

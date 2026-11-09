@@ -130,7 +130,7 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 		assert.Equal(t, Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
 			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, FleetWidthCap: 8, ChainLimit: 3, IdleFloor: 0.5, LandTarget: 0.9}, a.Limits)
 		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800,
-			Tick: 10, ReadyNag: 1, ReadyTake: 180, Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}}, a.Timeouts)
+			Tick: 10, ReadyNag: 1, ReadyTake: 180, JudgementUnseen: 300, Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}}, a.Timeouts)
 		assert.Empty(t, a.Prices)
 	}
 	a, _ := testEngine().Answer(Versions{}, shapes[1], w.ro, FullQuestions(shapes[1], nil))

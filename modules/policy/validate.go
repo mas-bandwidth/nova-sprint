@@ -262,20 +262,20 @@ func checkLanding(v starlark.Value) (Landing, string) {
 
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the
 // withdraw silence at or above the gone one: no wait is ever unbounded.
-// ready_nag and ready_take are optional: the default policy (default.star)
-// names both, 1 and 180, and a version stored before them (the live
-// store's, before v2.0.1) lacks them, so for it alone the same values are
-// filled in here and it still answers.
+// ready_nag, ready_take and judgement_unseen are optional: the default
+// policy (default.star) names them, 1, 180 and 300, and a version stored
+// before them lacks them, so for it alone the same values are filled in
+// here and it still answers.
 func checkTimeouts(v starlark.Value) (Timeouts, string) {
-	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take")
+	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take", "judgement_unseen")
 	if msg != "" {
 		return Timeouts{}, msg
 	}
-	t := Timeouts{ReadyNag: 1, ReadyTake: 180}
+	t := Timeouts{ReadyNag: 1, ReadyTake: 180, JudgementUnseen: DefaultJudgementUnseen}
 	for _, f := range []struct {
 		key string
 		dst *int
-	}{{"ready_nag", &t.ReadyNag}, {"ready_take", &t.ReadyTake}} {
+	}{{"ready_nag", &t.ReadyNag}, {"ready_take", &t.ReadyTake}, {"judgement_unseen", &t.JudgementUnseen}} {
 		if d[f.key] != nil {
 			if *f.dst, msg = intIn(f.key, d[f.key], 1, maxSeconds); msg != "" {
 				return Timeouts{}, msg
