@@ -483,7 +483,7 @@ sprint_env nova-sprint show '<stream>'
 ```
 
 Write one brief file per producer. Its filename without `.md` becomes the card
-id. This is a template, not an executable brief; replace its placeholders with
+id: 1 to 104 of a-z A-Z 0-9 _ -, not starting with -. This is a template, not an executable brief; replace its placeholders with
 paths and commands valid in that repository:
 
 ```text
