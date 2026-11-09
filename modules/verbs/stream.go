@@ -35,7 +35,8 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if err != nil {
 		return "", err
 	}
-	if err := e.baseRed(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, tip, "add the stream again"); err != nil {
+	redWarn, err := e.baseRed(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, tip, "add the stream again")
+	if err != nil {
 		return "", err
 	}
 	if err := e.ensureGroup(ctx, store.Stream{Name: name, Repo: repo, Base: base, Mode: mode, Forge: forge}); err != nil {
@@ -61,6 +62,9 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		return "", err
 	}
 	lines := []string{fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)}
+	if redWarn != "" {
+		lines = append(lines, redWarn)
+	}
 	if what, fix := e.agreementWarning(ctx, snap, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}); what != "" {
 		lines = append(lines, "WARN "+oneLine(what)+": "+oneLine(fix))
 	}

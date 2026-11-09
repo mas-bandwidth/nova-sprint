@@ -39,23 +39,25 @@ const baseRedNamed = 5
 // added onto it can only wait (2026-11-08: 171 cards were admitted onto a
 // base red on 155 of 205 jobs, and nothing landed for an hour). Pending
 // checks, no checks, green and a gate fault are admitted: admission does not
-// wait for CI. A stream with no forge has no checks to read; a read that
-// fails is a failure, never an admission.
-func (e *Engine) baseRed(ctx context.Context, s store.Stream, tip, again string) error {
+// wait for CI. A stream with no forge has no checks to read. A read that
+// fails is not red, as the landing reads it (baseRed_internal notes it and
+// goes on): it admits with a warning (what, fix), never silently.
+func (e *Engine) baseRed(ctx context.Context, s store.Stream, tip, again string) (string, error) {
 	if s.Forge != "github" {
-		return nil
+		return "", nil
 	}
 	if e.Forge == nil {
-		return broken("the forge is not configured", "take it to the project's own tracker with this line")
+		return "", broken("the forge is not configured", "take it to the project's own tracker with this line")
 	}
 	at := shortSHA(tip)
 	rollups, err := e.Forge.Checks(ctx, s.Repo, []string{tip})
 	if err != nil {
-		return RefusalOr(err, broken("the checks of "+s.Repo+"'s "+s.Base+" at "+at+" cannot be read ("+errText(err)+")", "make "+s.Repo+" readable by this host's gh, then "+again))
+		return "WARN stream " + s.Name + ": the checks of " + s.Repo + "'s " + s.Base + " at " + at + " cannot be read (" + oneLine(errText(err)) + "), so it is not known green: " +
+			"if it is red, no card of it lands until it is green (gh auth status on this host shows who reads them)", nil
 	}
 	r := rollups[tip]
 	if r.State != forge.CheckRed {
-		return nil
+		return "", nil
 	}
 	named := strings.Join(r.Failing[:min(len(r.Failing), baseRedNamed)], ", ")
 	if more := len(r.Failing) - baseRedNamed; more > 0 {
@@ -65,7 +67,7 @@ func (e *Engine) baseRed(ctx context.Context, s store.Stream, tip, again string)
 	if len(r.Failing) == 1 {
 		checks = "check"
 	}
-	return refuse(fmt.Sprintf("stream %s: %s's %s is red at %s on %d %s (%s), so no card of it can land", s.Name, s.Repo, s.Base, at, len(r.Failing), checks, named),
+	return "", refuse(fmt.Sprintf("stream %s: %s's %s is red at %s on %d %s (%s), so no card of it can land", s.Name, s.Repo, s.Base, at, len(r.Failing), checks, named),
 		"make "+s.Repo+"'s "+s.Base+" green at "+at+", then "+again)
 }
 

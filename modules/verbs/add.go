@@ -30,6 +30,10 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	if err != nil {
 		return "", err
 	}
+	redWarn, err := e.addBaseRed(ctx, snap, adds)
+	if err != nil {
+		return "", err
+	}
 	if err := e.admitAdds(ctx, snap, adds); err != nil {
 		return "", err
 	}
@@ -38,6 +42,9 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 		lines[i] = fmt.Sprintf("ADD %s kind=%s stream=%s tier=%s priority=%s needs=%s", a.ID, a.Kind, a.Stream, a.Tier, orWord(a.Priority, "normal"), orWord(strings.Join(a.Needs, ","), "-"))
 	}
 	lines = append(lines, chain)
+	if redWarn != "" {
+		lines = append(lines, redWarn)
+	}
 	if in.has("dry-run") {
 		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
 	}
@@ -189,11 +196,25 @@ func addOrder(pending map[string]card.Add) ([]string, error) {
 	return order, nil
 }
 
-// admitAdds is add's admission of its producers: the stream's base is not
-// red (baseRed, add's own: check and run's re-proof leave cards already in
-// alone), then admitCards, the first refused card, by id, being the refusal.
-// A sentinel has no brief and is never dealt; its stream was checked by
-// readAdds.
+// addBaseRed is add's refusal of producers onto a github stream whose base
+// tip is red (baseRed), or its warning when the checks cannot be read; a
+// sentinel alone is never dealt and needs none. It is add's own: check and
+// run's re-proof leave cards already in alone.
+func (e *Engine) addBaseRed(ctx context.Context, snap store.Snapshot, adds []card.Add) (string, error) {
+	s := snap.Streams[adds[0].Stream]
+	if s.Forge != "github" || !slices.ContainsFunc(adds, func(a card.Add) bool { return a.Kind == "producer" }) {
+		return "", nil
+	}
+	tip, err := e.baseTip(ctx, s, "add the card again")
+	if err != nil {
+		return "", err
+	}
+	return e.baseRed(ctx, s, tip, "add again")
+}
+
+// admitAdds is add's admission of its producers (admitCards): the first
+// refused card, by id, is the refusal. A sentinel has no brief and is
+// never dealt; its stream was checked by readAdds.
 func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card.Add) error {
 	var facts []cardFacts
 	for _, a := range adds {
@@ -203,15 +224,6 @@ func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card
 	}
 	if len(facts) == 0 {
 		return nil
-	}
-	if s := snap.Streams[facts[0].Stream]; s.Forge == "github" {
-		tip, err := e.baseTip(ctx, s, "add the card again")
-		if err != nil {
-			return err
-		}
-		if err := e.baseRed(ctx, s, tip, "add again"); err != nil {
-			return err
-		}
 	}
 	refused, err := e.admitCards(ctx, snap, facts)
 	if err != nil {

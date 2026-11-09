@@ -159,9 +159,10 @@ Then, against the roster and origin:
   in failure, other checks still running or not. The refusal names the first
   five red checks and their count, and its fix is to make the base green at
   that sha, then add again. Pending checks, no checks, green and a gate fault
-  are admitted (admission does not wait for CI); a read that fails is a
-  failure (exit 2), never an admission. `check` and run's re-proof at a base
-  move do not apply it to cards already in.
+  are admitted (admission does not wait for CI). A read that fails is not
+  red, as the landing reads it: the card or stream is admitted with a `WARN`
+  line saying the base is not known green. `check` and run's re-proof at a
+  base move do not apply it to cards already in.
 
 `stream add` (and `check`, per stream) also reads the status checks the base
 branch requires (branch protection and rulesets, one `gh api` each) and,

@@ -28,7 +28,7 @@ var sevenRed = forge.CheckRollup{SHA: base, State: forge.CheckRed, Failing: []st
 // onto a base red on 155 of 205 jobs and none could land), naming the first
 // red checks, their count and the fix. Pending checks, no checks, green and
 // a gate fault are admitted; a stream with no forge has no checks to read;
-// a read that fails is a failure, never an admission.
+// a read that fails admits with a warning (not red, as the landing reads it).
 func TestAddRefusesARedBase(t *testing.T) {
 	t.Parallel()
 	red := "stream s: o/r's main is red at bbbbbbbbbbbb on 7 checks (unit, lint, tsan, asan, msan and 2 more), so no card of it can land"
@@ -54,8 +54,8 @@ func TestAddRefusesARedBase(t *testing.T) {
 		{name: "green", snap: githubStream, prep: baseChecks(forge.CheckRollup{SHA: base, State: forge.CheckGreen}), parts: []string{"ADDED 1 cards"}},
 		{name: "gate fault", snap: githubStream, prep: baseChecks(forge.CheckRollup{SHA: base, State: forge.CheckFault, Failing: []string{"unit"}}), parts: []string{"ADDED 1 cards"}},
 		{name: "no forge", prep: baseChecks(sevenRed), parts: []string{"ADDED 1 cards"}},
-		{name: "unreadable", snap: githubStream, prep: func(_ *testing.T, w *world) { w.forge.rollupE = errBroken }, exit: 2,
-			parts: []string{"the checks of o/r's main at bbbbbbbbbbbb cannot be read (connection refused)", "make o/r readable by this host's gh, then add again"}},
+		{name: "unreadable", snap: githubStream, prep: func(_ *testing.T, w *world) { w.forge.rollupE = errBroken },
+			parts: []string{"WARN stream s: the checks of o/r's main at bbbbbbbbbbbb cannot be read (connection refused), so it is not known green", "ADDED 1 cards"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -89,6 +89,8 @@ func TestStreamAddRefusesARedBase(t *testing.T) {
 		{name: "red", as: "carol", args: add, exit: 1, prep: baseChecks(sevenRed),
 			want: []string{"stream t: o/r's main is red at bbbbbbbbbbbb on 7 checks (unit, lint, tsan, asan, msan and 2 more), so no card of it can land", "make o/r's main green at bbbbbbbbbbbb, then add the stream again"}},
 		{name: "pending", as: "carol", args: add, exit: 0, prep: baseChecks(forge.CheckRollup{SHA: base, State: forge.CheckPending}), want: []string{"STREAM t repo=o/r base=main"}},
+		{name: "unreadable", as: "carol", args: add, exit: 0, prep: func(_ *testing.T, w *world) { w.forge.rollupE = errBroken },
+			want: []string{"STREAM t repo=o/r base=main", "WARN stream t: the checks of o/r's main at bbbbbbbbbbbb cannot be read (connection refused)"}},
 	})
 	w := newWorld(t)
 	baseChecks(sevenRed)(t, w)
