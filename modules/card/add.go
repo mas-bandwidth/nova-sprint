@@ -13,7 +13,9 @@ import (
 // over 104 bytes (so a consumer suffix still fits in 128), a sentinel with a
 // brief or a score, a need that is not a producer or a sentinel, an after
 // that is not a producer or sentinel, a name given twice, and a cycle through
-// needs or after (the first cold read of layer 2). The new card is fenced
+// needs or after (the first cold read of layer 2), and a head on a sentinel
+// or one that is not a full sha. A producer's head (adopted at admission) is
+// set in the same plan as its put. The new card is fenced
 // absent. No other card is fenced: layer 1 refuses a need or after naming a
 // card that does not exist, so no card of the store can name the new id
 // before it lands, and a loop can close only through its own lists, which the
@@ -34,11 +36,15 @@ func MoveAdd(e Add, cards map[string]Card) (Plan, *Refusal) {
 	put := store.PutCard{ID: e.ID, Kind: e.Kind, Stream: e.Stream, Tier: e.Tier, Priority: e.Priority, Score: e.Score,
 		Needs: slices.Clone(e.Needs), After: slices.Clone(e.After), Brief: e.Brief, Prose: e.Prose,
 		Paths: slices.Clone(e.Paths), DoneWhen: slices.Clone(e.DoneWhen)}
+	writes := []store.Write{put}
+	if e.Head != "" {
+		writes = append(writes, store.SetCardHead{Card: e.ID, Head: e.Head})
+	}
 	seen := records{cards: map[string]Card{}}
 	for _, c := range cards {
 		addCard(seen, c)
 	}
-	return finish(Plan{Expect: []store.Expect{store.CardAbsent{Card: e.ID}}, Writes: []store.Write{put}}, "Add "+e.ID, seen, func(cur records) (Plan, *Refusal) {
+	return finish(Plan{Expect: []store.Expect{store.CardAbsent{Card: e.ID}}, Writes: writes}, "Add "+e.ID, seen, func(cur records) (Plan, *Refusal) {
 		return MoveAdd(e, cardsOr(cur, cards))
 	})
 }
@@ -60,6 +66,10 @@ func addShape(e Add, cards map[string]Card) *Refusal {
 		return no("sentinel %s has no brief", e.ID)
 	case e.Kind == "sentinel" && e.Score != 0:
 		return no("sentinel %s has no score of its own", e.ID)
+	case e.Kind == "sentinel" && e.Head != "":
+		return no("sentinel %s has no head", e.ID)
+	case e.Head != "" && !isSHA(e.Head):
+		return no("head %s of %s is not a full commit sha", e.Head, e.ID)
 	case len(e.ID) > maxCardID:
 		return no("id %q is %d bytes; Add caps a card id at %d so its consumer ids fit in %d", short(e.ID), len(e.ID), maxCardID, store.MaxName)
 	case !slices.Contains(Levels, level):

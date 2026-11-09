@@ -9,6 +9,7 @@ TRows == {"r1", "r2", "r3"}
 TRowIdx == ("r1" :> 1 @@ "r2" :> 2 @@ "r3" :> 3)
 TNeeds0 == ("p1" :> {})
 TAfter0 == ("p1" :> {})
+THead0 == ("p1" :> 0)
 
 TraceLog == <<
   [i |-> 1, action |-> "Init", ps |-> ("p1" :> [st |-> "waiting", att |-> 0, head |-> 0, author |-> "none", bounces |-> 0, score |-> 0, prio |-> "normal", needs |-> {}, after |-> {}, review |-> 0, ncut |-> 0, finding |-> "-", red |-> FALSE, why |-> "-", base |-> 0]), cs |-> <<>>, rs |-> ("r1" :> [st |-> "up", flaps |-> 0, width |-> 2, held |-> FALSE] @@ "r2" :> [st |-> "up", flaps |-> 0, width |-> 1, held |-> FALSE] @@ "r3" :> [st |-> "up", flaps |-> 0, width |-> 1, held |-> FALSE]), held |-> FALSE],

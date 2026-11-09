@@ -26,12 +26,17 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	if err != nil {
 		return "", err
 	}
-	if err := e.admitAdds(ctx, snap, adds); err != nil {
+	heads, err := e.admitAdds(ctx, snap, adds)
+	if err != nil {
 		return "", err
 	}
 	lines := make([]string, len(adds))
 	for i, a := range adds {
 		lines[i] = fmt.Sprintf("ADD %s kind=%s stream=%s tier=%s priority=%s needs=%s", a.ID, a.Kind, a.Stream, a.Tier, orWord(a.Priority, "normal"), orWord(strings.Join(a.Needs, ","), "-"))
+		if h := heads[a.ID]; h != "" {
+			adds[i].Head = h
+			lines[i] += fmt.Sprintf(" head=%s (adopted sprint/%s/%s)", shortSHA(h), a.Stream, a.ID)
+		}
 	}
 	lines = append(lines, e.chainAfterAdd(ctx, snap, adds))
 	if in.has("dry-run") {
@@ -186,9 +191,11 @@ func addOrder(pending map[string]card.Add) ([]string, error) {
 }
 
 // admitAdds is add's admission of its producers (admitCards): the first
-// refused card, by id, is the refusal. A sentinel has no brief and is
-// never dealt; its stream was checked by readAdds.
-func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card.Add) error {
+// refused card, by id, is the refusal; else the heads add adopts, by id
+// (each producer whose branch is at origin and not in the base). A
+// sentinel has no brief and is never dealt; its stream was checked by
+// readAdds.
+func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card.Add) (map[string]string, error) {
 	var facts []cardFacts
 	for _, a := range adds {
 		if a.Kind == "producer" {
@@ -196,16 +203,16 @@ func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card
 		}
 	}
 	if len(facts) == 0 {
-		return nil
+		return nil, nil
 	}
-	refused, err := e.admitCards(ctx, snap, facts)
+	refused, heads, err := e.admitCards(ctx, snap, facts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if ids := slices.Sorted(maps.Keys(refused)); len(ids) > 0 {
-		return refused[ids[0]]
+		return nil, refused[ids[0]]
 	}
-	return nil
+	return heads, nil
 }
 
 // chainAfterAdd is the stream's longest NEEDS chain once adds are in, and

@@ -550,7 +550,7 @@ only four event names (NeedFailed, Preempt, AskReads, InThisOp, for their
 reach checks), so states
 are not split by the move that reached them.
 
-## The instance: seven scenarios
+## The instance: eight scenarios
 
 | cfg | Scenario | producers | needs | K | heads | attempts | env moves |
 |---|---|---|---|---|---|---|---|
@@ -561,6 +561,7 @@ are not split by the move that reached them.
 | `CardMerge.cfg` | `merge` (life, ops of 3 moves) | p1, sentinel s | s needs p1 | 2 | 1 | 1 | 1 |
 | `CardMergePre.cfg` | `mergepre` (pre, ops of 2) | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 1 |
 | `CardMergeDeps.cfg` | `mergedeps` (deps, ops of 2) | as deps | as deps | 2 | 1 | 1 | 0 |
+| `CardAdopt.cfg` | `adopt` (life, p1 added at head 1) | p1, sentinel s | s needs p1 | 3 | 2 | 2 | 1 |
 | `witnesses/CardWaiveRedWithoutRed.cfg` only | `redw` (Scenario life) | p1, sentinel s | s needs p1 | 5 | 2 | 3 | 0 |
 
 - `life` carries the whole lifecycle: a fix, a Red with a yes after it, a
@@ -573,6 +574,10 @@ are not split by the move that reached them.
   (with the third row in `deps` that run passed 24M states unfinished).
 - A Red is a CI result, so it spends the environment budget; as a free move,
   Red and WaiveRed looped.
+- `adopt` is `life` with p1 added at head 1 (`Head0`): admission found its
+  branch at origin and not in the base and recorded its tip as the card's
+  head, so the first Start continues from it (prior 1) and an ok report
+  must push past it. Two heads are the least that allow that.
 - `redw` is `life` sized for one witness: WaiveRed without its red check
   needs a third attempt (see round 4); it is never a passing run.
 - `pre` exists because a blocker can only preempt the consumer of another
@@ -614,7 +619,7 @@ cycle check.
 
 ## Files
 
-- `CardMachine.tla` and its seven passing cfgs.
+- `CardMachine.tla` and its eight passing cfgs.
 - `witnesses/Card*.tla`: thirty-six reversed witnesses; `reach/Card*.cfg`:
   seventeen reachability checks. Generated with every card cfg by
   `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
@@ -714,7 +719,7 @@ Step invariants (each: the last step kept its rule):
 
 | Module | Scenario | Fault | Expected result |
 |---|---|---|---|
-| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` / `CardMerge` / `CardMergePre` / `CardMergeDeps` | life / deps / pre / reads / merge / mergepre / mergedeps | none | pass |
+| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` / `CardMerge` / `CardMergePre` / `CardMergeDeps` / `CardAdopt` | life / deps / pre / reads / merge / mergepre / mergedeps / adopt | none | pass |
 | `witnesses/CardLandedMoves` | life | Rescore has no final check | FinalNeverMoves |
 | `witnesses/CardAuthorReads` | life | AskRead does not refuse the author | ReaderNeverAuthor |
 | `witnesses/CardRedAdvances` | life | Red moves merging to landed | RedNeverAdvances |
@@ -768,6 +773,7 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |
 | `reach/CardNeverAdded` | deps | none | violated: Add puts a sentinel with a need and an after |
 | `reach/CardNeverSentinelNeeded` | deps | none | violated: a sentinel is a need |
+| `reach/CardNeverAdopted` | adopt | none | violated: a first attempt continues from an adopted head and reports ok past it |
 | `reach/CardNeverAskReads` | reads | none | violated: AskReads cuts two reads in one step |
 | `reach/CardNeverInThisOp` | deps | none | violated: a need fails and its dependant moves in one op |
 | `reach/CardNeverWaivedRed` | life | none | violated: WaiveRed merges after a Red on the earlier read |

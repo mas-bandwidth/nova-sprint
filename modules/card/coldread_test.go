@@ -319,6 +319,13 @@ func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
 func coldWalkTraced(t *testing.T, seed int64, steps int, traced bool) map[string]int {
 	rng := rand.New(rand.NewSource(seed))
 	w := newWorld(t, producer("p1"), producer("p2", "p1"), producer("p3"), store.PutCard{ID: "g1", Kind: "sentinel", Needs: []string{"p2"}})
+	// p4 is added as admission adds a card whose branch is at origin and
+	// not in the base: at that branch's tip (Add's Head), so its first
+	// Start continues from h1 (the trace's THead0, CardMachine.tla Head0).
+	all, _ := w.all()
+	adopt, r := MoveAdd(Add{ID: "p4", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p4", Head: h1}, all)
+	require.Nil(t, r)
+	w.op("add", adopt)
 	tr := newCardTrace(w, traced)
 	defer tr.done(seed)
 	finals := map[string]coldFinal{}

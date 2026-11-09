@@ -858,6 +858,8 @@ func TestAdd(t *testing.T) {
 		{with(func(a *Add) { a.After = []string{"x9"} }), "after x9 of producer p1 is not a card"},
 		{with(func(a *Add) { a.ID = "" }), "a card needs a name"},
 		{with(func(a *Add) { a.Tier = "huge" }), `tier "huge" is not one of flash, pro, heavy or frontier`},
+		{with(func(a *Add) { a.Kind, a.Brief, a.Score, a.Head = "sentinel", "", 0, h1 }), "sentinel p1 has no head"},
+		{with(func(a *Add) { a.Head = "abc123" }), "head abc123 of p1 is not a full commit sha"},
 	} {
 		c.check(t)
 	}

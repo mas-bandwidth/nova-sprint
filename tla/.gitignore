@@ -1,6 +1,7 @@
 # Written by the make-*witnesses.py generators; gen-witnesses.sh runs them in a copy
 # for ci-tlc.sh. Run one here and its output lands in these paths.
 /witnesses/
+/CardAdopt.cfg
 /CardDeps.cfg
 /CardMachine.cfg
 /CardMerge.cfg

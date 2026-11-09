@@ -53,11 +53,15 @@ SCENARIOS = {
     # moves of one op (round 7). No environment move: Add and Red are
     # checked in deps.
     "mergedeps": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 0},
+    # life with p1 added at head 1, its branch adopted at admission: the
+    # first Start continues from it, so two heads are the least that let an
+    # ok report push past it.
+    "adopt": {"K": 3, "MaxHead": 2, "MaxAttempt": 2, "MaxBounce": 1, "MaxEnv": 1},
 }
 
 # The passing runs: cfg name -> scenario.
 PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads", "CardMerge": "merge", "CardMergePre": "mergepre",
-           "CardMergeDeps": "mergedeps"}
+           "CardMergeDeps": "mergedeps", "CardAdopt": "adopt"}
 
 # Reachability checks on CardMachine.tla: name -> (scenario, what).
 REACH = {
@@ -80,6 +84,7 @@ REACH = {
     "NeverFindingCarried": ("life", "a fix attempt carries the reader's finding"),
     "NeverPreempted": ("pre", "a blocker preempts a live consumer"),
     "NeverInThisOpMerged": ("mergedeps", "a need fails and a later move of the op moves its dependant InThisOp"),
+    "NeverAdopted": ("adopt", "a first attempt continues from an adopted head and reports ok past it"),
 }
 
 # Relink's lines, shared by the two cycle witnesses.

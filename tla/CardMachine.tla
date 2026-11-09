@@ -17,6 +17,10 @@
 (* - "pre": p1 and p2 independent, p2 names p1 in after, no sentinel: a    *)
 (*   blocker can only preempt the consumer of another producer live at    *)
 (*   the same time, and after only orders two producers queued together.  *)
+(* - "adopt": life with p1 added at head 1 (Head0): admission found its   *)
+(*   branch at origin and not in the base, so add recorded the branch's   *)
+(*   tip as its head; the first Start continues from it (prior 1) and an  *)
+(*   ok report must push past it (HeadNeverRepeats, NeverAdopted).        *)
 (*   Its environment budget goes to SetPriority, the row table and the     *)
 (*   stream's hold; Edit and Rescore are checked in the other two.         *)
 (* A sentinel has no consumers.                                            *)
@@ -106,7 +110,7 @@
 EXTENDS Naturals, FiniteSets, Sequences, TLC
 
 CONSTANTS
-  Scenario,    \* "life", "deps", "pre", "reads", "merge", "mergepre" or "mergedeps"
+  Scenario,    \* "life", "deps", "pre", "reads", "merge", "mergepre", "mergedeps" or "adopt"
   K,           \* consumer slots per producer
   MaxHead,     \* heads are 1..MaxHead
   MaxAttempt,  \* model bound: Start is not enabled at this attempt
@@ -119,6 +123,7 @@ CONSTANTS
 World == CASE Scenario = "merge"     -> "life"
            [] Scenario = "mergepre"  -> "pre"
            [] Scenario = "mergedeps" -> "deps"
+           [] Scenario = "adopt"     -> "life"
            [] OTHER                  -> Scenario
 MaxOp == CASE Scenario = "merge"                     -> 3   \* moves one Merge composes into one op
            [] Scenario \in {"mergepre", "mergedeps"} -> 2
@@ -147,6 +152,12 @@ After0 == IF World = "pre"
           THEN [p \in P |-> IF p = "p2" THEN {"p1"} ELSE {}]
           ELSE [p \in P |-> {}]
 
+\* A producer's head at add: 0 for a card with no branch; in adopt, the tip
+\* of its branch at origin (not in the base) that admission adopted, head 1
+\* (card.Add's Head; modules/verbs/admit_card.go cardAtBase). The trace
+\* overrides it with the walk's own (THead0).
+Head0 == [p \in P |-> IF Scenario = "adopt" /\ p \in Prods THEN 1 ELSE 0]
+
 Tier     == [p \in P |-> "pro"]
 RowTiers == [r \in Rows |-> {"pro"}]
 Serves(r, p) == Tier[p] \in RowTiers[r]
@@ -172,7 +183,7 @@ NoCons == [st |-> "none", kind |-> "-", row |-> NoR, att |-> 0, head |-> 0,
 \* consumer. red: a recorded Red (the producers-only card column red), set
 \* by Red, cleared by Finished and Start, required by WaiveRed.
 Findings == {"-", "fix"}
-NewProd(p) == [st |-> IF p \in Added THEN "absent" ELSE "waiting", att |-> 0, head |-> 0,
+NewProd(p) == [st |-> IF p \in Added THEN "absent" ELSE "waiting", att |-> 0, head |-> Head0[p],
                author |-> None, bounces |-> 0, score |-> 0, prio |-> "normal",
                needs |-> Needs0[p], after |-> After0[p], review |-> 0, ncut |-> 0,
                finding |-> "-", red |-> FALSE, why |-> "-", base |-> 0]
@@ -1143,6 +1154,9 @@ NeverSentinelReached ==
 NeverRelinked        == \A p \in P \ Added : ps[p].needs \subseteq Needs0[p]
 (* Add puts the sentinel a with a need and an after.                      *)
 NeverAdded           == \A p \in Added : ~(Exists(p) /\ ps[p].needs # {} /\ ps[p].after # {})
+(* A work consumer of a first attempt continued from a head adopted at   *)
+(* add and reported ok past it (adopt).                                    *)
+NeverAdopted         == ~\E c \in CIds : cs[c].kind = "work" /\ cs[c].att = 1 /\ cs[c].prior # 0 /\ cs[c].res = "ok"
 (* A sentinel is a need: a is added needing s.                            *)
 NeverSentinelNeeded  == \A p \in Added : ~(Exists(p) /\ \E n \in ps[p].needs : n \in Sentinels)
 NeverAskReads        == last.ev # "AskReads"

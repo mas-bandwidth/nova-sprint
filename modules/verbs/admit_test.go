@@ -4,10 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 // TestStreamAdmission: stream add proves the card branches creatable (git's
@@ -84,8 +87,76 @@ func TestCardAdmission(t *testing.T) {
 		{name: "its branch already at the base", as: "carol", args: b("x1", ""), exit: 1,
 			prep: func(_ *testing.T, w *world) { w.origin.tips["o/r sprint/s/x1"] = tip; w.origin.contains = true },
 			want: []string{"card x1: its work is already at the base: its branch sprint/s/x1", "do not add it"}},
-		{name: "its branch not at the base", as: "carol", args: b("x2", ""), exit: 0, prep: func(_ *testing.T, w *world) { w.origin.tips["o/r sprint/s/x2"] = tip }, want: []string{"ADDED 1 cards"}},
+		{name: "its branch not at the base", as: "carol", args: b("x2", ""), exit: 0, prep: func(_ *testing.T, w *world) { w.origin.tips["o/r sprint/s/x2"] = tip },
+			want: []string{"head=" + tip[:12] + " (adopted sprint/s/x2)", "ADDED 1 cards"}},
 		{name: "a gate naming a bench", as: "carol", args: b("n1", "DONE-WHEN: make test HOST=alice\n"), exit: 1, want: []string{"card n1: line 5's gate names the bench alice", "never a host"}},
+	})
+}
+
+// TestAddAdoptsCardBranch: a card whose branch sprint/<stream>/<id> is at
+// origin and not in the base continues it: add records the branch's tip as
+// the card's head (in the add's own op), so the first deal's work consumer
+// carries it as prior_head; with no branch there is no head; a dry run
+// reports the adoption and writes nothing.
+func TestAddAdoptsCardBranch(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	add := func(id string, more ...string) []string {
+		text := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: go test ./...\n\nLand the PR: start from its head.\n"
+		return append([]string{"add", "--stream", "s", "--brief-file", briefFile(t, dir, id, text)}, more...)
+	}
+	t.Run("no branch, no head", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t)
+		r := w.do("carol", add("a1")...)
+		want(t, r, 0, "ADD a1 ", "ADDED 1 cards")
+		if strings.Contains(r.Output, "adopted") {
+			t.Fatalf("adopted with no branch:\n%s", r.Output)
+		}
+		if c := w.snap(t).Cards["a1"]; c.Head != "" {
+			t.Fatalf("head %q with no branch", c.Head)
+		}
+	})
+	t.Run("branch in the base is refused", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t)
+		w.origin.tips["o/r sprint/s/a2"], w.origin.contains = tip, true
+		want(t, w.do("carol", add("a2")...), 1, "card a2: its work is already at the base")
+		if _, ok := w.snap(t).Cards["a2"]; ok {
+			t.Fatal("a refused card was added")
+		}
+	})
+	t.Run("branch not in the base is adopted", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t)
+		w.origin.tips["o/r sprint/s/a3"] = tip
+		want(t, w.do("carol", add("a3")...), 0, "ADD a3 kind=producer stream=s tier=pro priority=normal needs=- head="+tip[:12]+" (adopted sprint/s/a3)", "ADDED 1 cards")
+		snap := w.snap(t)
+		c := snap.Cards["a3"]
+		if c.Head != tip || c.State != "waiting" || c.Attempt != 0 {
+			t.Fatalf("card %+v", c)
+		}
+		p := card.FromStore(c)
+		p.State = card.Ready
+		row := card.RowFromStore(snap.Rows["alice"], 1, []string{"pro"})
+		plan, why := card.Move(p, nil, map[string]card.Row{"alice": row}, card.StreamFromStore(snap.Streams["s"]), nil,
+			card.Start{Row: "alice", Branch: "sprint/s/a3", Base: base})
+		if why != nil {
+			t.Fatal(why.Reason)
+		}
+		if !slices.Contains(plan.Writes, store.Write(store.SetCardPriorHead{Card: "a3.w1", Head: tip})) {
+			t.Fatalf("the first deal carries no prior_head %s: %+v", tip, plan.Writes)
+		}
+	})
+	t.Run("dry run reports the adoption and writes nothing", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t)
+		w.origin.tips["o/r sprint/s/a4"] = tip
+		before := w.snap(t).Seq
+		want(t, w.do("carol", add("a4", "--dry-run")...), 0, "head="+tip[:12]+" (adopted sprint/s/a4)", "(dry run)")
+		if s := w.snap(t); s.Seq != before || len(s.Cards) != len(sprint().Cards) {
+			t.Fatalf("a dry run wrote: seq %d -> %d", before, s.Seq)
+		}
 	})
 }
 

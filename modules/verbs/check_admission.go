@@ -96,7 +96,7 @@ func (e *Engine) checkCards(ctx context.Context, r *checkReport, snap store.Snap
 		r.ok("cards: none waiting or ready")
 		return
 	}
-	refused, err := e.admitCards(ctx, snap, facts)
+	refused, _, err := e.admitCards(ctx, snap, facts)
 	if err != nil {
 		r.red(err)
 		return
@@ -134,7 +134,7 @@ func (e *Engine) ReproveStream(ctx context.Context, snap store.Snapshot, stream 
 	if len(facts) == 0 {
 		return nil, nil
 	}
-	refused, err := e.admitCards(ctx, snap, facts)
+	refused, _, err := e.admitCards(ctx, snap, facts)
 	if err != nil {
 		return nil, err
 	}

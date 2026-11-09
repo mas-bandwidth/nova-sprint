@@ -7,8 +7,8 @@
 #   Store.tla with Store.cfg and with StoreRecords.cfg (the two scenarios)
 #                                      must pass            (TLC exit 0)
 #   CardMachine.tla with CardMachine.cfg, CardDeps.cfg, CardPreempt.cfg, CardReads.cfg,
-#   CardMerge.cfg, CardMergePre.cfg, CardMergeDeps.cfg
-#     (its seven scenarios)            must pass            (TLC exit 0)
+#   CardMerge.cfg, CardMergePre.cfg, CardMergeDeps.cfg, CardAdopt.cfg
+#     (its eight scenarios)            must pass            (TLC exit 0)
 #   Steps.tla with StepsPre.cfg, StepsPrePack1.cfg, StepsDeal.cfg, StepsLand.cfg,
 #     StepsBurst.cfg (its scenarios, invariants and the liveness property)
 #                                      must pass            (TLC exit 0)
@@ -183,6 +183,7 @@ run CardReads pass . CardReads.cfg CardMachine.tla 4
 run CardMerge pass . CardMerge.cfg CardMachine.tla 4
 run CardMergePre pass . CardMergePre.cfg CardMachine.tla 4
 run CardMergeDeps pass . CardMergeDeps.cfg CardMachine.tla 4
+run CardAdopt pass . CardAdopt.cfg CardMachine.tla 4
 run StepsPre pass . StepsPre.cfg Steps.tla 8
 run StepsPrePack1 pass . StepsPrePack1.cfg Steps.tla 8
 run StepsDeal pass . StepsDeal.cfg Steps.tla 8

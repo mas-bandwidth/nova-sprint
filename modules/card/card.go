@@ -179,13 +179,17 @@ type (
 )
 
 // Add is a new producer or sentinel (MoveAdd): the put-card plan. Consumers
-// are cut by Start and AskRead, never added.
+// are cut by Start and AskRead, never added. Head is a producer's head at
+// add: the tip of its branch at origin, which admission adopts when the
+// branch is there and not in the base, so its first Start continues from it
+// (prior_head); "" for a card with no branch yet.
 type Add struct {
 	ID, Kind, Stream, Tier, Priority string
 	Score                            int
 	Needs, After                     []string
 	Brief, Prose                     string
 	Paths, DoneWhen                  []string
+	Head                             string
 }
 
 func (Add) isEvent() {}

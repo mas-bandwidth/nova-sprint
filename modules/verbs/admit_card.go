@@ -45,18 +45,20 @@ type streamAtBase struct {
 // routes have a serving row in nova-config, its PATHS exist at the base, its
 // DONE-WHEN lines are each one command (edge.ParseGate), it names no bench by name,
 // and its work is not already at the base. Each stream is read once, all at
-// once; the result is each refused card's refusal, by id.
-func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []cardFacts) (map[string]error, error) {
+// once; the result is each refused card's refusal, by id, and each admitted
+// card's branch tip at origin when the branch is there and not in the base,
+// by id: the head add adopts (cardAtBase).
+func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []cardFacts) (map[string]error, map[string]string, error) {
 	lim, _, err := e.rules(ctx, snap)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ro, err := e.roster(ctx, lim, snap)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	streams, serr := e.readStreams(ctx, snap, facts)
-	out := map[string]error{}
+	out, heads := map[string]error{}, map[string]string{}
 	for _, f := range facts {
 		if err := cardLint(f, ro); err != nil {
 			out[f.ID] = err
@@ -64,11 +66,13 @@ func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []ca
 			named := admissionWhat(f.Stream, err)
 			named.What = "card " + f.ID + ": " + named.What
 			out[f.ID] = named
-		} else if err := e.cardAtBase(ctx, streams[f.Stream], f); err != nil {
+		} else if head, err := e.cardAtBase(ctx, streams[f.Stream], f); err != nil {
 			out[f.ID] = err
+		} else if head != "" {
+			heads[f.ID] = head
 		}
 	}
-	return out, nil
+	return out, heads, nil
 }
 
 // readStreams reads every stream facts name at origin, at once.
@@ -191,27 +195,29 @@ func benchNamed(lines []string, ro roster.Roster) (int, string) {
 
 // cardAtBase is the checks at the base: PATHS exist (pathProblem), and the
 // work is not already there: the card's branch at origin an ancestor of
-// the base.
-func (e *Engine) cardAtBase(ctx context.Context, sb *streamAtBase, f cardFacts) error {
+// the base. A branch at origin that is not in the base is work to continue:
+// its tip is returned, the head add records so the first deal continues
+// from it (prior_head) and pushes on top of it, never over it.
+func (e *Engine) cardAtBase(ctx context.Context, sb *streamAtBase, f cardFacts) (string, error) {
 	for _, p := range f.Paths {
 		if why := pathProblem(sb.tree, f.Paths, p); why != "" {
-			return refuse("card "+f.ID+": PATHS "+p+": "+why+" at "+sb.s.Repo+"'s "+sb.s.Base+" ("+shortSHA(sb.tip)+")",
+			return "", refuse("card "+f.ID+": PATHS "+p+": "+why+" at "+sb.s.Repo+"'s "+sb.s.Base+" ("+shortSHA(sb.tip)+")",
 				"correct the path, or declare a new directory as its own PATHS entry ending in / (its parent must exist), then add the card again")
 		}
 	}
 	branch := "sprint/" + sb.s.Name + "/" + f.ID
 	sha, ok := sb.branches[branch]
 	if !ok {
-		return nil
+		return "", nil
 	}
 	in, err := e.Origin.Contains(ctx, sb.url, sha, sb.tip)
 	if err != nil {
-		return RefusalOr(err, broken("git merge-base in "+sb.s.Repo+" failed ("+errText(err)+")", "add the card again"))
+		return "", RefusalOr(err, broken("git merge-base in "+sb.s.Repo+" failed ("+errText(err)+")", "add the card again"))
 	}
 	if in {
-		return refuse("card "+f.ID+": its work is already at the base: its branch "+branch+" "+shortSHA(sha)+" is in "+sb.s.Base, "do not add it (nova-sprint show "+f.ID+" if it was added before), or brief the work that is still to do")
+		return "", refuse("card "+f.ID+": its work is already at the base: its branch "+branch+" "+shortSHA(sha)+" is in "+sb.s.Base, "do not add it (nova-sprint show "+f.ID+" if it was added before), or brief the work that is still to do")
 	}
-	return nil
+	return sha, nil
 }
 
 // pathProblem is why PATHS entry p is not admitted at the base, or "". A

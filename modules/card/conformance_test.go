@@ -681,3 +681,27 @@ func TestConformanceAdd(t *testing.T) {
 	_, r = MoveAdd(Add{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"}, all)
 	refusal{r, "card p1 exists"}.check(t)
 }
+
+// A head adopted at admission is set in Add's own op, and the first Start
+// continues from it: the work consumer's prior_head is that head, which its
+// ok report may not repeat (no advance).
+func TestConformanceAddAdoptedHead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	all, _ := w.all()
+	plan, r := MoveAdd(Add{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p1", Head: h1}, all)
+	require.Nil(t, r)
+	assert.Equal(t, store.SetCardHead{Card: "p1", Head: h1}, plan.Writes[len(plan.Writes)-1])
+	w.op("add", plan)
+	assert.Equal(t, []any{Waiting, h1, 0}, []any{w.card("p1").State, w.card("p1").Head, w.card("p1").Attempt})
+	for _, e := range []Event{Resolve{}, Start{Row: "r1", Branch: "sprint/s1/p1", Base: base}} {
+		plan, r = w.plan("p1", e)
+		require.Nil(t, r)
+		w.op(kind(e), plan)
+	}
+	assert.Equal(t, []any{h1, base, "sprint/s1/p1"}, []any{w.card("p1.w1").PriorHead, w.card("p1.w1").BaseSHA, w.card("p1.w1").Branch})
+	_, r = MoveConsumer(w.card("p1.w1"), w.card("p1"), w.rows()["r1"], Report{Row: "r1", Result: "ok", Head: h1})
+	refusal{r, "head " + h1 + " is the prior head; nothing new was pushed"}.check(t)
+	_, r = MoveConsumer(w.card("p1.w1"), w.card("p1"), w.rows()["r1"], Report{Row: "r1", Result: "ok", Head: h2})
+	require.Nil(t, r, "a head beyond the adopted one is an advance")
+}

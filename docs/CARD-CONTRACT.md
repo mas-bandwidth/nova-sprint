@@ -151,6 +151,14 @@ Then, against the roster and origin:
   line, or a PR's head is not an ancestor of the base tip, and the PR has not
   merged.
 
+A card whose branch `sprint/<stream>/<id>` is at origin and not an ancestor
+of the base is work to continue: `add` records the branch's tip as the
+card's head, in the add's own op, and says so (`ADD <id> ... head=<sha12>
+(adopted sprint/<stream>/<id>)`; `--dry-run` says the same and writes
+nothing). The first deal then carries that head as the work consumer's
+prior_head: the tree starts from it, JOB.md says to continue from it, the
+push lands on top of it, and an ok finish must push past it.
+
 `stream add` (and `check`, per stream) also reads the status checks the base
 branch requires (branch protection and rulesets, one `gh api` each) and,
 when one is named like a contributor agreement (`CLA`, `CAA`, "contributor",
