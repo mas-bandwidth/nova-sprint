@@ -7,8 +7,10 @@ package store
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -31,10 +33,6 @@ type Store interface {
 	// Events returns events with seq above afterSeq, ascending, at most max
 	// of them; max is capped at MaxEvents, and max <= 0 means MaxEvents.
 	Events(ctx context.Context, afterSeq int64, max int) ([]Event, error)
-	// EventIdentity returns the op id and epoch of the event at seq, and
-	// false when there is none. It reads neither image nor the receipt, so
-	// a caller verifying a cursor pays for two columns, not the state.
-	EventIdentity(ctx context.Context, seq int64) (op string, epoch int, found bool, err error)
 	// Restored returns the digest (sha256 of the dump, from RestoreBegin) and
 	// time of the store's last restore (RestoreEnd, in the restore's own
 	// transaction), and false when it never was: a retried restore of the
@@ -113,6 +111,15 @@ type Op struct {
 	Expect []Expect
 	Writes []Write
 	Note   string // kept in the receipt
+}
+
+// ConsumerOpID is a row's op on a consumer, canonical from (kind, epoch,
+// consumer, gen): the verbs write a take or report under it and the worker
+// checks its report's receipt against it, so a retried take or report
+// replays.
+func ConsumerOpID(kind string, epoch int, consumer string, gen int) string {
+	sum := sha256.Sum256(fmt.Appendf(nil, "%d:%s:%d:%s:%d", len(kind), kind, epoch, consumer, gen))
+	return fmt.Sprintf("consumer:%x", sum)
 }
 
 // Stream is a row of sprint.streams. Mode and Forge are its landing

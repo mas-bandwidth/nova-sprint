@@ -196,7 +196,6 @@ type Store interface {
     Apply(ctx, Op) (Receipt, error)                 // one transaction
     Replay(ctx, opID string) (Receipt, bool, error) // the receipt an op already got
     Events(ctx, afterSeq int64, max int) ([]Event, error) // afterSeq exclusive, seq order, max capped at 1000
-    EventIdentity(ctx, seq int64) (op string, epoch int, found bool, err error) // the op id and epoch at seq; reads no image
     Clear(ctx, Op) (Receipt, error)                 // n = n + 1; same protocol as Apply
     Policy(ctx, version int) (PolicyVersion, error) // the body layer 5 runs
 }
@@ -671,9 +670,6 @@ model and harness wherever they are named).
   Reason}` is its one write, refused when unchanged ("the sprint is already
   stopped"). The store refuses nothing because of it: ops from people still
   land; Run calls no Tick while stopped.
-- `EventIdentity(ctx, seq) (op, epoch, found, err)` on the Store interface
-  (Fake and PG) reads an event's op id and epoch only, never its images
-  (the dashboard's cursor check; branch v2-store-eventidentity, merged here).
 - Migrate: `schema.sql` drops the five columns (`ALTER TABLE ... DROP COLUMN
   IF EXISTS`), adds `rows.role` and the stop columns (`ADD COLUMN IF NOT
   EXISTS`), and drops `cards_live`, in its one transaction, the shape rounds

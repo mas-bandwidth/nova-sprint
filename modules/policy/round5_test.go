@@ -68,8 +68,7 @@ func TestCompareOrder(t *testing.T) {
 }
 
 // TestFunctionalEvaluator: a process engine (its child is this test binary,
-// TestMain) answers as the in-process engine does, check and the catalog
-// included; a version whose one builtin step outlasts the deadline is
+// TestMain) answers as the in-process engine does, check included; a version whose one builtin step outlasts the deadline is
 // abandoned in the child, which says so and is killed, and the next tick
 // starts a new child. Functional: it starts processes, and the child's
 // deadline is the wall clock's.
@@ -87,9 +86,6 @@ func TestFunctionalEvaluator(t *testing.T) {
 	rep, err := Check(w.ctx(), w.st, w.ro, e, "default")
 	require.NoError(t, err)
 	assert.Empty(t, rep.Refusals)
-	c, err := ReadCatalog(w.ctx(), w.st, e, 1)
-	require.NoError(t, err)
-	assert.NotEmpty(t, c.Harnesses)
 	hung, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(30000):\n        x = [[[[[[[[[[x]]]]]]]]]]\n    return len(str(x)) > 0")
 	a, fs := e.Answer(Versions{Active: pv(2, hung)}, snap, w.ro, FullQuestions(snap, nil))
 	assert.Equal(t, 0, a.Version, "the built-in answers behind the hung version: %v", fs)

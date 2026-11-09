@@ -1,6 +1,7 @@
 package dash
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -121,4 +122,24 @@ func TestRunFeedCarriesLandingsForTheEta(t *testing.T) {
 	if d = c.pageSnapshot().Data; d.Eta != "-" || d.EtaBasis != "last hour" {
 		t.Fatalf("empty known landings: eta=%q basis=%q", d.Eta, d.EtaBasis)
 	}
+}
+
+// apply writes one op to s, or fails the test.
+func apply(t *testing.T, s store.Store, id string, epoch int, w ...store.Write) store.Receipt {
+	t.Helper()
+	r, e := s.Apply(context.Background(), store.Op{ID: id, Epoch: epoch, Actor: "test", Kind: id, At: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Writes: w})
+	if e != nil {
+		t.Fatal(e)
+	}
+	return r
+}
+
+// boardOf is the board run would publish from s's snapshot now.
+func boardOf(t *testing.T, s store.Store) *Cache {
+	t.Helper()
+	snap, err := s.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewFromFeed(Feed{Snap: snap, At: t1000}, at1000)
 }

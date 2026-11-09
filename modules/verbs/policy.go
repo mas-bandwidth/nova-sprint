@@ -20,9 +20,6 @@ func runPolicy(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (
 	switch in.verb {
 	case "policy show":
 		return policyShow(ctx, e, in)
-	case "policy diff":
-		out, err := policy.Diff(ctx, e.Store, in.arg(0), in.arg(1))
-		return done("nova-sprint policy check "+in.arg(0), out), err
 	}
 	lim, _, err := e.rules(ctx, snap)
 	if err != nil {

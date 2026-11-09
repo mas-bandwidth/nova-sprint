@@ -273,7 +273,7 @@ func TestFunctionalLateWriterCannotReachThePush(t *testing.T) {
 	_, err = g.StageWorktree(ctx, j)
 	require.NoError(t, err)
 	require.NoError(t, r.keepRemote_internal(TakeInfo{Consumer: j.Consumer, Repo: gb.originDir}))
-	rec := JobRecord{Epoch: 1, Consumer: j.Consumer, Kind: "work", Row: j.Row, Repo: gb.originDir, Branch: j.Branch, BaseSHA: gb.baseSHA, Gen: 1, StartTipRead: true}
+	rec := JobRecord{Epoch: 1, Consumer: j.Consumer, Kind: "work", Row: j.Row, Repo: gb.originDir, Branch: j.Branch, BaseSHA: gb.baseSHA, Gen: 1}
 
 	// The harness: one commit, and a file left uncommitted.
 	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work\n"), 0o644))
@@ -338,7 +338,7 @@ func TestFunctionalRestartActsOnlyOnTheKeptRecord(t *testing.T) {
 			_, err = g.StageWorktree(ctx, j)
 			require.NoError(t, err)
 			rec := JobRecord{Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1", Repo: gb.originDir,
-				Branch: taken.Branch, BaseSHA: gb.baseSHA, Gen: taken.Gen, Attempt: 1, State: JobStaged, StartTipRead: true, PID: 4242, Nonce: "n1"}
+				Branch: taken.Branch, BaseSHA: gb.baseSHA, Gen: taken.Gen, Attempt: 1, State: JobStaged, PID: 4242, Nonce: "n1"}
 			writeStagedRecord_internal(t, jobDir, rec) // no receipt: the restart releases it, its commits pushed first
 
 			// The harness's commit.

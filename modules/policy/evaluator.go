@@ -46,7 +46,7 @@ const (
 // catalog (Src), on the snapshot and roster, with the parent's built-in and
 // the budget left of the tick.
 type request struct {
-	Kind     string // tick, check or catalog
+	Kind     string // tick or check
 	Versions Versions
 	Src      wireSource
 	Snap     store.Snapshot
@@ -315,13 +315,10 @@ func (e *Engine) serve(req request) reply {
 	src := source{req.Src.Version, req.Src.Label, req.Src.Body, req.Src.Stored}
 	var a Answers
 	var fs []Failure
-	switch req.Kind {
-	case "tick":
+	if req.Kind == "tick" {
 		a, fs = e.AnswerContext(context.Background(), req.Versions, req.Snap, req.Roster, req.Q)
-	case "check":
+	} else { // "check"
 		a, fs = e.checkRun(context.Background(), src, req.Snap, req.Roster)
-	default:
-		a, fs = e.catalog(context.Background(), src)
 	}
 	rep := reply{Answers: a, Shown: a.shown, Compiles: e.Compiles() - before, Live: e.live.Load() > 0}
 	for _, f := range fs {

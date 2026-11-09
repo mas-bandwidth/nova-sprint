@@ -435,17 +435,24 @@ func TestStagePerStreamRepo(t *testing.T) {
 // The binary's order: the bus hook and the self-unhook, the probe, and
 // only then the sprint hook: a failed probe never hooks the row in to the
 // sprint and stops the bus hook, so no bench is up with no worker able to
-// run (and a hooked row is a probed one: up's step 7, admission). A passed
-// probe hooks once.
+// run (and a hooked row is a probed one: up's step 7, admission); the row
+// is held and probed again. A passed probe hooks once.
 func TestServeRowProbesBeforeTheSprintHook(t *testing.T) {
 	t.Parallel()
 	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {}}}}}
 	hook := newFakeWakeHook()
 	r := probeRunner_internal(t, sp, &fakeWall{}, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, allKeys_internal))
 	r.BusHook = func(context.Context, string) (WakeHook, error) { return hook, nil }
-	err := r.ServeRow(context.Background(), "b1", "opencode", true)
-	if err == nil || !strings.Contains(err.Error(), "no model for tier flash") {
-		t.Fatalf("ServeRow: %v", err)
+	held, stopHeld := context.WithCancel(context.Background())
+	var warned string
+	r.Warn = func(s string) {
+		if strings.Contains(s, "held") {
+			warned = s
+			stopHeld()
+		}
+	}
+	if err := r.ServeRow(held, "b1", "opencode"); err != nil || !strings.Contains(warned, "no model for tier flash") {
+		t.Fatalf("ServeRow: %v, warned %q", err, warned)
 	}
 	if sp.unhooks != 1 || sp.hooks != 0 || hook.stops() != 1 {
 		t.Fatalf("unhooks %d (a stale hook's only), sprint hooks %d (none: the probe failed), bus hook stops %d", sp.unhooks, sp.hooks, hook.stops())
@@ -459,7 +466,7 @@ func TestServeRowProbesBeforeTheSprintHook(t *testing.T) {
 	r.BusHook = func(context.Context, string) (WakeHook, error) { return newFakeWakeHook(), nil }
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // the pass after the hook sees a cancelled context: only the order is under test
-	_ = r.ServeRow(ctx, "b1", "opencode", true)
+	_ = r.ServeRow(ctx, "b1", "opencode")
 	if sp.hooks != 1 {
 		t.Fatalf("a passed probe hooks the row once: %d", sp.hooks)
 	}

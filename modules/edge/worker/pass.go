@@ -154,8 +154,8 @@ func ignoreStoreDown_internal(err error) error {
 	return err
 }
 
-// StepRow is one pass that waits for the jobs it starts (--once and the
-// tests); the wake loop's passes start theirs detached.
+// StepRow is one pass that waits for the jobs it starts (the tests); the
+// wake loop's passes start theirs detached.
 func (r *Runner) StepRow(ctx context.Context, row string) error {
 	return r.stepRow_internal(ctx, row, false)
 }

@@ -28,14 +28,14 @@ func TestMergeCommitsTakeTheStoreIdentity(t *testing.T) {
 	})
 	c := New(Config{Exec: runner})
 	heads := []string{strings.Repeat("c", 40), strings.Repeat("d", 40)}
-	if _, err := c.MergeGroup(context.Background(), "/repo", strings.Repeat("a", 40), heads, nil); err == nil || !strings.Contains(err.Error(), "no commit identity") {
+	if _, err := c.MergeGroup(context.Background(), "/repo", strings.Repeat("a", 40), heads); err == nil || !strings.Contains(err.Error(), "no commit identity") {
 		t.Fatalf("MergeGroup with no identity: err %v, want a refusal naming the identity", err)
 	}
 	if len(seen) != 0 {
 		t.Fatalf("MergeGroup with no identity ran git: %v", seen[0].Argv)
 	}
 	ctx := WithIdentity(context.Background(), "Sprint Bot", "bot@example.invalid")
-	if res, err := c.MergeGroup(ctx, "/repo", strings.Repeat("a", 40), heads, nil); err != nil || res.Kind != MergeOK {
+	if res, err := c.MergeGroup(ctx, "/repo", strings.Repeat("a", 40), heads); err != nil || res.Kind != MergeOK {
 		t.Fatalf("MergeGroup: %+v %v", res, err)
 	}
 	merges := 0

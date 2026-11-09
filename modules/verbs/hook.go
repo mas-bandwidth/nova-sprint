@@ -108,13 +108,13 @@ func (e *Engine) newSession() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-// runUnhook is `unhook`: one's own hook needs nothing (a worker's restart
-// starts with it); another row's is the coordinator's.
+// runUnhook is `unhook`: one's own hook needs the name on the bus (a
+// worker's restart starts with it); another row's is the coordinator's.
 func runUnhook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	target := in.arg(0)
 	if target == "" || target == in.actor {
-		if in.actor == "" {
-			return "", refuse("no name given", "pass --as <you>, or set NOVA_SPRINT_AS=<you>")
+		if err := e.onBus(ctx, in.actor); err != nil {
+			return "", err
 		}
 		snap, err := e.snapshot(ctx)
 		if err != nil {

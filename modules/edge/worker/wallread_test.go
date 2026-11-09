@@ -47,7 +47,7 @@ func TestWallReadGrantsAToolchainAndRefusesTheRest(t *testing.T) {
 			t.Errorf("--wall-read %s: %v, want a refusal saying %q", c.dir, err, c.why)
 		}
 	}
-	if err := (Config{Row: "r1", Harness: "script", WallReads: []string{"sdk/go"}}).Check(); err == nil || !strings.Contains(err.Error(), "not an absolute path") {
+	if err := (Config{Row: "r1", Harness: "opencode", WallReads: []string{"sdk/go"}}).Check(); err == nil || !strings.Contains(err.Error(), "not an absolute path") {
 		t.Errorf("Check took a relative --wall-read: %v", err)
 	}
 }

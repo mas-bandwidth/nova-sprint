@@ -85,7 +85,6 @@ func TestLiveReadOutcomeIsOkFixOrFault(t *testing.T) {
 		{Outcome{Result: "fix", Reason: "a.go:1: x"}, ReadFix, "fix"},
 		{Outcome{Result: "fail", Reason: "the head misses done-when"}, ReadFix, "fix"},
 		{noVerdict_internal("the harness exited 0 without writing result.json", "tail"), ReadFault, "fault"},
-		{Outcome{Result: "fail", Reason: "harness exited 1 without writing result.json"}, ReadFault, "fault"}, // a record from before NoVerdict
 		{Outcome{Result: "broken"}, ReadFault, "fault"},
 		{Outcome{}, ReadFault, "fault"},
 	} {
@@ -96,23 +95,6 @@ func TestLiveReadOutcomeIsOkFixOrFault(t *testing.T) {
 	}
 	if o := reportOutcome_internal(JobRecord{Kind: "work", Outcome: Outcome{Result: "fail", Reason: "r"}}); o.Result != "fail" {
 		t.Errorf("a work job's fail stays fail: %+v", o)
-	}
-}
-
-// 67: a read record written before the read outcome existed (fail, naming
-// result.json) heals at its next send: it is sent as a fault.
-func TestLiveStaleReadRecordHealsAtSend(t *testing.T) {
-	t.Parallel()
-	sp := &cr2Sprint{next: workingNext_internal("read", "p1.r1")}
-	r := cr2Runner_internal(t, sp, &cr2Wall{}, &cr2Procs{}, time.Unix(1000, 0))
-	dir := filepath.Join(r.RootDir, "jobs", "p1.r1")
-	if err := WriteJobRecord(dir, JobRecord{Epoch: 0, Consumer: "p1.r1", Producer: "p1", Kind: "read", Row: "vision.ds", Gen: 2, Attempt: 1,
-		ResultID: "res-1", State: JobReporting, Outcome: Outcome{Result: "fail", Reason: "harness exited 1 without writing result.json"}}); err != nil {
-		t.Fatal(err)
-	}
-	_ = r.RecoverRow(context.Background(), "vision.ds")
-	if reps := sp.reported(); len(reps) != 1 || reps[0].Result != "fault" {
-		t.Fatalf("a stale read record must be sent as a fault, got %+v", reps)
 	}
 }
 
@@ -431,7 +413,7 @@ func TestLiveFailedProbeHoldsAndRetries(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- r.ServeRow(ctx, "b1", "opencode", false) }()
+	go func() { done <- r.ServeRow(ctx, "b1", "opencode") }()
 	if d := <-waits; d != ProbeBackoff {
 		t.Fatalf("first retry after %s, want %s", d, ProbeBackoff)
 	}
@@ -469,8 +451,9 @@ func TestLiveWorkerAdvertisesProvedTiersAtHook(t *testing.T) {
 	r.BusHook = func(context.Context, string) (WakeHook, error) { return newFakeWakeHook(), nil }
 	r.Warn = func(string) {}
 	rec := &beatRecorder{}
-	r.Meter, r.Beater = meterFake{hb: Heartbeat{Load1: 1, Cores: 16, SlotsTotal: 3}}, rec
-	if err := r.ServeRow(context.Background(), "b1", "opencode", true); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Meter, r.Beater = meterFake{hb: Heartbeat{Load1: 1, Cores: 16, SlotsTotal: 3}}, cancelBeater{rec, cancel}
+	if err := r.ServeRow(ctx, "b1", "opencode"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rec.beats) != 1 || rec.beats[0].Tiers != "flash" || rec.beats[0].SlotsTotal != 3 || sp.hooks != 1 {
@@ -497,4 +480,16 @@ func TestLivePassRunsOnlyTheHand(t *testing.T) {
 		t.Fatalf("want one launch, p2.r1, got %+v (%v)", launches, err)
 	}
 	launches[0].done()
+}
+
+// cancelBeater records a beat and ends the serve: the advertisement is the
+// first beat, so a served row stops right after it.
+type cancelBeater struct {
+	rec    *beatRecorder
+	cancel context.CancelFunc
+}
+
+func (b cancelBeater) Beat(ctx context.Context, row string, hb Heartbeat) error {
+	defer b.cancel()
+	return b.rec.Beat(ctx, row, hb)
 }

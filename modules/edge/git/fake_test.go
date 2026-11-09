@@ -6,11 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/modules/edge"
-	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 )
 
 type fakeForgeWorld_internal struct {
@@ -134,20 +135,18 @@ type FakeCommit struct {
 	Tree    string
 }
 type FakeWorld struct {
-	mu           sync.Mutex
-	seq          int
-	commits      map[string]FakeCommit
-	originRefs   map[string]string
-	fetched      map[string]bool
-	ledgerScript map[string]func(files map[string]string) (string, error)
+	mu         sync.Mutex
+	seq        int
+	commits    map[string]FakeCommit
+	originRefs map[string]string
+	fetched    map[string]bool
 }
 
 func NewFakeWorld() *FakeWorld {
 	return &FakeWorld{
-		commits:      make(map[string]FakeCommit),
-		originRefs:   make(map[string]string),
-		fetched:      make(map[string]bool),
-		ledgerScript: make(map[string]func(files map[string]string) (string, error)),
+		commits:    make(map[string]FakeCommit),
+		originRefs: make(map[string]string),
+		fetched:    make(map[string]bool),
 	}
 }
 
@@ -214,11 +213,6 @@ func (f *Fake) RemoveFromOrigin(ref string) {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
 	delete(f.world.originRefs, ref)
-}
-func (f *Fake) SetLedgerScript(path string, fn func(files map[string]string) (string, error)) {
-	f.world.mu.Lock()
-	defer f.world.mu.Unlock()
-	f.world.ledgerScript[path] = fn
 }
 func computeTreeHash_internal(files map[string]string) string {
 	keys := make([]string, 0, len(files))
@@ -295,16 +289,7 @@ func (f *Fake) isAncestorLocked_internal(ancestor, descendant string) bool {
 	}
 	return false
 }
-func (f *Fake) TreeHash(_ context.Context, _, rev string) (string, error) {
-	f.world.mu.Lock()
-	defer f.world.mu.Unlock()
-	c, ok := f.world.commits[rev]
-	if !ok {
-		return "", fmt.Errorf("unknown commit %s", rev)
-	}
-	return c.Tree, nil
-}
-func (f *Fake) MergeGroup(_ context.Context, _, onto string, heads []string, ledgers []LedgerRule) (MergeResult, error) {
+func (f *Fake) MergeGroup(_ context.Context, _, onto string, heads []string) (MergeResult, error) {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
 	baseCommit, ok := f.world.commits[onto]
@@ -313,11 +298,7 @@ func (f *Fake) MergeGroup(_ context.Context, _, onto string, heads []string, led
 	}
 	if len(heads) == 1 && f.isAncestorLocked_internal(onto, heads[0]) {
 		hc := f.world.commits[heads[0]]
-		return MergeResult{Kind: MergeOK, SHA: hc.SHA, Tree: hc.Tree, ReusedHead: true}, nil
-	}
-	ledgerMap := make(map[string]LedgerRule, len(ledgers))
-	for _, l := range ledgers {
-		ledgerMap[l.Path] = l
+		return MergeResult{Kind: MergeOK, SHA: hc.SHA}, nil
 	}
 	cur := baseCommit
 	for _, head := range heads {
@@ -325,21 +306,21 @@ func (f *Fake) MergeGroup(_ context.Context, _, onto string, heads []string, led
 		if !exists {
 			return MergeResult{}, fmt.Errorf("unknown head commit %s", head)
 		}
-		next, res, done := f.mergeTwoLocked_internal(cur, hc, ledgerMap)
+		next, res, done := f.mergeTwoLocked_internal(cur, hc)
 		if done {
 			return res, nil
 		}
 		cur = next
 	}
-	return MergeResult{Kind: MergeOK, SHA: cur.SHA, Tree: cur.Tree}, nil
+	return MergeResult{Kind: MergeOK, SHA: cur.SHA}, nil
 }
-func (f *Fake) mergeTwoLocked_internal(ours, theirs FakeCommit, ledgerMap map[string]LedgerRule) (FakeCommit, MergeResult, bool) {
+func (f *Fake) mergeTwoLocked_internal(ours, theirs FakeCommit) (FakeCommit, MergeResult, bool) {
 	anc := f.commonAncestorFilesLocked_internal(ours.SHA, theirs.SHA)
 	mergedFiles := make(map[string]string, len(ours.Files))
 	for k, v := range ours.Files {
 		mergedFiles[k] = v
 	}
-	var nonLedger, ledgerConflicts []string
+	var conflicts []string
 	for path, theirVal := range theirs.Files {
 		baseVal := anc[path]
 		ourVal, ourHas := ours.Files[path]
@@ -350,27 +331,11 @@ func (f *Fake) mergeTwoLocked_internal(ours, theirs FakeCommit, ledgerMap map[st
 			mergedFiles[path] = theirVal
 			continue
 		}
-		if _, isLedger := ledgerMap[path]; isLedger {
-			ledgerConflicts = append(ledgerConflicts, path)
-		} else {
-			nonLedger = append(nonLedger, path)
-		}
+		conflicts = append(conflicts, path)
 	}
-	if len(nonLedger) > 0 {
-		slices.Sort(nonLedger)
-		return FakeCommit{}, MergeResult{Kind: MergeConflict, Conflicts: nonLedger, Reason: fmt.Sprintf("merge conflict on %s: %s", theirs.SHA, strings.Join(nonLedger, ", "))}, true
-	}
-	for _, p := range ledgerConflicts {
-		if fn, ok := f.world.ledgerScript[p]; ok {
-			val, err := fn(mergedFiles)
-			if err != nil {
-				slices.Sort(ledgerConflicts)
-				return FakeCommit{}, MergeResult{Kind: MergeLedgerFailed, Conflicts: ledgerConflicts, Reason: err.Error()}, true
-			}
-			mergedFiles[p] = val
-		} else {
-			mergedFiles[p] = unionLines_internal(ours.Files[p], theirs.Files[p])
-		}
+	if len(conflicts) > 0 {
+		slices.Sort(conflicts)
+		return FakeCommit{}, MergeResult{Kind: MergeConflict, Conflicts: conflicts, Reason: fmt.Sprintf("merge conflict on %s: %s", theirs.SHA, strings.Join(conflicts, ", "))}, true
 	}
 	tree := computeTreeHash_internal(mergedFiles)
 	sum := sha256.Sum256([]byte("merge\x00" + ours.SHA + "\x00" + theirs.SHA + "\x00" + tree))
@@ -393,22 +358,6 @@ func (f *Fake) commonAncestorFilesLocked_internal(a, b string) map[string]string
 		return map[string]string{}
 	}
 	return best
-}
-func (f *Fake) Rebase(_ context.Context, worktree, onto string) (RebaseResult, error) {
-	f.world.mu.Lock()
-	defer f.world.mu.Unlock()
-	ours, ok1 := f.world.commits[onto]
-	theirs, ok2 := f.world.commits[worktree]
-	if !ok1 || !ok2 {
-		return RebaseResult{}, fmt.Errorf("unknown rebase commits onto=%s head=%s", onto, worktree)
-	}
-	next, res, conflict := f.mergeTwoLocked_internal(ours, theirs, nil)
-	if conflict {
-		return RebaseResult{OK: false, Conflicts: res.Conflicts, Reason: fmt.Sprintf("rebase conflict onto %s: %s", onto, strings.Join(res.Conflicts, ", "))}, nil
-	}
-	next.Parents = []string{onto}
-	f.world.commits[next.SHA] = next
-	return RebaseResult{OK: true, SHA: next.SHA}, nil
 }
 func (f *Fake) Push(_ context.Context, _, sha, ref, expectOld string) error {
 	f.world.mu.Lock()

@@ -16,8 +16,6 @@ package policy
 
 import (
 	"fmt"
-	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -130,38 +128,6 @@ func cachedBytes(e *Engine) int {
 		}
 	}
 	return n
-}
-
-// lineDiff's working memory is linear in its input: diffing two bodies with
-// no line in common (the worst case for the common subsequence) allocates
-// about twice as much at twice the lines, where a len(a) x len(b) table
-// would allocate four times as much. Allocation is read as the least bytes
-// of several runs of the call, since bytes other parallel tests allocate in
-// the same window only add to a run.
-func TestLineDiffMemoryGrowsLinearlyWithInput(t *testing.T) {
-	t.Parallel()
-	lines := func(prefix string, n int) []string {
-		s := make([]string, n)
-		for i := range s {
-			s[i] = fmt.Sprintf("%s%d", prefix, i)
-		}
-		return s
-	}
-	least := func(n int) uint64 {
-		x, y := lines("a", n), lines("b", n)
-		best := ^uint64(0)
-		for range 7 {
-			var out strings.Builder
-			var m0, m1 runtime.MemStats
-			runtime.ReadMemStats(&m0)
-			lineDiff(&out, x, y)
-			runtime.ReadMemStats(&m1)
-			best = min(best, m1.TotalAlloc-m0.TotalAlloc)
-		}
-		return best
-	}
-	small, large := least(1000), least(2000)
-	assert.Less(t, large, 3*small, "doubling the lines grew allocation from %d to %d bytes", small, large)
 }
 
 // When the built-in fails (the model's Drift may break Default; the design:

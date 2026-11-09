@@ -103,8 +103,8 @@ func runWorker(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (str
 	if !validName(in.actor) {
 		return "", misuse("worker", "worker takes --as <row>")
 	}
-	w := WorkerArgs{Row: in.actor, Host: in.str("host"), Root: in.str("root"), StateDir: in.str("state-dir"), Harness: in.str("harness"),
-		WorkRoot: in.str("work-root"), MirrorRoot: in.str("mirror-root"), Providers: in.str("providers"), WallReads: in.list("wall-read"), Once: in.has("once")}
+	w := WorkerArgs{Row: in.actor, Root: in.str("root"), StateDir: in.str("state-dir"), Harness: in.str("harness"),
+		WorkRoot: in.str("work-root"), MirrorRoot: in.str("mirror-root"), Providers: in.str("providers"), WallReads: in.list("wall-read")}
 	if err := e.Services.Worker(ctx, w); err != nil {
 		return "", err
 	}
@@ -115,8 +115,8 @@ func runDash(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	if e.Services == nil {
 		return "", broken("dash is not configured in this build", "nova-sprint check")
 	}
-	if in.str("listen") == "" {
-		return "", misuse("dash", "dash takes --listen <addr>")
+	if in.str("listen") == "" || in.str("pull") == "" {
+		return "", misuse("dash", "dash takes --listen <addr> --pull <url>")
 	}
 	if err := e.Services.Dash(ctx, in.str("listen"), in.str("pull")); err != nil {
 		return "", err

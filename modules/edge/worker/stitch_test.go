@@ -330,16 +330,19 @@ func TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake(t *testing.T) {
 
 // ---- rows 14, 15: what the receipt carries ----------------------------------
 
-func TestStitchReceiptWithoutModelDeadlineForgeIsRefusedNamingTheFix(t *testing.T) {
+func TestStitchReceiptWithoutModelOrDeadlineIsRefusedNamingTheFix(t *testing.T) {
 	t.Parallel()
 	cli := &CLISprintClient{Run: func(context.Context, []string) ([]byte, int, error) {
 		return []byte(`{"consumer":"p1.w1","producer":"p1","kind":"work","stream":"s1","tier":"pro","gen":4}`), 0, nil
 	}}
-	_, err := cli.Take(context.Background(), "vision.ds", "p1.w1", 4)
+	info, err := cli.Take(context.Background(), "vision.ds", "p1.w1", 4)
+	if err == nil {
+		err = checkReceipt_internal(info)
+	}
 	if !errors.Is(err, ErrReceipt) {
 		t.Fatalf("want ErrReceipt, got %v", err)
 	}
-	for _, want := range []string{"model, deadline, forge", "nova-sprint take", "--json"} {
+	for _, want := range []string{"model, deadline", "nova-sprint take", "--json"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("the refusal %q does not say %q", err, want)
 		}
@@ -476,7 +479,7 @@ func TestStitchRunnerRefusesToStartWithoutAnInjectedClock(t *testing.T) {
 func TestStitchNoDeadlineModelHostOrTierLiteralsInTheWorker(t *testing.T) {
 	t.Parallel()
 	banned := regexp.MustCompile(`studio|api\.(openai|deepseek|anthropic)\.com|claude-(sonnet|opus|haiku)|gpt-[0-9]|deepseek-(r1|reasoner|chat)|"(flash|pro|heavy|frontier)"|TierDeadline|DeadlineFor`)
-	for _, glob := range []string{"*.go", "../../../cmd/nova-worker/*.go"} {
+	for _, glob := range []string{"*.go"} {
 		files, err := filepath.Glob(glob)
 		if err != nil {
 			t.Fatal(err)

@@ -2,10 +2,11 @@ package dash
 
 import (
 	"encoding/json"
-	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 func TestTierCentsLargestRemainder(t *testing.T) {

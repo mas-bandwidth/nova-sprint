@@ -6,7 +6,6 @@ import (
 	"maps"
 	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -44,7 +43,7 @@ type streamAtBase struct {
 // admitCards proves each producer of facts (CORRECT-USE "Admission"): its
 // stream is live (its repository and base read at origin now), its tier and
 // routes have a serving row in nova-config, its PATHS exist at the base, its
-// DONE-WHEN lines are each one command (edge.ParseGate), it names no retired mechanic and no bench by name,
+// DONE-WHEN lines are each one command (edge.ParseGate), it names no bench by name,
 // and its work is not already at the base. Each stream is read once, all at
 // once; the result is each refused card's refusal, by id.
 func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []cardFacts) (map[string]error, error) {
@@ -128,8 +127,7 @@ func treeSet(files []string) map[string]bool {
 }
 
 // cardLint is the checks that need no repository: the tier and routes
-// served by a row in nova-config, DONE-WHEN parsing, and no retired
-// mechanic or bench named (a stored brief is re-linted the same way).
+// served by a row in nova-config, DONE-WHEN parsing, and no bench named (a stored brief is re-linted the same way).
 func cardLint(f cardFacts, ro roster.Roster) error {
 	routes := card.NeedsRoutes(f.Brief)
 	if !served(ro, f.Tier, routes) {
@@ -141,11 +139,8 @@ func cardLint(f cardFacts, ro roster.Roster) error {
 		}
 	}
 	lines := strings.Split(f.Brief, "\n")
-	if n, what, fix := retiredMechanic(lines); what != "" {
-		return refuse(fmt.Sprintf("card %s: line %d names %s, a retired mechanic", f.ID, n, what), fix)
-	}
 	if n, bench := benchNamed(lines, ro); bench != "" {
-		return refuse(fmt.Sprintf("card %s: line %d's gate names the bench %s", f.ID, n, bench), retiredFix)
+		return refuse(fmt.Sprintf("card %s: line %d's gate names the bench %s", f.ID, n, bench), "a gate names the facts it needs (an OS, a tool), never a host; then nova-sprint add again")
 	}
 	return nil
 }
@@ -195,8 +190,8 @@ func benchNamed(lines []string, ro roster.Roster) (int, string) {
 }
 
 // cardAtBase is the checks at the base: PATHS exist (pathProblem), and the
-// work is not already there: the card's branch at origin, the brief's HEAD,
-// or its PR's head, an ancestor of the base, or the PR merged.
+// work is not already there: the card's branch at origin an ancestor of
+// the base.
 func (e *Engine) cardAtBase(ctx context.Context, sb *streamAtBase, f cardFacts) error {
 	for _, p := range f.Paths {
 		if why := pathProblem(sb.tree, f.Paths, p); why != "" {
@@ -204,53 +199,19 @@ func (e *Engine) cardAtBase(ctx context.Context, sb *streamAtBase, f cardFacts) 
 				"correct the path, or declare a new directory as its own PATHS entry ending in / (its parent must exist), then add the card again")
 		}
 	}
-	heads, err := e.carriedHeads(ctx, sb, f)
-	if err != nil {
-		return err
+	branch := "sprint/" + sb.s.Name + "/" + f.ID
+	sha, ok := sb.branches[branch]
+	if !ok {
+		return nil
 	}
-	for _, h := range heads {
-		in, err := e.Origin.Contains(ctx, sb.url, h.sha, sb.tip)
-		if err != nil {
-			return RefusalOr(err, broken("git merge-base in "+sb.s.Repo+" failed ("+errText(err)+")", "add the card again"))
-		}
-		if in {
-			return refuse("card "+f.ID+": its work is already at the base: "+h.what+" "+shortSHA(h.sha)+" is in "+sb.s.Base, "do not add it (nova-sprint show "+f.ID+" if it was added before), or brief the work that is still to do")
-		}
+	in, err := e.Origin.Contains(ctx, sb.url, sha, sb.tip)
+	if err != nil {
+		return RefusalOr(err, broken("git merge-base in "+sb.s.Repo+" failed ("+errText(err)+")", "add the card again"))
+	}
+	if in {
+		return refuse("card "+f.ID+": its work is already at the base: its branch "+branch+" "+shortSHA(sha)+" is in "+sb.s.Base, "do not add it (nova-sprint show "+f.ID+" if it was added before), or brief the work that is still to do")
 	}
 	return nil
-}
-
-// carried is a head the card's work already has, and where it came from.
-type carried struct{ what, sha string }
-
-// carriedHeads are the card's branch at origin, the brief's HEAD, and its
-// PR's head (a merged PR is the work at the base already: a refusal).
-func (e *Engine) carriedHeads(ctx context.Context, sb *streamAtBase, f cardFacts) ([]carried, error) {
-	var out []carried
-	if sha, ok := sb.branches["sprint/"+sb.s.Name+"/"+f.ID]; ok {
-		out = append(out, carried{"its branch sprint/" + sb.s.Name + "/" + f.ID, sha})
-	}
-	for _, h := range card.BriefField(f.Brief, "HEAD") {
-		out = append(out, carried{"its HEAD", strings.ToLower(h)})
-	}
-	for _, v := range card.BriefField(f.Brief, "PR") {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, RefusalOr(err, refuse("card "+f.ID+": PR "+clip(v)+" is not a number ("+errText(err)+")", "write PR: <number>, then add the card again"))
-		}
-		if e.Forge == nil {
-			return nil, broken("card "+f.ID+": PR "+v+" cannot be read: the forge is not configured", "take it to the project's own tracker with this line")
-		}
-		head, merged, err := e.Forge.PR(ctx, sb.s.Repo, n)
-		if err != nil {
-			return nil, RefusalOr(err, broken("card "+f.ID+": PR "+v+" of "+sb.s.Repo+" cannot be read ("+errText(err)+")", "check gh pr view "+v+" -R "+sb.s.Repo+", then add the card again"))
-		}
-		if merged {
-			return nil, refuse("card "+f.ID+": its work is already at the base: PR "+v+" merged", "do not add it, or brief the work that is still to do")
-		}
-		out = append(out, carried{"its PR " + v + "'s head", head})
-	}
-	return out, nil
 }
 
 // pathProblem is why PATHS entry p is not admitted at the base, or "". A

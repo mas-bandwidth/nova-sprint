@@ -159,7 +159,7 @@ func TestServices(t *testing.T) {
 	w := newWorld(t)
 	want(t, w.do("", "run"), 0, "RUN ended")
 	want(t, w.do("alice", "worker", "--work-root", "/w", "--mirror-root", "/m", "--providers", "deepseek=https://api.example@DEEPSEEK_API_KEY"), 0, "WORKER alice ended")
-	want(t, w.do("", "dash", "--listen", "127.0.0.1:0"), 0, "DASH ended")
+	want(t, w.do("", "dash", "--listen", "127.0.0.1:0", "--pull", "http://run:8080"), 0, "DASH ended")
 	if !slices.Equal(w.svc.ran, []string{"run", "worker alice", "dash"}) {
 		t.Fatalf("ran %v", w.svc.ran)
 	}
@@ -171,9 +171,10 @@ func TestServicesRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "a worker with no name", args: []string{"worker", "--work-root", "/w"}, exit: 2, want: []string{"worker takes --as <row>"}},
 		{name: "a worker given a removed flag", as: "alice", args: []string{"worker", "--coordinator-hosts", "c1"}, exit: 2, want: []string{"unknown flag --coordinator-hosts"}},
-		{name: "a dash with no listen", args: []string{"dash"}, exit: 2, want: []string{"dash takes --listen <addr>"}},
+		{name: "a dash with no listen", args: []string{"dash"}, exit: 2, want: []string{"dash takes --listen <addr> --pull <url>"}},
+		{name: "a dash with no pull", args: []string{"dash", "--listen", "x"}, exit: 2, want: []string{"dash takes --listen <addr> --pull <url>"}},
 		{name: "no run", args: []string{"run"}, exit: 2, prep: none, want: []string{"run is not configured"}},
 		{name: "no worker", as: "alice", args: []string{"worker"}, exit: 2, prep: none, want: []string{"worker is not configured"}},
-		{name: "no dash", args: []string{"dash", "--listen", "x"}, exit: 2, prep: none, want: []string{"dash is not configured"}},
+		{name: "no dash", args: []string{"dash", "--listen", "x", "--pull", "y"}, exit: 2, prep: none, want: []string{"dash is not configured"}},
 	})
 }

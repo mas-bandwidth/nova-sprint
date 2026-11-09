@@ -2,12 +2,11 @@ package verbs
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -105,24 +104,13 @@ func (e ExecEnvironment) Present(ctx context.Context) (map[string]bool, error) {
 	if err != nil {
 		return nil, cause("nova-bus who failed", err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 0 || !strings.HasPrefix(lines[0], "WHO OK present=") {
-		return nil, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseRefused("no `WHO OK present=<n>` header", 0, out))
-	}
-	count, err := strconv.Atoi(strings.TrimPrefix(lines[0], "WHO OK present="))
+	who, err := bus.ParseWho(out)
 	if err != nil {
-		return nil, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseFailure(err, out))
+		return nil, err
 	}
-	if count < 0 || count != len(lines)-1 {
-		return nil, fmt.Errorf("nova-bus who returned invalid output: present=%d but %d presence lines: %s", count, len(lines)-1, edge.ParseRefused("count mismatch", 0, out))
+	present := make(map[string]bool, len(who))
+	for name := range who {
+		present[name] = true
 	}
-	seen := make(map[string]bool, count)
-	for _, line := range lines[1:] {
-		fields := strings.Split(line, "\t")
-		if len(fields) < 2 || fields[0] == "" || seen[fields[0]] {
-			return nil, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseRefused("presence line is not a new name<TAB>uptime", strings.Index(string(out), line), out))
-		}
-		seen[fields[0]] = true
-	}
-	return seen, nil
+	return present, nil
 }

@@ -86,14 +86,13 @@ present or has a named reason (held, away, broken) that you are repairing.
    message, `NEEDS YOU group=<key> size=<n> ids=<j1,...>`, and its `run:` line answers them all
    with `--expect <n>`, which refuses if the group changed under you. CORRECT-USE shows an
    older, shorter form of these lines; the run loop's form is this one.
-2. `LANDED card=<id> stream=<s> head=<40 hex> took=<d> cost=<$>`: nothing to run.
-3. `STREAM LANDED <s> range=<a>...<b> cards=<n> took=<d> cost=<$>`: run
+2. `STREAM LANDED <s> range=<a>...<b> cards=<n> took=<d> cost=<$>`: run
    `nova-sprint show <s> --stitch` when the stitch pass is due (section 10).
-4. `EXPIRED judgement=<j>: <what the safe default did>`: the default never drops, accepts, merges
+3. `EXPIRED judgement=<j>: <what the safe default did>`: the default never drops, accepts, merges
    or lands; decide whether more is needed.
-5. `ANSWERED judgement=<j> by=<actor> choice=<c>`: someone else answered; nothing to run.
-6. A deal or a read ask for your own row: the worker playbook.
-7. A message from a friend row, usually "stuck" with evidence: section 6.
+4. `ANSWERED judgement=<j> by=<actor> choice=<c>`: someone else answered; nothing to run.
+5. A deal or a read ask for your own row: the worker playbook.
+6. A message from a friend row, usually "stuck" with evidence: section 6.
 
 What each judgement kind asks of you, and where to look before you choose:
 
@@ -334,8 +333,8 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 4. A row going down does not take its cards back. Its cards stay until the silence policy states,
    then an `orphan` judgement asks you. Before you answer, reach the row on the bus; release only
    when it is gone. A row that has left for good:
-   `nova-sprint release --row <row> --all --reason "<why>"` prints
-   `RELEASED row=<row> consumers=<n>`; every card goes back to ready with its branch kept.
+   for each card the `orphan` judgement names, `nova-sprint release <card>@<gen> --reason "<why>"`
+   prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
    prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and takes back only the cards it
@@ -367,8 +366,8 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
    too (`POLICY STORED AND ACTIVE v<n> changes=<k>`). While no policy is active, or the active one fails,
    the run deals nothing and one `no-policy` judgement on your row says so with the fix.
 3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> changes=<k>`.
-4. A rollback is `policy activate` of an older version; `policy show --list` and `policy diff`
-   show what you have.
+4. A rollback is `policy activate` of an older version; `policy show --list` and `policy show <v>`
+   (two of them through `diff`) show what you have.
 
 ## 9. Releases, backups and clears
 

@@ -190,7 +190,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 		return nil, errors.New("worker refused: root directory is empty: pass --root <dir>")
 	}
 	if cfg.Now == nil || cfg.Sleep == nil {
-		return nil, errors.New("worker refused: no clock: the caller passes Now and Sleep (the real clock in cmd/nova-worker, a fake one in a unit test)")
+		return nil, errors.New("worker refused: no clock: the caller passes Now and Sleep (the real clock in nova-sprint worker, a fake one in a unit test)")
 	}
 	cfg.Timeouts = cfg.Timeouts.WithDefaults()
 	cfg.Procs = cmp.Or[ProcessTable](cfg.Procs, OSProcessTable{})
@@ -286,7 +286,7 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 }
 func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id string, rec JobRecord, reason string) error {
 	rec.PushedHead = cmp.Or(r.harvestPartialPush_internal(ctx, jobDir, rec), rec.PushedHead)
-	rec.ResultID = cmp.Or(rec.ResultID, FormatResultID(rec.Epoch, id, rec.Attempt, rec.Gen))
+	rec.ResultID = cmp.Or(rec.ResultID, resultID_internal(rec.Epoch, id, rec.Gen))
 	rec.Outcome, rec.State = Outcome{Result: "fault", Head: rec.PushedHead, Reason: reason}, JobReporting
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return err
@@ -351,7 +351,7 @@ func (r *Runner) cancelRunning_internal(id string) {
 // the row's name, then the self-unhook of a dead worker's sprint hook.
 func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, error) {
 	if r.BusHook == nil {
-		return nil, errors.New("worker refused: no bus hook configured: start nova-worker through cmd/nova-worker")
+		return nil, errors.New("worker refused: no bus hook configured: start the worker through nova-sprint worker")
 	}
 	hook, err := r.BusHook(ctx, row)
 	if err != nil {
@@ -376,32 +376,25 @@ func (r *Runner) sprintHook_internal(ctx context.Context, row string) error {
 // ServeRow is the binary's order: the bus hook and the self-unhook, then
 // the probe of the harness with every model the row would run (ProbeRow:
 // next --json names a row's models on the bus before its sprint hook),
-// then the sprint hook, then one pass (once) or the wake loop. Probing
+// then the sprint hook, then the wake loop. Probing
 // before the sprint hook makes a hooked row a probed one: its harness
 // lists the policy's models and its seat's provider keys reached it, which
 // is what up's step 7 proves by the row being hooked and up (admission,
-// intent rule 34). A failed probe leaves the row unhooked: once, it is the
-// exit; served, the row is held and the probe retried (probeHeld_internal).
-func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) error {
+// intent rule 34). A failed probe leaves the row unhooked and held, and the
+// probe is retried (probeHeld_internal).
+func (r *Runner) ServeRow(ctx context.Context, row, harness string) error {
 	hook, err := r.busHook_internal(ctx, row)
 	if err != nil {
 		return err
 	}
 	defer hook.Stop()
-	if once {
-		if err := r.ProbeRow(ctx, row, harness); err != nil {
-			return err
-		}
-	} else if !r.probeHeld_internal(ctx, row, harness) {
+	if !r.probeHeld_internal(ctx, row, harness) {
 		return nil // stopped while held: a clean stop
 	}
 	if err := r.sprintHook_internal(ctx, row); err != nil {
 		return err
 	}
 	r.advertise_internal(ctx, row)
-	if once {
-		return r.StepRow(ctx, row)
-	}
 	if r.Meter != nil && r.Beater != nil {
 		beatCtx, stop := context.WithCancel(ctx)
 		defer stop()
@@ -428,7 +421,7 @@ func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, er
 	if len(proved) == 0 || r.served[info.Model] {
 		return info.Model, nil
 	}
-	return "", fmt.Errorf("this bench's %s does not serve %s, the model the deal named for tier %s (its probe proved %s): give the tier a bench model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for it (nova-worker --providers)",
+	return "", fmt.Errorf("this bench's %s does not serve %s, the model the deal named for tier %s (its probe proved %s): give the tier a bench model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for it (nova-sprint worker --providers)",
 		h.Name(), info.Model, info.Tier, strings.Join(proved, ", "))
 }
 
@@ -438,7 +431,7 @@ func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, er
 func (r *Runner) refuseReceipt_internal(ctx context.Context, jobDir string, rowInfo NextResponse, c ConsumerSummary, cause error) error {
 	rec := JobRecord{
 		Epoch: rowInfo.Epoch, Consumer: c.ID, Producer: c.Producer, Kind: c.Kind, Row: rowInfo.Row, Stream: c.Stream,
-		Gen: c.Gen, Attempt: c.Attempt, ResultID: FormatResultID(rowInfo.Epoch, c.ID, c.Attempt, c.Gen),
+		Gen: c.Gen, Attempt: c.Attempt, ResultID: resultID_internal(rowInfo.Epoch, c.ID, c.Gen),
 		State: JobReporting, Outcome: Outcome{Result: "fault", Reason: TailBytes([]byte(cause.Error()), MaxReasonBytes)},
 	}
 	if err := WriteJobRecord(jobDir, rec); err != nil {
@@ -494,7 +487,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		Row: rowInfo.Row, Stream: info.Stream, Repo: info.Repo, Base: info.Base,
 		StreamRef: info.StreamRef, Branch: info.Branch, BaseSHA: info.BaseSHA,
 		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen),
-		Gen: info.Gen, Attempt: info.Attempt, ResultID: FormatResultID(epoch, info.Consumer, info.Attempt, info.Gen),
+		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
 	}
 	return job, rec
@@ -506,7 +499,6 @@ func (r *Runner) stageStep_internal(ctx context.Context, job *Job, rec *JobRecor
 		_, err := r.Git.StageWorktree(stageCtx, *job)
 		if err == nil && job.Kind == "work" {
 			rec.StartTip, err = r.Git.BranchTip(stageCtx, *job)
-			rec.StartTipRead = err == nil
 		}
 		cancel()
 		if err != nil {
@@ -626,7 +618,7 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 // with nothing committed and nothing to commit is a fail naming it.
 func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *JobRecord, out Outcome) Outcome {
 	if r.Git == nil {
-		return Outcome{Result: "fault", Reason: "missing git edge for a work consumer: start the worker through nova-worker or nova-sprint worker, which give it one"}
+		return Outcome{Result: "fault", Reason: "missing git edge for a work consumer: start the worker through nova-sprint worker, which gives it one"}
 	}
 	sha, herr := r.sealAndCollect_internal(ctx, job, *rec)
 	switch {
@@ -803,7 +795,7 @@ func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	rec.State = JobReporting
-	rec.ResultID = cmp.Or(rec.ResultID, FormatResultID(rec.Epoch, rec.Consumer, rec.Attempt, rec.Gen))
+	rec.ResultID = cmp.Or(rec.ResultID, resultID_internal(rec.Epoch, rec.Consumer, rec.Gen))
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return err
 	}

@@ -72,10 +72,8 @@ func NewHarness(name string) (Harness, error) {
 		return &CodexHarness{}, nil
 	case "opencode":
 		return &OpenCodeHarness{}, nil
-	case "script":
-		return &ScriptHarness{}, nil
 	default:
-		return nil, fmt.Errorf("worker refused: unknown harness %q: use claude, codex, opencode, or script", name)
+		return nil, fmt.Errorf("worker refused: unknown harness %q: use claude, codex or opencode", name)
 	}
 }
 
@@ -93,7 +91,6 @@ type (
 		baseHarness_internal
 		messages func(db string) ([]string, error) // nil: opencodeMessages; a unit test's rows
 	}
-	ScriptHarness struct{ baseHarness_internal }
 )
 
 func (baseHarness_internal) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
@@ -200,12 +197,6 @@ func opencodeUsage_internal(rows []string) (Cost, bool) {
 	}
 	return c, c.Priced || c.Usage != ""
 }
-func (h *ScriptHarness) Name() string { return "script" }
-func (h *ScriptHarness) Probe(j Job) Job {
-	p := probeJob_internal(j, "script")
-	p.ScriptMode = "probe"
-	return p
-}
 
 // Needs: claude reaches its provider itself with the login in its config
 // directory, which it writes (session state), so its network stays open
@@ -233,9 +224,6 @@ func (h *OpenCodeHarness) Needs() Needs {
 		Limits: "opencode 2.x starts a background service on a fixed port unless given --standalone, which 1.x refuses and this adapter does not pass: " +
 			"run opencode 1.x (1.18.20 measured); its write tool's death inside the wall (defect 33) was seen before --unix and not since on macOS (2026-11-08), unmeasured on Linux"}
 }
-
-// Needs: the script harness is the test double: no network, no model.
-func (h *ScriptHarness) Needs() Needs { return Needs{} }
 
 // modelFlag_internal passes the model the take receipt (or the probe) named,
 // without the provider prefix for a harness that serves one provider. The
@@ -397,51 +385,6 @@ func wallRefusal_internal(h Harness, j Job) error {
 	return nil
 }
 
-const scriptHarnessProg_internal = `set -e
-op="$1"; wt="$2"; res="$3"; use="$4"; a1="$5"; a2="$6"; cons="$7"; row="$8"; msg="$9"
-case "$op" in
-  probe) printf '{"result":"ok"}\n' > "$res" ;;
-  exit137) exit 137 ;;
-  exit134) exit 134 ;;
-  5xx) printf '{"http_status":503}\n'; exit 1 ;;
-  ratelimit) printf '{"http_status":429}\n'; exit 1 ;;
-  fail) printf '{"result":"fail","reason":"%s"}\n' "$a1" > "$res" ;;
-  readfix) printf '{"result":"fix","finding":"%s","reason":"%s"}\n' "$a1" "$a1" > "$res" ;;
-  readok) printf '{"result":"ok","reason":"read ok"}\n' > "$res" ;;
-  dirty) cd "$wt" && printf 'dirty\n' > "$a1" && exit 1 ;;
-  commit)
-    cd "$wt" && printf '%s\n' "$a2" > "$a1" && printf 'card %s\n\nAuthor: %s\n' "$cons" "$row" > "$msg"
-    git add -- "$a1" && git commit -F "$msg" && printf '{"result":"ok"}\n' > "$res" && printf '{"micro_usd":1200,"priced":true}\n' > "$use" ;;
-esac`
-
-func (h *ScriptHarness) Command(j Job) ([]string, []string) {
-	mode := cmp.Or(j.ScriptMode, strings.TrimSpace(j.Prose), "ok")
-	wt := cmp.Or(j.WorktreeDir, filepath.Join(j.JobDir, "repo"))
-	op, a1, a2 := parseScriptMode_internal(j, mode)
-	argv := []string{"sh", "-c", scriptHarnessProg_internal, "script", op, wt,
-		filepath.Join(j.JobDir, "result.json"), filepath.Join(j.JobDir, "usage.json"),
-		a1, a2, j.Consumer, j.Row, filepath.Join(j.JobDir, "commit-msg.txt")}
-	return argv, SanitizeWallEnv(baseWallEnv_internal(j), j.JobDir)
-}
-func parseScriptMode_internal(j Job, mode string) (op, a1, a2 string) {
-	switch {
-	case mode == "probe", mode == "5xx", mode == "ratelimit":
-		return mode, "", ""
-	case mode == "exit:137", mode == "exit:134", mode == "read:ok":
-		return strings.ReplaceAll(mode, ":", ""), "", ""
-	case strings.HasPrefix(mode, "fail:"):
-		return "fail", strings.TrimPrefix(mode, "fail:"), ""
-	case strings.HasPrefix(mode, "read:fix:"):
-		return "readfix", strings.TrimPrefix(mode, "read:fix:"), ""
-	case strings.HasPrefix(mode, "dirty:"):
-		return "dirty", strings.TrimPrefix(mode, "dirty:"), ""
-	default:
-		if f, c, ok := strings.Cut(strings.TrimPrefix(mode, "commit:"), ":"); ok && f != "" {
-			return "commit", f, c
-		}
-		return "commit", "work.txt", j.Consumer
-	}
-}
 func probeJob_internal(j Job, harness string) Job {
 	p := j
 	p.Consumer, p.Kind, p.HarnessName, p.DoneWhen = j.Row+".probe", "work", harness, nil

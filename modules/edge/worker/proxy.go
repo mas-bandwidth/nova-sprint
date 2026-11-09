@@ -30,11 +30,10 @@ type (
 		Key               func() (string, error)
 	}
 	KeyProxy struct {
-		Routes       map[string]ProxyRoute
-		DefaultRoute string
-		Transport    http.RoundTripper
-		mu           sync.Mutex
-		lastStatus   map[string]int // per job (ProxyKey's consumer)
+		Routes     map[string]ProxyRoute
+		Transport  http.RoundTripper
+		mu         sync.Mutex
+		lastStatus map[string]int // per job (ProxyKey's consumer)
 	}
 )
 
@@ -71,7 +70,7 @@ func jobOf_internal(r *http.Request) string {
 func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route, ok := p.resolveRoute_internal(r)
 	if !ok {
-		http.Error(w, "proxy refused: no route configured: set DefaultRoute or X-Nova-Route", http.StatusBadGateway)
+		http.Error(w, "proxy refused: no route for this request: the harness's base URL is /<provider>/v1 for a --providers route", http.StatusBadGateway)
 		return
 	}
 	u, targetHost, err := resolveTargetURL_internal(route, r)
@@ -102,30 +101,25 @@ func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.forward_internal(w, r, u, key)
 }
 
-// resolveRoute_internal is the request's route: X-Nova-Route, else the
-// first path segment when it names a route (ProxyBaseURL: the harness's base
-// URL is /<provider>/v1, and the segment is cut from the path forwarded),
-// else DefaultRoute, else the one route there is.
+// resolveRoute_internal is the request's route: the first path segment when
+// it names a route (ProxyBaseURL: the harness's base URL is /<provider>/v1,
+// and the segment is cut from the path forwarded), else the one route there
+// is.
 func (p *KeyProxy) resolveRoute_internal(r *http.Request) (ProxyRoute, bool) {
 	if p == nil || len(p.Routes) == 0 {
 		return ProxyRoute{}, false
-	}
-	if name := strings.TrimSpace(r.Header.Get("X-Nova-Route")); name != "" {
-		route, ok := p.Routes[name]
-		return route, ok
 	}
 	first, rest, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
 	if route, ok := p.Routes[first]; ok && first != "" {
 		r.URL.Path = "/" + rest
 		return route, true
 	}
-	route, ok := p.Routes[p.DefaultRoute]
-	if !ok && len(p.Routes) == 1 {
+	if len(p.Routes) == 1 {
 		for _, v := range p.Routes {
 			return v, true
 		}
 	}
-	return route, ok
+	return ProxyRoute{}, false
 }
 
 // ProxyBaseURL is the OpenAI-shaped base URL a harness inside the wall is

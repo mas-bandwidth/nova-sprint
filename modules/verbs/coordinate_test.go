@@ -81,9 +81,9 @@ func TestAdd(t *testing.T) {
 	if _, ok := w.snap(t).Cards["a1"]; ok {
 		t.Fatal("a dry run added")
 	}
-	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", b, "--brief-file", a, "--priority", "high"), 0, "ADD b1 kind=producer stream=s tier=pro priority=high needs=a1", "ADDED 2 cards")
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", b, "--brief-file", a), 0, "ADD b1 kind=producer stream=s tier=pro priority=normal needs=a1", "ADDED 2 cards")
 	want(t, w.do("carol", "add", "--stream", "s", "--sentinel", "done", "--needs", "a1,b1"), 0, "ADD done kind=sentinel", "ADDED 1 cards")
-	if c := w.snap(t).Cards["b1"]; c.Kind != "producer" || c.Priority != "high" {
+	if c := w.snap(t).Cards["b1"]; c.Kind != "producer" {
 		t.Fatalf("card %+v", c)
 	}
 }
@@ -96,6 +96,7 @@ func TestAddRefusals(t *testing.T) {
 		{name: "a sentinel with no needs", as: "carol", args: []string{"add", "--stream", "s", "--sentinel", "x"}, exit: 1, want: []string{"a sentinel needs the cards it waits for"}},
 		{name: "an unknown stream", as: "carol", args: []string{"add", "--stream", "t", "--sentinel", "x", "--needs", "p1"}, exit: 1, want: []string{"no stream t"}},
 		{name: "a bad needs list", as: "carol", args: []string{"add", "--stream", "s", "--sentinel", "x", "--needs", "p1,"}, exit: 2, want: []string{"--needs takes a comma list"}},
+		{name: "needs beside a brief", as: "carol", args: []string{"add", "--stream", "s", "--brief-file", "x.md", "--needs", "p1"}, exit: 2, want: []string{"--needs is a sentinel's"}},
 		{name: "an unreadable brief", as: "carol", args: []string{"add", "--stream", "s", "--brief-file", "/nonexistent/x.md"}, exit: 2, want: []string{"cannot read brief"}},
 		{name: "a card that exists", as: "carol", args: []string{"add", "--stream", "s", "--sentinel", "p1", "--needs", "p2"}, exit: 1, want: []string{"card p1 exists"}},
 		{name: "an unknown need", as: "carol", args: []string{"add", "--stream", "s", "--sentinel", "x", "--needs", "zz"}, exit: 1, want: []string{"fix the brief or the flags"}},
@@ -290,7 +291,6 @@ func TestPolicy(t *testing.T) {
 	want(t, w.do("carol", "policy", "set", file, "--reason", "try"), 0, "POLICY STORED v2", "next: nova-sprint policy check v2")
 	want(t, w.do("alice", "policy", "show", "--list"), 0, "v2")
 	want(t, w.do("alice", "policy", "show", "v2"), 0, "# mine")
-	want(t, w.do("alice", "policy", "diff", "v1", "v2"), 0)
 	want(t, w.do("alice", "policy", "check", "v2"), 0)
 	want(t, w.do("carol", "policy", "activate", "2", "--reason", "go"), 0, "POLICY ACTIVE v2")
 }

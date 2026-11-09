@@ -15,32 +15,23 @@ import (
 
 // Report is what check found: every answer that would differ from the
 // active version's on the current snapshot, by question and subject, then
-// every refusal, then every warning (PriceWarnings: a defect found at
-// creation that refuses nothing). Code is 0 when nothing is refused, 1
-// otherwise; a warning never changes it.
+// every refusal. Code is 0 when nothing is refused, 1 otherwise.
 type Report struct {
 	Label    string
 	Changes  []string
 	Refusals []string
-	Warnings []string
 }
 
 // Text is the report as check prints it.
 func (r Report) Text() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "policy check %s: %d answer(s) change, %d refused", r.Label, len(r.Changes), len(r.Refusals))
-	if len(r.Warnings) > 0 {
-		fmt.Fprintf(&b, ", %d warning(s)", len(r.Warnings))
-	}
 	b.WriteString("\n")
 	for _, c := range r.Changes {
 		b.WriteString("  " + c + "\n")
 	}
 	for _, f := range r.Refusals {
 		b.WriteString(f + "\n")
-	}
-	for _, w := range r.Warnings {
-		b.WriteString(w + "\n")
 	}
 	return b.String()
 }
@@ -119,7 +110,7 @@ func bothRungs(q Questions) Questions {
 
 // report compares a run's answers with the active version's on snap.
 func (e *Engine) report(ctx context.Context, st store.Store, snap store.Snapshot, ro roster.Roster, label string, a Answers, fs []Failure) (Report, error) {
-	r := Report{Label: label, Warnings: PriceWarnings(a, ro)}
+	r := Report{Label: label}
 	for _, f := range fs {
 		r.Refusals = append(r.Refusals, f.Error())
 	}

@@ -36,7 +36,6 @@ const (
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base string
 	Heads, Branches             []string
-	Ledgers                     []LedgerRule
 }
 
 // LandResult is one pass's outcome with the facts a judgement shows. A red
@@ -163,7 +162,7 @@ func gatedHead_internal(ctx context.Context, g Git, req LandRequest, baseTip str
 // that runs again with the same base and heads pushes nothing new and CI is
 // not restarted.
 func buildGroup_internal(ctx context.Context, g Git, req LandRequest, baseTip string, res *LandResult) (string, bool, error) {
-	merged, err := g.MergeGroup(ctx, req.RepoDir, baseTip, req.Heads, req.Ledgers)
+	merged, err := g.MergeGroup(ctx, req.RepoDir, baseTip, req.Heads)
 	if err != nil {
 		return "", true, err
 	}

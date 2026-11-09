@@ -186,17 +186,17 @@ func TestWorkerGitTokenNeverReachesTheHarness(t *testing.T) { // unitlint: seria
 func TestWorkerRefusesWithoutGitToken(t *testing.T) {
 	t.Parallel()
 	none := func(string) (string, bool) { return "", false }
-	err := (Config{Row: "amd-1", Host: "amd-1", Harness: "script", LookupEnv: none}).Check()
+	err := (Config{Row: "amd-1", Host: "amd-1", Harness: "opencode", LookupEnv: none}).Check()
 	want := "nova-secrets grant GH_GATE_TOKEN --to amd-1 --pins <dir> --store <dir> --key <file>, push the secrets store (grant does not)"
 	if err == nil || !strings.HasPrefix(err.Error(), "worker refused: GH_GATE_TOKEN is not in the worker's environment") || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "\n") {
 		t.Fatalf("a worker with no git token: %v", err)
 	}
 	blank := func(string) (string, bool) { return "  ", true }
-	if err := (Config{Row: "amd-1", Harness: "script", LookupEnv: blank}).Check(); err == nil || !strings.Contains(err.Error(), want) {
+	if err := (Config{Row: "amd-1", Harness: "opencode", LookupEnv: blank}).Check(); err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("a worker with a blank git token: %v", err)
 	}
 	token := func(k string) (string, bool) { return gitTokenFixture, k == forge.TokenEnv }
-	if err := (Config{Row: "amd-1", Harness: "script", LookupEnv: token}).Check(); err != nil {
+	if err := (Config{Row: "amd-1", Harness: "opencode", LookupEnv: token}).Check(); err != nil {
 		t.Fatalf("a worker with its git token refused: %v", err)
 	}
 }
@@ -543,9 +543,8 @@ func TestJobRecordIsReadOnlyFromTheKeptCopy(t *testing.T) {
 	}
 }
 
-// TestJobStateRemovesOnlyTheWorkersOwnClones: the previous release's clone
-// at <root>/clones/<consumer> (a shared clone of a work clone beside it) is
-// removed with the job; a work clone there never is.
+// TestJobStateRemovesOnlyTheWorkersOwnClones: a clone under <root>/clones
+// (a work clone, whatever its alternates) is never removed with a job.
 func TestJobStateRemovesOnlyTheWorkersOwnClones(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -566,20 +565,13 @@ func TestJobStateRemovesOnlyTheWorkersOwnClones(t *testing.T) {
 	bare := alternates("bare", "")
 	self := alternates("self", filepath.Join(clones, "self", ".git", "objects"))
 	outside := alternates("outside", filepath.Join(root, "elsewhere", "w", ".git", "objects"))
-	legacy := alternates("p1.w1", filepath.Join(clones, "work", ".git", "objects"))
+	shared := alternates("p1.w1", filepath.Join(clones, "work", ".git", "objects"))
 	r := &Runner{RootDir: root, Warn: func(string) {}}
-	for _, d := range []string{work, bare, self, outside} {
-		if r.legacySealedClone_internal(d) {
-			t.Fatalf("%s is taken for the worker's own clone", d)
-		}
+	for _, d := range []string{work, bare, self, outside, shared} {
 		r.removeJobState_internal(filepath.Base(d))
 		if !fileExists_internal(d) {
 			t.Fatalf("%s, not the worker's own, was removed", d)
 		}
-	}
-	r.removeJobState_internal("p1.w1")
-	if fileExists_internal(legacy) || !fileExists_internal(work) {
-		t.Fatalf("the previous release's clone: legacy left %v, work clone gone %v", fileExists_internal(legacy), !fileExists_internal(work))
 	}
 }
 
@@ -633,28 +625,6 @@ func TestQuarantineSaysWhenNoProcessMatched(t *testing.T) {
 	}
 }
 
-// TestLegacyCloneUnreadableIsSaidAndKept: alternates that cannot be read
-// (not a missing file) are reported, and the clone stays.
-func TestLegacyCloneUnreadableIsSaidAndKept(t *testing.T) {
-	t.Parallel()
-	root := t.TempDir()
-	legacy := filepath.Join(root, "clones", "p1.w1")
-	if err := os.MkdirAll(filepath.Join(legacy, ".git", "objects", "info", "alternates"), 0o755); err != nil { // unreadable as a file
-		t.Fatal(err)
-	}
-	r, warns := quietRunner_internal(t, root, nil)
-	r.removeJobState_internal("p1.w1")
-	if said := strings.Join(*warns, "\n"); !fileExists_internal(legacy) || !strings.Contains(said, "alternates") || !strings.Contains(said, "p1.w1") {
-		t.Fatalf("legacy kept %v, said %q", fileExists_internal(legacy), said)
-	}
-	r2, warns2 := quietRunner_internal(t, t.TempDir(), nil) // no clone at all: nothing to say
-	r2.removeJobState_internal("p1.w1")
-	if len(*warns2) != 0 {
-		t.Fatalf("a missing clone is said: %q", *warns2)
-	}
-}
-
-// TestFileUnderJobsIsReported: a file, not a directory, under jobs/ that
 // fails the kept-copy check is reported and left as it is.
 func TestFileUnderJobsIsReported(t *testing.T) {
 	t.Parallel()

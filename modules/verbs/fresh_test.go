@@ -116,5 +116,5 @@ func TestHelpSaysColdVerbsNeedTheBus(t *testing.T) {
 // A group's help names how to read each verb's table, as help playbook does.
 func TestHelpOfAGroupNamesItsVerbs(t *testing.T) {
 	t.Parallel()
-	want(t, newWorld(t).do("", "help", "policy"), 0, "nova-sprint help policy set|activate|show|diff|check for its table")
+	want(t, newWorld(t).do("", "help", "policy"), 0, "nova-sprint help policy set|activate|show|check for its table")
 }

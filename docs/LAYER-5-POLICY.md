@@ -260,12 +260,11 @@ refusal is in the CORRECT-USE form.
 | `policy set <file> --reason <r>` | compiles, checks names and arity, runs `check` on the current snapshot, stores the next version (kind `script`, name the file's base name, the reason in the event), not active; `next: nova-sprint policy check v<n>` | not the coordinator ("policy is the coordinator's: ask over the bus"); the file unreadable or over 64 KiB; a syntax or resolve error, with its line; a missing question; an unknown top-level name; a wrong arity; an answer refused on the current snapshot; a body equal to a stored version ("v4 has this body: `policy activate 4`"); `up` not run |
 | `policy activate <v> --reason <r>` | re-runs `check` on the current snapshot, then one op: the active flag moves to `v`, the open policy judgement of the old version is answered; prints the count of answers that change; `next: nova-sprint next` | an unknown version; already active (layer 1's same-value refusal); a refused answer on the current snapshot; a version of kind `data` (unused by this layer) |
 | `policy show [v]` | prints the version (active by default), its actor, time, reason and body; `--list` prints every version, newest first, the active one marked | an unknown version |
-| `policy diff <a> [b]` | the text diff of two bodies (`b` defaults to active; `default` names the built-in) | an unknown version |
 | `policy check <file \| v>` | read-only: runs it on the current snapshot and prints every answer that would differ from the active version's, by question and subject, then every refusal; exit 0 when nothing is refused, 1 otherwise | an unreadable file; an unknown version |
 
 `up` stores the built-in default as version 1 and activates it when the
 store holds none. A newer binary's default changes nothing by itself:
-`policy diff default` shows it, and only `set` and `activate` adopt it.
+`policy show default` beside `policy show` shows it, and only `set` and `activate` adopt it.
 
 ## The lifecycle of a version
 
@@ -503,26 +502,16 @@ five reach checks are each reached: 13 runs, run one by one with
 owed to the layer 3 and 6 wiring.
 
 **The catalog** (added at the coordinator's request, 2026-11-06, for the row
-verbs). Neither a `models` question nor a data section existed, so `catalog()`
-joined the question set: `{"models": {provider: [{"name": n, "tier": t}]},
-"harnesses": [h]}`, names non-empty, tiers from `TIERS`, nothing listed twice,
-validated every tick like the others. `policy.ReadCatalog(ctx, store, version)`
-(0 the built-in) returns `Catalog{Version, Models map[string][]Model{Name,
-Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
-give a function and a type one name. `Catalog.Unknown(model, harness)` is the
-row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
-(`nova-sprint policy set <file> --reason <why>`). The default's tier map is Glenn's (Hacker News, 2026-11-05),
-quoted in `default.star`: haiku, luna and deepseek-flash at flash; sonnet,
-terra and mercury-3 at pro; opus and sol at heavy; fable, astra and argon at
-frontier. The providers are the coordinator's mapping (anthropic, openai,
-google, deepseek, inception); openai and google are guesses, and astra sits
-under `unknown`, a guess. 2026-11-07 (one vocabulary, defect 36): a name is
-the harness's own model id under its provider, and `Catalog.ForTier(tier)`
-hands a bench `provider/name` (a name holding a `/` as it is), providers in
-name order; deepseek-flash-4.1 became deepseek-flash (the id opencode lists),
-and mercury-2.5 (inception) and ultramarine-1-flash (paperinstruments) joined
-at flash, their tiers a guess. Harnesses: claude, codex, opencode and api (the
-API-rate adapter).
+verbs; cut to its bench on 2026-11-08). `catalog()` answers `{"bench": {tier:
+"provider/model"}}`, validated every tick like the others: each tier from
+`TIERS` once, each model in provider/model form (the harness's own model id
+under its provider). `Catalog{Version, Bench}` and `Catalog.BenchModel(tier)`
+are all the engine reads. The models-by-provider list, the harness list,
+`Catalog.Unknown`, `ForTier`, `ReadCatalog` and the prices warning went: no
+verb refused by them, and the probe and admission already refuse a bench
+model no bench can run. A version that still carries `models` and
+`harnesses` is accepted and those keys are not read. The built-in names no
+bench model: the operator's policy does.
 
 **Size.** At round 3: 2,529 lines of non-test Go, over the 1.5k budget by
 about 1,030; 117 lines of Starlark.
@@ -973,9 +962,9 @@ What the stitch changed in layer 5 and why:
 **Stitch, the bench model and the first set (2026-11-07, branch `v2-stitch-w2D1`).**
 - *The catalog's `bench` (defects 54, 57).* `catalog()` may carry
   `"bench": {tier: "provider/model"}`, the one model a bench row runs for a
-  card of that tier. Each key must be in `TIERS` and its model one of that
-  tier's models in the catalog (`bench: <tier>'s model <m> is not one of
-  its models (...)`); a list is refused. `Catalog.Bench` and
+  card of that tier. Each key must be in `TIERS` and its model in
+  provider/model form (2026-11-08: the tier's models list is gone); a list
+  is refused. `Catalog.Bench` and
   `Catalog.BenchModel(tier)`; run passes the active version's map to the
   steps as `Answers.Models`, and the deal writes the model on the consumer
   (LAYER-3's Built). A tier with no bench model leaves bench rows undealt

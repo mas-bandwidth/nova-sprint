@@ -1,26 +1,21 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/modules/cost"
 	"github.com/mas-bandwidth/nova-sprint/modules/dash"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
-	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
@@ -56,24 +51,7 @@ func (s services) Run(ctx context.Context, listen string) error {
 	busEnv := toolEnvironment(os.Environ(), "nova-bus")
 	return run.Serve(ctx, run.Config{Store: s.store, DSN: dsn, Password: s.creds.password, Roster: ro,
 		Bus: busEdge(), Hook: run.SprintHook{Bin: busBinary(), Env: busEnv, Reply: self}, Policy: s.policy,
-		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(), Version: versionString(),
-		Reconcile: func(ctx context.Context, now time.Time, snap store.Snapshot) error {
-			lines, err := cost.Reconcile(ctx, s.store, now, coordinatorOf(snap), cost.Readers(nil))
-			for _, l := range lines {
-				fmt.Fprintln(os.Stderr, l.Text())
-			}
-			return err
-		}})
-}
-
-// coordinatorOf is the hooked coordinator's row ("" when none is hooked).
-func coordinatorOf(snap store.Snapshot) string {
-	for name, r := range snap.Rows {
-		if r.Role == "coordinator" && r.Session != "" {
-			return name
-		}
-	}
-	return ""
+		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(), Version: versionString()})
 }
 
 // runMachine is the machine run records the chooser lock under: the
@@ -91,15 +69,14 @@ func runMachine(ctx context.Context, ro *run.ConfigRoster) (string, error) {
 	return run.ResolveMachine(os.Getenv(run.MachineEnv), hostname, machines)
 }
 
-// Worker is nova-worker's runner (edge/worker) for one row, its sprint
+// Worker is the worker's runner (edge/worker) for one row, its sprint
 // verbs this binary's own.
 func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	host, _ := os.Hostname()
-	w.Host = cmp.Or(strings.TrimSpace(w.Host), host)
+	w.Host, _ = os.Hostname()
 	w.SprintBin = self
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -119,29 +96,14 @@ func underHome(home, dir string) string {
 	return filepath.Join(home, dir)
 }
 
-// Dash is the board: a pulled copy of run's on a public host (--pull), or
-// the store's own on the tailnet.
+// Dash is the board on a public host: a pulled copy of run's (run serves
+// its own on the tailnet).
 func (s services) Dash(ctx context.Context, listen, pull string) error {
-	if pull != "" {
-		cache, err := dash.NewPullCache(pull, nil, nil)
-		if err != nil {
-			return err
-		}
-		return serveBoard(ctx, listen, cache.Handler(), cache.Run)
-	}
-	if _, err := s.creds.sprint(); err != nil {
+	cache, err := dash.NewPullCache(pull, nil, nil)
+	if err != nil {
 		return err
 	}
-	var st store.Store = s.store
-	dash.Version = versionString()
-	cache, err := dash.NewRecovering(ctx, st)
-	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		log.Printf("dashboard startup: %v; retrying", err)
-	}
-	return serveBoard(ctx, listen, dash.Handler(cache), func(ctx context.Context) error { cache.Run(ctx, st); return ctx.Err() })
+	return serveBoard(ctx, listen, cache.Handler(), cache.Run)
 }
 
 func serveBoard(ctx context.Context, address string, handler http.Handler, poll func(context.Context) error) error {

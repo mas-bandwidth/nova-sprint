@@ -164,87 +164,26 @@ func (p *PullCache) checkAlarmLocked() {
 	}
 }
 
-// parsePullEnvelope rejects malformed upstream data before refreshing its age;
-// a refusal names the field, the parse's byte and the first bytes it saw.
+// parsePullEnvelope decodes upstream data as the board's own PageEnvelope
+// and refuses it before refreshing its age unless it carries a board (data
+// with its time and an epoch of at least 1) and an age that is not negative;
+// a refusal names the parse's byte and the first bytes it saw.
 func parsePullEnvelope(raw []byte) (map[string]json.RawMessage, float64, error) {
+	var env PageEnvelope
+	if err := pullField(raw, &env, "envelope"); err != nil {
+		return nil, 0, err
+	}
 	var value map[string]json.RawMessage
 	if err := pullField(raw, &value, "envelope"); err != nil {
 		return nil, 0, err
 	}
-	if value == nil {
-		return nil, 0, pullRefused("envelope", "null", raw)
+	switch {
+	case value == nil || env.Data.At.IsZero() || env.Data.Epoch < 1:
+		return nil, 0, pullRefused("data", "no board: want data with its at and an epoch of at least 1", raw)
+	case env.DataAgeSeconds < 0:
+		return nil, 0, pullRefused("age", fmt.Sprintf("dataAgeSeconds %g is negative", env.DataAgeSeconds), value["dataAgeSeconds"])
 	}
-	var ok bool
-	if string(value["ok"]) == "null" {
-		return nil, 0, pullRefused("status", "ok is null", value["ok"])
-	}
-	if err := pullField(value["ok"], &ok, "status"); err != nil {
-		return nil, 0, err
-	}
-	var age float64
-	if string(value["dataAgeSeconds"]) == "null" {
-		return nil, 0, pullRefused("age", "dataAgeSeconds is null", value["dataAgeSeconds"])
-	}
-	if err := pullField(value["dataAgeSeconds"], &age, "age"); err != nil {
-		return nil, 0, err
-	}
-	if age < 0 {
-		return nil, 0, pullRefused("age", fmt.Sprintf("dataAgeSeconds %g is negative", age), value["dataAgeSeconds"])
-	}
-	if err := parsePullData(value["data"]); err != nil {
-		return nil, 0, err
-	}
-	return value, age, nil
-}
-
-// parsePullData checks the envelope's data: its timestamp, tables, streams
-// and epoch.
-func parsePullData(raw json.RawMessage) error {
-	var data map[string]json.RawMessage
-	if err := pullField(raw, &data, "data"); err != nil {
-		return err
-	}
-	if data == nil {
-		return pullRefused("data", "null", raw)
-	}
-	var at string
-	if err := pullField(data["at"], &at, "timestamp"); err != nil {
-		return err
-	}
-	if _, err := time.Parse(time.RFC3339Nano, at); err != nil {
-		return fmt.Errorf("dashboard: invalid pull timestamp %q: %w", edge.Redact(at), err)
-	}
-	var tables map[string]json.RawMessage
-	if err := pullField(data["tables"], &tables, "tables"); err != nil {
-		return err
-	}
-	if tables == nil {
-		return pullRefused("tables", "null", data["tables"])
-	}
-	for _, key := range []string{"fleet", "friends", "merge", "readers", "work"} {
-		var table map[string]json.RawMessage
-		if err := pullField(tables[key], &table, "table "+key); err != nil {
-			return err
-		}
-		if table == nil {
-			return pullRefused("table "+key, "missing or null", tables[key])
-		}
-	}
-	var streams []json.RawMessage
-	if err := pullField(data["streams"], &streams, "streams"); err != nil {
-		return err
-	}
-	if streams == nil {
-		return pullRefused("streams", "missing or null", data["streams"])
-	}
-	var epoch int
-	if err := pullField(data["epoch"], &epoch, "epoch"); err != nil {
-		return err
-	}
-	if epoch < 1 {
-		return pullRefused("epoch", fmt.Sprintf("epoch %d is below 1", epoch), data["epoch"])
-	}
-	return nil
+	return value, env.DataAgeSeconds, nil
 }
 
 // pullField decodes raw into v; a failure names what and where it failed.

@@ -32,9 +32,8 @@ run: run already chooses on studio (pid 4121, since 14:02): stop it there, or no
 show run`. Then it hooks in as `sprint`, which nova-bus requires before `sprint` can send
 ("name already hooked" releases the lock and refuses the same way). The hook is only a
 wake-up: run never parses a message body; the sprint's pushes are receipts, so a reply to
-`sprint` is never answered and a message that is not a verb is ignored with one log line,
-and a verb sent to `sprint` is answered once with where to run it (verbs.BusAnswer, directive
-item 45: answering a REPLY with a REPLY made a loop).
+`sprint` is never answered, nor is any other message: one log line each (verbs.BusAnswer,
+directive item 45: answering a REPLY with a REPLY made a loop).
 Then one cold `Snapshot`, and the ticks.
 
 **Reports are ordinary ops.** A row's `report` (nova-worker's form), `finish` and `read` run
@@ -114,7 +113,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `check` | `[--integrity]` | prints every line; red (exit 1, or 2 when a read failed): fleet not green; nova-tools below the pin (above: a warning); `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable; a stream whose repository or base cannot be read; an open judgement (one line per kind); nothing runs the sprint; ready producers and nothing dealt (with why); a landing waiting on a judgement, run or a hold | `next`, or the first red line's fix | 0, 1, 2 |
 | `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
 | `stream add` | `<s> --repo <owner/name> [--base main] [--mode auto\|hand] [--forge github\|none]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>`; with a forge, the group branch `sprint-group/<s>` cannot be created (a name git refuses, a branch at origin in its way, origin's branches unreadable, the push refused), naming the fix | `add --stream <s> --brief-file <f>` | 0, 1 |
-| `add` | `--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a>] [--sentinel <id>] [--priority <level>] [--dry-run]` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
+| `add` | `--stream <s> --brief-file <f>... [--dry-run]`, or `--stream <s> --sentinel <id> --needs <a,b>` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
 | `run` | `[--listen <addr>]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
 | `worker` | `--as <row>` | not a host in nova-config's inventory: `nova-fleet join`; name hooked elsewhere; row serves no tier | `nothing; wait for the bus` | 0, 1 |
 | `take` | `<card>@<gen> --as <row>` | not hooked; not dealt to this row at this gen: `show <card>`; at width: `finish` one first | `finish <card>@<gen> --head <sha>` or `read <card>@<gen> yes\|fix` | 0, 1 |
@@ -130,7 +129,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `edit` | `<card> --brief-file <f> --reason <why>` | a live consumer: `nova-bus send --as <me> --to <holder> ...` instead | `nothing; wait for the bus` | 0, 1 |
 | `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | an open judgement on it: `judge <id> drop` (a live consumer is released by the drop itself) | `nothing; wait for the bus` | 0, 1 |
 | `hold`, `unhold` | `<row\|stream>... --reason <why> [--dry-run]` | unknown name | `nothing; wait for the bus` | 0, 1 |
-| `dash` | `--listen <addr> [--pull <tailnet addr>]` | no store and no `--pull`; the pulled run not answering | the URL | 0 on SIGTERM |
+| `dash` | `--listen <addr> --pull <tailnet addr>` | no `--pull`; the pulled run not answering | the URL | 0 on SIGTERM |
 | `backup` | `[--out <dir>]` | `pg_dump` missing or older than the server | `nothing` | 0, 1, 2 |
 | `restore` | `<file>` | schema `sprint` not empty; a run holds the lock; the dump fails its rebuild check | `run` | 0, 1, 2 |
 | `clear` | `--confirm <epoch> [--dry-run]` | wrong epoch; a live consumer, listing them; the backup it takes first failed | `stream add` | 0, 1, 2 |
@@ -208,7 +207,7 @@ nova-fleet check green, tools >= pin ......... nova-fleet up
                 -> finish <id>@<gen> --head <sha>   (holder; full sha; on origin; PR)
                   -> read <id>@<gen> yes|fix        (another hooked row; not the author)
                     -> landing (a yes at this head; CI green at this head; LANDING.md)
-                      -> LANDED pushed to the coordinator; STITCH when the stream is done
+                      -> STREAM LANDED pushed to the coordinator when the stream is done
 ```
 
 ## 4. `next` and the first time
@@ -269,9 +268,8 @@ FINISHED fix-typos.w1 head=<40 hex> applied at seq 2210
 next: nothing; wait for the bus
 
 # a read is dealt to another row; the landing gates and lands; the coordinator, who hears
-# only of producers (LESSONS 6.9), is pushed:
-LANDED card=fix-typos stream=docs head=<40 hex> took=6m12s cost=$0.04
-run: nova-sprint show fix-typos
+# only of streams (LESSONS 6.9), is pushed when the stream's last card is final:
+STREAM LANDED docs 1 landed; run: nova-sprint show docs --stitch
 ```
 
 ## 5. `up`: the setup walk
@@ -325,11 +323,10 @@ README's widths, by eye and `tools/abshot`; any difference is a defect. `fail` i
 landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); there is
 no column for a card with a problem (2026-11-07: a held card is waiting); the stats panel is left off.
 
-**Served two ways, one poller each.** `run --listen <addr>` rebuilds the view once a tick
-from the tick's own local copy, adding no store read. `nova-sprint dash --listen <addr>` is
-the shim standalone, following the log with its `dashboard` cursor, for another host. Either
-way a request is answered from the cached view, the copy advances every second whether or
-not anyone looks, and the stale alarm and `/healthz` 503 are the shim's.
+**Served by run.** `run --listen <addr>` rebuilds the view once a tick from the tick's own
+local copy, adding no store read. A request is answered from the cached view, the copy
+advances every tick whether or not anyone looks, and the stale alarm and `/healthz` 503 are
+the shim's. Another host shows the board with `dash --pull` (below), never from the store.
 
 **Public, with the cache.** A public host never holds the DSN. `dash --pull <tailnet addr>
 --listen :443` fetches run's `/api/sprint` once a second over the tailnet and serves that
@@ -484,9 +481,8 @@ excluded): verbs, their prerequisite tables and help 2,000 (the report verbs app
 plans); `next` 250; the tick, lock, put-back, budget and log 600; the pusher and judgements
 500; `up` with adoption 900; serving and `--pull` 300; backup and restore 250; `check` with
 the pin and `--integrity` 350; glue 850. An estimate from the verb count, not a measurement.
-With layers 1 and 2 at about 5.7k today, v2 stays under the 20k cap only if layers 3 to 5
-come to about 7k together; if it lands at the cap, v2.0.0 ships at the cap and the point
-releases bring it down (LESSONS "How we work" 4).
+The bar is the minimal code for what the tool does, no bloat; the point releases delete what
+is not essential (LESSONS "How we work" 4).
 
 ## 12. Lessons placed
 
@@ -710,7 +706,7 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   producer is admitted. Streams are read at once (base tip, the tree at the
   tip by `git ls-tree` in the state dir's clone, the card branches by one
   `git ls-remote`); a card is refused for its lint (tier and routes served,
-  DONE-WHEN as one command, retired mechanic, a named bench), then its PATHS, then
+  DONE-WHEN as one command, a named bench), then its PATHS, then
   work already at the base (its branch, HEAD, or PR: `gh pr view`). The brief
   parse (`modules/verbs/brief.go`, `modules/verbs/brief_lint.go`) refuses the bad forms and
   the retired keys with the line.
@@ -768,7 +764,7 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   sets the row's 1-minute load average (hundredths), cores and nova-reserve slots in use and in
   all (layer 1, `SetRowLoad`). A beat that repeats the row's last values succeeds and writes
   nothing. It is the one push the load cell needs (INTENT 7); nova-worker sends it every
-  30 s (a guess) and at start. The board's side is `modules/dash/README.md`, Built.
+  30 s (a guess) and at start. Built.
 - `TestServeTicksPushesAndLogs` failed about one run in three: the deal waits for the head
   watch's first read of the stream's base tip, which ran in its own goroutine while the test
   drove only the tick beat. The test's clock now says when that read has finished (the watch asks

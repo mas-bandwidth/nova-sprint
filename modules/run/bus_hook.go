@@ -19,7 +19,7 @@ import (
 // SprintHook holds the nova-bus hook for the name sprint while run holds
 // the chooser lock (LAYER-6 section 1): Bin is the nova-bus binary, Env its
 // bus connection only (no store or provider secrets), Reply the absolute
-// nova-sprint whose `bus-reply` answers a message sent to sprint.
+// nova-sprint whose `bus-reply` logs a message sent to sprint.
 type SprintHook struct {
 	Bin   string
 	Env   []string

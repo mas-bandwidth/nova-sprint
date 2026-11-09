@@ -39,15 +39,6 @@ func TestHostForge(t *testing.T) {
 	if err := f.CanAct(ctx, "o/r"); err == nil || !strings.Contains(err.Error(), "cannot read o/r") {
 		t.Fatalf("no read: %v", err)
 	}
-	out, code = `{"headRefOid":"ABC","state":"MERGED"}`, 0
-	head, merged, err := f.PR(ctx, "o/r", 7)
-	if err != nil || head != "abc" || !merged || strings.Join(argv, " ") != "gh pr view 7 -R o/r --json headRefOid,state" {
-		t.Fatalf("pr: %q %v %v %v", head, merged, err, argv)
-	}
-	out = "not json"
-	if _, _, err := f.PR(ctx, "o/r", 7); err == nil {
-		t.Fatal("a body that is not json read")
-	}
 }
 
 // TestHostForgeRequiredChecks: the required checks are the branch

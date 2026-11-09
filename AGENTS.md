@@ -33,7 +33,7 @@ explain the boundaries. Keep changes scoped and preserve existing work.
 
 Go command packages live in `cmd/<command>/`; reusable packages and their
 embedded assets live in `modules/<module>/`. `make build` and releases ship
-only `nova-sprint` and `nova-worker`; the other commands are development tools.
+only `nova-sprint`; the other commands are development tools.
 The canonical role playbooks live beside their embed code in `modules/playbooks/`.
 
 Build with `make build` so the binaries carry their source version. Use the Go

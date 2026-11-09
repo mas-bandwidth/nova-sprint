@@ -26,7 +26,7 @@ beside its Go sources.
 ## 1. store -> everyone
 
 `store.Store` (layer 1) is the only way to the state: `Snapshot`, `Apply`,
-`Replay`, `Events(after, max)`, `EventIdentity`, `Restored`, `Clear`,
+`Replay`, `Events(after, max)`, `Restored`, `Clear`,
 `Policy`. One `Apply` is one op, one transaction, fenced by its expects. A
 row is sprint state only (round 22): `Row{Name, Session, Role, State, Held,
 Seen...}`; width, tiers, model and harness are the roster's. A stream holds

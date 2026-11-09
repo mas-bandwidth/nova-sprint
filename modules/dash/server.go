@@ -64,7 +64,6 @@ type PageEnvelope struct {
 	DataAgeSeconds    float64   `json:"dataAgeSeconds"`
 	AttemptAt         time.Time `json:"attemptAt"`
 	Error             *string   `json:"error"`
-	ReadSeconds       float64   `json:"readSeconds"`
 	MinInterval       int       `json:"minInterval"`
 	Throughput        float64   `json:"throughput"`
 	ThroughputMinutes float64   `json:"throughputMinutes"`
@@ -101,7 +100,7 @@ func (c *Cache) pageSnapshot() PageEnvelope {
 	if d.Error != "" {
 		msg = &d.Error
 	}
-	return PageEnvelope{OK: d.OK, Data: d, FetchedAt: d.At, DataAgeSeconds: now.Sub(d.At).Seconds(), AttemptAt: d.At, Error: msg, ReadSeconds: c.readSeconds, Throughput: rate, ThroughputMinutes: minutes, MinInterval: 1, Build: buildID}
+	return PageEnvelope{OK: d.OK, Data: d, FetchedAt: d.At, DataAgeSeconds: now.Sub(d.At).Seconds(), AttemptAt: d.At, Error: msg, Throughput: rate, ThroughputMinutes: minutes, MinInterval: 1, Build: buildID}
 }
 func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
 	result := c.pageSnapshot()
@@ -160,7 +159,8 @@ func acceptsGzip(headers []string) bool {
 func Handler(c *Cache) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/sprint", func(w http.ResponseWriter, r *http.Request) { dataHandler(c, w, r) })
-	for _, path := range []string{"/stream/", "/api/stream/", "/api/history", "/events"} {
+	// the Work table links each stream name to /stream/<name> (charts.js); its page is not served
+	for _, path := range []string{"/stream/", "/api/stream/"} {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusFound) })
 	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

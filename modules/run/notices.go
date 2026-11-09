@@ -35,9 +35,6 @@ func (n EventNotices) ForEvent(event store.Event, afterView store.Snapshot, reci
 			}
 		}
 		if recipient == n.Coordinator && after.Kind == "producer" {
-			if after.State == "landed" && (!exists || before.State != "landed") {
-				out = append(out, Notice{Subject: "LANDED", Line: fmt.Sprintf("LANDED card=%s stream=%s head=%s; run: nova-sprint show %s", after.ID, after.Stream, after.Head, shellWord(after.ID))})
-			}
 			terminal := after.State == "landed" || after.State == "fail"
 			wasTerminal := exists && (before.State == "landed" || before.State == "fail")
 			if terminal && !wasTerminal && !stitched[after.Stream] {

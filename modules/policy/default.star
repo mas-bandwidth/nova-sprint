@@ -100,54 +100,7 @@ def prices():
     return {}
 
 def catalog():
-    # The models rows may name, by provider, each with the tier it serves, and
-    # the harnesses. The tier map is the human's (2026-11-05):
-    # 1. flash - deepseek flash 4.1 / luna / haiku; 2. pro - mercury 3 / terra
-    # / sonnet; 3. heavy - opus 5.5 / sol; 4. frontier - fable 5.1 / astra /
-    # argon. The providers are the coordinator's mapping (2026-11-06): openai
-    # and google are guesses, astra's provider is unknown (a guess). Harnesses:
-    # LAYER-4 "Adapters", api being the API-rate adapter.
-    return {
-        "models": {
-            "anthropic": [
-                {"name": "haiku", "tier": "flash"},
-                {"name": "sonnet", "tier": "pro"},
-                {"name": "opus", "tier": "heavy"},
-                {"name": "fable", "tier": "frontier"},
-            ],
-            "openai": [  # guess
-                {"name": "luna", "tier": "flash"},
-                {"name": "sol", "tier": "heavy"},
-            ],
-            "google": [  # guess
-                {"name": "terra", "tier": "pro"},
-                {"name": "argon", "tier": "frontier"},
-            ],
-            "deepseek": [
-                {"name": "deepseek-flash", "tier": "flash"},
-                {"name": "deepseek-flash", "tier": "heavy"},  # the bench mapping below: a guess
-                {"name": "deepseek-v4-pro", "tier": "frontier"},  # the bench mapping below: a guess
-            ],
-            "inception": [
-                {"name": "mercury-3", "tier": "pro"},
-                {"name": "mercury-2.5", "tier": "flash"},  # guess
-            ],
-            "paperinstruments": [
-                {"name": "ultramarine-1-flash", "tier": "flash"},  # guess
-            ],
-            "unknown": [  # the provider is unknown: a guess
-                {"name": "astra", "tier": "frontier"},
-            ],
-        },
-        "harnesses": ["claude", "codex", "opencode", "api"],
-        # The one model a bench runs per tier, as its harness names it
-        # (provider/model); the deal names it and the take receipt carries it.
-        # The coordinator's mapping (2026-11-07), what opencode lists tonight:
-        # guesses until the probe measures each bench.
-        "bench": {
-            "flash": "deepseek/deepseek-flash",
-            "pro": "inception/mercury-3",
-            "heavy": "deepseek/deepseek-flash",
-            "frontier": "deepseek/deepseek-v4-pro",
-        },
-    }
+    # The one model a bench runs per tier, as its harness names it
+    # (provider/model); the deal names it and the take receipt carries it. A
+    # tier with no bench model deals to no bench: the operator names them.
+    return {"bench": {}}

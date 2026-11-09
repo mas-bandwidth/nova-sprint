@@ -115,8 +115,7 @@ each one is at.
 Every message from the sprint comes from the name `sprint`, and each one is a receipt: never
 answer it on the bus. The answer to a message from `sprint` is the verb its `run:` line names,
 or nothing. If your wake text tells you to answer every message by `nova-bus send`, that does
-not apply to `sprint`: a message to `sprint` that is not a verb is ignored, a reply to `sprint`
-is never answered, and a verb sent to `sprint` only gets back where to run it yourself.
+not apply to `sprint`: no message to `sprint` is ever answered; run the verbs yourself.
 
 1. A work deal: `DEAL card=<id> attempt=<n> kind=work stream=<s> tier=<t> model=<m> epoch=<e>
    repo=<org/repo> base=<40 hex> branch=<branch> brief=<the brief, clipped>; in your hand now:

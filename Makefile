@@ -10,7 +10,7 @@ LDFLAGS := -X main.binaryVersion=$(VERSION) -X github.com/mas-bandwidth/nova-spr
 
 build:
 	mkdir -p bin
-	go build -ldflags "$(LDFLAGS)" -o bin/ ./cmd/nova-sprint ./cmd/nova-worker
+	go build -ldflags "$(LDFLAGS)" -o bin/ ./cmd/nova-sprint
 
 # install puts the built commands where a service finds them first
 # (~/.local/bin, nova-fleet's nova_bin_dir): each as a new file, signed ad hoc
@@ -19,7 +19,7 @@ build:
 BINDIR ?= $(HOME)/.local/bin
 
 install: build
-	go run ./cmd/placebin bin/nova-sprint bin/nova-worker $(BINDIR)
+	go run ./cmd/placebin bin/nova-sprint $(BINDIR)
 
 # the unit tier (docs/TESTING.md): no real time, sockets, network or process;
 # the test binaries run with no PATH and no HOME, as CI runs them

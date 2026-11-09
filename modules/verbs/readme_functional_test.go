@@ -23,7 +23,7 @@ var (
 	otherVerb   = regexp.MustCompile("^\\| `([a-z][a-z ]*)` \\|")
 	assetRun    = regexp.MustCompile(`^"\./\$asset" (.+)$`)
 	indexVerb   = regexp.MustCompile(`^  ([a-z]+(?: [a-z]+)?)  +\S`)
-	refusalForm = regexp.MustCompile(`^SPRINT REFUSED ([a-z-]+): (.+): (.+)$`)
+	refusalForm = regexp.MustCompile(`^SPRINT REFUSED ([a-z-]+(?: [a-z-]+)?): (.+): (.+)$`)
 )
 
 // coldRun is one run of the built binary: its exit code and both streams.
@@ -85,7 +85,9 @@ func TestFunctionalREADMECommandsRunCold(t *testing.T) {
 		}
 		m := refusalForm.FindStringSubmatch(strings.TrimSuffix(line, "\n"))
 		verb := "nova-sprint"
-		if len(args) > 0 && find(args[0]) != nil || len(args) > 0 && len(sub(args[0])) > 0 {
+		if len(args) > 1 && find(args[0]+" "+args[1]) != nil {
+			verb = args[0] + " " + args[1]
+		} else if len(args) > 0 && find(args[0]) != nil || len(args) > 0 && len(sub(args[0])) > 0 {
 			verb = args[0]
 		}
 		if r.code != code || r.out != "" && r.errOut != "" || m == nil || m[1] != verb || !strings.Contains(m[3], fix) {

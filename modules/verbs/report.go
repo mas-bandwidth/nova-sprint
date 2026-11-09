@@ -30,10 +30,7 @@ func runReport(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (
 	if err != nil {
 		return "", err
 	}
-	opID, err := machineID(in, snap, "report", o.id, o.gen)
-	if err != nil {
-		return "", err
-	}
+	opID := consumerOpID("report", snap.Epoch, o.id, o.gen)
 	r, found, err := e.Store.Replay(ctx, opID)
 	if err != nil {
 		return "", err
@@ -72,7 +69,7 @@ func readOutcome(in *input) (outcome, error) {
 	}
 	var err error
 	o.cost, o.priced, err = readCost(in)
-	o.costGiven = in.has("cost") || in.has("cost-microusd")
+	o.costGiven = in.has("cost")
 	return o, err
 }
 
@@ -90,24 +87,8 @@ func (o outcome) check(in *input) error {
 	return nil
 }
 
-// readCost is the run's cost: --cost-microusd with --priced from a machine,
-// or --cost in dollars from a mind; never both forms.
+// readCost is the run's cost: --cost in dollars, or none (unpriced).
 func readCost(in *input) (int64, bool, error) {
-	machine := in.has("cost-microusd") || in.has("priced")
-	if machine && in.has("cost") {
-		return 0, false, refuse("--cost mixes with --cost-microusd and --priced", "give --cost <usd>, or --cost-microusd <n> --priced true|false")
-	}
-	if machine {
-		n, err := strconv.ParseInt(in.str("cost-microusd"), 10, 64)
-		p := in.str("priced")
-		if err != nil || n < 0 {
-			return 0, false, misuse(in.verb, "--cost-microusd <n> and --priced true|false go together (--cost-microusd: "+badNumber(in.str("cost-microusd"), err)+")")
-		}
-		if p != "true" && p != "false" {
-			return 0, false, misuse(in.verb, fmt.Sprintf("--cost-microusd <n> and --priced true|false go together (--priced %q)", Redact(p)))
-		}
-		return n, p == "true", nil
-	}
 	if !in.has("cost") {
 		return 0, false, nil
 	}

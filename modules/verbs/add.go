@@ -62,15 +62,13 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 	if f != nil {
 		return nil, f
 	}
-	after, f := names("add", "after", in.str("after"))
-	if f != nil {
-		return nil, f
-	}
 	switch {
 	case stream == "":
 		return nil, misuse("add", "add names its stream: --stream <s>")
 	case (sentinel == "") == (len(files) == 0):
 		return nil, misuse("add", "add takes --brief-file <f>... or --sentinel <id> --needs <cards>, one of them")
+	case sentinel == "" && len(needs) > 0:
+		return nil, misuse("add", "--needs is a sentinel's; a brief names its own: NEEDS: <a,b>")
 	case sentinel != "" && len(needs) == 0:
 		return nil, refuse("a sentinel needs the cards it waits for", "nova-sprint add --stream "+stream+" --sentinel "+sentinel+" --needs <a,b>")
 	}
@@ -78,7 +76,7 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 		return nil, refuse("no stream "+stream, "nova-sprint stream add "+stream+" --repo <org/repo>")
 	}
 	if sentinel != "" {
-		return []card.Add{{ID: sentinel, Kind: "sentinel", Stream: stream, Tier: "flash", Priority: in.str("priority"), Needs: needs, After: after}}, nil
+		return []card.Add{{ID: sentinel, Kind: "sentinel", Stream: stream, Tier: "flash", Needs: needs}}, nil
 	}
 	adds := make([]card.Add, 0, len(files))
 	for _, f := range files {
@@ -86,10 +84,7 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 		if err != nil {
 			return nil, err
 		}
-		a.Stream, a.Needs, a.After = stream, append(a.Needs, needs...), append(a.After, after...)
-		if p := in.str("priority"); p != "" {
-			a.Priority = p
-		}
+		a.Stream = stream
 		adds = append(adds, a)
 	}
 	return adds, nil

@@ -121,11 +121,12 @@ func TestPullCacheRejectsWritesAndLimitsAddress(t *testing.T) {
 func TestPullRejectsMalformedEnvelopes(t *testing.T) {
 	t.Parallel()
 	cases := []string{
-		`{"ok":null,"data":{"at":"2026-01-01T00:00:00Z","tables":{"fleet":{},"friends":{},"merge":{},"readers":{},"work":{}},"streams":[],"epoch":1},"dataAgeSeconds":0}`,
 		`{"ok":true,"data":null,"dataAgeSeconds":0}`,
 		`{"ok":true,"data":{"at":"bad","tables":{"fleet":{},"friends":{},"merge":{},"readers":{},"work":{}},"streams":[],"epoch":1},"dataAgeSeconds":0}`,
 		`{"ok":true,"data":{"at":"2026-01-01T00:00:00Z","tables":null},"dataAgeSeconds":0}`,
-		`{"ok":true,"data":{"at":"2026-01-01T00:00:00Z","tables":{"fleet":{},"friends":{},"merge":{},"readers":{},"work":{}},"streams":[],"epoch":1},"dataAgeSeconds":null}`,
+		`{"ok":true,"data":{"at":"2026-01-01T00:00:00Z","tables":{},"streams":[],"epoch":1},"dataAgeSeconds":-1}`,
+		`{"ok":"yes","data":{"at":"2026-01-01T00:00:00Z","tables":{},"streams":[],"epoch":1},"dataAgeSeconds":0}`,
+		`null`,
 	}
 	for _, body := range cases {
 		if _, _, err := parsePullEnvelope([]byte(body)); err == nil {

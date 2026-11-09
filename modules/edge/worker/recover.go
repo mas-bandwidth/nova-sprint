@@ -9,7 +9,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
@@ -260,7 +259,7 @@ func (r *Runner) setAside_internal(jobDir string, rec JobRecord, why string) {
 		err = os.Rename(jobDir, dst)
 	}
 	if err != nil {
-		r.report("quarantine of "+rec.Consumer, fmt.Errorf("setting the job directory aside failed, it stays in %s and is tried again next pass: %w", jobDir, err))
+		r.report("quarantine of "+rec.Consumer, fmt.Errorf("setting the job directory aside failed, it stays in %s: %w", jobDir, err))
 		return
 	}
 	r.removeJobState_internal(rec.Consumer)
@@ -270,33 +269,11 @@ func (r *Runner) setAside_internal(jobDir string, rec JobRecord, why string) {
 }
 
 // removeJobState_internal removes what the worker keeps for consumer
-// outside its job directory: its kept record (RecordsDir), its clone
-// (SealedDir), and a clone of the previous release at <root>/clones/<consumer>
-// when it is one (legacySealedClone_internal), never a work clone.
+// outside its job directory: its kept record (RecordsDir) and its clone
+// (SealedDir).
 func (r *Runner) removeJobState_internal(consumer string) {
 	r.report("removing the kept record of "+consumer, os.RemoveAll(filepath.Join(r.RootDir, RecordsDir, consumer)))
 	r.report("removing the worker's clone of "+consumer, os.RemoveAll(r.clonePath_internal(consumer)))
-	if legacy := filepath.Join(r.RootDir, "clones", consumer); r.legacySealedClone_internal(legacy) {
-		r.report("removing the previous release's clone of "+consumer, os.RemoveAll(legacy))
-	}
-}
-
-// legacySealedClone_internal: dir is a clone the previous release made at
-// <root>/clones/<consumer>: a shared clone of a work clone beside it, its
-// alternates naming <root>/clones/<other>/.git/objects. A work clone's
-// alternates name the mirror, or there are none.
-func (r *Runner) legacySealedClone_internal(dir string) bool {
-	data, err := os.ReadFile(filepath.Join(dir, ".git", "objects", "info", "alternates"))
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			r.report("the clone at "+dir+" is left in place", fmt.Errorf("its alternates could not be read: %w", err))
-		}
-		return false
-	}
-	first, _, _ := strings.Cut(strings.TrimSpace(string(data)), "\n")
-	rel, err := filepath.Rel(filepath.Join(r.RootDir, "clones"), filepath.Clean(first))
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	return err == nil && len(parts) == 3 && parts[0] != ".." && parts[0] != filepath.Base(dir) && parts[1] == ".git" && parts[2] == "objects"
 }
 
 func (r *Runner) quarantineDir_internal(consumer string, gen int) string {

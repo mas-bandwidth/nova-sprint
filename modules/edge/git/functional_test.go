@@ -72,7 +72,7 @@ func commitBranch_internal(t *testing.T, runGit func(string, ...string) string, 
 	return sha
 }
 
-func TestFunctionalGitMergeLedgerRebaseAndPush(t *testing.T) {
+func TestFunctionalGitMergeConflictAndPush(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	_, workDir, baseSHA, runGit := setupBareAndWorkRepo_internal(t)
@@ -94,30 +94,10 @@ func TestFunctionalGitMergeLedgerRebaseAndPush(t *testing.T) {
 	sha2 := runGit(workDir, "rev-parse", "HEAD")
 	runGit(workDir, "push", "origin", sha2+":refs/heads/sprint/s1/card-2")
 
-	mConflict, err := client.MergeGroup(ctx, workDir, baseSHA, []string{sha1, sha2}, nil)
+	mConflict, err := client.MergeGroup(ctx, workDir, baseSHA, []string{sha1, sha2})
 	if err != nil || mConflict.Kind != MergeConflict || len(mConflict.Conflicts) != 1 || mConflict.Conflicts[0] != "tla/RUNS.tsv" {
 		t.Fatalf("expected conflict on tla/RUNS.tsv, got %+v err=%v", mConflict, err)
 	}
-
-	mOK, err := client.MergeGroup(ctx, workDir, baseSHA, []string{sha1, sha2}, []LedgerRule{{Path: "tla/RUNS.tsv"}})
-	if err != nil || mOK.Kind != MergeOK {
-		t.Fatalf("MergeGroup with ledger: %+v err=%v", mOK, err)
-	}
-	runsBytes, err := os.ReadFile(filepath.Join(workDir, "tla", "RUNS.tsv"))
-	if err != nil || !strings.Contains(string(runsBytes), "Store\t100") || !strings.Contains(string(runsBytes), "CardMachine\t200") {
-		t.Fatalf("ledger union missing rows: %q err=%v", string(runsBytes), err)
-	}
-	verifyRebaseAndPush_internal(t, ctx, client, runGit, workDir, baseSHA, sha1, sha2)
-}
-
-func verifyRebaseAndPush_internal(t *testing.T, ctx context.Context, client *Client, runGit func(string, ...string) string, workDir, baseSHA, sha1, sha2 string) {
-	t.Helper()
-	_ = commitBranch_internal(t, runGit, workDir, "card-conflict", baseSHA, "a.go", "package conflict\n", "")
-	rebConflict, err := client.Rebase(ctx, workDir, sha1)
-	if err != nil || rebConflict.OK || len(rebConflict.Conflicts) != 1 || rebConflict.Conflicts[0] != "a.go" {
-		t.Fatalf("expected Rebase conflict on a.go, got %+v err=%v", rebConflict, err)
-	}
-
 	if err := client.Push(ctx, workDir, sha1, GroupRef("s1"), ""); err != nil {
 		t.Fatalf("initial group push: %v", err)
 	}

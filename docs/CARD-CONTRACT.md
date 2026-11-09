@@ -119,8 +119,6 @@ restored (an `ADMIT` line each). The parse refuses:
   `route:<name>` role in nova-config (`--roles bench,route:<name>`); kin
   serve no routes. The one parse is `card.NeedsRoutes`, which the tick, the
   unserved judgement and admission all read. Uppercase like every other key.
-- **HEAD: <full sha>** and **PR: <number>** (once each, optional): the work
-  the brief carries, read only by admission (the brief keeps them).
 - **DONE-WHEN** that is not one command. A DONE-WHEN is one argv: words
   split at white space, a single or double quote joining what it encloses,
   run directly with no shell. So the line is refused (decided 2026-11-07,
@@ -139,14 +137,6 @@ restored (an `ADMIT` line each). The parse refuses:
   is `edge.ParseGate`; admission (add, check, restore) and the worker's
   `RunTest` both call it, so what is admitted is what runs. Nothing is run
   at add.
-- **Retired mechanics**, named with the line: a `WHO:`, `LOCK:` or `JOB:`
-  key; a `JOB.md` the brief has the harness write; a lock (winlock, flock,
-  lockfile, a bench or captain lock); `ssh to <host>`; a DONE-WHEN or TEST
-  that runs ssh. The take receipt is the job, the deal is the who, and a gate
-  names facts, never a host. `JOB.md` itself is the worker's file for its
-  harness (the worker writes it in the job directory at stage; the prompt
-  says to read it first), so a brief that sends the harness to read it
-  passes.
 
 Then, against the roster and origin:
 

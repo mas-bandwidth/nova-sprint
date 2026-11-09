@@ -68,3 +68,18 @@ func TestEdgeSendAndWhoOverFakeExec(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "WHO OK present=<n>")
 }
+
+// TestParseWho: the one parse of nova-bus who (the bus edge, up's setup
+// presence and the setup walk's hooked check all call it) refuses a count
+// that does not match its lines, a repeated name and a line with no uptime.
+func TestParseWho(t *testing.T) {
+	t.Parallel()
+	who, err := ParseWho([]byte("WHO OK present=0\n"))
+	require.NoError(t, err)
+	assert.Empty(t, who)
+	for _, out := range []string{"WHO OK\nalice\t1m\n", "WHO OK present=2\nalice\t1m\n", "WHO OK present=2\nalice\t1m\nalice\t2m\n", "WHO OK present=1\nalice\n", "WHO OK present=x\n"} {
+		if _, err := ParseWho([]byte(out)); err == nil {
+			t.Errorf("%q: parsed", out)
+		}
+	}
+}

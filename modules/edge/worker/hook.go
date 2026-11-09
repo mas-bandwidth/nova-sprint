@@ -149,7 +149,7 @@ func (b OSBusHook) Start(ctx context.Context, row string) (WakeHook, error) {
 		w.mu.Lock()
 		tail := edge.RedactN(TailBytes(w.tail, 512), edge.FailureMax)
 		w.mu.Unlock()
-		return nil, fmt.Errorf("worker refused: nova-bus hook --as %s did not claim the name in time (stderr %q): check the bus with nova-bus who, then run nova-worker again", row, tail)
+		return nil, fmt.Errorf("worker refused: nova-bus hook --as %s did not claim the name in time (stderr %q): check the bus with nova-bus who, then run nova-sprint worker again", row, tail)
 	}
 }
 func (w *osWake_internal) Wake() <-chan struct{} { return w.wake }

@@ -181,8 +181,7 @@ type fakeAnswers struct{ prices map[string]policy.Price }
 
 func (f fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
 	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}},
-		Catalog: policy.Catalog{Models: map[string][]policy.Model{"inception": {{Name: "mercury-3", Tier: "pro"}}, "deepseek": {{Name: "deepseek-flash", Tier: "flash"}, {Name: "deepseek-flash", Tier: "pro"}}},
-			Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-v4-pro"}}, Prices: f.prices}, nil
+		Catalog: policy.Catalog{Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-v4-pro"}}, Prices: f.prices}, nil
 }
 
 // fakeLander is the hand landing and the group branch's creation: Land
@@ -247,12 +246,9 @@ func (o *fakeOrigin) Branches(_ context.Context, url, prefix string) (map[string
 	return out, o.err
 }
 
-// fakeForge is the host's gh identity: act is CanAct's answer; prs maps a
-// PR number to its head, merged lists the merged ones.
+// fakeForge is the host's gh identity: act is CanAct's answer.
 type fakeForge struct {
 	act    error
-	prs    map[int]string
-	merged map[int]bool
 	checks []string // the base's required checks
 	checkE error
 }
@@ -262,14 +258,6 @@ func (f *fakeForge) RequiredChecks(context.Context, string, string) ([]string, e
 }
 
 func (f *fakeForge) CanAct(context.Context, string) error { return f.act }
-
-func (f *fakeForge) PR(_ context.Context, _ string, n int) (string, bool, error) {
-	h, ok := f.prs[n]
-	if !ok {
-		return "", false, errors.New("no pull requests found")
-	}
-	return h, f.merged[n], nil
-}
 
 func (o *fakeOrigin) Tip(_ context.Context, repo, branch string) (string, bool, error) {
 	sha, ok := o.tips[repo+" "+branch]

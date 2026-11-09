@@ -304,9 +304,8 @@ About 1,100 lines of Go. An estimate from the event count.
   and cleared at `Start`: an attempt has one author, and a release before a
   finish leaves none.
 - The bounce limit that holds a producer is policy's number, compared with `bounces` (LESSONS 2.24); the move is the engine's. A row is never held by its flaps: on the record (10-25, 11-05) the flaps were our hook's, not the row's; a row's flaps stay a counted fact for policy to raise a judgement on.
-- The runner is its own binary, `nova-worker`, in this repo (Glenn: "your
-  call"); it and `nova-sprint` share the consumer verbs (take, report) from
-  one package. The name `nova-swarm` is reserved by Glenn for a future mode
+- The runner is `nova-sprint worker`, the same binary as the consumer verbs
+  (take, report) it calls. The name `nova-swarm` is reserved by Glenn for a future mode
   where the whole sprint works one hard problem; this is workers across
   lanes, not a swarm.
 

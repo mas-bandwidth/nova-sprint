@@ -25,7 +25,7 @@ missing values.
 ## Inspect a release before setup
 
 The [official releases](https://github.com/mas-bandwidth/nova-sprint/releases)
-contain `nova-sprint`, `nova-worker` and `SHA256SUMS` for Linux and macOS, on
+contain `nova-sprint` and `SHA256SUMS` for Linux and macOS, on
 amd64 and arm64. The following Bash block downloads one pinned release into a
 private temporary directory, checks the binary against its release checksum,
 and reads its version and help. It removes that temporary directory on exit;
@@ -229,7 +229,11 @@ asks the human for its key once at a hidden terminal prompt and checks it with
 the provider. The AI runs the prompt; the human enters the value there. The
 installed worker's supported routes and the policy's model catalog must also
 match the selected configuration: adding a key alone does not make every model
-runnable. Follow any missing-route or harness refusal before starting work.
+runnable. The built-in policy names no bench model: a bench takes a tier's work
+only once the active policy's `catalog()` names that tier's model, as
+`{"bench": {"<tier>": "<provider>/<model>"}}` (`nova-sprint policy set`; `check`
+names each tier without one). Follow any missing-route or harness refusal
+before starting work.
 
 Use `--services none` to skip API-key setup. This does **not** disable the worker
 services installed on bench machines. For a sprint using only friend sessions,
@@ -596,7 +600,7 @@ sprint_env nova-sprint policy show
 sprint_env nova-sprint policy show --list
 sprint_env nova-sprint policy check '<policy-file>'
 sprint_env nova-sprint policy set '<policy-file>' --reason '<why>'
-sprint_env nova-sprint policy diff '<old-version>' '<new-version>'
+diff <(sprint_env nova-sprint policy show '<old-version>') <(sprint_env nova-sprint policy show '<new-version>')
 sprint_env nova-sprint policy activate '<new-version>' --reason '<why>'
 ```
 
@@ -629,7 +633,6 @@ a repair for an ordinary refused command.
 | `drop` | Fail work that should not be done, with explicit treatment of its dependants. | `nova-sprint help drop` |
 | `relink` | Redirect a dependant's failed need to another producer. | `nova-sprint help relink` |
 | `stream set` | Change a stream's landing mode or forge. | `nova-sprint help stream set` |
-| `cost reconcile` | Compare provider balance changes with recorded API costs and raise a cost-gap judgement when required. | `nova-sprint help cost reconcile` |
 | `wake` | Consume a bus message on stdin and acknowledge each dealt card before printing its receipt or refusal. | `nova-sprint help wake` |
 
 For a Monitor-based bus hook that acknowledges deals before waking the session,

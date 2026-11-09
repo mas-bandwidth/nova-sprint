@@ -161,6 +161,18 @@ func (x *e2e) up() {
 		t.Fatal(err)
 	}
 	x.tr.note("policy.Up: active version v%d", r.Version)
+	// The built-in names no bench model; the operator's policy does.
+	body := strings.Replace(policy.DefaultBody(), `return {"bench": {}}`, `return {"bench": {"flash": "deepseek/deepseek-flash", "pro": "deepseek/deepseek-flash", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-flash"}}`, 1)
+	snap, err := st.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := store.Op{ID: "e2e-policy-bench", Epoch: snap.Epoch, Actor: "carol", Kind: "policy-set", At: time.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}},
+		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "bench.star", Body: body}, store.SetActivePolicy{Version: r.Version + 1}}}
+	if rc, err := st.Apply(ctx, op); err != nil || !rc.Accepted {
+		t.Fatalf("bench policy: %v %+v", err, rc)
+	}
+	x.tr.note("policy v%d: the default with a bench model per tier, active", r.Version+1)
 }
 
 // seedConfig applies nova-config's schema (nova-tools, the version this

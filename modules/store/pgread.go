@@ -153,21 +153,6 @@ func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, erro
 	return readEvents(ctx, p.pool, afterSeq, max)
 }
 
-// EventIdentity returns the op id and epoch of the event at seq, reading
-// only those two columns (never the images or the receipt).
-func (p *PG) EventIdentity(ctx context.Context, seq int64) (string, int, bool, error) {
-	var op string
-	var epoch int
-	err := p.pool.QueryRow(ctx, "SELECT op, epoch FROM sprint.events WHERE seq = $1", seq).Scan(&op, &epoch)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		return "", 0, false, nil
-	case err != nil:
-		return "", 0, false, fmt.Errorf("store: event identity: %w", err)
-	}
-	return op, epoch, true, nil
-}
-
 // Restored returns the digest of the dump the store was last restored from
 // and when (RestoreEnd), and false when it never was. It only reads.
 func (p *PG) Restored(ctx context.Context) (string, time.Time, bool, error) {
