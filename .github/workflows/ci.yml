@@ -102,7 +102,7 @@ jobs:
         run: go test -count=1 -race -short -timeout 100s -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...
 
   functional:
-    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && github.ref == 'refs/heads/main')
     runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 2
     steps:
@@ -120,8 +120,20 @@ jobs:
       # Each functional test starts its own PostgreSQL. This runner is Linux, so
       # the default parallelism is fine; on macOS run with -parallel 4, because
       # its System V shared memory limits run out (docs/TESTING.md).
+      # The roster test reads nova-config's schema.sql at the version it pins
+      # (nova-tools v2.0.2, checked by its sha256).
+      - name: the pinned nova-config schema for the roster test
+        shell: bash
+        run: |
+          go mod download github.com/mas-bandwidth/nova-tools/v2@v2.0.2
+          echo "NOVA_CONFIG_SCHEMA_FILE=$(go env GOMODCACHE)/github.com/mas-bandwidth/nova-tools/v2@v2.0.2/config/schema.sql" >> "$GITHUB_ENV"
+      # NOVA_FUNCTIONAL=1 runs the tests that start their own PostgreSQL behind
+      # that gate. Under CI a missing tool a functional test needs (redis-server,
+      # nova-bus, pg_ctl, pg_dump, go) fails the test, it does not skip.
       - name: functional tests
         run: go test -count=1 -race -timeout 100s -run Functional ./...
+        env:
+          NOVA_FUNCTIONAL: "1"
 
   # Trace validation (tla/README.md, "Trace validation"), short: the store's
   # walks (the Fake, and PostgreSQL) at 150 steps, the card, policy, steps,

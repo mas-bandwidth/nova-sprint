@@ -25,6 +25,9 @@ func findNovaBusBinary_internal(t *testing.T) string {
 	if _, err := os.Stat(cand); err == nil {
 		return cand
 	}
+	if os.Getenv("CI") != "" {
+		t.Fatal("nova-bus required: missing on a CI runner (not on PATH or in ~/.local/bin)")
+	}
 	t.Skip("nova-bus binary not found on PATH or ~/.local/bin")
 	return ""
 }
@@ -40,7 +43,9 @@ func freeLocalPort_internal(t *testing.T) int {
 func startThrowawayRedis_internal(t *testing.T) string {
 	t.Helper()
 	redisBin, err := exec.LookPath("redis-server")
-	if err != nil {
+	if err != nil && os.Getenv("CI") != "" {
+		t.Fatal("redis-server required: missing on a CI runner")
+	} else if err != nil {
 		t.Skip("redis-server not installed")
 	}
 	port := freeLocalPort_internal(t)

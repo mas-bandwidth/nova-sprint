@@ -18,7 +18,9 @@ import (
 func configSchemaFixture(t *testing.T) []byte {
 	t.Helper()
 	path := os.Getenv("NOVA_CONFIG_SCHEMA_FILE")
-	if path == "" {
+	if path == "" && os.Getenv("CI") != "" {
+		t.Fatal("NOVA_CONFIG_SCHEMA_FILE required: unset on a CI runner")
+	} else if path == "" {
 		t.Skip("set NOVA_CONFIG_SCHEMA_FILE to the pinned config schema for PostgreSQL functional coverage")
 	}
 	b, err := os.ReadFile(path)
