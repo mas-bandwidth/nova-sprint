@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
 )
 
 // Unit tests: store.Fake, a fake policy and a fake bus; no time, no socket.
@@ -440,6 +441,96 @@ func TestServeFirstWhoFailurePlansNothing(t *testing.T) {
 	}
 	if c, ok := snap.Cards["p1.w1"]; !ok || c.Holder != "bench" {
 		t.Fatalf("the good read after did not deal p1 to bench: %+v\n%s", snap.Cards, out)
+	}
+}
+
+// twoBenches is nova-config with two bench machines.
+type twoBenches struct{}
+
+func (twoBenches) Snapshot(context.Context) (config.Snapshot, error) {
+	cores := 12
+	return config.Snapshot{Machines: []config.Machine{{Name: "bench", Roles: "bench", Cores: &cores}, {Name: "bench2", Roles: "bench", Cores: &cores}}}, nil
+}
+func (twoBenches) Close() {}
+
+// TestTickFailedWhoReadIsNoSilence: a failed who read is no evidence that a
+// row is silent. Both rows are on the bus and bench works p1; then every who
+// read fails for longer than row_silent_withdraw (and so row_silent_gone):
+// no row goes Gone, no flap is counted, no consumer is withdrawn. Silence is
+// measured across good reads only: when the bus answers again without bench2,
+// bench2 goes Gone after row_silent_gone of good reads, not at once.
+func TestTickFailedWhoReadIsNoSilence(t *testing.T) {
+	t.Parallel()
+	f := started(t)
+	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
+	for _, n := range []string{"bench", "bench2"} {
+		must(t, f, "row "+n, store.PutRow{Name: n, Session: "sess-" + n, Role: "worker"})
+		must(t, f, "up "+n, store.SetRowState{Row: n, State: "up"})
+	}
+	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
+	ro, err := NewConfigRoster(twoBenches{}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &beats{now: t0, tick: make(chan time.Time)}
+	b := &fakeBus{who: map[string]bus.Presence{"bench": {Name: "bench"}, "bench2": {Name: "bench2"}}}
+	var log strings.Builder
+	ctx := context.Background()
+	l, err := coldStart(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, ReposDir: t.TempDir(), Clock: clock, Log: &log}, &healthy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.edges.heads = map[string]string{"s": strings.Repeat("a", 40)}
+	n := 0
+	tickAt := func(at time.Time) {
+		t.Helper()
+		n++
+		clock.now = at
+		if err := l.tick(ctx, n); err != nil {
+			t.Fatalf("tick %d: %v\n%s", n, err, log.String())
+		}
+	}
+	tickAt(t0.Add(time.Second))
+	tickAt(t0.Add(2 * time.Second))
+	snap := l.ticker.Snapshot()
+	w, ok := snap.Cards["p1.w1"]
+	if !ok || w.State != "working" {
+		t.Fatalf("p1 was not dealt: %+v\n%s", snap.Cards, log.String())
+	}
+	must(t, f, "take", store.SetCursor{Name: steps.AckCursor(1, "p1.w1"), Seq: 1})
+	last := t0.Add(2 * time.Second) // the last good read
+	b.whoFails = 1 << 30
+	outage := time.Duration(1800+60) * time.Second // past row_silent_withdraw
+	for at := last.Add(time.Minute); !at.After(last.Add(outage)); at = at.Add(time.Minute) {
+		tickAt(at)
+	}
+	check := func(when string) {
+		t.Helper()
+		snap := l.ticker.Snapshot()
+		for _, n := range []string{"bench", "bench2"} {
+			if r := snap.Rows[n]; r.State != "up" || r.Flaps != 0 {
+				t.Fatalf("%s: row %s is %s with %d flaps, want up with none\n%s", when, n, r.State, r.Flaps, log.String())
+			}
+		}
+		if c := snap.Cards["p1.w1"]; c.State != "working" || c.Holder != w.Holder {
+			t.Fatalf("%s: p1.w1 is %s on %q, want working on %s\n%s", when, c.State, c.Holder, w.Holder, log.String())
+		}
+	}
+	check("after the outage")
+	if !strings.Contains(log.String(), "EDGE FAULT nova-bus who") {
+		t.Fatalf("the failed who read is not logged: %s", log.String())
+	}
+	b.whoFails = 0
+	b.who = map[string]bus.Presence{w.Holder: {Name: w.Holder}}
+	other := map[string]string{"bench": "bench2", "bench2": "bench"}[w.Holder]
+	back := last.Add(outage + time.Second)
+	tickAt(back)
+	check("on the first good read")
+	tickAt(back.Add(590 * time.Second))
+	check("590 s of good reads later")
+	tickAt(back.Add(610 * time.Second))
+	if r := l.ticker.Snapshot().Rows[other]; r.State != "down" {
+		t.Fatalf("row %s absent for 610 s of good reads is %s, want gone (down)\n%s", other, r.State, log.String())
 	}
 }
 
