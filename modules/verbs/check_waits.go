@@ -16,11 +16,10 @@ const landLookback = 5000
 
 // flattenFix is how a long chain is made short (CORRECT-USE, "Keep
 // everybody at width").
-const flattenFix = "flatten it before the deal: a NEEDS only on an output the card consumes, independent work as cards that need nothing, one card per file set (CORRECT-USE: keep everybody at width)"
+const flattenFix = "flatten it before the deal: a NEEDS only on an output the card consumes, independent work as cards that need nothing (CORRECT-USE: keep everybody at width)"
 
 // checkWaits is one line per stream with producers waiting, why they wait
-// (steps.Waits: the front of the chain they wait on, the producer and file
-// they are held behind), and a warning for each stream whose longest NEEDS
+// (steps.Waits: the front of the chain they wait on), and a warning for each stream whose longest NEEDS
 // chain is longer than the policy's chain_limit (add refuses one), with
 // what it takes at the stream's land rate.
 func (e *Engine) checkWaits(ctx context.Context, r *checkReport, snap store.Snapshot, ws []steps.StreamWaits) {

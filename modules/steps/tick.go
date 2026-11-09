@@ -26,9 +26,8 @@ type tick struct {
 	candCache map[string][]RowFacts // candidates per tier and routes for work, once per tick
 	roomCache map[string]int        // room per row (policy's work), once per tick
 	rankCache map[string]int        // rank index per row, once per tick
-	resolvedP map[string]set        // stream + path -> producers resolved this tick (the overlap tally)
 	claimed   set                   // cards and rows an earlier step claimed
-	resolved  set                   // producers resolved this tick: started, for the overlap tally
+	resolved  set                   // producers resolved this tick (the idle judgement reads it)
 	tally     map[string]int        // consumers dealt per row this tick
 	rested    set                   // rows resting after faults (LPM R34): a deal filter
 	groups    []group
@@ -74,7 +73,7 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 func newTick(v *View, in Inputs) *tick {
 	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{},
 		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{},
-		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{}, resolvedP: map[string]set{}}
+		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{}}
 }
 
 // overBudget says whether the non-blocker groups planned so far touch the

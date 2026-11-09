@@ -20,12 +20,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Every invariant of the passing runs, in cfg order.
 INVARIANTS = [
-    "TypeOK", "NeverDealtTwice", "WidthKept", "ReadyNeverFlipsWithLoad", "NeverOverlapStarted",
+    "TypeOK", "NeverDealtTwice", "WidthKept", "ReadyNeverFlipsWithLoad",
     "NeverBelowTier", "CarryFIFO", "EdgeAfterAccepted",
     "OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
-    "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
+    "ResolveFromState", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
     "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
     "LapsedReleased",
 ]
@@ -67,7 +67,7 @@ REACH = {
     "StepsNeverEscalated": ("deal", "a bounced producer is dealt one rank up"),
     "StepsNeverNeedReleased": ("deal", "a need lands and its dependant resolves"),
     "StepsNeverCannotRead": ("deal", "a review no row may read opens cannot-read"),
-    "StepsNeverHeldBehind": ("deal", "a producer held behind another on a file opens overlap"),
+    "StepsNeverBothStarted": ("deal", "p and q of one stream, naming one file, are started together"),
     "StepsNeverHandLanded": ("deal", "a store op lands a producer by hand"),
     "StepsNeverReadAgain": ("deal", "a review whose read faulted is read again"),
     "StepsNeverAbsent": ("deal", "a tick runs with an up row absent from the bus serving a ready card"),
@@ -177,19 +177,15 @@ WITNESSES = [
     ("StepsReadyOnRoom", "ReadyNeverFlipsWithLoad", "deal",
      "Ready is conditioned on room: Resolve requires an open serving row\n"
      "with room under width.",
-     [("  /\\ ~\\E q \\in Prods : Overlap(p, q) /\\ (W.ps[q].st \\in Started \\cup {\"ready\"} \\/ q \\in extra)\n",
-       "  /\\ ~\\E q \\in Prods : Overlap(p, q) /\\ (W.ps[q].st \\in Started \\cup {\"ready\"} \\/ q \\in extra)\n"
+     [("  /\\ NeedsLanded(W, p)\n  /\\ ~W.sh[Stream[p]]\n",
+       "  /\\ NeedsLanded(W, p)\n  /\\ ~W.sh[Stream[p]]\n"
        "  /\\ \\E r \\in ServingOpen(W, p) : Cardinality(Load(W, r)) < Width[r]   \\* FAULT\n", 1)]),
-    ("StepsNoOverlapCheck", "NeverOverlapStarted", "deal",
-     "Resolve without the overlap check: two producers of one stream with\n"
-     "overlapping paths are ready together.",
-     [("  /\\ ~\\E q \\in Prods : Overlap(p, q) /\\ (W.ps[q].st \\in Started \\cup {\"ready\"} \\/ q \\in extra)\n",
-       "  /\\ TRUE   \\* FAULT: was the overlap check\n", 1)]),
     ("StepsTierUnchecked", "NeverBelowTier", "deal",
      "The tier is checked nowhere: policy's rows answer is taken for any up\n"
      "row, and Start does not check that the row serves the card's tier.",
      [("InDomain(V, x, ar, t) == ar \\in Rows /\\ Eligible(V, x, ar, t)",
-       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar] /\\ bus[ar]   \\* FAULT: was Eligible(V, x, ar, t)", 1),
+       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar] /\\ bus[ar] /\\ Used(V, ar, t) < Width[ar]\n"
+       "                          /\\ (x.kind = \"read\" => ar # V.ps[x.p].author)   \\* FAULT: Eligible without Serves", 1),
       ("  /\\ ~W.sh[Stream[p]]\n  /\\ Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n",
        "  /\\ ~W.sh[Stream[p]]\n  /\\ TRUE   \\* FAULT: was Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n", 1)]),
     ("StepsAfterIgnored", "AfterKept", "land",
@@ -234,20 +230,10 @@ WITNESSES = [
      "Resolve is driven by the land step's events, not the state: a\n"
      "producer with needs resolves only in a tick that consumes its need's\n"
      "landed result, so a need landed by a store op never releases it.",
-     [("         res  == ResolveFold(V, inb.cl, 1, {})",
-       "         res  == {p \\in ResolveFold(V, inb.cl, 1, {}) :   \\* FAULT: on the event only\n"
+     [("         res  == ResolveSet(V, inb.cl)",
+       "         res  == {p \\in ResolveSet(V, inb.cl) :   \\* FAULT: on the event only\n"
        "                    \\A n \\in Needs[p] : \\E i \\in 1..Len(inbox) :\n"
        "                      inbox[i].out = \"landed\" /\\ inbox[i].id[3][1] = n}", 1)]),
-    ("StepsGlobOverlaps", "ResolveFromState", "pre",
-     "Overlap counts a glob both cards list (a directory both add to): q\n"
-     "is held behind p on a/* though they name no file in common.",
-     [("Shared(p, q) == {f \\in Paths[p] \\cap Paths[q] : f \\notin Globs}",
-       "Shared(p, q) == Paths[p] \\cap Paths[q]   \\* FAULT: was files only", 1)]),
-    ("StepsHeldUnshown", "HeldBehindShown", "deal",
-     "A producer held behind another on a file opens no judgement: it\n"
-     "sits waiting with nothing saying why.",
-     [("                   \\cup {[kind |-> \"overlap\", about |-> p] : p \\in Held(V, inb.cl, res)}\n",
-       "                   \\cup {}   \\* FAULT: was the overlap judgements\n", 1)]),
     ("StepsYesOnFault", "VerdictHasItsRead", "deal",
      "The verdict default is yes unless a read said fix: a review whose\n"
      "only read faulted is merged with no read that said ok.",

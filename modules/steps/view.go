@@ -2,7 +2,6 @@ package steps
 
 import (
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -10,8 +9,7 @@ import (
 
 // View is the sprint as the tick reads it: the snapshot's records plus the
 // indexes the steps need (producers by state and rung, consumers by
-// producer and row, dependants by need, live paths by stream), advanced by
-// Fold. After any fold it equals a fresh Build at the same seq
+// producer and row, dependants by need), advanced by Fold. After any fold it equals a fresh Build at the same seq
 // (TestViewFoldEqualsBuild). The facts a snapshot does not carry (when a
 // consumer was taken, when a stream last landed, when a row went down, a
 // row's last finishes) are witnessed by the fold and are zero for records that
@@ -28,12 +26,11 @@ type View struct {
 	Rows       map[string]store.Row
 	Judgements map[string]store.Judgement
 
-	byState    map[string]set            // producers and sentinels by state
-	byRung     map[string]set            // producers and sentinels by priority
-	consOf     map[string]set            // consumers by producer
-	liveOnRow  map[string]set            // live (ready, working) consumers by row
-	dependants map[string]set            // producers whose needs name the key
-	paths      map[string]map[string]set // stream -> file -> producers ready or started (concrete paths only)
+	byState    map[string]set // producers and sentinels by state
+	byRung     map[string]set // producers and sentinels by priority
+	consOf     map[string]set // consumers by producer
+	liveOnRow  map[string]set // live (ready, working) consumers by row
+	dependants map[string]set // producers whose needs name the key
 
 	TakenAt map[string]time.Time // consumer -> when it went working: when it was dealt
 	ReadyAt map[string]time.Time // producer -> when it last went ready
@@ -55,10 +52,6 @@ type End struct {
 
 // maxEnds is the finishes kept per row: policy's largest route_rest_window.
 const maxEnds = 100
-
-// started is the producer states that hold their paths against an overlap:
-// ready and the started ones (working, review, merging).
-var started = []string{"ready", "working", "review", "merging"}
 
 // Build is the view of snapshot s at now.
 func Build(s store.Snapshot, now time.Time) *View {
@@ -90,7 +83,6 @@ func (v *View) reset(epoch int) {
 	v.Rows, v.Judgements = map[string]store.Row{}, map[string]store.Judgement{}
 	v.byState, v.byRung, v.consOf = map[string]set{}, map[string]set{}, map[string]set{}
 	v.liveOnRow, v.dependants = map[string]set{}, map[string]set{}
-	v.paths = map[string]map[string]set{}
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
 	v.ReadyAt = map[string]time.Time{}
 	v.Ends, v.born, v.touched = map[string][]End{}, map[string]int64{}, map[string]int64{}
@@ -196,17 +188,6 @@ func (v *View) index(c store.Card) {
 	for _, n := range c.Needs {
 		add(v.dependants, n, c.ID)
 	}
-	if slices.Contains(started, c.State) {
-		for _, p := range c.Paths {
-			if !Concrete(p) {
-				continue
-			}
-			if v.paths[c.Stream] == nil {
-				v.paths[c.Stream] = map[string]set{}
-			}
-			add(v.paths[c.Stream], p, c.ID)
-		}
-	}
 }
 
 func (v *View) unindex(c store.Card) {
@@ -219,14 +200,6 @@ func (v *View) unindex(c store.Card) {
 	del(v.byRung, rung(c), c.ID)
 	for _, n := range c.Needs {
 		del(v.dependants, n, c.ID)
-	}
-	if m := v.paths[c.Stream]; m != nil {
-		for _, p := range c.Paths {
-			del(m, p, c.ID)
-		}
-		if len(m) == 0 {
-			delete(v.paths, c.Stream)
-		}
 	}
 }
 
@@ -306,29 +279,6 @@ func (v *View) Working(row string) int {
 // Dependants is every producer whose needs name card, in id order.
 func (v *View) Dependants(card string) []string { return sorted(v.dependants[card]) }
 
-// Concrete says whether a listed path names one file: no glob character
-// (* ? [) and no trailing slash. Overlap is a file both cards edit, never a
-// directory or glob both add to (defect 50: ten audits that each add their
-// own files under one corpus glob were serialised behind one); a true
-// conflict under a shared directory is the landing's rebase and the read's.
-func Concrete(path string) bool {
-	return path != "" && !strings.ContainsAny(path, "*?[") && !strings.HasSuffix(path, "/")
-}
-
-// Overlaps is every other producer of p's stream, ready or started, that
-// names a file p names (Concrete; LANDING step 2; LESSONS 2.20), in id order.
-func (v *View) Overlaps(p store.Card) []string {
-	found := set{}
-	for _, path := range p.Paths {
-		for q := range v.paths[p.Stream][path] {
-			if q != p.ID {
-				found[q] = struct{}{}
-			}
-		}
-	}
-	return sorted(found)
-}
-
 // Open says whether row r may be dealt to: up on the bus, not held, and
 // hooked in to the sprint (Glenn, 2026-11-06: the hook is the subscription
 // to the sprint's pushes; a row not hooked in is never dealt to and nothing
@@ -351,10 +301,9 @@ type viewCore struct {
 	Rows                                   map[string]store.Row
 	Judgements                             map[string]store.Judgement
 	ByState, ByRung, ConsOf, Live, Depends map[string]set
-	Paths                                  map[string]map[string]set
 	Acks                                   set
 }
 
 func (v *View) core() viewCore {
-	return viewCore{v.Seq, v.Epoch, v.Policy, v.Streams, v.Cards, v.Rows, v.Judgements, v.byState, v.byRung, v.consOf, v.liveOnRow, v.dependants, v.paths, v.acks}
+	return viewCore{v.Seq, v.Epoch, v.Policy, v.Streams, v.Cards, v.Rows, v.Judgements, v.byState, v.byRung, v.consOf, v.liveOnRow, v.dependants, v.acks}
 }

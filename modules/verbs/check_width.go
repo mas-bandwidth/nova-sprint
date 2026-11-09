@@ -25,7 +25,7 @@ type widthFacts struct {
 // ready producers; when producers are ready and none is dealt it is red,
 // naming why (the deal's own causes, and the steps' idle judgement); when
 // the fleet works under its width with nothing ready it warns "nothing
-// dealable" with the chains and overlaps the waiting producers sit on (ws,
+// dealable" with the chains the waiting producers sit on (ws,
 // the steps' own Waits, as the idle judgement says them).
 func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snapshot, heads map[string]string, running bool, ws []steps.StreamWaits) {
 	lim, _, err := e.rules(ctx, snap)

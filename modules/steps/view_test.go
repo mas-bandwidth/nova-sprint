@@ -78,7 +78,6 @@ func TestViewFoldEqualsBuild(t *testing.T) {
 	assert.Equal(t, 1, w.v.Policy)
 	w.must("cancel", store.SetCardState{Card: "p2", State: "fail"}, store.SetCardReason{Card: "p2", Reason: "dropped"})
 	w.same("fail")
-	assert.Empty(t, w.v.Overlaps(w.card("p3")), "a failed producer holds no paths")
 	rc, err := w.f.Clear(context.Background(), store.Op{ID: "clear", Epoch: 1, Actor: "test", Kind: "clear", At: w.now.Add(time.Minute)})
 	require.NoError(t, err)
 	require.True(t, rc.Accepted, rc.Reason)
@@ -121,24 +120,6 @@ func TestViewRefusedEventMovesSeqOnly(t *testing.T) {
 	assert.Equal(t, rc.Seq, w.v.Seq)
 	w.v.Seq = before.Seq
 	assert.Equal(t, before, w.v.core())
-}
-
-// TestViewOverlaps: the paths index holds ready and started producers of
-// one stream, and a path shared across streams is no overlap.
-func TestViewOverlaps(t *testing.T) {
-	t.Parallel()
-	w := newWorld(t)
-	w.stream("s1")
-	w.stream("s2")
-	w.producer("p1", "s1", "pro", "a/x", "a/y")
-	w.producer("p2", "s1", "pro", "a/y")
-	w.producer("p3", "s2", "pro", "a/y")
-	w.fold()
-	assert.Empty(t, w.v.Overlaps(w.card("p2")), "a waiting producer holds no paths")
-	w.move(w.plan("p1", card.Resolve{}))
-	w.fold()
-	assert.Equal(t, []string{"p1"}, w.v.Overlaps(w.card("p2")))
-	assert.Empty(t, w.v.Overlaps(w.card("p3")), "another stream")
 }
 
 // TestViewConsumersInCutOrder: consumers come back in the order they were

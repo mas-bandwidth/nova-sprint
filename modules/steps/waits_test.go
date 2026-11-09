@@ -12,9 +12,9 @@ import (
 )
 
 // waitCards is a sprint of two streams: in s1 a chain a -> b -> c -> d with
-// a working, e and f also needing a, g needing a missing card, h held
-// behind a on x.go, i waiting with its needs landed and nothing held (the
-// next tick resolves it), a sentinel over d, and a landed and a failed
+// a working, e and f also needing a, g needing a missing card, h and i
+// waiting with their needs landed (the next tick resolves them; h names a's
+// file, which holds nothing), a sentinel over d, and a landed and a failed
 // card; in s2 one ready card and nothing waiting.
 func waitCards() map[string]store.Card {
 	p := func(id, stream, state string, needs []string, paths ...string) store.Card {
@@ -39,11 +39,11 @@ func waitCards() map[string]store.Card {
 	return cs
 }
 
-// TestWaitsGroupsByChainFrontAndHolder: each waiting producer is counted
-// once, on the front of the chain it waits on (followed through waiting
-// needs) or on the producer and file it is held behind; the longest chain
-// runs first to land first, without sentinels or landed cards.
-func TestWaitsGroupsByChainFrontAndHolder(t *testing.T) {
+// TestWaitsGroupsByChainFront: each waiting producer is counted once, on
+// the front of the chain it waits on (followed through waiting needs); one
+// whose needs landed waits on nothing, whatever files it names; the longest
+// chain runs first to land first, without sentinels or landed cards.
+func TestWaitsGroupsByChainFront(t *testing.T) {
 	t.Parallel()
 	ws := Waits(waitCards())
 	require.Len(t, ws, 2)
@@ -51,11 +51,8 @@ func TestWaitsGroupsByChainFrontAndHolder(t *testing.T) {
 	assert.Equal(t, "s1", s1.Stream)
 	assert.Equal(t, []Blocker{{Card: "a", State: "working", Count: 5}, {Card: "gone", State: "missing", Count: 1}}, s1.Blockers,
 		"b, c, d, e and f all wait on a (c and d through b); g on a card that does not exist")
-	assert.Equal(t, []Holder{{Card: "a", File: "x.go", Count: 1}}, s1.Holders, "h is held behind a on x.go; a shared glob holds nothing")
 	assert.Equal(t, []string{"a", "b", "c", "d"}, s1.Chain)
-	onNeeds, onFiles := s1.Waiting()
-	assert.Equal(t, [2]int{6, 1}, [2]int{onNeeds, onFiles})
-	assert.Equal(t, "5 wait on a (working), 1 on gone (missing); 1 held behind x.go of a", s1.Line())
+	assert.Equal(t, "5 wait on a (working), 1 on gone (missing)", s1.Line())
 	assert.Equal(t, "s2", s2.Stream)
 	assert.Empty(t, s2.Line(), "nothing in s2 waits")
 	assert.Equal(t, []string{"k"}, s2.Chain)
@@ -91,8 +88,8 @@ func TestWaitsSurvivesACycle(t *testing.T) {
 	}
 	ws := Waits(cs)
 	require.Len(t, ws, 1)
-	onNeeds, _ := ws[0].Waiting()
-	assert.Equal(t, 2, onNeeds)
+	require.Len(t, ws[0].Blockers, 1)
+	assert.Equal(t, 2, ws[0].Blockers[0].Count)
 	assert.Len(t, ws[0].Chain, 2)
 }
 
@@ -101,7 +98,7 @@ func TestWaitsSurvivesACycle(t *testing.T) {
 func TestIdleWhyAndFix(t *testing.T) {
 	t.Parallel()
 	what, fix := IdleWhy(Waits(waitCards()))
-	assert.Equal(t, "2 chains (longest 4, top: a blocks 5), 1 overlap (top: a holds 1 on x.go)", what)
+	assert.Equal(t, "2 chains (longest 4, top: a blocks 5)", what)
 	assert.Equal(t, "each stream's waits and chains: nova-sprint check; the top: nova-sprint show a (it is working; its landing frees the chain); "+unchain, fix)
 	what, fix = IdleWhy(nil)
 	assert.Empty(t, what+fix)
@@ -120,8 +117,7 @@ func TestIdleWhyAndFix(t *testing.T) {
 }
 
 // TestIdleJudgementSaysWhyNothingDeals: with a row idle and nothing
-// dealable, the idle judgement names the chains and the overlaps and the
-// command that helps, not a bare idle.
+// dealable, the idle judgement names the chains and the command that helps, not a bare idle.
 func TestIdleJudgementSaysWhyNothingDeals(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
@@ -131,28 +127,27 @@ func TestIdleJudgementSaysWhyNothingDeals(t *testing.T) {
 	s.must("add", store.PutCard{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p2", Needs: []string{"p1"}})
 	s.must("add", store.PutCard{ID: "p3", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p3", Needs: []string{"p2"}})
 	s.must("add", store.PutCard{ID: "p4", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p4", Needs: []string{"p1"}})
-	s.producer("p5", "s1", "pro", "a.go")
 	s.run(4)
 	require.Equal(t, "working", s.state("p1"))
 	require.Equal(t, []string{"idle.fleet.1"}, s.openJudgements("idle"))
-	assert.Equal(t, "working 0 of 8 open width while 0 ready and 5 waiting: 0 in held streams, 0 with no serving row", s.snap().Judgements["idle.fleet.1"].Question,
+	assert.Equal(t, "working 0 of 8 open width while 0 ready and 4 waiting: 0 in held streams, 0 with no serving row", s.snap().Judgements["idle.fleet.1"].Question,
 		"the first tick resolves p1: something is dealable")
 	s.must("expire", store.ExpireJudgement{ID: "idle.fleet.1", Reason: "test"})
 	s.run(2)
 	require.Equal(t, []string{"idle.fleet.2"}, s.openJudgements("idle"))
-	assert.Equal(t, "working 1 of 8 open width while 0 ready and 4 waiting: nothing dealable: 1 chain (longest 3, top: p1 blocks 3), 1 overlap (top: p1 holds 1 on a.go); ready: 0 in held streams, 0 with no serving row; each stream's waits and chains: nova-sprint check; the top: nova-sprint show p1 (it is working; its landing frees the chain); "+unchain,
+	assert.Equal(t, "working 1 of 8 open width while 0 ready and 3 waiting: nothing dealable: 1 chain (longest 3, top: p1 blocks 3); ready: 0 in held streams, 0 with no serving row; each stream's waits and chains: nova-sprint check; the top: nova-sprint show p1 (it is working; its landing frees the chain); "+unchain,
 		s.snap().Judgements["idle.fleet.2"].Question)
 }
 
 // BenchmarkWaits5000 is Waits over 5,000 producers in 50 streams, each
-// stream one chain of 20 and 80 waiting on its front or held on a file.
+// stream one chain of 20 and 40 waiting on its front.
 func BenchmarkWaits5000(b *testing.B) {
 	cs := map[string]store.Card{}
 	for s := 0; s < 50; s++ {
 		stream := fmt.Sprintf("s%d", s)
 		for i := 0; i < 100; i++ {
 			id := fmt.Sprintf("%s-%d", stream, i)
-			c := store.Card{ID: id, Kind: "producer", Stream: stream, State: "waiting", Paths: []string{fmt.Sprintf("f%d.go", i%7)}}
+			c := store.Card{ID: id, Kind: "producer", Stream: stream, State: "waiting"}
 			switch {
 			case i == 0:
 				c.State = "working"

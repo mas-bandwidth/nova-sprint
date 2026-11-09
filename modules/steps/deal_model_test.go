@@ -127,33 +127,19 @@ func TestTickResolvesFromState(t *testing.T) {
 	assert.Equal(t, "ready", cold.state("p2"), "a cold view (restore) resolves it too")
 }
 
-// TestTickOverlapIsAFile: producers that list the same glob or directory
-// are not held behind each other (they add files); one naming a file a
-// started producer names is held, with an overlap judgement saying "held
-// behind <card> on <path>", which clears when it resolves (defect 50).
-func TestTickOverlapIsAFile(t *testing.T) {
+// TestTickSameFileCardsBothStart: only a NEEDS orders starts. Two
+// producers of one stream that name the same file, with no NEEDS between
+// them, are both dealt in the same tick, and no judgement holds either
+// back; their landing stitches them.
+func TestTickSameFileCardsBothStart(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 8, "pro")
 	s.stream("s1")
-	for _, id := range []string{"a1", "a2", "a3"} {
-		s.producer(id, "s1", "pro", "corpus/**", "corpus/", "audits/"+id+".md")
-	}
-	s.producer("e1", "s1", "pro", "internal/x.go", "corpus/**")
+	s.producer("e1", "s1", "pro", "internal/x.go")
 	s.producer("e2", "s1", "pro", "internal/x.go")
 	s.run(3)
-	assert.Equal(t, []string{"working", "working", "working", "working", "waiting"},
-		[]string{s.state("a1"), s.state("a2"), s.state("a3"), s.state("e1"), s.state("e2")}, "a shared glob or directory holds nothing; a shared file does")
-	require.Equal(t, []string{"overlap.e2.1"}, s.openJudgements("overlap"))
-	assert.Equal(t, "held behind e1 on internal/x.go", s.snap().Judgements["overlap.e2.1"].Question)
-	s.must("land", store.SetCardState{Card: "e1", State: "landed"})
-	s.run(3)
-	assert.Equal(t, "working", s.state("e2"))
-	assert.Empty(t, s.openJudgements("overlap"), "cleared once e2 is no longer held")
-	assert.True(t, Concrete("a/b.go"))
-	for _, p := range []string{"a/**", "a/*.go", "a/b?.go", "a/[bc].go", "a/", ""} {
-		assert.False(t, Concrete(p), p)
-	}
+	assert.Equal(t, []string{"working", "working"}, []string{s.state("e1"), s.state("e2")}, "a shared file holds nothing")
 }
 
 // listRows is a policy whose rows answer names every candidate in name

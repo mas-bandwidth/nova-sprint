@@ -10,12 +10,11 @@ import (
 )
 
 // Why the fleet is idle (intent rule 33: nothing sits unexplained; Glenn,
-// 2026-11-07: "keep everybody working at width"). A waiting producer waits
-// for one of two things: a need not landed, or a file a ready or started
-// producer of its stream names (the needs step's heldBehind). Waits groups
-// the waiting producers of each stream by the card whose landing would free
-// them (the front of the NEEDS chain each waits on) and by the producer and
-// file each is held behind, and finds the stream's longest NEEDS chain.
+// 2026-11-07: "keep everybody working at width"). A waiting producer that
+// is not held waits for a need not landed. Waits groups the waiting
+// producers of each stream by the card whose landing would free them (the
+// front of the NEEDS chain each waits on), and finds the stream's longest
+// NEEDS chain.
 // check, the board and the idle judgement all read these, so the three say
 // the same thing.
 
@@ -23,7 +22,6 @@ import (
 type StreamWaits struct {
 	Stream   string
 	Blockers []Blocker // the fronts of the chains its waiting producers wait on, most waiting first
-	Holders  []Holder  // the producers and files its waiting producers are held behind, most held first
 	Chain    []string  // its longest NEEDS chain of cards not landed, the first to land first
 }
 
@@ -36,20 +34,12 @@ type Blocker struct {
 	Count       int
 }
 
-// Holder is a producer, ready or started, that names File, which Count
-// waiting producers (needs landed) also name.
-type Holder struct {
-	Card, File string
-	Count      int
-}
-
 // waitScan memoizes the fronts and chain depths over one card map.
 type waitScan struct {
 	cards map[string]store.Card
 	front map[string]string // card -> the front of the chain it waits on ("" none)
 	depth map[string]int    // card -> its longest chain's length, in producers
 	prev  map[string]string // card -> the need its longest chain runs through
-	paths map[string]map[string]set
 }
 
 // Waits is every stream with a producer not landed or failed, in name
@@ -58,7 +48,7 @@ type waitScan struct {
 func Waits(cards map[string]store.Card) []StreamWaits {
 	w := newWaitScan(cards)
 	by, deepest := map[string]*StreamWaits{}, map[string]string{}
-	fronts, held := map[string]map[string]int{}, map[string]map[[2]string]int{}
+	fronts := map[string]map[string]int{}
 	for _, id := range sortedKeys(cards) {
 		c := cards[id]
 		if isConsumer(c) || isFinal(c) {
@@ -67,7 +57,7 @@ func Waits(cards map[string]store.Card) []StreamWaits {
 		s := by[c.Stream]
 		if s == nil {
 			s = &StreamWaits{Stream: c.Stream}
-			by[c.Stream], fronts[c.Stream], held[c.Stream] = s, map[string]int{}, map[[2]string]int{}
+			by[c.Stream], fronts[c.Stream] = s, map[string]int{}
 		}
 		if d, at := w.depthOf(id, set{}), deepest[c.Stream]; at == "" || d > w.depth[at] {
 			deepest[c.Stream] = id
@@ -77,14 +67,12 @@ func Waits(cards map[string]store.Card) []StreamWaits {
 		}
 		if f := w.frontOf(id, set{}); f != "" {
 			fronts[c.Stream][f]++
-		} else if hb, on := leastHolder(c, func(p string) []set { return []set{w.paths[c.Stream][p]} }); hb != "" {
-			held[c.Stream][[2]string{hb, on}]++
 		}
 	}
 	out := make([]StreamWaits, 0, len(by))
 	for _, name := range sortedKeys(by) {
 		s := by[name]
-		s.Blockers, s.Holders, s.Chain = w.blockers(fronts[name]), holders(held[name]), w.chain(deepest[name])
+		s.Blockers, s.Chain = w.blockers(fronts[name]), w.chain(deepest[name])
 		out = append(out, *s)
 	}
 	return out
@@ -150,21 +138,7 @@ func ChainThrough(cards map[string]store.Card, ids []string) []string {
 }
 
 func newWaitScan(cards map[string]store.Card) *waitScan {
-	w := &waitScan{cards: cards, front: map[string]string{}, depth: map[string]int{}, prev: map[string]string{}, paths: map[string]map[string]set{}}
-	for id, c := range cards {
-		if isConsumer(c) || !slices.Contains(started, c.State) {
-			continue
-		}
-		for _, p := range c.Paths {
-			if Concrete(p) {
-				if w.paths[c.Stream] == nil {
-					w.paths[c.Stream] = map[string]set{}
-				}
-				add(w.paths[c.Stream], p, id)
-			}
-		}
-	}
-	return w
+	return &waitScan{cards: cards, front: map[string]string{}, depth: map[string]int{}, prev: map[string]string{}}
 }
 
 // isFinal is a card that will not move again: landed or failed.
@@ -258,16 +232,6 @@ func (w *waitScan) blockers(m map[string]int) []Blocker {
 	return out
 }
 
-// holders is the holders by count, most first, then by card and file.
-func holders(m map[[2]string]int) []Holder {
-	out := make([]Holder, 0, len(m))
-	for k, n := range m {
-		out = append(out, Holder{Card: k[0], File: k[1], Count: n})
-	}
-	slices.SortFunc(out, func(a, b Holder) int { return cmpCount(a.Count, b.Count, a.Card+"\x00"+a.File, b.Card+"\x00"+b.File) })
-	return out
-}
-
 func cmpCount(a, b int, ka, kb string) int {
 	if a != b {
 		return b - a
@@ -275,48 +239,24 @@ func cmpCount(a, b int, ka, kb string) int {
 	return strings.Compare(ka, kb)
 }
 
-// Waiting is how many waiting producers the stream's blockers and holders
-// explain.
-func (s StreamWaits) Waiting() (onNeeds, onFiles int) {
-	for _, b := range s.Blockers {
-		onNeeds += b.Count
-	}
-	for _, h := range s.Holders {
-		onFiles += h.Count
-	}
-	return onNeeds, onFiles
-}
-
-// shown is how many of a stream's blockers or holders a line names.
+// shown is how many of a stream's blockers a line names.
 const shown = 3
 
 // Line is the stream's why on one line, "" when nothing of it waits:
-// "53 wait on a (working), 2 on b (waiting); 3 held behind src/x.go of c".
+// "53 wait on a (working), 2 on b (waiting)".
 func (s StreamWaits) Line() string {
-	var parts []string
-	if len(s.Blockers) > 0 {
-		var bs []string
-		for i, b := range s.Blockers[:min(len(s.Blockers), shown)] {
-			verb := " on "
-			if i == 0 {
-				verb = " wait on "
-			}
-			bs = append(bs, fmt.Sprintf("%d%s%s (%s)", b.Count, verb, b.Card, b.State))
-		}
-		parts = append(parts, strings.Join(bs, ", ")+more(len(s.Blockers), "card"))
+	if len(s.Blockers) == 0 {
+		return ""
 	}
-	if len(s.Holders) > 0 {
-		var hs []string
-		for i, h := range s.Holders[:min(len(s.Holders), shown)] {
-			verb := " behind "
-			if i == 0 {
-				verb = " held behind "
-			}
-			hs = append(hs, fmt.Sprintf("%d%s%s of %s", h.Count, verb, h.File, h.Card))
+	var bs []string
+	for i, b := range s.Blockers[:min(len(s.Blockers), shown)] {
+		verb := " on "
+		if i == 0 {
+			verb = " wait on "
 		}
-		parts = append(parts, strings.Join(hs, ", ")+more(len(s.Holders), "file"))
+		bs = append(bs, fmt.Sprintf("%d%s%s (%s)", b.Count, verb, b.Card, b.State))
 	}
-	return strings.Join(parts, "; ")
+	return strings.Join(bs, ", ") + more(len(s.Blockers), "card")
 }
 
 func more(n int, what string) string {
@@ -355,13 +295,11 @@ func (b Blocker) Fix() string {
 const unchain = "a NEEDS that is not an output the card consumes: nova-sprint replace <card> --by <its brief without it> --reason \"<why>\""
 
 // IdleWhy is why nothing is dealable, over every stream: the chains (how
-// many fronts, the longest, the front most wait on) and the overlaps (how
-// many producers are held behind a file), and the command that helps most;
-// "" when nothing waits.
+// many fronts, the longest, the front most wait on), and the command that
+// helps most; "" when nothing waits.
 func IdleWhy(ws []StreamWaits) (what, fix string) {
-	fronts, longest, held := 0, 0, 0
+	fronts, longest := 0, 0
 	var top Blocker
-	var hold Holder
 	for _, s := range ws {
 		fronts += len(s.Blockers)
 		longest = max(longest, len(s.Chain))
@@ -370,24 +308,15 @@ func IdleWhy(ws []StreamWaits) (what, fix string) {
 				top = b
 			}
 		}
-		for _, h := range s.Holders {
-			held += h.Count
-			if h.Count > hold.Count {
-				hold = h
-			}
-		}
 	}
-	if fronts == 0 && held == 0 {
+	if fronts == 0 {
 		return "", ""
 	}
 	what = fmt.Sprintf("%d chain%s (longest %d", fronts, plural(fronts), longest)
 	if top.Card != "" {
 		what += fmt.Sprintf(", top: %s blocks %d", top.Card, top.Count)
 	}
-	what += fmt.Sprintf("), %d overlap%s", held, plural(held))
-	if hold.Card != "" {
-		what += fmt.Sprintf(" (top: %s holds %d on %s)", hold.Card, hold.Count, hold.File)
-	}
+	what += ")"
 	fix = "each stream's waits and chains: nova-sprint check"
 	if top.Card != "" {
 		fix += "; the top: " + top.Fix() + "; " + unchain
