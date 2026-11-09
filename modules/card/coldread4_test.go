@@ -269,7 +269,7 @@ func cold4P(id string, e Event) cold4Step {
 
 func cold4C(id string, e Event) cold4Step {
 	return cold4Step{name(e) + " " + id, func(w *world) (Plan, *Refusal) {
-		all, _ := w.all()
+		all, cons := w.all()
 		c, ok := all[id]
 		if !ok {
 			return Plan{}, no("no card %s", id)
@@ -280,7 +280,7 @@ func cold4C(id string, e Event) cold4Step {
 			v.Stream = StreamFromStore(w.snap().Streams[p.Stream])
 			ev = v
 		}
-		return MoveConsumer(c, p, w.rows()[c.Holder], ev)
+		return MoveConsumer(c, p, cons[p.ID], w.rows()[c.Holder], ev)
 	}}
 }
 
@@ -1122,7 +1122,7 @@ func TestColdread4ReportPlanReadIsTheConsumerAlone(t *testing.T) {
 	rep := Report{Row: "r2", Result: "ok", Head: h1, Reason: "fine"}
 	plan, r := w.cold4ReportPlan("p1.r1.1", rep)
 	require.Nil(t, r)
-	alone, r := MoveConsumer(w.card("p1.r1.1"), w.card("p1"), w.rows()["r2"], rep)
+	alone, r := MoveConsumer(w.card("p1.r1.1"), w.card("p1"), nil, w.rows()["r2"], rep)
 	require.Nil(t, r)
 	assert.Equal(t, alone.Expect, plan.Expect)
 	assert.Equal(t, alone.Writes, plan.Writes)

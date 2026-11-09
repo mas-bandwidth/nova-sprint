@@ -294,11 +294,11 @@ func TestBreakHeldWithdraw(t *testing.T) {
 		b.take(c)
 		stale := b.c("p1")
 		stale.State = Ready
-		_, r := MoveConsumer(b.c(c), stale, b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s1"}})
+		_, r := MoveConsumer(b.c(c), stale, nil, b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s1"}})
 		has(t, r, "withdrawing live work consumer p1.w1 would leave it working; pass the producer in working, so the withdraw releases it")
-		_, r = MoveConsumer(b.c(c), b.c("p1"), b.w.rows()["r1"], Withdraw{Reason: "x"})
+		_, r = MoveConsumer(b.c(c), b.c("p1"), nil, b.w.rows()["r1"], Withdraw{Reason: "x"})
 		has(t, r, `it needs p1's stream s1, not ""`)
-		_, r = MoveConsumer(b.c(c), b.c("p1"), b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s9"}})
+		_, r = MoveConsumer(b.c(c), b.c("p1"), nil, b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s9"}})
 		has(t, r, "it needs p1's stream s1")
 	})
 	t.Run("a hold that arrives between the plan and the apply", func(t *testing.T) {

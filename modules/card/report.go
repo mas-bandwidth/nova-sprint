@@ -7,7 +7,7 @@ import "slices"
 // Finished, Broken or Faulted, composed by Merge. A read moves only the
 // consumer (ReadYes and ReadFix belong to the tick). It adds no rule.
 func ReportPlan(c, p Card, consumers []Card, rows map[string]Row, s Stream, needs map[string]Card, r Report) (Plan, *Refusal) {
-	cons, err := MoveConsumer(c, p, rows[c.Holder], r)
+	cons, err := MoveConsumer(c, p, consumers, rows[c.Holder], r)
 	if err != nil {
 		return Plan{}, err
 	}
