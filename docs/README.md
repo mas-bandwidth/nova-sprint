@@ -35,7 +35,7 @@ it does not install a service or change an existing binary. It needs `curl`,
 ```sh
 (
   set -eu
-  NOVA_SPRINT_VERSION=v2.0.15
+  NOVA_SPRINT_VERSION=v2.0.22
   case "$(uname -s)" in
     Linux) sprint_os=linux ;;
     Darwin) sprint_os=darwin ;;
@@ -95,7 +95,9 @@ version in `go.mod`; it stamps the binaries with their source version.
 
 A producer normally goes from `waiting` to `ready`, `working`, `review`,
 `merging`, then `landed`. A fix can send it back for another attempt. A held
-card waits with its reason; a failure makes it `fail`. Dependencies become usable
+card waits with its reason. A worker's failure sends it back to `ready`, or to
+`waiting` with the reason; only a drop, a replace or a failed need makes it
+`fail`. Dependencies become usable
 when their producers land, not when a worker finishes them.
 
 Every dealt attempt has an id and generation, written `<card>@<gen>`, and a
@@ -317,9 +319,10 @@ and epoch. The environment variable supplies your row only when `--as` is absent
 
 A `DEAL` puts the card in your hand immediately. Run every card in your hand,
 each in an isolated child or session and clone, concurrently up to your row's
-width. Until you acknowledge it you are nudged every second; after three
-minutes it is dealt to another row with room, or the coordinator is asked
-(policy's `ready_nag` and `ready_take`). Acknowledge it with the command from
+width. Until you acknowledge it you are nudged every 30 seconds; after three
+minutes it is dealt to another row with room, or the coordinator is asked.
+These are the default policy's `ready_nag` and `ready_take`; the policy sets
+both. Acknowledge it with the command from
 the deal:
 
 ```sh
@@ -474,8 +477,8 @@ sprint_env nova-sprint stream add '<stream>' --repo '<org>/<repo>' --base '<base
 
 Use the GitHub forge when you want the engine to open PRs and check CI. Without
 it, a stream has no PR/CI integration and lands by hand. The default `auto`
-mode selects single or grouped landing as appropriate; `group` batches work,
-and `hand` leaves landing to the coordinator. Review the stream's setup before
+mode selects single or grouped landing as appropriate; `group` is accepted and
+behaves as `auto`, and `hand` leaves landing to the coordinator. Review the stream's setup before
 adding cards:
 
 ```sh
