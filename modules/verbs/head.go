@@ -23,22 +23,45 @@ func (e *Engine) headReady(ctx context.Context, snap store.Snapshot, c store.Car
 	if head == c.BaseSHA || head == c.Prior {
 		return refuse("head "+head+" is where this attempt started; nothing was done", "commit the work on "+c.Branch+", push it, and finish with its head")
 	}
-	if e.Origin == nil {
-		return broken("the git edge is not configured", "nova-sprint check")
-	}
-	s := snap.Streams[c.Stream]
-	url, err := streamURL(s)
+	s, url, tip, ok, err := e.branchTip(ctx, snap, c, "then finish again")
 	if err != nil {
 		return err
-	}
-	tip, ok, err := e.Origin.Tip(ctx, url, c.Branch)
-	if err != nil {
-		return RefusalOr(err, broken("git ls-remote of "+s.Repo+" failed ("+errText(err)+")", "check the repository is readable, then finish again"))
 	}
 	if !ok || tip != head {
 		return refuse("head "+head+" is not the tip of "+c.Branch+" at origin", "push first: git push origin "+c.Branch)
 	}
 	return e.madeAsIdentity(ctx, snap, s, url, c, head)
+}
+
+// pushedHead is a failed work report's head when it names none: the dealt
+// branch's tip at origin, so the card goes back with the pushed work and the
+// next attempt continues from it. "" when the branch is absent or its tip is
+// the base or the prior head (nothing new was pushed).
+func (e *Engine) pushedHead(ctx context.Context, snap store.Snapshot, c store.Card) (string, error) {
+	_, _, tip, ok, err := e.branchTip(ctx, snap, c, "or name the pushed head with --head <sha>")
+	if err != nil || !ok || tip == c.BaseSHA || tip == c.Prior {
+		return "", err
+	}
+	return tip, nil
+}
+
+// branchTip is c's stream, its repository's URL and the dealt branch's tip
+// at origin (ok false: no such branch). A failed read names then as its
+// remedy's end.
+func (e *Engine) branchTip(ctx context.Context, snap store.Snapshot, c store.Card, then string) (store.Stream, string, string, bool, error) {
+	s := snap.Streams[c.Stream]
+	if e.Origin == nil {
+		return s, "", "", false, broken("the git edge is not configured", "nova-sprint check")
+	}
+	url, err := streamURL(s)
+	if err != nil {
+		return s, "", "", false, err
+	}
+	tip, ok, err := e.Origin.Tip(ctx, url, c.Branch)
+	if err != nil {
+		return s, url, "", false, RefusalOr(err, broken("git ls-remote of "+s.Repo+" failed ("+errText(err)+")", "check the repository is readable, "+then))
+	}
+	return s, url, tip, ok, nil
 }
 
 // madeAsIdentity is finish's admission of the head's commits (round 24):
