@@ -582,17 +582,27 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	return last, runErr
 }
 func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
-	out := string(res.Output)
-	if strings.Contains(out, "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
-		return true, fmt.Sprintf("wall/binary fault (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
-	}
-	for _, needle := range []string{"command not found", ": not found", "No such file or directory: 'elixir'", "No such file or directory: 'luau'", "No such file or directory: 'sbcl'", "No such file or directory: 'dart'", "No such file or directory: 'dotnet'"} {
-		if strings.Contains(out, needle) && (strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")) {
-			return true, fmt.Sprintf("missing-route: test toolchain missing in wall (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
-		}
-	}
 	if runErr != nil {
 		return true, "wall execution fault: " + runErr.Error()
+	}
+	if res.ExitCode == 0 {
+		return false, ""
+	}
+	tail := TailBytes(res.Output, 512)
+	if strings.Contains(tail, "SANDBOX REFUSED") || strings.HasPrefix(strings.TrimSpace(string(res.Output)), "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
+		return true, fmt.Sprintf("wall/binary fault (exit %d): %s", res.ExitCode, tail)
+	}
+	return false, ""
+}
+func isMissingTestToolchain_internal(res WallRunResult) (bool, string) {
+	if res.ExitCode == 0 {
+		return false, ""
+	}
+	out := string(res.Output)
+	for _, needle := range []string{"command not found", ": not found", "No such file or directory: 'elixir'", "No such file or directory: 'luau'", "No such file or directory: 'sbcl'", "No such file or directory: 'dart'", "No such file or directory: 'dotnet'"} {
+		if strings.Contains(out, needle) && (strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")) {
+			return true, fmt.Sprintf("test toolchain missing in wall (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
+		}
 	}
 	return false, ""
 }
@@ -603,7 +613,7 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	}
 	job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus(job.Consumer))
 	out := ClassifyJob(h, job, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
-	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" {
+	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" && (runErr != nil || (out.Result != "ok" && out.Result != "yes" && out.Result != "fix")) {
 		out = Outcome{Result: "fault", Reason: why}
 	}
 	if cost, ok := h.Usage(job); ok {
@@ -763,6 +773,8 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, TailBytes(tres.Output, MaxReasonBytes))}
 				if fault, why := isInfraFault_internal(tres, err); fault {
+					rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}
+				} else if fault, why := isMissingTestToolchain_internal(tres); fault {
 					rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}
 				}
 				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))

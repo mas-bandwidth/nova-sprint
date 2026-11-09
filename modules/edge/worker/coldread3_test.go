@@ -155,6 +155,7 @@ func TestColdread3InfraFailureAfterTheHarnessIsAFaultNotAFail(t *testing.T) {
 		want      string
 	}{
 		"test 127":        {wall: &infraWall_internal{test: WallRunResult{ExitCode: 127, Output: []byte("sh: go: command not found")}}, want: "fault"},
+		"test missing":    {wall: &infraWall_internal{test: WallRunResult{ExitCode: 2, Output: []byte("/bin/sh: 1: sbcl: not found\nmake: *** [Makefile:10: roadmap] Error 127")}}, want: "fault"},
 		"test sandbox":    {wall: &infraWall_internal{test: WallRunResult{ExitCode: 1, Output: []byte("SANDBOX REFUSED --write /x: not a directory")}}, want: "fault"},
 		"test timeout":    {wall: &infraWall_internal{test: WallRunResult{ExitCode: -1}, testErr: timeout}, want: "fault"},
 		"test red":        {wall: &infraWall_internal{test: WallRunResult{ExitCode: 1, Output: []byte("--- FAIL: TestX")}}, want: "fail"},
@@ -277,5 +278,19 @@ func TestColdread3NoSlotIsCappedAndAStaleVerdictIsCleared(t *testing.T) {
 	}
 	if reps := sp2.reported(); len(reps) != 1 || reps[0].Result == "ok" {
 		t.Errorf("reports %+v: a harness that wrote no verdict was reported from a stale one", reps)
+	}
+}
+
+func TestIsInfraFaultIgnoresExitZeroTranscriptNoise(t *testing.T) {
+	t.Parallel()
+	noisy := WallRunResult{
+		ExitCode: 0,
+		Output:   []byte("SANDBOX REFUSED in earlier probe\n/bin/sh: 1: foo: not found\nmake: *** [Makefile:1: bar] Error 127\n{\"result\":\"ok\"}\n"),
+	}
+	if fault, why := isInfraFault_internal(noisy, nil); fault {
+		t.Fatalf("exit-0 run classified as infra fault: %s", why)
+	}
+	if fault, why := isMissingTestToolchain_internal(noisy); fault {
+		t.Fatalf("exit-0 run classified as missing toolchain: %s", why)
 	}
 }

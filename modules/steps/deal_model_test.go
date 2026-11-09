@@ -217,4 +217,11 @@ func TestTickRowsMissNamesNoRoom(t *testing.T) {
 	for _, id := range s.openJudgements("policy") {
 		assert.NotContains(t, s.snap().Judgements[id].Question, ": ;", id)
 	}
+	// A third card p3 when every row (f1 and b1) is full simply waits in ready;
+	// it is not a policy miss when no row has room anywhere in the fleet.
+	s.ask = scripted{Answers{Version: 2, Models: benchModels(), Rows: map[string][]string{"p3": {"f1", "b1"}}}}
+	s.producer("p3", "s1", "pro", "a/z")
+	s.run(2)
+	assert.Equal(t, "ready", s.card("p3").State)
+	assert.NotContains(t, s.openJudgements("policy"), "policy.rows.2")
 }
