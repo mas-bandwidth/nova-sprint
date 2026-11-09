@@ -270,7 +270,8 @@ func (w *walk) edgeOne() bool {
 	}
 	req := open[w.rng.Intn(len(open))]
 	it := InboxItem{Kind: req.Kind, Request: req.ID, Outcome: "ack"}
-	if req.Kind == "land" {
+	if req.Kind == "land" || req.Kind == "promote" {
+		it.Kind = "land"
 		switch w.rng.Intn(6) {
 		case 0:
 			it.Outcome = "ci_red"
@@ -278,8 +279,11 @@ func (w *walk) edgeOne() bool {
 			it.Outcome = "fault"
 		case 2:
 			it.Outcome = "conflict"
-		default:
-			it.Outcome, it.Landed = "landed", req.Heads
+		default: // a base that is main or not; a promotion reports the merges on main
+			it.Outcome, it.Landed, it.Main = "landed", req.Heads, w.rng.Intn(2) == 0
+			if req.Kind == "promote" {
+				it.Landed = req.Merges
+			}
 		}
 	}
 	w.arrive(it)

@@ -103,10 +103,16 @@ type (
 	// recorded and a done ok read of the previous review at the same head
 	// exists. Who may waive is layer 3's; the event carries no actor.
 	WaiveRed struct{ Reason string }
-	// Landed is merging -> landed at Head. Merge is the merge commit base
-	// has (the landing's, or the hand landing's base tip), recorded in the
-	// producer's reason with Reason (a hand landing's why).
+	// Landed is merging -> landed at Head: its work is on main (LANDING.md,
+	// "Landed means on main"). Merge is the commit main has it in (the
+	// landing's merge, or main's tip), recorded in the producer's reason
+	// with Reason (a hand landing's why).
 	Landed struct{ Head, Merge, Reason string }
+	// OnBase records that Head is merged onto Base, the stream's base,
+	// which is not main, at Merge: the producer stays merging, with the
+	// base merge in its reason (store.OnBaseReason), until the merge is on
+	// main.
+	OnBase struct{ Head, Merge, Base string }
 	// Red is a red landing: merging -> fix (ready, waiting when held) with
 	// Reason, the CI finding, as the finding; review +1, so reads before it
 	// no longer count (intent rule 30: no terminal fail).
@@ -247,6 +253,7 @@ func (ReadYes) isEvent()     {}
 func (ReadFix) isEvent()     {}
 func (WaiveRed) isEvent()    {}
 func (Landed) isEvent()      {}
+func (OnBase) isEvent()      {}
 func (Red) isEvent()         {}
 func (Released) isEvent()    {}
 func (Cancel) isEvent()      {}

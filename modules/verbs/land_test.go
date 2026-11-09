@@ -35,6 +35,35 @@ func TestLandByHand(t *testing.T) {
 	}
 }
 
+// Landed means on main: a hand merge onto a base that is not main records
+// the card on base (merging); a second land refuses until the base is on
+// main, then records it landed with no second merge.
+func TestLandByHandOffMain(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	landJudged2(&s)
+	w := worldFrom(t, s)
+	w.lander.offMain = true
+	merge := strings.Repeat("e", 40)
+	want(t, w.do("carol", "land", "p2", "--reason", "looked"), 0, "ON BASE p2 head="+head+" merge="+merge)
+	snap := w.snap(t)
+	if c := snap.Cards["p2"]; c.State != "merging" || !strings.HasPrefix(c.Reason, store.OnBaseReason(snap.Streams["s"].Base, merge)) {
+		t.Fatalf("p2 %+v", c)
+	}
+	if j := snap.Judgements["land.p2.1"]; j.State == "open" || j.Answer != "land" {
+		t.Fatalf("judgement %+v", j)
+	}
+	want(t, w.do("carol", "land", "p2", "--reason", "again"), 1, "not on main yet", "into main")
+	w.lander.offMain = false
+	want(t, w.do("carol", "land", "p2", "--reason", "promoted"), 0, "LANDED p2 head="+head+" merge="+merge)
+	if c := w.snap(t).Cards["p2"]; c.State != "landed" || !strings.HasPrefix(c.Reason, store.LandedReason) {
+		t.Fatalf("p2 %+v", c)
+	}
+	if got := w.lander.landed; len(got) != 1 {
+		t.Fatalf("merged %v, want one merge", got)
+	}
+}
+
 func TestLandRefusals(t *testing.T) {
 	t.Parallel()
 	land := []string{"land", "p2", "--reason", "r"}

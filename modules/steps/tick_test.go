@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -54,10 +55,66 @@ func TestTickHappyPath(t *testing.T) {
 	s.requireState("p1", "landed")
 	assert.Empty(t, p.Carry)
 	s.settle()
-	s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "landed", Landed: req.Heads})
+	s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "landed", Landed: req.Heads, Main: true})
 	p = s.tick()
 	assert.Empty(t, p.Ops, "a repeated result is consumed with no move")
 	assert.Empty(t, p.Carry)
+}
+
+// TestTickLandedMeansMain: a card merged onto a base that is not main is
+// never recorded landed (Glenn, 2026-11-08: "to me landed means on main").
+// It stays merging with its base merge recorded, is not asked to land onto
+// its base again, and its stream asks one promote request with the merge;
+// a promotion that finds the merge on main lands it; a promotion that
+// fails is a land judgement, nothing moved (LANDING.md, "Landed means on
+// main").
+func TestTickLandedMeansMain(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 1, "pro", "heavy")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	s.take("p1.w1")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.tick()
+	s.take("p1.r1.1")
+	s.report("p1.r1.1", "ok", sha(1), "fine")
+	s.tick()
+	s.requireState("p1", "merging")
+	s.tick()
+	req := s.request("land", "s1")
+	s.landWith(req, InboxItem{Kind: "land", Request: req.ID, Outcome: "landed", Landed: req.Heads, Merge: sha(50)})
+	s.tick()
+	require.Empty(t, s.rejected)
+	for _, p := range req.Cards {
+		s.requireState(p, "merging")
+		assert.Equal(t, "on base "+sha(50)+": merged onto main; landed when that merge is on main", s.card(p).Reason, "the base merge is recorded")
+	}
+	p := s.tick()
+	prom := s.request("promote", "s1")
+	assert.Equal(t, req.Cards, prom.Cards)
+	assert.Equal(t, []string{sha(50)}, prom.Merges, "the promotion carries each card's base merge")
+	assert.False(t, slices.ContainsFunc(p.Edges, func(r EdgeRequest) bool { return r.Kind == "land" }), "a card on base is never asked to land onto its base again")
+	assert.Empty(t, s.openJudgements("engine"), "a card on base with its promotion in flight is explained")
+	s.landWith(prom, InboxItem{Kind: "land", Request: prom.ID, Outcome: "ci_red", Reason: "red on unit"})
+	s.tick()
+	require.Len(t, s.openJudgements("land"), len(req.Cards), "a failed promotion is a land judgement per card")
+	s.requireState(req.Cards[0], "merging")
+	for _, id := range s.openJudgements("land") {
+		_, ref := s.verb(Request{Actor: "rowan", Judgement: id, Answer: "retry"})
+		require.Nil(t, ref)
+	}
+	s.tick()
+	prom = s.request("promote", "s1")
+	s.landWith(prom, InboxItem{Kind: "land", Request: prom.ID, Outcome: "landed", Landed: prom.Merges, Merge: sha(60)})
+	s.tick()
+	require.Empty(t, s.rejected)
+	for _, p := range req.Cards {
+		s.requireState(p, "landed")
+		assert.Equal(t, "landed on main at "+sha(60), s.card(p).Reason)
+	}
 }
 
 // TestTickFixPath: a read says fix; the producer goes back to ready with
@@ -170,7 +227,7 @@ func TestTickLandAnswers(t *testing.T) {
 	_, ref = h.verb(Request{Actor: "rowan", Card: "p1", Event: card.Landed{Head: sha(1), Merge: sha(7), Reason: "by hand: merged"}, Judgement: "land.p1.1", Answer: "land"})
 	require.Nil(t, ref)
 	h.requireState("p1", "landed")
-	assert.Equal(t, "landed at "+sha(7)+": by hand: merged", h.card("p1").Reason)
+	assert.Equal(t, "landed on main at "+sha(7)+": by hand: merged", h.card("p1").Reason)
 }
 
 // TestTickLadderRungs: one head waiting is a request of its own (rung 1);

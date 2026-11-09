@@ -704,6 +704,12 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
 Supersedes the landing parts of the two stitch notes above where they
 differ (LANDING.md, "The ladder, as built").
 
+- *`PromotePass`* (`modules/edge/git/land.go`, 2026-11-08) is one pass of a
+  stream's base to main (LANDING.md "Landed means on main"): merges already
+  on main land at main's tip; a merge not on base is `missing` and a base
+  behind main is `base_behind`, both the coordinator's; otherwise the PR
+  base -> main is gated at base's tip as rung 1 gates a card. `Git.Main` is
+  the default branch and its tip at origin.
 - *`LandPass`* (`modules/edge/git/land.go`, rewritten) is one pass of rung 1 or 2.
   All heads already on base: landed at base's tip. One head whose branch
   already contains base's tip: rung 1, its own branch's PR against base,

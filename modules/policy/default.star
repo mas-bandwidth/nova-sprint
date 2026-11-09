@@ -66,6 +66,7 @@ def limits():
         "fleet_width_cap": 8,      # guess (roster's FleetWidthCap before round 6)
         "idle_floor": 0.5,         # guess (LESSONS 3.18: under half the open width)
         "land_target": 0.9,        # guess (layer 3's engine default, over 20 landings)
+        "chain_limit": 3,          # Glenn 2026-11-08: wide and flat; add refuses a longer NEEDS chain
     }
 
 def landing(stream):

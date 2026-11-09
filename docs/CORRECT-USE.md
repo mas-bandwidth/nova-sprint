@@ -63,10 +63,11 @@ them on NEEDS not yet landed (long chains) and 8 on a shared file. So:
 
 - **Flat chains.** A NEEDS only when the card consumes the other's output,
   never for order or overlap. A chain of N cards lands one after another
-  while the rest of the fleet waits. `add` prints the stream's longest NEEDS
-  chain once the cards are in (`CHAIN ...`), a `WARN CHAIN` from 4 cards with
-  what it takes at the stream's land rate; `--dry-run` prints it before
-  anything is added. It warns, never refuses: flatten it before `start`.
+  while the rest of the fleet waits. `add` prints the longest NEEDS chain
+  through the cards it adds (`CHAIN ...`) and refuses an add that makes one
+  longer than the policy's `chain_limit` (3 by default), naming the chain,
+  what it takes at the stream's land rate and how to flatten it;
+  `--dry-run` refuses the same, before anything is added.
 - **Concrete PATHS.** Overlap is a file both cards name (a glob or a
   directory both add to holds nothing); a card waiting behind another's file
   is "held behind <file> of <card>". List the files a card edits.
@@ -275,7 +276,9 @@ with `nova-sprint identity --name "<git user.name>" --email "<git user.email>" -
   no length). `check`, the board and the idle judgement all read it. Its cost
   is 3.9 ms for 5,000 producers on the working machine (measured, one
   benchmark run, `BenchmarkWaits5000`).
-- The chain warning starts at 4 cards (`steps.ChainWarn`, a guess). The land
+- `check` warns, and `add` refuses, past the policy's `chain_limit` (3 by
+  default; Glenn, 2026-11-08: wide and flat, NEEDS only for a hard A -> B
+  dependency). The land
   rate is the stream's landings over the store's last 5,000 events (a guess:
   about an hour of a busy sprint), (landings - 1) over their span; under two
   landings it says "no land rate yet". A chain's hours are its cards over that
