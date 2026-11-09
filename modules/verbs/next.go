@@ -72,7 +72,7 @@ func runNext(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 		b, err := json.Marshal(v)
 		return string(b) + "\n", err
 	}
-	return done(v.Next, "NEXT "+v.Message), nil
+	return e.withUnseen(ctx, in, done(v.Next, "NEXT "+v.Message)), nil
 }
 
 // look fills v: the store and its schema, the epoch, the name, the bus, the

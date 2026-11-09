@@ -84,6 +84,7 @@ def timeouts():
         "tick": 10,                   # guess: run's budget for one tick
         "ready_nag": 1,               # Glenn 2026-11-07: nag a row holding ready cards every second
         "ready_take": 180,            # Glenn 2026-11-07: a card ready this long is dealt elsewhere
+        "judgement_unseen": 300,      # Glenn 2026-11-08: a judgement open this long was pushed to nobody
         "consumer": {                 # a consumer's deadline by tier: nova-worker's old literals, guesses
             "flash": 900,
             "pro": 2700,

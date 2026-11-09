@@ -1,0 +1,70 @@
+package verbs
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+)
+
+// unseenFix is the UNSEEN line's fix: the coordinator's pushes reach a bus
+// hook that wakes no one (a background shell writing to a file, a harness
+// watch that expired), so its judgements go unanswered (Glenn 2026-11-08:
+// 60 judgements sat over an hour behind such a hook and nothing landed).
+const unseenFix = "your pushes are not waking you: run your bus hook under your harness's wake tool (nova-sprint help playbook coordinator)"
+
+// unseenOf is the UNSEEN report of snap at now: how many judgements are
+// open and the oldest's age, when that age exceeds timeouts
+// judgement_unseen; "" when none has waited that long. A read-only report:
+// it moves nothing.
+func unseenOf(snap store.Snapshot, now time.Time, limit int) string {
+	if limit <= 0 {
+		limit = policy.DefaultJudgementUnseen
+	}
+	n, oldest := 0, now
+	for _, j := range snap.Judgements {
+		if j.State != "open" {
+			continue
+		}
+		n++
+		if j.OpenedAt.Before(oldest) {
+			oldest = j.OpenedAt
+		}
+	}
+	age := now.Sub(oldest)
+	if n == 0 || age <= time.Duration(limit)*time.Second {
+		return ""
+	}
+	return fmt.Sprintf("UNSEEN %d judgements open, oldest %s", n, age.Round(time.Second))
+}
+
+// unseen is the UNSEEN report for actor, read fresh from the store: only
+// the coordinator answers judgements, so only it is told ("" actor is
+// anyone: check's reader). A store or policy that cannot be read says
+// nothing here: the verb that ran already said what it could not read, and
+// check reds it on its own line.
+func (e *Engine) unseen(ctx context.Context, actor string) string {
+	snap, err := e.snapshot(ctx)
+	if err != nil || (actor != "" && snap.Rows[actor].Role != "coordinator") {
+		return ""
+	}
+	limit := policy.DefaultJudgementUnseen
+	if a, err := e.answers(ctx, snap); err == nil && a.Timeouts.JudgementUnseen > 0 {
+		limit = a.Timeouts.JudgementUnseen
+	}
+	return unseenOf(snap, e.Now(), limit)
+}
+
+// withUnseen is out with the UNSEEN line first, for the coordinator; JSON
+// output is left whole (a program parses it).
+func (e *Engine) withUnseen(ctx context.Context, in *input, out string) string {
+	if in.actor == "" || in.has("json") {
+		return out
+	}
+	if line := e.unseen(ctx, in.actor); line != "" {
+		return line + ": " + unseenFix + "\n" + out
+	}
+	return out
+}

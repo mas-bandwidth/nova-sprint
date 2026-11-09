@@ -79,6 +79,7 @@ func TestRefusals(t *testing.T) {
 		{"timeouts", "{" + strings.Replace(times, `"pro": 2700`, `"pro": 0`, 1) + `, "row_silent_withdraw": 1800, "base_regate": [120]}`, "timeouts(): consumer pro 0 is outside 1..86400"},
 		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "ready_nag": 0}`, "timeouts(): ready_nag 0 is outside 1..86400"},
 		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "ready_take": 86401}`, "timeouts(): ready_take 86401 is outside 1..86400"},
+		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "judgement_unseen": 0}`, "timeouts(): judgement_unseen 0 is outside 1..86400"},
 		{"limits", steer("fleet_width_cap", "0"), "limits(): fleet_width_cap 0 is outside 1..256"},
 		{"limits", "{" + limits + `, "route_rest_after": 3, "chain_limit": 0}`, "limits(): chain_limit 0 is outside 1..100"},
 		{"landing", `{"backed_up": 4, "flowing": 4}`, "landing(s1): flowing 4 is outside 0..3 (below backed_up)"},
@@ -101,6 +102,25 @@ func TestRefusals(t *testing.T) {
 		}
 		f := refusedBy(t, w, body)
 		assert.Equal(t, fmt.Sprintf("POLICY REFUSED v2 line %d %s", line, tc.want), f.Error(), "%s returning %s", tc.q, tc.ret)
+	}
+}
+
+// TestJudgementUnseenOptional: a stored version that does not name
+// timeouts judgement_unseen (one stored before it) answers the default 300;
+// one that names it answers its own.
+func TestJudgementUnseenOptional(t *testing.T) {
+	t.Parallel()
+	const times = `"row_silent_gone": 600, "row_silent_withdraw": 1800, "landing_stall": 60, "base_regate": [120], "judgement": 3600, "route_rest_for": 1800, "tick": 10, "consumer": {"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}`
+	w := fakeWorld(t)
+	for _, tc := range []struct {
+		extra string
+		want  int
+	}{{"", DefaultJudgementUnseen}, {`, "judgement_unseen": 120`, 120}} {
+		body, _ := override("timeouts", "def timeouts():\n    return {"+times+tc.extra+"}")
+		a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+		require.Empty(t, fs)
+		assert.Equal(t, 2, a.Version)
+		assert.Equal(t, tc.want, a.Timeouts.JudgementUnseen, "timeouts with %q", tc.extra)
 	}
 }
 

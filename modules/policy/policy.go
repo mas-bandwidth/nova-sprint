@@ -112,14 +112,22 @@ type Landing struct{ BackedUp, Flowing, CIWait int }
 // is run's budget for one tick (drift row 26); ReadyNag is how often run
 // nags a row holding ready cards (optional, default 1); ReadyTake is how
 // long a work consumer may sit ready before it is dealt elsewhere (optional,
-// default 180); Consumer is the deadline of a
+// default 180); JudgementUnseen is the age at which an open judgement counts
+// as unseen, its push having woken nobody (optional, default
+// DefaultJudgementUnseen; the verbs' UNSEEN line); Consumer is the deadline of a
 // consumer by its tier, every tier of store.Tiers named (drift row 15: the
 // worker reads it from the take receipt, never a Go literal).
 type Timeouts struct {
-	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick, ReadyNag, ReadyTake int
-	BaseRegate                                                                                         []int
-	Consumer                                                                                           map[string]int
+	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick, ReadyNag, ReadyTake, JudgementUnseen int
+	BaseRegate                                                                                                          []int
+	Consumer                                                                                                            map[string]int
 }
+
+// DefaultJudgementUnseen is timeouts judgement_unseen for a policy that does
+// not name it (a version stored before it): default.star's 300 s (Glenn
+// 2026-11-08: 60 judgements sat an hour behind a hook whose pushes went to
+// a log file).
+const DefaultJudgementUnseen = 300
 
 // Price is micro-dollars per million tokens of each class: uncached input,
 // cached input read, cache write and output (reasoning is billed as

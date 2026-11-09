@@ -64,6 +64,9 @@ func runCheck(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (stri
 		return "", broken("the doctor is not configured", "set NOVA_PG_DSN and NOVA_BUS_REDIS, then check again")
 	}
 	r := &checkReport{}
+	if line := e.unseen(ctx, ""); line != "" { // first: the judgements nobody was woken for
+		r.red(refuse(line, unseenFix))
+	}
 	if err := e.Doctor.Fleet(ctx); err != nil {
 		r.red(err)
 	} else {
