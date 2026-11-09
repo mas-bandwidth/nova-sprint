@@ -34,9 +34,12 @@ const (
 
 // LandRequest is one landing: the stream's heads (in landing order) and the
 // card branches they are the tips of. One head is rung 1, more is rung 2.
+// Stopped, when set, is whether the sprint is stopped now: the pass asks it
+// immediately before the merge, and a stopped sprint merges nothing.
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base string
 	Heads, Branches             []string
+	Stopped                     func() bool
 }
 
 // LandResult is one pass's outcome with the facts a judgement shows. A red
@@ -92,10 +95,11 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 
 // PromoteRequest is one promotion of a stream's base to main (LANDING.md,
 // "Landed means on main"): Merges are the base merges of the cards on
-// base (a card's head where none is recorded).
+// base (a card's head where none is recorded). Stopped is LandRequest's.
 type PromoteRequest struct {
 	RepoDir, Repo, Stream, Base string
 	Merges                      []string
+	Stopped                     func() bool
 }
 
 // PromotePass is one pass of a promotion. Merges already on main's tip are
@@ -157,7 +161,7 @@ func PromotePass(ctx context.Context, g Git, fg forge.Forge, req PromoteRequest)
 		return res, nil
 	}
 	res.GatedSHA = baseTip
-	return gateAndMerge_internal(ctx, g, fg, LandRequest{RepoDir: req.RepoDir, Repo: req.Repo, Stream: req.Stream, Base: main, Heads: onBase, Branches: []string{req.Base}}, req.Base, res)
+	return gateAndMerge_internal(ctx, g, fg, LandRequest{RepoDir: req.RepoDir, Repo: req.Repo, Stream: req.Stream, Base: main, Heads: onBase, Branches: []string{req.Base}, Stopped: req.Stopped}, req.Base, res)
 }
 
 // onTip_internal is the shas that are tip or its ancestors.
@@ -274,7 +278,8 @@ func buildGroup_internal(ctx context.Context, g Git, req LandRequest, baseTip st
 }
 
 // gateAndMerge_internal is the PR against base, its checks at the gated
-// sha, and the merge of a green one while base is still the gated tip.
+// sha, and the merge of a green one while base is still the gated tip and
+// the sprint is not stopped.
 func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, prHead string, res LandResult) (LandResult, error) {
 	pr, ok, err := fg.PR(ctx, req.Repo, prHead, req.Base)
 	if err == nil && !ok {
@@ -302,6 +307,14 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 	}
 	if now != res.BaseTip {
 		res.Outcome, res.Reason = OutcomeBaseMoved, "base moved from "+res.BaseTip+" to "+now+" after the gate"
+		return res, nil
+	}
+	// A stopped sprint merges nothing. The stop is asked last, immediately
+	// before the merge, so one that arrived while this pass read CI holds it:
+	// the pass is pending and the caller asks again. One that arrives after
+	// this line does not undo the merge.
+	if req.Stopped != nil && req.Stopped() {
+		res.Outcome, res.Reason = OutcomePending, "the sprint is stopped: "+res.PR+" is not merged while it is"
 		return res, nil
 	}
 	sha, err := fg.Merge(ctx, req.Repo, pr.Number, res.GatedSHA)

@@ -618,8 +618,11 @@ sprint_env nova-sprint stop --reason '<why>'
 sprint_env nova-sprint backup --out '<backup-directory>'
 ```
 
-Stopping prevents new dealing, reading and landing by the tick. It does not
-kill worker processes or disable commands. Coordinate with holders if work
+Stopping prevents dealing, reading and landing, including a landing already
+waiting on CI: the run holds it, merges nothing while the sprint is stopped,
+and carries on with it after `nova-sprint start`. A merge the forge was
+already asked to make when the run read the stop is not undone. Stopping does
+not kill worker processes or disable commands. Coordinate with holders if work
 must stop immediately. A backup receipt says
 `BACKUP <file> epoch=<epoch> seq=<n> verified`. Keep that file securely; it
 contains sprint data. See `nova-sprint help restore` before restoring into an

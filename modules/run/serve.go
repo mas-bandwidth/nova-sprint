@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/dash"
@@ -69,6 +70,7 @@ type loop struct {
 	log     *WriterLogger
 	mu      sync.Mutex
 	streams map[string]store.Stream
+	stopped atomic.Bool // the ticker's folded Stopped, for the land goroutines (Edges.Stopped)
 }
 
 func serve(ctx context.Context, cfg Config, h Health) error {
@@ -125,6 +127,8 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
 		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Landings: t.Landings(), At: now}, cfg.Clock.Now)}
 	l.edges.Fault = l.log.EdgeFault
+	l.stopped.Store(t.snap.Stopped)
+	l.edges.Stopped, l.edges.Held = l.stopped.Load, l.log.LandHeld
 	l.admit = &Admission{Admit: cfg.Admit, Fault: l.log.EdgeFault}
 	l.setStreams(t.snap.Streams)
 	return l, nil
@@ -157,6 +161,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	budget := BudgetDeadline{Duration: func() time.Duration { return time.Duration(l.ticker.Timeouts().Tick) * time.Second }}
 	tctx, cancel := budget.Begin(ctx)
 	var err error
+	var reqs []steps.EdgeRequest
 	if rerr != nil || (werr != nil && !l.ticker.Seen()) {
 		err = l.ticker.Fold(tctx)
 		if rerr != nil { // logged on the TICK line, status error, and judged
@@ -166,11 +171,11 @@ func (l *loop) tick(ctx context.Context, n int) error {
 			err = errors.Join(err, fmt.Errorf("run: roster read: %w", rerr))
 		}
 	} else {
-		var reqs []steps.EdgeRequest
 		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version,
 			Unadmitted: l.admit.Unadmitted()})
-		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
+	l.stopped.Store(l.ticker.snap.Stopped) // as this tick folded it, before the dispatch and the push: the land goroutines read it
+	l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	cancel()
 	if errors.Is(err, ErrLockLost) { // nothing more under a lost lock: no push, no board (Run.tla PreparePush)
 		l.log.Log(TickMetrics{Number: n, Seq: l.ticker.snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})

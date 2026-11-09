@@ -40,6 +40,14 @@ type Edges struct {
 	// Fault is told every edge failure, with its cause (the run log's EDGE
 	// FAULT line); nil drops nothing that layer 3 reads, only the line.
 	Fault func(what string, err error)
+	// Stopped is whether the sprint is stopped now, as the run last folded it
+	// (nil: never). A stopped sprint moves nothing: a landing in flight asks
+	// the forge nothing and merges nothing while it lasts, and carries on
+	// with the same request after the start (Run.tla NoEdgeWhileStopped).
+	// Held is told each landing a stop holds, once per hold (the run log's
+	// LAND HELD line).
+	Stopped func() bool
+	Held    func(what string)
 
 	mu      sync.Mutex
 	results []steps.InboxItem
@@ -140,11 +148,11 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		return
 	}
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Stopped: e.Stopped})
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
-			return git.PromotePass(ctx, e.Git, e.Forge, git.PromoteRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Merges: r.Merges})
+			return git.PromotePass(ctx, e.Git, e.Forge, git.PromoteRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Merges: r.Merges, Stopped: e.Stopped})
 		}
 	}
 	wait := time.Duration(r.Wait) * time.Second
@@ -152,7 +160,23 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		wait = CIWait
 	}
 	absent := time.Duration(0)
+	held := false
 	for {
+		// A stopped sprint moves nothing: no pass while it lasts, and no
+		// result, so the request stays in flight and carries on after the
+		// start. A stop that arrives inside a pass is the pass's own check
+		// before its merge (git.LandRequest.Stopped).
+		if e.Stopped != nil && e.Stopped() {
+			if !held && e.Held != nil {
+				e.Held(r.Kind + " " + r.ID + " stream " + r.Stream)
+			}
+			held = true
+			if e.Pause(ctx, LandPoll) != nil {
+				return
+			}
+			continue
+		}
+		held = false
 		res, err := e.pass(ctx, dir, pass)
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			absent = waited

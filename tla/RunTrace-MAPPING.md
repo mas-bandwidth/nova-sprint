@@ -148,7 +148,7 @@ Where each record is sampled:
 | Select, CaptureFence | the store's `Apply` of the tick op, before it runs: the op's tracked card is the head of the queue; `expectedSeq` is the view seq in the op's id (`t<epoch>.<seq>.<hash>`) |
 | Apply, Refuse | the store's receipt for that op |
 | EndTick | Tick's return |
-| DeliverEdge | each request Tick returns; its After names an accepted op |
+| DeliverEdge | each request Tick returns; its After names an accepted op. A stopped tick returns none and the walk's stops land between ticks, so every record is taken while the sprint runs (DeliverEdge's `~sprintStopped`; RunTrace.cfg checks NoEdgeWhileStopped) |
 | PreparePush, SendOK | `bus.Send` of r1's envelope (lo..hi: the ranks of r1's cursor and the envelope's last notice) |
 | SaveCursor | the store's receipt for the `push-cursor` op |
 | Stutter | a failed `bus.Send`: the code keeps nothing of the attempt, the cursor stays (logged) |
@@ -196,6 +196,34 @@ envelope overflow ("and N more"); more than one move per op; Edges.Dispatch
 itself (the trace stops at the request Tick returns; the bus send of the
 STOP is TestStopIsOneMessageThenAck). RunClear: owed (run.Pusher has no clear
 summary or old-backlog suppression to bind).
+
+### The stop and a landing in flight: stated in the model, not bound by a trace
+
+Run.tla's DeliverEdge is guarded by `~sprintStopped`, and NoEdgeWhileStopped
+states the rule: no edge's effect is delivered while the sprint is stopped
+(witness RunStoppedEdgeDelivered). In the code that effect is a landing's
+merge. `Edges.land` makes it on a goroutine of its own, after Tick has
+returned the request, and these traces stop at the request Tick returns: no
+pass of a landing is in any trace. The code is held to the rule by unit tests
+(`TestStopHoldsALandingInFlight`, `TestRunTellsItsEdgesTheStop` in
+modules/run; `TestLandStoppedBeforeTheMergeMergesNothing` in
+modules/edge/git), not by trace validation.
+
+A trace binding of the land goroutine would need:
+
+1. The model's edge split in two: the request's dispatch (what DeliverEdge
+   samples today) and its effect, with the guard and the invariant on the
+   effect. Today one action stands for both.
+2. A land or promote job in the fixture. Its one edge today is the stop for
+   w1, a bus message, which the code sends without reading the sprint's stop;
+   the model's guard covers it only because the walk never stops the sprint
+   inside a tick.
+3. `Edges.land` driven by the walk, with a fake forge and the injected Pause,
+   emitting one record per pass (held, pending, merged) that carries the stop
+   as the run last folded it and as the store holds it.
+4. The two windows as actions of the model, not hidden: the run learns of a
+   stop at its next fold, up to one tick after the stop commits; and a stop
+   that arrives after the forge was asked to merge does not undo the merge.
 
 ### Finding: no AtSeq fence, so a Stop after the fold does not stop the op
 

@@ -71,6 +71,17 @@ func (l *WriterLogger) EdgeFault(what string, cause error) {
 	}
 }
 
+// LandHeld is a landing in flight that the stop holds: it merges nothing
+// until the start (Edges.Held: once per hold, not per poll).
+func (l *WriterLogger) LandHeld(what string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, err := fmt.Fprintf(l.out, "LAND HELD %s: the sprint is stopped\n", edge.RedactN(what, 120))
+	if err != nil {
+		l.err = err
+	}
+}
+
 // RosterRefused logs the rows the roster read refused, once per change: a
 // line per refused row when the set changes, and "ROSTER REFUSED none" when
 // it empties; the same set read again each tick logs nothing.

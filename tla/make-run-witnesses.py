@@ -10,7 +10,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 RUN_INV = ["TypeOK", "OneChooser", "NoApplyAfterObservedLoss", "AppliedOnce", "NoStaleMove", "BudgetKept",
            "PushAfterCommit", "CursorTrailsSent", "FIFO", "NoDroppedPlan", "EdgesAfterCommit", "NoTickAfterObservedStop", "NoAcceptedTickWhileStopped",
-           "NoTickWhileStopped", "NeverStartedMovesNothing"]
+           "NoTickWhileStopped", "NoEdgeWhileStopped", "NeverStartedMovesNothing"]
 SETUP_INV = ["TypeOK", "NeverAhead", "OnlyVerified", "AskedOnce", "KeyNeverPrinted", "RestartFromOne"]
 
 def config(model, *, work=3, reports=1, failures=1, budget=2, processes=2, temporal=True):

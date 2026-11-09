@@ -178,6 +178,47 @@ func TestLandBaseMovedAfterTheGate(t *testing.T) {
 	}
 }
 
+// A stop that arrives between the CI read and the merge merges nothing, on a
+// landing and on a promotion: the pass is pending, and the pass after the
+// start merges.
+func TestLandStoppedBeforeTheMergeMergesNothing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	stopped := false
+	atChecks := func(op string) {
+		if op == "Checks" {
+			stopped = true
+		}
+	}
+	gf, ff, root, c1, _ := landWorld_internal()
+	ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckGreen})
+	ff.OnCall = atChecks
+	req := one_internal(c1)
+	req.Stopped = func() bool { return stopped }
+	res, err := LandPass(ctx, gf, ff, req)
+	if err != nil || res.Outcome != OutcomePending || !strings.Contains(res.Reason, "stopped") || slices.Contains(ff.calls_internal(), "Merge") || gf.OriginRef("v2") != root {
+		t.Fatalf("land = %+v err=%v calls=%v, want ci_pending and no merge while stopped", res, err, ff.calls_internal())
+	}
+	ff.OnCall, stopped = nil, false
+	if res, err = LandPass(ctx, gf, ff, req); err != nil || res.Outcome != OutcomeLanded || gf.OriginRef("v2") != c1 {
+		t.Fatalf("land after the start = %+v err=%v, want landed", res, err)
+	}
+
+	pg, pf, proot, m1 := promoteWorld_internal()
+	pf.SetCheck("o/r", m1, forge.CheckRollup{State: forge.CheckGreen})
+	pf.OnCall = atChecks
+	preq := promote_internal(m1)
+	preq.Stopped = func() bool { return stopped }
+	res, err = PromotePass(ctx, pg, pf, preq)
+	if err != nil || res.Outcome != OutcomePending || !strings.Contains(res.Reason, "stopped") || slices.Contains(pf.calls_internal(), "Merge") || pg.OriginRef("main") != proot {
+		t.Fatalf("promote = %+v err=%v calls=%v, want ci_pending and no merge while stopped", res, err, pf.calls_internal())
+	}
+	pf.OnCall, stopped = nil, false
+	if res, err = PromotePass(ctx, pg, pf, preq); err != nil || res.Outcome != OutcomeLanded || pg.OriginRef("main") != m1 {
+		t.Fatalf("promote after the start = %+v err=%v, want landed", res, err)
+	}
+}
+
 // The group branch's name never collides with a base sprint/<stream> or a
 // card branch sprint/<stream>/<card> (defect 46); what blocks it is named.
 func TestGroupBranchNamespace(t *testing.T) {
