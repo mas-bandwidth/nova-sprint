@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -112,7 +113,7 @@ func (t *tick) preferred(c store.Card, rows []string) string {
 		}
 	}
 	if answered != nil {
-		t.o.refuse("rows")
+		t.o.refuse("rows", fmt.Sprintf("rows(%s) names %s, none of the rows that could take it (%s)", c.ID, firstIDs(answered), firstIDs(rows)))
 	}
 	return rows[0]
 }
