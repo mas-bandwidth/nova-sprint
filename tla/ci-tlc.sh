@@ -15,9 +15,7 @@
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
-#     Setup.tla, SetupWalk.tla, SetupRun.tla, SetupChoices.tla (SetupChoices.cfg and
-#     SetupChoicesTwoKeys.cfg), SetupChoicesWalk.tla, SetupHandoff.tla
-#     (SetupHandoff.cfg and SetupHandoffCrash.cfg)
+#     Setup.tla, SetupWalk.tla, SetupRun.tla
 #                                        must pass            (TLC exit 0)
 #     (the list is tla/*-runs.json's "pass" entries)
 #   the generated witnesses/*.tla (gen-witnesses.sh) with their .cfg
@@ -202,11 +200,6 @@ run RunClear pass . RunClear.cfg RunClear.tla 2
 run Setup pass . Setup.cfg Setup.tla 2
 run SetupWalk pass . SetupWalk.cfg SetupWalk.tla 2
 run SetupRun pass . SetupRun.cfg SetupRun.tla 2
-run SetupChoices pass . SetupChoices.cfg SetupChoices.tla 2
-run SetupChoicesTwoKeys pass . SetupChoicesTwoKeys.cfg SetupChoices.tla 2
-run SetupChoicesWalk pass . SetupChoicesWalk.cfg SetupChoicesWalk.tla 2
-run SetupHandoff pass . SetupHandoff.cfg SetupHandoff.tla 2
-run SetupHandoffCrash pass . SetupHandoffCrash.cfg SetupHandoff.tla 2
 
 for f in "$GEN"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
@@ -220,12 +213,7 @@ for f in "$GEN"/witnesses/layer6/*.tla; do
 done
 
 # The Setup witnesses live beside their models (tla/*-runs.json).
-for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
-         SetupHandoffEarlyRecord SetupHandoffLostRecord SetupHandoffNoLease \
-         SetupHandoffOldProbe SetupHandoffParentSecret SetupHandoffRefusedEffect \
-         SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
-         SetupHandoffWrongType \
-         SetupRunFreshRunning; do
+for m in SetupRunFreshRunning; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 

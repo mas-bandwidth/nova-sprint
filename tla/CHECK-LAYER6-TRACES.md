@@ -30,8 +30,8 @@ executable can be selected explicitly with `--go`. Output paths are never reused
 failed output remains inspectable. Timeout kills the job's process group.
 
 The fixed inputs are three Run report schedules; one Clear case; ten Clear
-notice/Clear/Push walks; one Setup walk; none/configured SetupChoices walks;
-64 installer attempts; and successful/stale-epoch handoff compositions. Their
+notice/Clear/Push walks; one Setup walk (a credential-less walk's handoff
+after step 2 included); and 64 installer attempts. Their
 refinement limits remain those in the corresponding mapping documents. Passing
 this gate is finite execution evidence, not arbitrary implementation proof.
 

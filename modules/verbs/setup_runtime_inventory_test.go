@@ -45,33 +45,3 @@ func TestSprintSeatsUseServiceSeatAndKeepPublicBench(t *testing.T) {
 		t.Fatal(seats, err)
 	}
 }
-func TestPublicDashboardRejectsCredentials(t *testing.T) {
-	t.Parallel()
-	service := &FleetService{Name: "sprint-public", Machine: "public", Argv: []string{"/bin/nova-sprint", "dash", "--pull", "http://private:8080", "--listen", ":443"}}
-	if !validPublicTarget(service) {
-		t.Fatal("valid pull service refused")
-	}
-	service.Keys = []string{sprintPasswordName}
-	service.Seat = "swarm-public"
-	if validPublicTarget(service) {
-		t.Fatal("public service received a credential")
-	}
-	service.Keys = nil
-	service.Seat = ""
-	service.Env = map[string]string{"NOVA_PG_DSN": "postgres://private/db"}
-	if validPublicTarget(service) {
-		t.Fatal("public service received store configuration")
-	}
-}
-
-func TestPublicDashboardEnvHasExactProgram(t *testing.T) {
-	t.Parallel()
-	service := &FleetService{Name: "sprint-public", Machine: "public", Argv: []string{"/usr/bin/env", "nova-sprint", "dash", "--pull", "http://private:8080", "--listen", ":8080"}}
-	if !validPublicTarget(service) {
-		t.Fatal("env-backed pull service refused")
-	}
-	service.Argv[1] = "other-program"
-	if validPublicTarget(service) {
-		t.Fatal("generic env wrapper accepted")
-	}
-}

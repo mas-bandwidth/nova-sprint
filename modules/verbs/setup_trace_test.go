@@ -9,21 +9,23 @@ import (
 	"testing"
 )
 
+// traceSetup is the world of steps 1, 2 and 4 to 7; step 3's is the
+// store's coordinator row. Step 7 has no act, as in production.
 type traceSetup struct {
-	world   [9]bool
-	answers [4]bool
+	world [8]bool
 }
 
 func (s *traceSetup) Verify(_ context.Context, k int, _ SetupInput) (SetupCheck, error) {
-	return SetupCheck{Verified: s.world[k], Action: !s.world[k]}, nil
+	return SetupCheck{Verified: s.world[k], Action: !s.world[k] && k != 7}, nil
 }
 func (s *traceSetup) Act(_ context.Context, k int, _ SetupInput) error { s.world[k] = true; return nil }
-func (*traceSetup) Completion(context.Context) (string, error)         { return "UP DONE simulation", nil }
+func (*traceSetup) Completion(context.Context, SetupInput) (string, error) {
+	return "UP DONE simulation", nil
+}
 
 type traceState struct {
-	world           [9]bool
-	answers         [4]bool
-	verified        [9]bool
+	world           [8]bool
+	verified        [8]bool
 	pc, disruptions int
 	phase           string
 }
@@ -40,12 +42,9 @@ type setupTraceCapture struct {
 }
 
 func (c *setupTraceCapture) observe(o SetupObservation) {
-	if o.Scope != "walk" {
-		return
-	}
 	switch o.Kind {
 	case "begin":
-		c.state.verified = [9]bool{}
+		c.state.verified = [8]bool{}
 		c.state.pc = 1
 		c.state.phase = "probe"
 		action := "Restart"
@@ -60,7 +59,7 @@ func (c *setupTraceCapture) observe(o SetupObservation) {
 		if o.Verified {
 			c.state.verified[o.Step] = true
 			c.state.pc++
-			if o.Step == 8 {
+			if o.Step == 7 {
 				c.state.phase = "done"
 			}
 		} else {
@@ -73,6 +72,21 @@ func (c *setupTraceCapture) observe(o SetupObservation) {
 		}
 		c.state.phase = "probe"
 		c.record("Do", 0)
+	case "store-only":
+		if c.state.pc != 3 || c.state.phase != "probe" {
+			c.t.Fatalf("unexpected handoff %+v state %+v", o, c.state)
+		}
+		c.state.phase = "handoff"
+		c.state.disruptions++
+		c.record("Handoff", 0)
+	case "stop":
+		// Step 7 refuses (no act); the world settles it when step 6 holds.
+		if o.Step != 7 || c.state.phase != "repair" {
+			c.t.Fatalf("unexpected stop %+v state %+v", o, c.state)
+		}
+		c.setup.world[7] = c.setup.world[7] || c.setup.world[6]
+		c.state.phase, c.state.pc, c.state.verified = "stopped", 1, [8]bool{}
+		c.record("Settle", 0)
 	case "complete":
 		if o.Failed || c.state.phase != "done" {
 			c.t.Fatalf("unexpected completion %+v", o)
@@ -83,7 +97,6 @@ func (c *setupTraceCapture) observe(o SetupObservation) {
 }
 func (c *setupTraceCapture) record(action string, k int) {
 	c.state.world = c.setup.world
-	c.state.answers = c.setup.answers
 	c.records = append(c.records, traceRecord{action: action, k: k, state: c.state})
 }
 func TestSetupActualTrace(t *testing.T) {
@@ -93,18 +106,27 @@ func TestSetupActualTrace(t *testing.T) {
 		t.Skip("trace emission requested explicitly")
 	}
 	rng := rand.New(rand.NewSource(1762466400))
-	fake := &traceSetup{answers: [4]bool{true, true, true, true}}
-	for k := 1; k <= 8; k++ {
+	fake := &traceSetup{}
+	for k := 1; k <= 7; k++ {
 		fake.world[k] = rng.Intn(2) == 1
 	}
+	fake.world[3] = true // the fixture's coordinator row is hooked
 	capture := &setupTraceCapture{t: t, setup: fake}
-	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, Lock: setupLeaseFake{}, SetupObserver: capture.observe}
+	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, SetupObserver: capture.observe, UpStoreOnly: true}
+	if r := e.Execute(context.Background(), []string{"up"}); r.Exit != 0 || r.Output != "" {
+		t.Fatal(r)
+	}
+	e.UpStoreOnly = false
 	for round := 0; round < 4; round++ {
-		if r := e.Execute(context.Background(), []string{"up"}); r.Exit != 0 {
+		r := e.Execute(context.Background(), []string{"up"})
+		for tries := 0; r.Exit != 0 && tries < 2; tries++ {
+			r = e.Execute(context.Background(), []string{"up"})
+		}
+		if r.Exit != 0 {
 			t.Fatal(r)
 		}
 		if round < 3 {
-			k := 2 + rng.Intn(7)
+			k := []int{2, 4, 5, 6, 7}[rng.Intn(5)]
 			if !fake.world[k] {
 				t.Fatal("regression requires true world")
 			}
@@ -137,7 +159,7 @@ func renderSetupTrace(records []traceRecord) string {
 }
 func renderTraceState(out *strings.Builder, s traceState) {
 	out.WriteString(", world |-> <<")
-	for k := 1; k <= 8; k++ {
+	for k := 1; k <= 7; k++ {
 		if k > 1 {
 			out.WriteString(", ")
 		}
@@ -149,7 +171,7 @@ func renderTraceState(out *strings.Builder, s traceState) {
 	}
 	out.WriteString(">>, verified |-> {")
 	first := true
-	for k := 1; k <= 8; k++ {
+	for k := 1; k <= 7; k++ {
 		if s.verified[k] {
 			if !first {
 				out.WriteString(", ")
@@ -158,16 +180,5 @@ func renderTraceState(out *strings.Builder, s traceState) {
 			first = false
 		}
 	}
-	out.WriteString("}, answers |-> {")
-	first = true
-	for i, name := range []string{"coordinator", "dashboard", "services", "key"} {
-		if s.answers[i] {
-			if !first {
-				out.WriteString(", ")
-			}
-			fmt.Fprintf(out, "%q", name)
-			first = false
-		}
-	}
-	fmt.Fprintf(out, `}, asked |-> [q \in {"coordinator", "dashboard", "services", "key"} |-> 0], pc |-> %d, phase |-> %q, disruptions |-> %d, keySinks |-> {}`, s.pc, s.phase, s.disruptions)
+	fmt.Fprintf(out, `}, answers |-> {"identity"}, asked |-> [q \in {"identity"} |-> 0], pc |-> %d, phase |-> %q, disruptions |-> %d`, s.pc, s.phase, s.disruptions)
 }

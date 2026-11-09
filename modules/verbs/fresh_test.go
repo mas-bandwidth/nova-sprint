@@ -1,10 +1,8 @@
 package verbs
 
 import (
-	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -18,12 +16,6 @@ func midUp(t *testing.T) *world {
 	w := newWorld(t)
 	f := store.NewFake()
 	w.f, w.e.Store = f, f
-	c := Choices{Store: f, Actor: "carol", Now: func() time.Time { return t0 }}
-	for _, qa := range [][2]string{{"coordinator", "carol"}, {"run-on", "studio"}, {"dashboard", "tailnet"}} {
-		if err := c.Save(context.Background(), qa[0], qa[1]); err != nil {
-			t.Fatal(err)
-		}
-	}
 	want(t, w.do("carol", "hook", "--role", "coordinator"), 0, "HOOKED carol role=coordinator", "NO COMMIT IDENTITY: no worker can hook until one is set: nova-sprint identity --name")
 	return w
 }

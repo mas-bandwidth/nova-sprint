@@ -17,9 +17,11 @@ func TestParseSetupBoundsAndDuplicates(t *testing.T) {
 		{nil, strings.Repeat("a", 129), false},
 		{nil, "alice/other", false},
 		{[]string{"--as", "bob", "--as", "eve"}, "alice", false},
-		{[]string{"--dash", "--services", "none"}, "alice", false},
-		{[]string{"--services", strings.Repeat("a", 512)}, "alice", true},
-		{[]string{"--services", strings.Repeat("a", 513)}, "alice", false},
+		{[]string{"--dash", "public=" + strings.Repeat("a", 505)}, "alice", true},
+		{[]string{"--dash", "public=" + strings.Repeat("a", 506)}, "alice", false},
+		{[]string{"--services", "none"}, "alice", false},
+		{[]string{"--run-on", "studio"}, "alice", false},
+		{[]string{"--version", "v2.0.0"}, "alice", false},
 		{[]string{"--as", "bob"}, "", true},
 	}
 	for _, tc := range cases {

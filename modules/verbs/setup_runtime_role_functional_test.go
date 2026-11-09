@@ -2,10 +2,14 @@ package verbs
 
 import (
 	"context"
+	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,15 +59,8 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets 
 	if err = super.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid='nova_sprint'::regrole AND member='nova_admin'::regrole AND set_option)`).Scan(&canSet); err != nil || canSet {
 		t.Fatal("temporary role grant persisted", err)
 	}
-	var hash1, hash2 string
-	if err = super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&hash1); err != nil {
-		t.Fatal(err)
-	}
 	if err = ProvisionSprintRole(ctx, dsn, "fixture-admin", "fixture-sprint"); err != nil {
 		t.Fatal(err)
-	}
-	if err = super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&hash2); err != nil || hash1 != hash2 {
-		t.Fatal("repeated setup changed credential", err)
 	}
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
@@ -78,51 +75,32 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets 
 	_ = conn.Close(ctx)
 	t.Setenv("NOVA_PG_DSN", dsn)
 	t.Setenv(sprintPasswordName, "fixture-sprint")
-	t.Setenv("NOVA_SPRINT_BACKUP_DIR", filepath.Join(dir, "backups"))
 	t.Setenv("PGPASSWORD", "wrong-ambient-fixture")
-	ready, err := SprintStoreChild(ctx, false, "v2.0.0")
+	ready, err := SprintStoreChild(ctx, false)
 	if err != nil || ready {
 		t.Fatal("unmigrated store appeared ready", err)
 	}
-	ready, err = SprintStoreChild(ctx, true, "v2.0.0")
+	ready, err = SprintStoreChild(ctx, true)
 	if err != nil || !ready {
 		t.Fatal("store setup failed", err)
 	}
-	ready, err = SprintStoreChild(ctx, false, "v2.0.0")
+	ready, err = SprintStoreChild(ctx, false)
 	if err != nil || !ready {
 		t.Fatal("store repeat failed", err)
 	}
-	sprintURL, err := sprintDSN(dsn)
-	if err != nil {
+	// The step-2 probe sets the role's password from the seat every time:
+	// a role whose password was changed behind the seat's back is set back.
+	roleAdoptionExec(t, ctx, super, "ALTER ROLE nova_sprint PASSWORD 'drifted'")
+	t.Setenv("NOVA_PG_ADMIN_PASSWORD", "fixture-admin")
+	if ok, err := InternalSprintRolePassword(ctx); err != nil || !ok {
+		t.Fatal("role password probe", ok, err)
+	}
+	var verifier string
+	if err = super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&verifier); err != nil {
 		t.Fatal(err)
 	}
-	pg, err := store.Open(ctx, sprintURL, "fixture-sprint")
-	if err != nil {
-		t.Fatal("open failed")
-	}
-	defer pg.Close()
-	rec, err := pg.Apply(ctx, store.Op{ID: "test-store", Epoch: 1, Actor: "test", Kind: "test", At: time.Unix(1000, 0), Writes: []store.Write{store.PutStream{Name: "s", Repo: "o/r", Base: "main", Pos: 1}}})
-	if err != nil || !rec.Accepted {
-		t.Fatal("test write failed", err)
-	}
-	ready, err = SprintStoreChild(ctx, false, "v2.0.0")
-	if err != nil || !ready {
-		t.Fatal("later event invalidated backup", err)
-	}
-	files, err := filepath.Glob(filepath.Join(dir, "backups", "attempt-*", "sprint-e*-s*.sql"))
-	if err != nil || len(files) != 1 {
-		t.Fatal("initial backup missing", err)
-	}
-	if err = os.WriteFile(files[0], []byte("corrupt fixture"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	ready, err = SprintStoreChild(ctx, true, "v2.0.0")
-	if err != nil || !ready {
-		t.Fatal("backup recovery failed", err)
-	}
-	files, err = filepath.Glob(filepath.Join(dir, "backups", "attempt-*", "sprint-e*-s*.sql"))
-	if err != nil || len(files) != 2 {
-		t.Fatal("old backup evidence not preserved", err)
+	if same, why := scramMatches(verifier, "fixture-sprint"); !same {
+		t.Fatal("the probe left the drifted password:", why)
 	}
 }
 
@@ -283,4 +261,31 @@ func TestFunctionalSprintRoleSetsUnsetPassword(t *testing.T) {
 	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", false); err != nil {
 		t.Fatal("set password did not authenticate", err)
 	}
+}
+
+// scramMatches (test only) is whether stored (SCRAM-SHA-256$<iter>:<salt>$<key>:<key>)
+// is password's verifier, recomputed with its own salt and iterations;
+// why names what did not match.
+func scramMatches(stored, password string) (bool, string) {
+	head, keys, ok := strings.Cut(strings.TrimPrefix(stored, "SCRAM-SHA-256$"), "$")
+	iterText, saltText, ok2 := strings.Cut(head, ":")
+	if !strings.HasPrefix(stored, "SCRAM-SHA-256$") || !ok || !ok2 || keys == "" {
+		return false, "not a SCRAM-SHA-256 verifier"
+	}
+	iterations, err := strconv.Atoi(iterText)
+	if err != nil || iterations < 1 {
+		return false, "its iteration count " + strconv.Quote(Redact(iterText)) + " is not a positive number"
+	}
+	salt, err := base64.StdEncoding.DecodeString(saltText)
+	if err != nil {
+		return false, "its salt is not base64: " + err.Error()
+	}
+	want, err := scramVerifier(password, salt, iterations)
+	if err != nil {
+		return false, err.Error()
+	}
+	if subtle.ConstantTimeCompare([]byte(want), []byte(stored)) != 1 {
+		return false, "the verifiers differ"
+	}
+	return true, ""
 }

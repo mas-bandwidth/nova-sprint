@@ -56,7 +56,7 @@ func (s SprintRoleBootstrap) Run(ctx context.Context, seats []SprintSeat) error 
 	args := []string{"exec", "--only", "NOVA_PG_ADMIN_PASSWORD," + sprintPasswordName, "--store", s.Secrets.Store, "--key", s.Secrets.KeyFile, "--as", s.Secrets.Seat, "--", s.Binary, mode}
 	run := s.Execute
 	if run == nil {
-		run = quietCommand
+		run = RunQuiet
 	}
 	if err = run(ctx, "nova-secrets", args...); err != nil {
 		if r := AsRefusal(err); r != nil {

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -79,13 +78,9 @@ type snapReader struct{ snap store.Snapshot }
 func (s snapReader) Snapshot(context.Context) (store.Snapshot, error) { return s.snap, nil }
 
 func testWorkload(f *fleetFake, rows map[string]store.Row, present map[string]bool) productionWorkload {
-	return productionWorkload{services: verbs.FleetServices{Command: f.command}.For("rowan", "nova-sprint up 7/8 workers"), run: workloadRun(),
+	return productionWorkload{services: verbs.FleetServices{Command: f.command}.For("rowan", "nova-sprint up 6/7 workers"), run: workloadRun(),
 		store:   snapReader{store.Snapshot{Epoch: 1, Rows: rows}},
-		present: func(context.Context) (map[string]bool, error) { return present, nil },
-		lastLine: func(_ context.Context, machine, service string) string {
-			return fmt.Sprintf("%q", "last of "+service+" on "+machine)
-		},
-		version: func(context.Context, string) error { return nil }}
+		present: func(context.Context) (map[string]bool, error) { return present, nil }}
 }
 
 // One record per worker bench, exactly the worker's flags, its own seat,
@@ -112,7 +107,7 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
 		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,GH_GATE_TOKEN,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
-		"--actor", "rowan", "--reason", "nova-sprint up 7/8 workers"}
+		"--actor", "rowan", "--reason", "nova-sprint up 6/7 workers"}
 	if len(adds) != 2 || !slices.Equal(adds[0], want) || adds[1][3] != "sprint-worker-amd-2" {
 		t.Fatalf("records:\n%q\nwant\n%q", adds, want)
 	}
@@ -145,56 +140,40 @@ func TestInstallWorkersRefusals(t *testing.T) {
 	}
 }
 
-// Step 7 asks the human for the sprint's commit identity when there is
+// Step 6 asks the human for the sprint's commit identity when there is
 // none, and then verifies only when every worker bench is on the bus and up in
 // the store; through RuntimeSetup it is an act first, then a refusal
-// naming each bench that is not, with its unit's last log line.
-func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
+// naming each bench that is not.
+func TestWorkersReadyNamesEachBench(t *testing.T) {
 	t.Parallel()
 	f := &fleetFake{machines: workloadMachines, rows: 3}
 	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Role: "worker"}, "amd-2": {Name: "amd-2", State: "down", Role: "worker"}}
 	w := testWorkload(f, rows, map[string]bool{"amd-1": true})
 	ok, err := w.WorkersReady(context.Background())
 	var nr *verbs.WorkloadNotReady
-	if ok || !errors.As(err, &nr) || !strings.Contains(nr.Why, `1 of the worker benches are not hooked and up: amd-2 (not on the bus, store row down; last log line: "last of sprint-worker-amd-2 on amd-2")`) || strings.Contains(nr.Why, "amd-1 (") {
+	if ok || !errors.As(err, &nr) || !strings.Contains(nr.Why, `1 of the worker benches are not hooked and up: amd-2 (not on the bus, store row down)`) || strings.Contains(nr.Why, "amd-1 (") {
 		t.Fatal(ok, err)
 	}
 	// No commit identity yet: a question for the human, no act, before any
 	// bench is looked at.
-	check, err := (verbs.RuntimeSetup{Workload: w, Snapshot: snapReader{store.Snapshot{Epoch: 1}}}).Verify(context.Background(), 7, verbs.SetupInput{})
+	check, err := (verbs.RuntimeSetup{Workload: w, Snapshot: snapReader{store.Snapshot{Epoch: 1}}}).Verify(context.Background(), 6, verbs.SetupInput{})
 	if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "the sprint has no commit identity\nASK the human") || !strings.HasPrefix(check.Next, "nova-sprint identity --name") {
 		t.Fatalf("%+v %v", check, err)
 	}
 	withID := snapReader{store.Snapshot{Epoch: 1, Identity: store.Identity{Name: "Sprint Bot", Email: "1+bot@users.noreply.example.test"}}}
-	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{})
+	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 6, verbs.SetupInput{})
 	if err != nil || check.Verified || !check.Action || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-2 (not on the bus") || !strings.Contains(check.Refusal.Fix, "sprint-worker-<bench>") {
 		t.Fatalf("%+v %v", check, err)
 	}
 	rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Role: "worker"}
 	w = testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
-	if check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{}); err != nil || !check.Verified || !strings.Contains(check.Line, "probed with the policy's models") ||
+	if check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 6, verbs.SetupInput{}); err != nil || !check.Verified || !strings.Contains(check.Line, "probed with the policy's models") ||
 		!strings.Contains(check.Line, "each committing as Sprint Bot <1+bot@users.noreply.example.test>: VERIFIED") {
 		t.Fatalf("%+v %v", check, err)
 	}
-	// Every bench up, one at another version: not verified, naming it and
-	// the install that fixes it (step 5's check, per bench).
-	w.version = func(_ context.Context, m string) error {
-		if m == "amd-2" {
-			return serviceVersionRefusal("v2.1.0", m, "amd-2 reports v2.0.9, this binary is v2.1.0")
-		}
-		return nil
-	}
-	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{})
-	if err != nil || check.Verified || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-2 reports v2.0.9") || !strings.Contains(check.Refusal.Fix, "--tag v2.1.0 amd-2") {
-		t.Fatalf("%+v %v", check, err)
-	}
-	w.version = nil
-	if ok, err := w.WorkersReady(context.Background()); ok || err == nil {
-		t.Fatal("a workload with no version check verified")
-	}
 }
 
-// Step 8: every worker row dealable; a bench with no cores is named, held
+// Step 7: every worker row dealable; a bench with no cores is named, held
 // at width 0, with the nova-config command that gives it cores.
 func TestSmokeReadyNeedsEveryWorkerDealable(t *testing.T) {
 	t.Parallel()
@@ -213,46 +192,6 @@ func TestSmokeReadyNeedsEveryWorkerDealable(t *testing.T) {
 	delete(present, "amd-1")
 	if ok, err = testWorkload(f, rows, present).SmokeReady(context.Background()); ok || !errors.As(err, &nr) || !strings.Contains(nr.Why, "amd-1 is not hooked and up") {
 		t.Fatal(ok, err)
-	}
-	if err = (productionWorkload{}).RunSmoke(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// "none" is a valid services choice and verifies.
-func TestServicesNoneVerifies(t *testing.T) {
-	t.Parallel()
-	w := productionWorkload{}
-	if ok, err := w.ServicesReady(context.Background(), nil); !ok || err != nil {
-		t.Fatal(ok, err)
-	}
-	if err := w.InstallServices(context.Background(), nil); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// The unit's last log line comes over the inventory's pinned ssh.
-func TestLastServiceLogLineReadsTheUnitLogOverSSH(t *testing.T) {
-	t.Parallel()
-	var seen [][]string
-	p := productionSetup{cfg: configForSetup(), command: func(_ context.Context, name string, args ...string) ([]byte, error) {
-		seen = append(seen, append([]string{name}, args...))
-		if name == "nova-config" {
-			return []byte(`{"ansible_host":"100.100.1.6","ansible_user":"nova"}`), nil
-		}
-		return []byte("line one\nworker refused: missing --work-clone <dir>\n"), nil
-	}}
-	got := p.lastServiceLogLine(context.Background(), "amd-2", "sprint-worker-amd-2")
-	if got != `"worker refused: missing --work-clone <dir>"` {
-		t.Fatal(got)
-	}
-	want := []string{"ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", "nova@100.100.1.6", "tail", "-n", "1", ".local/state/nova/services/sprint-worker-amd-2.log"}
-	if len(seen) != 2 || !slices.Equal(seen[1], want) {
-		t.Fatalf("%q", seen)
-	}
-	p.command = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("no route") }
-	if got = p.lastServiceLogLine(context.Background(), "amd-2", "sprint-worker-amd-2"); !strings.Contains(got, "unreadable") || !strings.Contains(got, "no route") {
-		t.Fatal(got)
 	}
 }
 
@@ -312,13 +251,9 @@ func TestDoctorReadsEveryBenchWorkerUnit(t *testing.T) {
 func TestProductionSetupForwardsEverySeam(t *testing.T) {
 	t.Parallel()
 	st := store.NewFake()
-	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
-	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", configForSetup())
+	setup := makeProductionSetup(st, verbs.ExecEnvironment{}, "v1.6.0", configForSetup())
 	if _, ok := setup.(verbs.SetupCompletion); !ok {
 		t.Fatal("no completion")
-	}
-	if _, ok := setup.(verbs.SetupHandoff); !ok {
-		t.Fatal("no handoff")
 	}
 }
 

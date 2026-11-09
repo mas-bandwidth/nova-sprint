@@ -117,8 +117,8 @@ nova-fleet check
 ```
 
 Choose the machine that will run the sprint. Run setup on that machine, which
-must be in the inventory with the `services` role. `up` runs only on the
-machine you run it on; `--run-on` must name that machine. Machines with
+must be in the inventory with the `services` role. `up` runs the sprint on
+the machine you run it on. Machines with
 the `bench` role receive worker services, including the run machine if it also
 has that role. A bench needs its core count recorded, a supported harness,
 model routes and the appropriate credentials. An unused machine should not
@@ -209,40 +209,47 @@ A successful hook reports `HOOK OK name=<row> waiting=<n>`; a service hook
 reports `HOOK SERVICE OK`. Keep one bus hook per row. If another live session
 owns that name, coordinate with it rather than inventing a second identity.
 
-### 3. Run setup and choose the dashboard and services
+### 3. Put the worker keys in, then run setup
 
-Ask the human whether the dashboard should be private on the tailnet or public
-on a machine they control, and which supported API services to enable. Run:
+Each bench's worker service opens these values from its bench's own seat:
+`NOVA_SPRINT_PG_PASSWORD` and, for an authenticated bus, `NOVA_BUS_PASSWORD`
+(setup grants both), and `GH_GATE_TOKEN`, `DEEPSEEK_API_KEY` and
+`INCEPTION_API_KEY`, which you put in. Have the human set each once on the
+control seat (`set` reads the value at a hidden prompt; the AI runs it, the
+human enters the value), then grant them to every bench:
 
 ```sh
-seat_exec NOVA_BUS_PASSWORD nova-sprint up --as "$NOVA_SPRINT_AS" --dash tailnet --services '<service-list>'
+nova-secrets set DEEPSEEK_API_KEY --store "$NOVA_SECRETS_STORE" --key "$NOVA_SECRETS_KEY" --pins "$NOVA_SECRETS_PINS" --as "$NOVA_SECRETS_SEAT"
+nova-secrets grant GH_GATE_TOKEN,DEEPSEEK_API_KEY,INCEPTION_API_KEY --to '<bench>' --store "$NOVA_SECRETS_STORE" --key "$NOVA_SECRETS_KEY" --pins "$NOVA_SECRETS_PINS" --as "$NOVA_SECRETS_SEAT"
+```
+
+A worker probes its harness with the policy's models and these keys before
+it hooks, so a missing or wrong key shows as that bench not coming up at
+setup's workers step, with the probe's refusal in the unit's log.
+
+Ask the human whether the dashboard should be private on the tailnet or public
+on a machine they control. Run:
+
+```sh
+seat_exec NOVA_BUS_PASSWORD nova-sprint up --as "$NOVA_SPRINT_AS" --dash tailnet
 ```
 
 For a public dashboard, replace the dashboard choice with
 `--dash 'public=<machine>:<port>'`. Setup installs a pull-only dashboard there;
 that service holds no database or provider credential. The public machine may
-also be a bench. Share the resulting URL only with the intended audience.
-
-The current key-setup integrations accept `deepseek` and `openrouter`, separated
-by commas. Choose only the services your deployment uses. Each selected service
-asks the human for its key once at a hidden terminal prompt and checks it with
-the provider. The AI runs the prompt; the human enters the value there. The
-installed worker's supported routes and the policy's model catalog must also
-match the selected configuration: adding a key alone does not make every model
-runnable. Follow any missing-route or harness refusal before starting work.
-
-Use `--services none` to skip API-key setup. This does **not** disable the worker
-services installed on bench machines. For a sprint using only friend sessions,
-configure the inventory accordingly. To repair one selected service's key,
-setup also accepts `--key '<service>'`.
+also be a bench. Share the resulting URL only with the intended audience. Once
+a public dashboard is recorded in nova-config, later runs of `up` use it
+without `--dash`.
 
 Run `up` through the bus-only wrapper above, not through `sprint_env`: setup
-separates its database-admin and runtime credential phases itself. It resumes
-by checking every step again. After fixing a refusal, repeat the same command.
-Do not create the schema or worker services by hand to get past a failed step.
+hands each step only the credential that step needs. It checks every step
+again from the first on each run. After fixing a refusal, repeat the same
+command. Do not create the schema or worker services by hand to get past a
+failed step.
 
 Setup creates the store, hooks your coordinator row, installs the policy, run
-service, dashboard and bench workers, and checks worker readiness. Its completion
+service, dashboard and bench workers (with its own nova-sprint release on each
+of those machines, through `nova-fleet install`), and checks worker readiness. Its completion
 line has this shape:
 
 ```text

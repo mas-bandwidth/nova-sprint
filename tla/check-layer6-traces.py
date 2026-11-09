@@ -21,8 +21,7 @@ import tarfile
 
 SPEC_FILES = (
     'Run.tla RunTrace.tla RunClear.tla RunClearTrace.tla Setup.tla SetupWalk.tla '
-    'SetupTrace.tla SetupChoices.tla SetupChoicesWalk.tla SetupChoicesTrace.tla '
-    'SetupHandoff.tla SetupHandoffTrace.tla check-trace.sh '
+    'SetupTrace.tla check-trace.sh '
     'check-layer6-traces.py'
 ).split()
 
@@ -68,9 +67,7 @@ def run_process(command, cwd, env, timeout, output=None):
 def expected_cases():
     return dict([('run-' + str(s), 'Run') for s in (0, 1, 2)]
                 + [('run-stop', 'Run')]
-                + [('setup', 'Setup')]
-                + [('handoff-' + str(s), 'SetupHandoff') for s in (0, 1)]
-                + [('choices-' + s, 'SetupChoices') for s in ('none', 'configured')])
+                + [('setup', 'Setup')])
 
 
 def run_emit(repo, out, name, package, test, env_values, args):
@@ -104,22 +101,11 @@ def emit_simple(repo, out, args, cases):
     # The RunClear cases (clear, clear-walk-0..9) are owed: their emitters went
     # with the old pusher (f697b05f), and run.Pusher has no clear summary to bind.
     jobs += [('setup', 'Setup', './modules/verbs', 'TestSetupActualTrace', 'NOVA_SETUP_TRACE_OUT', {})]
-    jobs += [('handoff-' + str(s), 'SetupHandoff', './cmd/nova-sprint', 'TestFunctionalEmitHandoffTrace',
-              'NOVA_HANDOFF_TRACE_PATH', {'NOVA_HANDOFF_TRACE_STALE': str(s)}) for s in (0, 1)]
     for name, model, package, test, key, env in jobs:
         trace = out / 'emitted' / (name + '.tla')
         env[key] = str(trace)
         run_emit(repo, out, name, package, test, env, args)
         cases.append(case(repo, out, name, model, trace))
-
-
-def emit_groups(repo, out, args, cases):
-    choices = out / 'emitted' / 'choices'
-    choices.mkdir()
-    run_emit(repo, out, 'choices', './modules/verbs', 'TestSetupChoicesActualTrace',
-             {'NOVA_SETUP_CHOICES_TRACE_DIR': str(choices)}, args)
-    for name in ('none', 'configured'):
-        cases.append(case(repo, out, 'choices-' + name, 'SetupChoices', choices / (name + '.tla')))
 
 
 def emit(repo, out, args):
@@ -140,7 +126,6 @@ def emit(repo, out, args):
         shutil.copy2(repo / 'tla' / name, out / 'spec' / name)
     cases = []
     emit_simple(repo, out, args, cases)
-    emit_groups(repo, out, args, cases)
     if snapshot(repo) != before or git(repo, 'rev-parse', 'HEAD').strip() != head:
         raise RuntimeError('source changed during trace emission')
     if len(cases) != len(expected_cases()):

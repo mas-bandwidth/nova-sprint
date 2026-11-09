@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
@@ -97,4 +98,15 @@ func TestUpRefusalNamesCommand(t *testing.T) {
 	if got := upWithCredentials("alice"); !strings.HasSuffix(got, ": env -u NOVA_PG_ADMIN_PASSWORD -u NOVA_SPRINT_PG_PASSWORD nova-sprint up --as alice") {
 		t.Fatal(got)
 	}
+}
+
+// present is a bus where the names given are on it.
+type present []string
+
+func (p present) Who(context.Context) (map[string]bus.Presence, error) {
+	out := map[string]bus.Presence{}
+	for _, n := range p {
+		out[n] = bus.Presence{Name: n}
+	}
+	return out, nil
 }

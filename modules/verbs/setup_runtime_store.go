@@ -14,8 +14,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// PGSetupStore uses a child to reread the durable sprint credential for each
-// probe and migration; its caller never receives that value.
+// PGSetupStore is step 2 in children that reread the durable credentials
+// for each probe and migration; its caller never receives a value.
 type PGSetupStore struct {
 	Role           SprintRoleBootstrap
 	ControlMachine string
@@ -35,8 +35,8 @@ func (p PGSetupStore) Ready(ctx context.Context) (bool, error) {
 	if err != nil || !has {
 		return false, err
 	}
-	// The role's password first (defect 37): a store probe as nova_sprint
-	// passes on a pg_hba trust host whatever the password is.
+	// The role's password first, set from the seat (defect 37): a store
+	// probe as nova_sprint passes on a pg_hba trust host whatever it is.
 	ok, err := p.childWith(ctx, "--internal-setup-role-password", "NOVA_PG_ADMIN_PASSWORD,"+sprintPasswordName)
 	if err != nil || !ok {
 		return false, err
@@ -98,27 +98,15 @@ func (p PGSetupStore) childWith(ctx context.Context, mode, only string) (bool, e
 }
 
 // SprintStoreChild runs only in the dedicated nova-secrets child. Its caller
-// receives a boolean and no credential or raw command output.
-func SprintStoreChild(ctx context.Context, install bool, version string) (bool, error) {
-	dsn, password, dir := os.Getenv("NOVA_PG_DSN"), os.Getenv(sprintPasswordName), os.Getenv("NOVA_SPRINT_BACKUP_DIR")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false, cause("backup directory unavailable", err)
-		}
-		if !filepath.IsAbs(home) {
-			return false, fmt.Errorf("backup directory unavailable: the home directory is not absolute")
-		}
-		dir = filepath.Join(home, ".local", "state", "nova-sprint", "backups")
-	}
+// receives a boolean and no credential or raw command output. Ready is the
+// schema at this build and owned by nova_sprint, and a pg_dump on PATH at
+// least the server's major (backup and clear need it, SETUP section 1).
+func SprintStoreChild(ctx context.Context, install bool) (bool, error) {
+	dsn, password := os.Getenv("NOVA_PG_DSN"), os.Getenv(sprintPasswordName)
 	if dsn == "" || password == "" {
 		return false, fmt.Errorf("store child configuration unavailable: %s", missingNames(map[string]string{"NOVA_PG_DSN": dsn, sprintPasswordName: password}))
 	}
-	if !filepath.IsAbs(dir) {
-		return false, fmt.Errorf("store child configuration unavailable: NOVA_SPRINT_BACKUP_DIR is not absolute")
-	}
-	var err error
-	dsn, err = sprintDSN(dsn)
+	dsn, err := sprintDSN(dsn)
 	if err != nil {
 		return false, err
 	}
@@ -135,33 +123,7 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 	if err != nil || !ok {
 		return false, err
 	}
-	archive := PGBackups{DSN: dsn, Password: password, Directory: dir, Version: version, Loader: PGSQLLoader{}}
-	ok, _, err = verifiedFirstBackup(ctx, pg, archive, dir)
-	if err != nil {
-		return false, err
-	}
-	if ok || !install {
-		return ok, nil
-	}
-	if err = os.MkdirAll(dir, 0700); err != nil {
-		return false, cause("backup directory unavailable", err)
-	}
-	attempt, err := os.MkdirTemp(dir, "attempt-")
-	if err != nil {
-		return false, cause("backup directory unavailable", err)
-	}
-	if _, err = archive.Backup(ctx, attempt); err != nil {
-		_ = os.Remove(attempt) // only removes an empty attempt, never evidence; the backup's failure is the one reported
-		if r := AsRefusal(err); r != nil {
-			return false, r // pg_dump's or the build version's refusal: its Problem and Fix as they are
-		}
-		return false, fmt.Errorf("first backup failed: %w", err)
-	}
-	ok, why, err := verifiedFirstBackup(ctx, pg, archive, dir)
-	if err == nil && !ok {
-		return false, fmt.Errorf("first backup did not verify: %s", why)
-	}
-	return ok, err
+	return true, PGBackups{DSN: dsn, Password: password}.checkDumpVersion(ctx)
 }
 
 func ensureStoreSchema(ctx context.Context, pg *store.PG, install bool) (bool, error) {
@@ -217,55 +179,4 @@ func sprintDSN(dsn string) (string, error) {
 	}
 	u.User = url.User("nova_sprint")
 	return u.String(), nil
-}
-
-// verifiedFirstBackup is true when a backup in dir verifies against the
-// store; false with why none did (the last file's reason), for the caller
-// that must say it.
-func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, dir string) (bool, string, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "sprint-e*-s*.sql"))
-	if err != nil {
-		return false, "", cause("backup directory unavailable", err)
-	}
-	attempts, err := filepath.Glob(filepath.Join(dir, "attempt-*", "sprint-e*-s*.sql"))
-	if err != nil {
-		return false, "", cause("backup directory unavailable", err)
-	}
-	files = append(files, attempts...)
-	id, err := pg.Schema(ctx)
-	if err != nil {
-		return false, "", cause("schema identity unavailable", err)
-	}
-	if !id.Current {
-		return false, "", fmt.Errorf("schema identity unavailable: the store's schema is not this build's")
-	}
-	snap, err := pg.Snapshot(ctx)
-	if err != nil {
-		return false, "", cause("store snapshot unavailable", err)
-	}
-	why := "no backup file in the backup directory"
-	for _, file := range files {
-		name := filepath.Base(file)
-		info, err := archive.Verify(ctx, file)
-		if err != nil {
-			if ctx.Err() != nil {
-				return false, "", ctx.Err()
-			}
-			why = name + ": " + errText(err)
-			continue
-		}
-		if info.Seq > snap.Seq || info.PrefixDigest == "" || info.SchemaHash != id.Hash {
-			why = fmt.Sprintf("%s: seq %d (store at %d), schema %s (store %s), digest %q", name, info.Seq, snap.Seq, info.SchemaHash, id.Hash, info.PrefixDigest)
-			continue
-		}
-		digest, err := EventPrefixDigest(ctx, pg, info.Seq)
-		if err != nil {
-			return false, "", cause("event history unavailable", err)
-		}
-		if digest == info.PrefixDigest {
-			return true, "", nil
-		}
-		why = name + ": its event prefix digest differs from the store's"
-	}
-	return false, why, nil
 }

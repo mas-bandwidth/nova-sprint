@@ -1,16 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/netip"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
@@ -24,8 +20,8 @@ func TestProductionSetupConstructsRealDependenciesWithoutNetwork(t *testing.T) {
 	st := store.NewFake()
 	cfg := configForSetup()
 	cfg.SprintPassword = "fixture"
-	env := verbs.ExecEnvironment{DSN: cfg.DSN, Password: cfg.SprintPassword, Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
-	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
+	env := verbs.ExecEnvironment{DSN: cfg.DSN, Password: cfg.SprintPassword}
+	setup := makeProductionSetup(st, env, "v1.6.0", cfg)
 	p, ok := setup.(productionSetup)
 	if !ok {
 		t.Fatal("wrong adapter")
@@ -36,43 +32,30 @@ func TestProductionSetupConstructsRealDependenciesWithoutNetwork(t *testing.T) {
 	if _, ok := p.runtime.Run.(verbs.PGSetupRun); !ok {
 		t.Fatal("missing run adapter")
 	}
-	if _, ok := p.runtime.Adoption.(verbs.VersionAdoption); !ok {
-		t.Fatal("missing adoption adapter")
-	}
-	if p.forInput(verbs.SetupInput{Actor: "rowan"}).Prerequisites.Env.Choices.Actor != "rowan" {
-		t.Fatal("input actor not carried")
-	}
 }
 func TestProductionSetupRefusesMissingAndUnimplementedConfiguration(t *testing.T) {
 	t.Parallel()
 	st := store.NewFake()
-	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
+	env := verbs.ExecEnvironment{}
 	cfg := configForSetup()
 	cfg.Secrets.Pins = ""
-	setup, lock := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
-	_, err := setup.Verify(context.Background(), 2, verbs.SetupInput{Actor: "alice"})
+	_, err := makeProductionSetup(st, env, "v1.6.0", cfg).Verify(context.Background(), 2, verbs.SetupInput{Actor: "alice"})
 	var op *verbs.OperationError
 	if !errors.As(err, &op) || !strings.Contains(op.Fix, "NOVA_SECRETS_PINS") {
 		t.Fatal(err)
 	}
-	_, err = lock.Acquire(context.Background())
-	if !errors.As(err, &op) || op.Fix != "nova-sprint up --as <you>" || strings.Contains(op.Error(), "nova-secrets") {
-		t.Fatal(err)
-	}
 	cfg = configForSetup()
-	setup, _ = makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
-	_, err = setup.Verify(context.Background(), 3, verbs.SetupInput{Actor: "alice"})
-	if !errors.As(err, &op) || op.Fix != "nova-sprint up --as alice" || !strings.HasPrefix(op.Problem, "the sprint is not set up") {
+	_, err = makeProductionSetup(st, env, "v1.6.0", cfg).Verify(context.Background(), 4, verbs.SetupInput{Actor: "alice"})
+	if !errors.As(err, &op) || op.Fix != "nova-sprint up --as alice" || !strings.Contains(op.Problem, "no sprint credential") {
 		t.Fatal(err)
 	}
 	cfg.SprintPassword = "fixture"
-	setup, _ = makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
-	p := setup.(productionSetup)
+	p := makeProductionSetup(st, env, "v1.6.0", cfg).(productionSetup)
 	p.command = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":0},"items":[]}`), nil
 	}
 	_, err = p.Verify(context.Background(), 4, verbs.SetupInput{Actor: "alice"})
-	if !errors.As(err, &op) || !strings.Contains(op.Problem, "run host") {
+	if !errors.As(err, &op) || !strings.Contains(op.Problem, "absent from the inventory") {
 		t.Fatal(err)
 	}
 }
@@ -88,109 +71,14 @@ func TestSetupRoleDSNUsesCorrectIdentityWithoutSecrets(t *testing.T) {
 		}
 	}
 }
-func TestContinuationRecordIsReusableAndEpochFenced(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	st := store.NewFake()
-	in := verbs.SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
-	digest, err := handoffDigest(in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := strings.Repeat("a", 64)
-	request, _ := json.Marshal(handoffEnvelope{ID: id, Actor: in.Actor, Digest: digest})
-	st.Drop("up-handoff-"+id, true)
-	written, err := writeSetupContinuation(ctx, st, bytes.NewReader(request), time.Unix(1000, 0))
-	if err != nil || written != id {
-		t.Fatal(written, err)
-	}
-	written, err = writeSetupContinuation(ctx, st, bytes.NewReader(request), time.Unix(1000, 0))
-	if err != nil || written != id {
-		t.Fatal(written, err)
-	}
-	if err = validateHandoffRecord(ctx, st, id, in.Actor, digest); err != nil {
-		t.Fatal(err)
-	}
-	changed := in
-	changed.Services = "deepseek"
-	other, _ := handoffDigest(changed)
-	if err = validateHandoffRecord(ctx, st, id, in.Actor, other); err == nil {
-		t.Fatal("changed arguments accepted")
-	}
-	if err = validateHandoffRecord(ctx, st, id, "bob", digest); err == nil {
-		t.Fatal("changed actor accepted")
-	}
-	snap, _ := st.Snapshot(ctx)
-	rec, err := st.Clear(ctx, store.Op{ID: "clear", Epoch: snap.Epoch, Actor: "alice", Kind: "clear", At: time.Unix(1000, 0)})
-	if err != nil || !rec.Accepted {
-		t.Fatal(rec, err)
-	}
-	if err = validateHandoffRecord(ctx, st, id, in.Actor, digest); err == nil {
-		t.Fatal("stale epoch accepted")
-	}
-}
-func TestContinuationInputBoundsAndNoSecretEnvironment(t *testing.T) {
-	t.Parallel()
-	id := strings.Repeat("a", 64)
-	in := verbs.SetupInput{Actor: "alice"}
-	digest, _ := handoffDigest(in)
-	request, _ := json.Marshal(handoffEnvelope{ID: id, Actor: "alice", Digest: digest})
-	oversized := append(request, bytes.Repeat([]byte(" "), 1025)...)
-	if _, err := writeSetupContinuation(context.Background(), store.NewFake(), bytes.NewReader(oversized), time.Unix(1000, 0)); err == nil {
-		t.Fatal("oversized request accepted")
-	}
-	env := continuationEnv([]string{"PATH=/bin", "NOVA_PG_DSN=postgres://x/db", "NOVA_PG_ADMIN_PASSWORD=fixture", "NOVA_SPRINT_PG_PASSWORD=fixture"})
-	for _, v := range env {
-		if strings.Contains(v, "PASSWORD") || strings.Contains(v, "fixture") {
-			t.Fatal("secret inherited")
-		}
-	}
-}
-
-type gappedContinuationStore struct{ store.Store }
-
-func (g gappedContinuationStore) Events(context.Context, int64, int) ([]store.Event, error) {
-	return []store.Event{{Seq: 2}}, nil
-}
-
-func TestContinuationRejectsGappedHistory(t *testing.T) {
-	t.Parallel()
-	st := gappedContinuationStore{store.NewFake()}
-	if _, _, err := findSetupContinuation(context.Background(), st, store.Snapshot{Seq: 2}, strings.Repeat("a", 64)); err == nil {
-		t.Fatal("gapped history accepted")
-	}
-}
-func TestProductionSetupRejectsCombinedSecrets(t *testing.T) {
-	t.Parallel()
-	cfg := configForSetup()
-	cfg.AdminPassword = "fixture-admin"
-	cfg.SprintPassword = "fixture-sprint"
-	st := store.NewFake()
-	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
-	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
-	_, err := setup.Verify(context.Background(), 1, verbs.SetupInput{Actor: "alice"})
-	var op *verbs.OperationError
-	if !errors.As(err, &op) || !strings.Contains(op.Problem, "both admin and sprint") {
-		t.Fatal(err)
-	}
-}
-func TestProductionSetupRequiresCoordinatorBeforeEffects(t *testing.T) {
-	t.Parallel()
-	p := productionSetup{}
-	_, err := p.Verify(context.Background(), 1, verbs.SetupInput{})
-	var op *verbs.OperationError
-	if !errors.As(err, &op) || op.Fix != "nova-sprint up --as <name>" {
-		t.Fatalf("missing coordinator did not produce a prerequisite: %v", err)
-	}
-}
 func TestProductionSetupDerivesRunAndDashboardFromFleetRows(t *testing.T) {
 	t.Parallel()
 	st := store.NewFake()
 	cfg := configForSetup()
 	cfg.SprintPassword = "fixture"
 	cfg.BusRedis = "100.100.1.3:6379"
-	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
-	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
+	env := verbs.ExecEnvironment{}
+	setup := makeProductionSetup(st, env, "v1.6.0", cfg)
 	p := setup.(productionSetup)
 	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
 		if name != "nova-config" {
@@ -201,45 +89,15 @@ func TestProductionSetupDerivesRunAndDashboardFromFleetRows(t *testing.T) {
 		}
 		return []byte(`{"result":{"verb":"service list","status":"ok","exit":0},"facts":{"kind":"service","rows":1},"items":[{"kind":"service","fields":{"name":"sprint-run","machine":"studio","seat":"studio","keys":"NOVA_SPRINT_PG_PASSWORD","argv":["/remote/bin/nova-sprint","run","--listen","100.100.1.2:8080"],"every":0,"keepalive":true,"enabled":true,"env":{"NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova","NOVA_BUS_REDIS":"100.100.1.3:6379"},"log":""}}]}`), nil
 	}
-	r, err := p.configuredRuntime(context.Background(), verbs.SetupInput{Actor: "alice", Dash: "tailnet"}, true)
+	r, _, err := p.configuredRuntime(context.Background(), verbs.SetupInput{Actor: "alice", Dash: "tailnet"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.RunService.Machine != "studio" || r.RunService.Argv[0] != "/remote/bin/nova-sprint" || r.Dashboards["tailnet"].URL != "http://100.100.1.2:8080" {
+	if r.RunService.Machine != "studio" || r.RunService.Argv[0] != "/remote/bin/nova-sprint" || r.Board.URL != "http://100.100.1.2:8080" || r.Board.Public {
 		t.Fatal("incorrect fleet-derived target")
 	}
 }
 
-// A saved dashboard answer that no longer names a machine refuses, naming
-// the flag that answers again; the flag wins over it.
-func TestProductionSetupSavedDashboardAnswerCanBeAnsweredAgain(t *testing.T) {
-	t.Parallel()
-	st := store.NewFake()
-	cfg := configForSetup()
-	cfg.SprintPassword = "fixture"
-	cfg.BusRedis = "100.100.1.3:6379"
-	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}}
-	if err := env.Choices.Save(context.Background(), "dashboard", "public=studio=37.27.135.206"); err != nil {
-		t.Fatal(err)
-	}
-	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
-	p := setup.(productionSetup)
-	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
-		if args[0] == "machine" {
-			return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":1},"items":[{"kind":"machine","fields":{"name":"studio","address":"100.100.1.2","roles":"services"}}]}`), nil
-		}
-		return []byte(`{"result":{"verb":"service list","status":"ok","exit":0},"facts":{"kind":"service","rows":1},"items":[{"kind":"service","fields":{"name":"sprint-run","machine":"studio","seat":"studio","keys":"NOVA_SPRINT_PG_PASSWORD","argv":["/remote/bin/nova-sprint","run","--listen","100.100.1.2:8080"],"every":0,"keepalive":true,"enabled":true,"env":{"NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova","NOVA_BUS_REDIS":"100.100.1.3:6379"},"log":""}}]}`), nil
-	}
-	_, err := p.configuredRuntime(context.Background(), verbs.SetupInput{Actor: "alice"}, true)
-	var op *verbs.OperationError
-	if !errors.As(err, &op) || !strings.Contains(op.Problem, "saved dashboard answer") || !strings.Contains(op.Fix, "--dash") {
-		t.Fatalf("saved bad answer: %v", err)
-	}
-	r, err := p.configuredRuntime(context.Background(), verbs.SetupInput{Actor: "alice", Dash: "tailnet"}, true)
-	if err != nil || r.Dashboards["tailnet"].URL != "http://100.100.1.2:8080" {
-		t.Fatalf("flag did not win: %v", err)
-	}
-}
 func TestProductionSetupRefusesUnsafeOrUnprovenEndpoints(t *testing.T) {
 	t.Parallel()
 	if _, err := privateDashboardURL("0.0.0.0:8080"); err == nil {
@@ -418,115 +276,6 @@ func TestRunServiceRejectsUnsafeListenerAndUnexpectedKeys(t *testing.T) {
 	}
 }
 
-func TestRemoteRunRefusedBeforeFleetCommands(t *testing.T) {
-	t.Parallel()
-	st := store.NewFake()
-	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
-	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", configForSetup())
-	p := setup.(productionSetup)
-	p.command = func(context.Context, string, ...string) ([]byte, error) {
-		t.Fatal("fleet command before remote refusal")
-		return nil, nil
-	}
-	_, err := p.configuredRuntime(context.Background(), verbs.SetupInput{Actor: "alice", RunOn: "remote"}, false)
-	var op *verbs.OperationError
-	if !errors.As(err, &op) || op.Problem != "run on another host needs nova-fleet install of nova-sprint (nova-tools 2.0.x); for now run here" {
-		t.Fatalf("wrong remote refusal: %v", err)
-	}
-	_, err = p.Verify(context.Background(), 1, verbs.SetupInput{Actor: "alice", RunOn: "remote"})
-	if !errors.As(err, &op) || op.Problem != "run on another host needs nova-fleet install of nova-sprint (nova-tools 2.0.x); for now run here" {
-		t.Fatalf("remote host was not refused before bootstrap: %v", err)
-	}
-}
-
-// One check reads the binary a service will run, on the run host here and
-// on any other machine over ssh, through the version verb's own parser:
-// the verb's real output passes; another version or a pre-v2 bare word is
-// refused naming what it saw, with the nova-fleet install fix.
-func TestServiceVersionUsesFleetInventoryAndPinnedSSH(t *testing.T) {
-	t.Parallel()
-	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.0.0", Host: "studio"}, home: "/home/u"}
-	reported := versionVerbOutput(t, "v2.0.0")
-	var calls []string
-	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
-		calls = append(calls, name+" "+strings.Join(args, " "))
-		switch {
-		case name == "nova-config" && strings.Join(args, " ") == "inventory --host public":
-			return []byte(`{"ansible_host":"100.100.1.2","ansible_user":"fleet"}`), nil
-		case name == "ssh" && strings.Join(args, " ") == "-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -- fleet@100.100.1.2 ~/.local/bin/nova-sprint version":
-			return reported, nil
-		case name == "/home/u/.local/bin/nova-sprint" && strings.Join(args, " ") == "version":
-			return reported, nil
-		}
-		t.Fatalf("unexpected command: %s %v", name, args)
-		return nil, nil
-	}
-	if err := p.checkServiceVersion(context.Background(), "public"); err != nil || len(calls) != 2 {
-		t.Fatal(err, calls)
-	}
-	if err := p.checkServiceVersion(context.Background(), "studio"); err != nil || len(calls) != 3 {
-		t.Fatal(err, calls)
-	}
-	p.cfg.BinaryVersion = "v2.0.1"
-	var op *verbs.OperationError
-	err := p.checkServiceVersion(context.Background(), "public")
-	if !errors.As(err, &op) || !strings.Contains(op.Problem, "fleet@100.100.1.2 reports v2.0.0, this binary is v2.0.1") || op.Fix != "nova-fleet install --repo <org/repo> --tag v2.0.1 public, then nova-sprint up again" {
-		t.Fatal(err)
-	}
-	reported = []byte("v1.6.29\n")
-	if err = p.checkServiceVersion(context.Background(), "studio"); !errors.As(err, &op) || !strings.Contains(op.Problem, `reports "v1.6.29" (not a v2 nova-sprint), this binary is v2.0.1`) {
-		t.Fatal(err)
-	}
-	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
-		if name == "nova-config" {
-			return []byte(`{"ansible_host":"100.100.1.2"}`), nil
-		}
-		return nil, errors.New("connection timed out")
-	}
-	if err = p.checkServiceVersion(context.Background(), "public"); !errors.As(err, &op) || !strings.Contains(op.Problem, "ssh 100.100.1.2: connection timed out") {
-		t.Fatal(err)
-	}
-}
-
-// versionVerbOutput is what `nova-sprint version` prints, from the verb.
-func versionVerbOutput(t *testing.T, version string) []byte {
-	t.Helper()
-	r := (&verbs.Engine{Version: version}).Execute(context.Background(), []string{"version"})
-	if r.Exit != 0 {
-		t.Fatal(r.Output)
-	}
-	return []byte(r.Output)
-}
-
-type fakePublicInstaller struct{ install func() }
-
-func (f fakePublicInstaller) Install(context.Context, string, string) error { f.install(); return nil }
-
-func TestPublicVersionInstallRequiresRecheck(t *testing.T) {
-	t.Parallel()
-	st := store.NewFake()
-	r := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: verbs.ExecEnvironment{Choices: verbs.Choices{Store: st}}}, Dashboards: map[string]verbs.DashboardTarget{"public=public": {Public: true, Service: &verbs.FleetService{Machine: "public"}}}}
-	version, installs, probes := "v1.0.0", 0, 0
-	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.0.0"}}
-	p.command = func(_ context.Context, name string, _ ...string) ([]byte, error) {
-		if name == "nova-config" {
-			return []byte(`{"ansible_host":"100.100.1.2"}`), nil
-		}
-		probes++
-		return versionVerbOutput(t, version), nil
-	}
-	p.installer = fakePublicInstaller{install: func() { installs++; version = "v2.0.0" }}
-	in := verbs.SetupInput{Dash: "public=public"}
-	ready, err := p.ensurePublicVersion(context.Background(), r, in, false)
-	if err != nil || ready || installs != 0 {
-		t.Fatal("probe changed installation", ready, err)
-	}
-	ready, err = p.ensurePublicVersion(context.Background(), r, in, true)
-	if err != nil || !ready || installs != 1 || probes != 3 {
-		t.Fatal("installation was not followed by a fresh version probe", ready, err, installs, probes)
-	}
-}
-
 func TestFleetCommandsUseIsolatedConfigCredential(t *testing.T) {
 	t.Parallel()
 	cfg := configForSetup()
@@ -592,59 +341,49 @@ func TestUnwrappedToolsReceiveOnlyTheirOwnInputs(t *testing.T) {
 func TestProductionSetupRefusesABadDSN(t *testing.T) {
 	t.Parallel()
 	st := store.NewFake()
-	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
+	env := verbs.ExecEnvironment{}
 	cfg := configForSetup()
 	cfg.DSN = "mysql://db/nova"
-	setup, lock := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
+	setup := makeProductionSetup(st, env, "v1.6.0", cfg)
 	if _, err := setup.Verify(context.Background(), 1, verbs.SetupInput{Actor: "alice"}); err == nil || !strings.Contains(err.Error(), `scheme "mysql" is not postgres`) {
 		t.Fatalf("verify: %v", err)
 	}
-	if _, err := lock.Acquire(context.Background()); err == nil || !strings.Contains(err.Error(), `scheme "mysql"`) {
-		t.Fatalf("lock: %v", err)
-	}
 }
 
-// tickingStore is a live sprint: the run service writes an op between the
-// continuation's read and each of its first n writes.
-type tickingStore struct {
-	*store.Fake
-	n int
-}
-
-func (s *tickingStore) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
-	if s.n > 0 && strings.HasPrefix(op.ID, "up-handoff-") {
-		s.n--
-		tick := store.Op{ID: fmt.Sprintf("tick-%d", s.n), Epoch: op.Epoch, Actor: "sprint", Kind: "tick", At: op.At, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: fmt.Sprintf("tick:%d", s.n), Body: "x"}}}
-		if r, err := s.Fake.Apply(ctx, tick); err != nil || !r.Accepted {
-			return r, fmt.Errorf("tick: %+v %v", r, err)
-		}
-	}
-	return s.Fake.Apply(ctx, op)
-}
-
-// A tick between up's read and its continuation write is the store moving
-// on, not a refusal of the continuation: the write reads again and lands.
-// Ticks without end still refuse, after a bounded number of tries.
-func TestContinuationWriteSurvivesALiveRun(t *testing.T) {
+// up checks this release where a step runs nova-sprint with nova-fleet
+// install --check, and installs it on the act; a recap line that would
+// change a machine, or none for it, is drift; a build that is not a
+// release can be neither checked nor installed.
+func TestReleaseChecksAndInstallsThroughNovaFleet(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	in := verbs.SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
-	digest, err := handoffDigest(in)
-	if err != nil {
+	var calls [][]string
+	recap := "PLAY RECAP *****\namd-1                      : ok=5    changed=0    unreachable=0    failed=0    skipped=1\namd-2                      : ok=5    changed=1    unreachable=0    failed=0    skipped=1\n"
+	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.1.0"}, command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		return []byte(recap), nil
+	}}
+	err := p.release(context.Background(), []string{"amd-1", "amd-2"}, false)
+	var op *verbs.OperationError
+	if !errors.As(err, &op) || !strings.Contains(op.Problem, "is not what amd-2 runs") || strings.Contains(op.Problem, "amd-1") || op.Fix != "nova-fleet install --repo mas-bandwidth/nova-sprint --tag v2.1.0 --names nova-sprint amd-1 amd-2, then nova-sprint up again" {
 		t.Fatal(err)
 	}
-	id := strings.Repeat("b", 64)
-	request, _ := json.Marshal(handoffEnvelope{ID: id, Actor: in.Actor, Digest: digest})
-	st := &tickingStore{Fake: store.NewFake(), n: 2}
-	written, err := writeSetupContinuation(ctx, st, bytes.NewReader(request), time.Unix(1000, 0))
-	if err != nil || written != id {
-		t.Fatal(written, err)
+	if want := []string{"nova-fleet", "install", "--check", "--repo", "mas-bandwidth/nova-sprint", "--tag", "v2.1.0", "--names", "nova-sprint", "amd-1", "amd-2"}; !slices.Equal(calls[0], want) {
+		t.Fatalf("%q", calls[0])
 	}
-	if err = validateHandoffRecord(ctx, st, id, in.Actor, digest); err != nil {
+	if err = p.release(context.Background(), []string{"amd-1", "amd-2"}, true); err != nil || slices.Contains(calls[1], "--check") {
+		t.Fatalf("%v %q", err, calls[1])
+	}
+	if err = p.release(context.Background(), []string{"amd-1", "absent"}, false); !errors.As(err, &op) || !strings.Contains(op.Problem, "absent runs") {
 		t.Fatal(err)
 	}
-	busy := &tickingStore{Fake: store.NewFake(), n: 100}
-	if _, err := writeSetupContinuation(ctx, busy, bytes.NewReader(request), time.Unix(1000, 0)); err == nil || !strings.Contains(err.Error(), "continuation refused") {
-		t.Fatalf("a store that never settles: %v", err)
+	if err = p.release(context.Background(), []string{"amd-1"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = p.release(context.Background(), nil, false); err != nil || len(calls) != 4 {
+		t.Fatal(err, len(calls))
+	}
+	p.cfg.BinaryVersion = "dev+0123456789ab"
+	if err = p.release(context.Background(), []string{"amd-1"}, true); !errors.As(err, &op) || !strings.Contains(op.Problem, "not a release") || len(calls) != 4 {
+		t.Fatal(err)
 	}
 }

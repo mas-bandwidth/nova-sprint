@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 RUN_INV = ["TypeOK", "OneChooser", "NoApplyAfterObservedLoss", "AppliedOnce", "NoStaleMove", "BudgetKept",
            "PushAfterCommit", "CursorTrailsSent", "FIFO", "NoDroppedPlan", "EdgesAfterCommit", "NoTickAfterObservedStop", "NoAcceptedTickWhileStopped",
            "NoTickWhileStopped", "NeverStartedMovesNothing"]
-SETUP_INV = ["TypeOK", "NeverAhead", "OnlyVerified", "AskedOnce", "KeyNeverPrinted", "RestartFromOne"]
+SETUP_INV = ["TypeOK", "NeverAhead", "OnlyVerified", "AskedOnce", "RestartFromOne"]
 
 def config(model, *, work=3, reports=1, failures=1, budget=2, processes=2, temporal=True):
     if model == "Run":
@@ -65,15 +65,12 @@ WITNESSES = [
      [("IF world[pc] /\\ Need(pc) \\subseteq answers", "IF TRUE")]),
     ("Setup", "SetupAnswersLost", "AskedOnce", "invariant",
      "Crash forgets already durable answers, causing a second question.",
-     [("/\\ UNCHANGED <<world, answers, asked, keySinks, orderOK, verifiedOnly, resumeOK>>",
-       "/\\ answers' = {}\n  /\\ UNCHANGED <<world, asked, keySinks, orderOK, verifiedOnly, resumeOK>>")]),
+     [("/\\ UNCHANGED <<world, answers, asked, orderOK, verifiedOnly, resumeOK>>",
+       "/\\ answers' = {}\n  /\\ UNCHANGED <<world, asked, orderOK, verifiedOnly, resumeOK>>")]),
     ("Setup", "SetupResumeSkips", "RestartFromOne", "invariant",
-     "A new invocation resumes at step eight instead of rechecking from one.",
+     "A new invocation (the credential's walk after a handoff included) resumes at step seven instead of rechecking from one.",
      [("/\\ pc' = 1 /\\ verified' = {} /\\ phase' = \"probe\"",
-       "/\\ pc' = 8 /\\ verified' = {} /\\ phase' = \"probe\"")]),
-    ("Setup", "SetupKeyInArgv", "KeyNeverPrinted", "invariant",
-     "The hidden prompt forwards the secret through a command argument.",
-     [("keySinks \\cup {\"secrets-stdin\"}", "keySinks \\cup {\"argv\"}")]),
+       "/\\ pc' = 7 /\\ verified' = {} /\\ phase' = \"probe\"")]),
 ]
 
 def main():

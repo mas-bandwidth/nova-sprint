@@ -35,8 +35,8 @@ UInit == Init /\ sprint = "none" /\ started = FALSE /\ moved = FALSE
 \* Step 2's action makes the store once; a later repair of step 2 keeps it.
 MakeStore == IF pc = 2 /\ sprint = "none" THEN sprint' = FreshSprint ELSE UNCHANGED sprint
 UDo == Do /\ MakeStore /\ UNCHANGED <<started, moved>>
-UProgress == UDo \/ ((Restart \/ Probe \/ (\E q \in Questions : Ask(q))) /\ UNCHANGED upVars)
-Disrupt == (Crash \/ (\E k \in Steps : Regress(k))) /\ UNCHANGED upVars
+UProgress == UDo \/ ((Restart \/ Probe \/ Settle \/ (\E q \in Questions : Ask(q))) /\ UNCHANGED upVars)
+Disrupt == (Handoff \/ Crash \/ (\E k \in Steps : Regress(k))) /\ UNCHANGED upVars
 
 \* The run service (up from step 4's action) ticks whatever the walk's step.
 Tick ==

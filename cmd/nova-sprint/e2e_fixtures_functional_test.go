@@ -335,7 +335,7 @@ func (x *e2e) storeSetup() {
 		why = append(why, fmt.Sprintf("backup: %v", berr))
 		pg.Close()
 	}
-	ready, err := verbs.SprintStoreChild(ctx, true, x.version)
+	ready, err := verbs.SprintStoreChild(ctx, true)
 	why = append(why, fmt.Sprintf("SprintStoreChild: ready=%v err=%v", ready, err))
 	x.tr.record("up's store step in process, for the reason", exitOf(err), strings.Join(why, "\n"))
 	x.t.Fatalf("the store step failed: exit %d %s; in process:\n%s", code, out, strings.Join(why, "\n"))

@@ -8,49 +8,28 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// SetupInput is up's non-secret choices. A service key is read by the setup
-// adapter at a hidden terminal prompt and sent straight to nova-secrets.
-type SetupInput struct{ Actor, Dash, Services, Key, RunOn, Version, Continuation string }
+// SetupInput is up's flags: the coordinator and, for a public board, where.
+type SetupInput struct{ Actor, Dash string }
 
-// SetupCheck is one step's probe. Action is true only when the choices make
-// the step's next idempotent action possible without another question.
+// SetupCheck is one step's probe. Action is true only when the step's next
+// idempotent action is possible without another question.
 type SetupCheck struct {
 	Verified, Action bool
 	Line, Next       string
 	Refusal          *OperationError
 }
 
-// Setup owns each step's effects: Verify inspects the actual state; Act
-// persists an answer or performs an idempotent action, and never itself
-// proves the step (tla/Setup.tla).
+// Setup owns each step's effects but step 3's: Verify inspects the actual
+// state; Act performs an idempotent action, and never itself proves the
+// step (tla/Setup.tla).
 type Setup interface {
 	Verify(context.Context, int, SetupInput) (SetupCheck, error)
 	Act(context.Context, int, SetupInput) error
 }
 
-// SetupLock serializes a whole walk across hosts, on the database.
-type SetupLock interface {
-	Acquire(context.Context) (SetupLease, error)
-}
-
-// SetupLease is a held walk: Monitor cancels the context when the lease is
-// lost, Check says whether it is still held.
-type SetupLease interface {
-	Monitor(context.Context) (context.Context, context.CancelFunc)
-	Check(context.Context) error
-	Close() error
-}
-
-// SetupHandoff correlates the admin bootstrap with the walk under the
-// sprint's own credential.
-type SetupHandoff interface {
-	PrepareHandoff(context.Context, SetupInput) (string, bool, error)
-	ValidateHandoff(context.Context, string, SetupInput) error
-}
-
-// SetupCompletion is the walk's last line.
+// SetupCompletion is the walk's last line, from what the steps verified.
 type SetupCompletion interface {
-	Completion(context.Context) (string, error)
+	Completion(context.Context, SetupInput) (string, error)
 }
 
 // Reader is one read of the store, for the setup steps.
@@ -61,30 +40,25 @@ type Reader interface {
 // SetupObservation is a non-secret fact the walk observed, for the trace
 // harness; the walk never synthesizes model state.
 type SetupObservation struct {
-	Kind, Scope              string
-	Step                     int
-	Verified, Action, Failed bool
+	Kind             string
+	Step             int
+	Verified, Action bool
+	Failed           bool
 }
 
 // setupSteps is how many steps the walk has.
-const setupSteps = 8
+const setupSteps = 7
 
 // setupInput is up's flags as the walk's input.
 func setupInput(in *input) (SetupInput, error) {
-	s := SetupInput{Actor: in.actor, Dash: in.str("dash"), Services: in.str("services"), Key: in.str("key"),
-		RunOn: in.str("run-on"), Version: in.str("version"), Continuation: in.str("continuation")}
+	s := SetupInput{Actor: in.actor, Dash: in.str("dash")}
 	switch {
 	case !validName(s.Actor):
 		return s, refuse("up names its coordinator", "nova-sprint up --as <you>")
-	case s.Continuation != "" && !validContinuationID(s.Continuation):
-		return s, misuse("up", "--continuation is the 64-hex id up printed")
 	case s.Dash != "" && s.Dash != "tailnet" && !strings.HasPrefix(s.Dash, "public="):
 		return s, misuse("up", "--dash is tailnet or public=<machine>[:<port>]")
-	}
-	for _, v := range []string{s.Services, s.Key, s.RunOn, s.Version, s.Dash} {
-		if len(v) > 512 {
-			return s, misuse("up", "a value is at most 512 bytes")
-		}
+	case len(s.Dash) > 512:
+		return s, misuse("up", "a value is at most 512 bytes")
 	}
 	return s, nil
 }
@@ -100,190 +74,84 @@ func ParseSetup(args []string, actor string) (SetupInput, bool) {
 	return s, err == nil
 }
 
-func validContinuationID(id string) bool {
-	return len(id) == 64 && strings.Trim(id, "0123456789abcdef") == ""
-}
-
-// runUp is `up`: the walk, every step re-verified from step 1, under the
-// setup lock; the caller on the bus first; hooked in as coordinator once
-// the store exists (after step 2).
+// runUp is `up`: the walk, every step re-verified from step 1, the caller
+// on the bus first. A process without the sprint's credential
+// (UpStoreOnly) stops silently once step 2 verifies; its caller runs the
+// walk again under that credential (LAYER-6 section 5).
 func runUp(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	s, err := setupInput(in)
 	if err != nil {
 		return "", err
 	}
-	if e.Setup == nil || e.Lock == nil {
+	if e.Setup == nil {
 		return "", broken("the setup walk is not configured", "nova-sprint check")
-	}
-	if err := e.handoffValid(ctx, s, "bootstrap"); err != nil {
-		return "", err
 	}
 	if err := e.onBus(ctx, s.Actor); err != nil {
 		return "", err
 	}
-	var out strings.Builder
-	if err := e.setupStep(ctx, 1, s, &out, "bootstrap"); err != nil {
-		return "", err
-	}
-	return e.upLeased(ctx, s)
-}
-
-// upLeased is the walk under the setup lease; a walk that hands off to the
-// sprint's own credential reports its continuation and prints nothing (the
-// continuation prints the walk).
-func (e *Engine) upLeased(ctx context.Context, s SetupInput) (string, error) {
-	lease, err := e.Lock.Acquire(ctx)
-	if err != nil {
-		return "", err
-	}
-	monitored, cancel := lease.Monitor(ctx)
-	out, id, werr := e.walk(monitored, lease, s)
-	cancel()
-	err = lease.Close()
-	e.observe(SetupObservation{Kind: "lease-closed", Scope: "handoff", Failed: err != nil})
-	if werr != nil || err != nil || id == "" {
-		return out, firstErr(werr, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	if e.ReportContinuation == nil {
-		return "", broken("the setup handoff is not configured", "nova-sprint check")
-	}
-	err = e.ReportContinuation(ctx, id, s)
-	e.observe(SetupObservation{Kind: "handoff-signaled", Scope: "handoff", Failed: err != nil})
-	return "", err
-}
-
-func firstErr(errs ...error) error {
-	for _, err := range errs {
+	e.observe(SetupObservation{Kind: "begin"})
+	var b strings.Builder
+	step := 1
+	for ; step <= setupSteps; step++ {
+		if step == 3 && e.UpStoreOnly {
+			e.observe(SetupObservation{Kind: "store-only", Step: 2})
+			return "", nil
+		}
+		if step == 3 {
+			err = e.coordinatorStep(ctx, s, &b)
+		} else {
+			err = e.setupStep(ctx, step, s, &b)
+		}
 		if err != nil {
-			return err
+			e.observe(SetupObservation{Kind: "stop", Step: step, Failed: true})
+			return "", err
 		}
 	}
+	out, err := e.completeSetup(ctx, s, &b)
+	e.observe(SetupObservation{Kind: map[bool]string{true: "stop", false: "complete"}[err != nil], Step: setupSteps, Failed: err != nil})
+	return out, err
+}
+
+// coordinatorStep is step 3: the caller hooked into the sprint as its
+// coordinator, hooked once when it is not.
+func (e *Engine) coordinatorStep(ctx context.Context, s SetupInput, out *strings.Builder) error {
+	snap, err := e.snapshot(ctx)
+	hooked := err == nil && snap.Rows[s.Actor].Session != "" && snap.Rows[s.Actor].Role == "coordinator"
+	e.observe(SetupObservation{Kind: "verify", Step: 3, Verified: hooked, Action: err == nil && !hooked, Failed: err != nil})
+	if err == nil && !hooked {
+		var text string
+		text, err = e.hookAs(ctx, snap, s.Actor, "coordinator")
+		e.observe(SetupObservation{Kind: "act", Step: 3, Failed: err != nil})
+		if err == nil {
+			out.WriteString(text[:strings.LastIndex(text, "next: ")])
+			snap, err = e.snapshot(ctx)
+			hooked = err == nil && snap.Rows[s.Actor].Session != ""
+			e.observe(SetupObservation{Kind: "verify", Step: 3, Verified: hooked, Failed: err != nil})
+		}
+	}
+	if err != nil {
+		f := classify(err)
+		f.Detail = out.String()
+		return f
+	}
+	out.WriteString("UP 3/7 coordinator " + s.Actor + ": hooked as coordinator: VERIFIED\n")
 	return nil
 }
 
-// walk is steps 1 to 8 with the lease checked around each, the handoff
-// prepared after step 2, and the coordinator hooked in after it.
-func (e *Engine) walk(ctx context.Context, lease SetupLease, s SetupInput) (out string, continuation string, err error) {
-	e.observe(SetupObservation{Kind: "begin", Scope: "walk"})
-	step := 0
-	defer func() { e.observeEnd(step, continuation, err) }()
-	if err = e.handoffValid(ctx, s, "walk"); err != nil {
-		return "", "", err
-	}
-	handoff, hasHandoff := e.Setup.(SetupHandoff)
-	var b strings.Builder
-	for step = 1; step <= setupSteps; step++ {
-		if err = e.leased(ctx, lease, step, s); err != nil {
-			return "", "", err
-		}
-		if err = e.setupStep(ctx, step, s, &b, "walk"); err != nil {
-			return "", "", err
-		}
-		if err = e.leased(ctx, lease, 0, s); err != nil {
-			return "", "", err
-		}
-		if step == 2 && s.Continuation == "" && hasHandoff {
-			if id, err := e.prepareHandoff(ctx, lease, s, handoff); err != nil || id != "" {
-				return "", id, err
-			}
-		}
-		if step == 2 {
-			if err = e.upHook(ctx, lease, s, &b); err != nil {
-				return "", "", err
-			}
-		}
-	}
-	return e.completeSetup(ctx, lease, &b)
-}
-
-func (e *Engine) observeEnd(step int, continuation string, err error) {
-	kind := "complete"
-	if continuation != "" {
-		kind = "handoff-prepared"
-	} else if err != nil {
-		kind = "stop"
-	}
-	e.observe(SetupObservation{Kind: kind, Scope: "walk", Step: step, Failed: err != nil})
-}
-
-// leased is the lease still held and the context live; from step 3 the
-// caller must be the hooked coordinator.
-func (e *Engine) leased(ctx context.Context, lease SetupLease, step int, s SetupInput) error {
-	if step >= 3 {
-		if _, err := e.hooked(ctx, &input{verb: "up", actor: s.Actor}, roleCoordinator); err != nil {
-			return err
-		}
-	}
-	if err := context.Cause(ctx); err != nil {
-		return err
-	}
-	return lease.Check(ctx)
-}
-
-// handoffValid checks a continuation's handoff, when up was given one.
-func (e *Engine) handoffValid(ctx context.Context, s SetupInput, scope string) error {
-	if s.Continuation == "" {
-		return nil
-	}
-	handoff, ok := e.Setup.(SetupHandoff)
-	if !ok {
-		return refuse("this build has no setup continuation", "nova-sprint up --as "+s.Actor)
-	}
-	err := handoff.ValidateHandoff(ctx, s.Continuation, s)
-	e.observe(SetupObservation{Kind: map[string]string{"bootstrap": "prevalidate-handoff", "walk": "validate-handoff"}[scope], Scope: scope, Failed: err != nil})
-	return err
-}
-
-func (e *Engine) prepareHandoff(ctx context.Context, lease SetupLease, s SetupInput, handoff SetupHandoff) (string, error) {
-	id, needed, err := handoff.PrepareHandoff(ctx, s)
-	e.observe(SetupObservation{Kind: "prepare-handoff", Scope: "walk", Step: 2, Action: needed, Failed: err != nil})
-	if err != nil || !needed {
-		return "", err
-	}
-	if !validContinuationID(id) {
-		return "", broken("the setup handoff made a bad continuation id", "nova-sprint up --as "+s.Actor)
-	}
-	return id, lease.Check(ctx)
-}
-
-// upHook hooks the caller in as coordinator once the store exists, unless
-// it already is.
-func (e *Engine) upHook(ctx context.Context, lease SetupLease, s SetupInput, out *strings.Builder) error {
-	snap, err := e.snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	if row := snap.Rows[s.Actor]; row.Session != "" && row.Role == "coordinator" {
-		return nil
-	}
-	text, err := e.hookAs(ctx, snap, s.Actor, "coordinator")
-	if err != nil {
-		return err
-	}
-	out.WriteString(text[:strings.LastIndex(text, "next: ")])
-	return lease.Check(ctx)
-}
-
-func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strings.Builder) (string, string, error) {
+func (e *Engine) completeSetup(ctx context.Context, s SetupInput, out *strings.Builder) (string, error) {
 	completion, ok := e.Setup.(SetupCompletion)
 	if !ok {
-		return "", "", broken("the setup walk has no completion", "nova-sprint check")
+		return "", broken("the setup walk has no completion", "nova-sprint check")
 	}
-	line, err := completion.Completion(ctx)
-	if err == nil {
-		err = firstErr(context.Cause(ctx), lease.Check(ctx))
-	}
+	line, err := completion.Completion(ctx, s)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	if !strings.HasPrefix(line, "UP DONE ") || strings.ContainsAny(line, "\r\n") {
-		return "", "", broken("the setup walk's completion is not one UP DONE line", "nova-sprint up again")
+		return "", broken("the setup walk's completion is not one UP DONE line", "nova-sprint up again")
 	}
 	e.upNeeds(ctx, out)
-	return done("nova-sprint stream add <name> --repo <org/repo>", out.String()+line, widthAdvice), "", nil
+	return done("nova-sprint stream add <name> --repo <org/repo>", out.String()+line, widthAdvice), nil
 }
 
 // upNeeds names, before UP DONE, what keeps the sprint from working that
@@ -314,16 +182,16 @@ func (e *Engine) upNeeds(ctx context.Context, out *strings.Builder) {
 // card: the fleet works at width only when the cards let it.
 const widthAdvice = "BEFORE CARDS: keep everybody at width: add each stream's cards with --dry-run first and read its CHAIN line (a NEEDS chain of 4 or more is a WARN: flatten it), then nova-sprint check and read its width, waits and NEEDS chain lines before start; flat chains, concrete PATHS, one card per file set (CORRECT-USE, \"Keep everybody at width\")"
 
-// setupStep verifies step, acts once when the choices allow it, and
+// setupStep verifies step, acts once when the step allows it, and
 // verifies again. A step that does not verify is a refusal naming its next
 // command, printed after the steps that did.
-func (e *Engine) setupStep(ctx context.Context, step int, s SetupInput, out *strings.Builder, scope string) error {
-	check, err := e.verifyStep(ctx, step, s, scope)
+func (e *Engine) setupStep(ctx context.Context, step int, s SetupInput, out *strings.Builder) error {
+	check, err := e.verifyStep(ctx, step, s)
 	if err == nil && !check.Verified && check.Action {
 		err = e.Setup.Act(ctx, step, s)
-		e.observe(SetupObservation{Kind: "act", Scope: scope, Step: step, Failed: err != nil})
+		e.observe(SetupObservation{Kind: "act", Step: step, Failed: err != nil})
 		if err == nil {
-			check, err = e.verifyStep(ctx, step, s, scope)
+			check, err = e.verifyStep(ctx, step, s)
 		}
 	}
 	if err != nil {
@@ -345,9 +213,9 @@ func (e *Engine) setupStep(ctx context.Context, step int, s SetupInput, out *str
 	return f
 }
 
-func (e *Engine) verifyStep(ctx context.Context, step int, s SetupInput, scope string) (SetupCheck, error) {
+func (e *Engine) verifyStep(ctx context.Context, step int, s SetupInput) (SetupCheck, error) {
 	check, err := e.Setup.Verify(ctx, step, s)
-	e.observe(SetupObservation{Kind: "verify", Scope: scope, Step: step, Verified: check.Verified, Action: check.Action, Failed: err != nil})
+	e.observe(SetupObservation{Kind: "verify", Step: step, Verified: check.Verified, Action: check.Action, Failed: err != nil})
 	return check, err
 }
 

@@ -2,15 +2,10 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"net/url"
@@ -21,7 +16,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
@@ -32,8 +26,8 @@ import (
 // productionSetupConfig contains only public locations and credential values
 // already injected into this process by nova-secrets; it is never printed.
 type productionSetupConfig struct {
-	Binary, BinaryVersion, Host, DSN, AdminPassword, SprintPassword, BusUser, BusRedis string
-	Secrets                                                                            verbs.NovaSecrets
+	Binary, BinaryVersion, Host, DSN, SprintPassword, BusUser, BusRedis string
+	Secrets                                                             verbs.NovaSecrets
 }
 
 func productionSetupConfigFromEnv() (productionSetupConfig, error) {
@@ -53,63 +47,50 @@ func productionSetupConfigFromEnv() (productionSetupConfig, error) {
 	if seat == "" {
 		seat = host
 	}
-	return productionSetupConfig{Binary: binary, BinaryVersion: versionString(), Host: host, DSN: os.Getenv("NOVA_PG_DSN"), AdminPassword: os.Getenv("NOVA_PG_ADMIN_PASSWORD"), SprintPassword: os.Getenv("NOVA_SPRINT_PG_PASSWORD"), BusUser: os.Getenv("NOVA_BUS_USER"), BusRedis: os.Getenv("NOVA_BUS_REDIS"), Secrets: verbs.NovaSecrets{Store: os.Getenv("NOVA_SECRETS_STORE"), KeyFile: os.Getenv("NOVA_SECRETS_KEY"), Pins: os.Getenv("NOVA_SECRETS_PINS"), Seat: seat}}, nil
+	return productionSetupConfig{Binary: binary, BinaryVersion: versionString(), Host: host, DSN: os.Getenv("NOVA_PG_DSN"), SprintPassword: os.Getenv("NOVA_SPRINT_PG_PASSWORD"), BusUser: os.Getenv("NOVA_BUS_USER"), BusRedis: os.Getenv("NOVA_BUS_REDIS"), Secrets: verbs.NovaSecrets{Store: os.Getenv("NOVA_SECRETS_STORE"), KeyFile: os.Getenv("NOVA_SECRETS_KEY"), Pins: os.Getenv("NOVA_SECRETS_PINS"), Seat: seat}}, nil
 }
 
 // buildProductionSetup is called only by production CLI composition. It does
 // no fleet, network, database or secret-store work while building dependencies.
-func buildProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin string) (verbs.Setup, verbs.SetupLock) {
+func buildProductionSetup(st store.Store, env verbs.ExecEnvironment, pin string) verbs.Setup {
 	cfg, err := productionSetupConfigFromEnv()
 	if err != nil {
-		return failedProductionSetup{err}, productionSetupLock{err: err}
+		return failedProductionSetup{err}
 	}
-	return makeProductionSetup(st, env, actor, pin, cfg)
+	return makeProductionSetup(st, env, pin, cfg)
 }
-func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin string, cfg productionSetupConfig) (verbs.Setup, verbs.SetupLock) {
+func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, pin string, cfg productionSetupConfig) verbs.Setup {
 	command := setupCommandWithBus(cfg, productionFleetCommand(cfg))
 	env.Command = command
-	env.Choices = verbs.Choices{Store: st, Actor: actor, Now: env.Choices.Now}
 	secret := cfg.Secrets
 	grants := verbs.FleetGrants{Store: secret.Store, KeyFile: secret.KeyFile, Pins: secret.Pins, ControlSeat: secret.Seat, Command: command}
 	role := verbs.SprintRoleBootstrap{Sink: secret, Grants: grants, Secrets: secret, Binary: cfg.Binary}
 	schema := verbs.PGSetupStore{Role: role, ControlMachine: cfg.Host, Secrets: secret, Binary: cfg.Binary}
-	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
-	if cfg.BusUser != "" {
-		keys = append(keys, "NOVA_BUS_PASSWORD")
-	}
 	runDSN, err := setupRoleDSN(cfg.DSN, "nova_sprint")
 	if err != nil && cfg.DSN != "" { // unset, the store step says so; set and malformed, nothing can run
-		bad := verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN cannot be used (" + err.Error() + ")", Fix: "export NOVA_PG_DSN=postgres://<host>:<port>/<database> with no password in it, then nova-sprint up again", Exit: 1})
-		return failedProductionSetup{bad}, productionSetupLock{err: bad}
+		return failedProductionSetup{verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN cannot be used (" + err.Error() + ")", Fix: "export NOVA_PG_DSN=postgres://<host>:<port>/<database> with no password in it, then nova-sprint up again", Exit: 1})}
 	}
-	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
-	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
+	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Role: role, Snapshot: st, PolicyStore: st}
+	return productionSetup{runtime: runtime, cfg: cfg, command: command}
 }
 
-// Every seam the engine type-asserts on e.Setup and e.Lock, and the
-// workload the runtime calls, is checked here at build time: a missing
-// method is a build failure, never a refusal on a real fleet.
+// Every seam the engine type-asserts on e.Setup, and the workload the
+// runtime calls, is checked here at build time: a missing method is a
+// build failure, never a refusal on a real fleet.
 var (
 	_ verbs.Setup           = productionSetup{}
-	_ verbs.SetupHandoff    = productionSetup{}
 	_ verbs.SetupCompletion = productionSetup{}
-	_ verbs.SetupLock       = productionSetupLock{}
 	_ verbs.SetupWorkload   = productionWorkload{}
 	_ verbs.Setup           = failedProductionSetup{}
 )
 
-// Completion is the walk's UP DONE line: the configured runtime's own
-// (verbs.RuntimeSetup.Completion), as the saved coordinator.
-func (p productionSetup) Completion(ctx context.Context) (string, error) {
-	actor, _, err := p.runtime.Prerequisites.Env.Choices.Get(ctx, "coordinator")
+// Completion is the walk's UP DONE line, from the configured runtime.
+func (p productionSetup) Completion(ctx context.Context, in verbs.SetupInput) (string, error) {
+	r, _, err := p.configuredRuntime(ctx, in)
 	if err != nil {
 		return "", err
 	}
-	r, err := p.configuredRuntime(ctx, verbs.SetupInput{Actor: actor}, true)
-	if err != nil {
-		return "", err
-	}
-	return r.Completion(ctx)
+	return r.Completion(ctx, in)
 }
 
 type failedProductionSetup struct{ err error }
@@ -120,71 +101,44 @@ func (f failedProductionSetup) Verify(context.Context, int, verbs.SetupInput) (v
 func (f failedProductionSetup) Act(context.Context, int, verbs.SetupInput) error { return f.err }
 
 type productionSetup struct {
-	runtime   verbs.RuntimeSetup
-	cfg       productionSetupConfig
-	command   verbs.CommandOutput
-	installer publicInstaller
-	resolve   func(context.Context, string) ([]netip.Addr, error) // nil: the system resolver (MagicDNS)
-	home      string                                              // "": the home directory (where this machine's services find nova-sprint)
+	runtime verbs.RuntimeSetup
+	cfg     productionSetupConfig
+	command verbs.CommandOutput
+	resolve func(context.Context, string) ([]netip.Addr, error) // nil: the system resolver (MagicDNS)
 }
 
-func (p productionSetup) forInput(in verbs.SetupInput) verbs.RuntimeSetup {
-	r := p.runtime
-	r.Prerequisites.Env.Choices.Actor = in.Actor
-	return r
-}
+// Verify is step 1 and 2 on the runtime as built; from step 4, on the
+// runtime configured from nova-config's records, with this release checked
+// where the step runs nova-sprint (releaseMachines).
 func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInput) (verbs.SetupCheck, error) {
-	if step == 1 && !handoffActor.MatchString(in.Actor) {
-		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "setup coordinator is missing or invalid", Fix: "nova-sprint up --as <name>", Exit: 1}
-	}
-	if step == 1 && in.RunOn != "" && in.RunOn != p.cfg.Host {
-		return verbs.SetupCheck{}, p.remoteRunRefusal()
-	}
-	if p.cfg.AdminPassword != "" && p.cfg.SprintPassword != "" {
-		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "setup process has both admin and sprint credentials", Fix: "run nova-sprint up through the two-phase secrets wrapper", Exit: 1}
-	}
 	if step == 2 {
 		if err := p.configError(); err != nil {
 			return verbs.SetupCheck{}, err
 		}
 	}
-	if step >= 3 && p.cfg.SprintPassword == "" {
-		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "the sprint is not set up (no sprint credential in this process)", Fix: "nova-sprint up --as " + in.Actor, Exit: 1}
+	if step < 4 {
+		return p.runtime.Verify(ctx, step, in)
 	}
-	if step >= 4 {
-		r, err := p.configuredRuntime(ctx, in, step >= 5)
-		if err != nil {
-			return verbs.SetupCheck{}, err
-		}
-		if step == 4 {
-			ready, err := p.ensureServiceVersion(ctx, r.RunService.Machine, false)
-			if err != nil {
-				return verbs.SetupCheck{}, err
-			}
-			if !ready {
-				return verbs.SetupCheck{Action: true}, nil
-			}
-		}
-		if step == 5 {
-			value, found, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
-			if err != nil {
-				return verbs.SetupCheck{}, err
-			}
-			if !found && in.Dash == "" && value == "" {
-				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
-			}
-			ready, err := p.ensurePublicVersion(ctx, r, in, false)
-			if err != nil {
-				return verbs.SetupCheck{}, err
-			}
-			if !ready {
-				return verbs.SetupCheck{Action: true}, nil
-			}
-		}
-		return r.Verify(ctx, step, in)
+	if p.cfg.SprintPassword == "" {
+		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "this process has no sprint credential (step " + strconv.Itoa(step) + " reads the store)", Fix: "nova-sprint up --as " + in.Actor, Exit: 1}
 	}
-	return p.forInput(in).Verify(ctx, step, in)
+	r, machines, err := p.configuredRuntime(ctx, in)
+	if err != nil {
+		return verbs.SetupCheck{}, err
+	}
+	check, err := r.Verify(ctx, step, in)
+	if err != nil || (!check.Verified && !check.Action) {
+		return check, err // a question for the human, or a refusal: no release act first
+	}
+	err = p.release(ctx, releaseMachines(step, r, machines), false)
+	var refusal *verbs.OperationError
+	if errors.As(err, &refusal) && ctx.Err() == nil {
+		return verbs.SetupCheck{Action: true, Line: check.Line, Refusal: refusal}, nil
+	}
+	return check, err
 }
+
+// Act installs this release where the step runs nova-sprint, then acts.
 func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput) error {
 	if step == 2 {
 		if err := p.configError(); err != nil {
@@ -194,25 +148,33 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 			return err
 		}
 	}
-	if step >= 4 {
-		r, err := p.configuredRuntime(ctx, in, step >= 5)
-		if err != nil {
-			return err
-		}
-		if step == 4 {
-			if _, err = p.ensureServiceVersion(ctx, r.RunService.Machine, true); err != nil {
-				return err
-			}
-		}
-		if step == 5 {
-			if _, err = p.ensurePublicVersion(ctx, r, in, true); err != nil {
-				return err
-			}
-		}
-		return r.Act(ctx, step, in)
+	if step < 4 {
+		return p.runtime.Act(ctx, step, in)
 	}
-	return p.forInput(in).Act(ctx, step, in)
+	r, machines, err := p.configuredRuntime(ctx, in)
+	if err != nil {
+		return err
+	}
+	if err = p.release(ctx, releaseMachines(step, r, machines), true); err != nil {
+		return err
+	}
+	return r.Act(ctx, step, in)
 }
+
+// releaseMachines is where step runs nova-sprint: the run machine (4), the
+// public board's machine (5), every worker bench (6).
+func releaseMachines(step int, r verbs.RuntimeSetup, machines []verbs.FleetMachine) []string {
+	switch {
+	case step == 4:
+		return []string{r.RunService.Machine}
+	case step == 5 && r.Board.Public && r.Board.Service != nil:
+		return []string{r.Board.Service.Machine}
+	case step == 6:
+		return verbs.WorkerBenches(machines)
+	}
+	return nil
+}
+
 func (p productionSetup) configError() error {
 	s := p.cfg.Secrets
 	if !filepath.IsAbs(s.Store) || !filepath.IsAbs(s.KeyFile) || !filepath.IsAbs(s.Pins) || s.Seat == "" {
@@ -236,31 +198,6 @@ func (p productionSetup) checkControlMachine(ctx context.Context) error {
 	return &verbs.OperationError{Problem: "control machine is absent from inventory", Fix: "run nova-config machine list --json and nova-fleet check", Exit: 1}
 }
 
-type productionSetupLock struct {
-	cfg productionSetupConfig
-	err error
-}
-
-func (p productionSetupLock) Acquire(ctx context.Context) (verbs.SetupLease, error) {
-	if p.err != nil {
-		return nil, p.err
-	}
-	if p.cfg.DSN == "" {
-		return nil, &verbs.OperationError{Problem: "NOVA_PG_DSN is missing", Fix: "nova-sprint check", Exit: 1}
-	}
-	role, password := "nova_sprint", p.cfg.SprintPassword
-	if password == "" {
-		role, password = "nova_admin", p.cfg.AdminPassword
-	}
-	if password == "" {
-		return nil, &verbs.OperationError{Problem: "the sprint is not set up (no setup database credential in this process)", Fix: "nova-sprint up --as <you>", Exit: 1}
-	}
-	dsn, err := setupRoleDSN(p.cfg.DSN, role)
-	if err != nil {
-		return nil, verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN is invalid: " + edge.RedactN(err.Error(), edge.CommandMax), Fix: "configure a passwordless PostgreSQL URL and run nova-sprint check", Exit: 1})
-	}
-	return (verbs.PGSetupLock{DSN: dsn, Password: password, Host: p.cfg.Host}).Acquire(ctx)
-}
 func setupRoleDSN(dsn, role string) (string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
@@ -284,321 +221,6 @@ func setupRoleDSN(dsn, role string) (string, error) {
 	}
 	u.User = url.User(role)
 	return u.String(), nil
-}
-
-// handoffEnvelope carries no credentials; the ID correlates a durable intent.
-type handoffEnvelope struct {
-	ID     string `json:"id"`
-	Actor  string `json:"actor"`
-	Digest string `json:"digest"`
-}
-type handoffRecord struct {
-	Version int    `json:"version"`
-	Epoch   int    `json:"epoch"`
-	Actor   string `json:"actor"`
-	Digest  string `json:"digest"`
-}
-
-var handoffID = regexp.MustCompile(`^[0-9a-f]{64}$`)
-var handoffActor = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
-
-func handoffDigest(in verbs.SetupInput) (string, error) {
-	values := []string{in.Actor, in.Dash, in.Services, in.Key, in.RunOn, in.Version}
-	if !handoffActor.MatchString(in.Actor) {
-		return "", fmt.Errorf("invalid setup actor %q: want 1-128 of A-Z a-z 0-9 . _ -", edge.Redact(in.Actor))
-	}
-	for _, v := range values {
-		if len(v) > 512 {
-			return "", fmt.Errorf("setup argument too long: %d bytes, over 512", len(v))
-		}
-	}
-	raw, err := json.Marshal(values)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(append([]byte("nova-sprint/setup/v1\x00"), raw...))
-	return hex.EncodeToString(sum[:]), nil
-}
-
-// PrepareHandoff is called only while the first child's setup lease is held.
-func (p productionSetup) PrepareHandoff(ctx context.Context, in verbs.SetupInput) (string, bool, error) {
-	if p.cfg.SprintPassword != "" && p.cfg.AdminPassword != "" {
-		return "", false, fmt.Errorf("setup credential separation unavailable: NOVA_SPRINT_PG_PASSWORD and NOVA_PG_ADMIN_PASSWORD are both set")
-	}
-	if p.cfg.SprintPassword != "" {
-		return "", false, nil
-	}
-	if p.cfg.AdminPassword == "" {
-		return "", false, fmt.Errorf("setup credential unavailable: NOVA_PG_ADMIN_PASSWORD not set")
-	}
-	if err := p.configError(); err != nil {
-		return "", false, err
-	}
-	digest, err := handoffDigest(in)
-	if err != nil {
-		return "", false, err
-	}
-	var random [32]byte
-	if _, err = rand.Read(random[:]); err != nil {
-		return "", false, edge.Cause("continuation unavailable: random id", err)
-	}
-	request := handoffEnvelope{ID: hex.EncodeToString(random[:]), Actor: in.Actor, Digest: digest}
-	result, err := p.writeHandoffChild(ctx, request)
-	if err != nil {
-		return "", false, err
-	}
-	if result != request.ID {
-		return "", false, fmt.Errorf("continuation was not saved: the child returned id %q, not the one sent", edge.Redact(result))
-	}
-	return result, true, nil
-}
-func (p productionSetup) writeHandoffChild(ctx context.Context, request handoffEnvelope) (string, error) {
-	data, err := json.Marshal(request)
-	if err != nil {
-		return "", err
-	}
-	s := p.cfg.Secrets
-	if err = s.ExecReady(); err != nil {
-		return "", err
-	}
-	args := []string{"exec", "--only", "NOVA_SPRINT_PG_PASSWORD", "--store", s.Store, "--key", s.KeyFile, "--as", s.Seat, "--", p.cfg.Binary, "--internal-write-continuation"}
-	cmd := exec.CommandContext(ctx, "nova-secrets", args...)
-	cmd.Stdin = bytes.NewReader(data)
-	cmd.Env = continuationEnv(os.Environ())
-	var buf boundedOutput
-	err = verbs.OutputWith(cmd, &buf)
-	out := buf.Bytes()
-	if err != nil {
-		return "", fmt.Errorf("continuation could not be saved%s", verbs.ToolDetail(err))
-	}
-	if len(out) > 128 {
-		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output longer than 128 bytes", 128, out))
-	}
-	id := strings.TrimSpace(string(out))
-	if !handoffID.MatchString(id) {
-		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output is not a 64-hex id", 0, out))
-	}
-	return id, nil
-}
-func continuationEnv(env []string) []string {
-	allowed := map[string]bool{"PATH": true, "HOME": true, "LANG": true, "LC_ALL": true, "TZ": true, "TMPDIR": true, "NOVA_PG_DSN": true, "SSL_CERT_DIR": true, "SSL_CERT_FILE": true}
-	result := []string{}
-	for _, entry := range env {
-		name, _, ok := strings.Cut(entry, "=")
-		if ok && allowed[name] {
-			result = append(result, entry)
-		}
-	}
-	return result
-}
-
-// ValidateHandoff is called again while phase 2 holds its fresh setup lease.
-func (p productionSetup) ValidateHandoff(ctx context.Context, id string, in verbs.SetupInput) error {
-	if !handoffID.MatchString(id) {
-		return handoffRefusal("the continuation id is not 64 hex")
-	}
-	if p.cfg.SprintPassword == "" || p.cfg.AdminPassword != "" {
-		return handoffRefusal(fmt.Sprintf("wants NOVA_SPRINT_PG_PASSWORD set and NOVA_PG_ADMIN_PASSWORD unset (sprint set %t, admin set %t)", p.cfg.SprintPassword != "", p.cfg.AdminPassword != ""))
-	}
-	digest, err := handoffDigest(in)
-	if err != nil {
-		return handoffRefusal(edge.Redact(err.Error()))
-	}
-	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
-	if err != nil {
-		return handoffRefusal(edge.Redact(err.Error()))
-	}
-	pg, err := store.Open(ctx, dsn, p.cfg.SprintPassword)
-	if err != nil {
-		return handoffRefusal("open store: " + edge.Redact(err.Error()))
-	}
-	defer pg.Close()
-	identity, err := pg.Schema(ctx)
-	if err != nil {
-		return handoffRefusal("schema: " + edge.Redact(err.Error()))
-	}
-	if !identity.Current || identity.Owner != "nova_sprint" {
-		return handoffRefusal(fmt.Sprintf("schema current %t, owner %q, want current and nova_sprint", identity.Current, identity.Owner))
-	}
-	return validateHandoffRecord(ctx, pg, id, in.Actor, digest)
-}
-func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, digest string) error {
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return handoffRefusal("snapshot: " + edge.Redact(err.Error()))
-	}
-	record, found, err := findSetupContinuation(ctx, st, snap, id)
-	switch {
-	case err != nil:
-		return handoffRefusal(edge.Redact(err.Error()))
-	case !found:
-		return handoffRefusal("no continuation recorded with this id")
-	case record.Version != 1 || record.Epoch != snap.Epoch:
-		return handoffRefusal(fmt.Sprintf("recorded version %d epoch %d, want version 1 epoch %d", record.Version, record.Epoch, snap.Epoch))
-	case record.Actor != actor:
-		return handoffRefusal(fmt.Sprintf("recorded for actor %q, not %q", edge.Redact(record.Actor), edge.Redact(actor)))
-	case record.Digest != digest:
-		return handoffRefusal("the setup arguments differ from the ones recorded")
-	}
-	return nil
-}
-func handoffRefusal(why string) error {
-	return &verbs.OperationError{Problem: edge.RedactN("setup continuation is invalid or stale: "+why, edge.FailureMax), Fix: "run nova-sprint up again", Exit: 1}
-}
-
-// writeSetupContinuation is called in a sprint-secret child while the parent
-// holds the setup lease. Only the non-secret ID is returned.
-func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader, at time.Time) (string, error) {
-	data, err := io.ReadAll(io.LimitReader(input, 1025))
-	if err != nil {
-		return "", edge.Cause("invalid continuation request: read", err)
-	}
-	if len(data) > 1024 {
-		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("longer than 1024 bytes", 1024, data))
-	}
-	var request handoffEnvelope
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&request); err != nil {
-		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseFailure(err, data))
-	}
-	if !handoffID.MatchString(request.ID) || !handoffID.MatchString(request.Digest) || !handoffActor.MatchString(request.Actor) {
-		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("id, digest or actor is not well formed", 0, data))
-	}
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
-		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("more than one request", int(dec.InputOffset()), data))
-	}
-	// The write is fenced on the seq it read; a live run's tick between the
-	// read and the write moves the seq, so a refusal logged past an op of
-	// someone else's reads again (each try its own op id: a refused op
-	// replays as refused). A refusal logged right after the read is final.
-	var refused *handoffRefused
-	for try := range handoffTries {
-		snap, err := st.Snapshot(ctx)
-		if err != nil {
-			return "", edge.Cause("continuation unavailable: snapshot", err)
-		}
-		existing, found, err := findSetupContinuation(ctx, st, snap, request.ID)
-		if err != nil {
-			return "", edge.Cause("continuation unavailable", err)
-		}
-		if found {
-			if existing.Version == 1 && existing.Epoch == snap.Epoch && existing.Actor == request.Actor && existing.Digest == request.Digest {
-				return request.ID, nil
-			}
-			return "", fmt.Errorf("continuation unavailable: id %s is already recorded with other content", request.ID[:12])
-		}
-		record := handoffRecord{Version: 1, Epoch: snap.Epoch, Actor: request.Actor, Digest: request.Digest}
-		body, err := json.Marshal(record)
-		if err != nil {
-			return "", err
-		}
-		opID := "up-handoff-" + request.ID
-		if try > 0 {
-			opID += fmt.Sprintf("-%d", try)
-		}
-		op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: request.Actor, Kind: "setup continuation", At: at, Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: "setup:continuation:" + request.ID, Body: string(body)}}}
-		err = applyHandoff(ctx, st, op)
-		if !errors.As(err, &refused) {
-			if err != nil {
-				return "", err
-			}
-			return request.ID, nil
-		}
-		if refused.at <= snap.Seq+1 {
-			return "", refused // nothing came between the read and the write
-		}
-	}
-	return "", refused
-}
-
-// handoffTries bounds the continuation write's reads against a live run.
-const handoffTries = 5
-
-// handoffRefused is the store's refusal of the continuation op, and the seq
-// the refusal was logged at.
-type handoffRefused struct {
-	reason string
-	at     int64
-}
-
-func (r *handoffRefused) Error() string { return "continuation refused: " + r.reason }
-
-func applyHandoff(ctx context.Context, st store.Store, op store.Op) error {
-	for range 3 {
-		receipt, err := st.Apply(ctx, op)
-		if err == nil {
-			if !receipt.Accepted {
-				return &handoffRefused{reason: edge.Redact(cmp.Or(receipt.Reason, "no reason given")), at: receipt.Seq}
-			}
-			return nil
-		}
-		if !errors.Is(err, store.ErrUnknown) {
-			return edge.Cause("continuation unavailable: apply", err)
-		}
-		receipt, found, err := st.Replay(ctx, op.ID)
-		if err != nil {
-			return edge.Cause("continuation unavailable: replay", err)
-		}
-		if found {
-			if !receipt.Accepted {
-				return &handoffRefused{reason: edge.Redact(cmp.Or(receipt.Reason, "no reason given")), at: receipt.Seq}
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("continuation unavailable: apply outcome unknown after 3 tries and no replay found")
-}
-func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snapshot, id string) (handoffRecord, bool, error) {
-	cursor := int64(0)
-	count := 0
-	var result handoffRecord
-	for cursor < snap.Seq {
-		events, err := st.Events(ctx, cursor, store.MaxEvents)
-		if err != nil {
-			return result, false, edge.Cause("continuation history unavailable", err)
-		}
-		if len(events) == 0 {
-			return result, false, fmt.Errorf("continuation history unavailable: no events after seq %d, snapshot at %d", cursor, snap.Seq)
-		}
-		advanced := false
-		for _, event := range events {
-			if event.Seq > snap.Seq {
-				break
-			}
-			if event.Seq != cursor+1 {
-				return result, false, fmt.Errorf("continuation history invalid: seq %d follows %d", event.Seq, cursor)
-			}
-			cursor = event.Seq
-			advanced = true
-			if !event.Accepted || event.After == nil {
-				continue
-			}
-			for _, policy := range event.After.Policies {
-				if policy.Name != "setup:continuation:"+id {
-					continue
-				}
-				if policy.Kind != "data" || policy.Active {
-					return result, false, fmt.Errorf("continuation invalid: seq %d policy kind %q active %t, want data and inactive", event.Seq, policy.Kind, policy.Active)
-				}
-				if err := json.Unmarshal([]byte(policy.Body), &result); err != nil {
-					return result, false, fmt.Errorf("continuation invalid: seq %d: %s", event.Seq, edge.ParseFailure(err, []byte(policy.Body)))
-				}
-				if policy.Actor != result.Actor {
-					return result, false, fmt.Errorf("continuation invalid: seq %d written by %q, records actor %q", event.Seq, edge.Redact(policy.Actor), edge.Redact(result.Actor))
-				}
-				count++
-			}
-		}
-		if !advanced {
-			return result, false, fmt.Errorf("continuation history incomplete: stopped at seq %d, snapshot at %d", cursor, snap.Seq)
-		}
-	}
-	if count > 1 {
-		return result, false, fmt.Errorf("continuation duplicated: %d records", count)
-	}
-	return result, count == 1, nil
 }
 
 // setupServiceRow is the public nova-config service-list JSON subset.
@@ -668,60 +290,43 @@ func serviceConfigFailure(what string, err error) error {
 func serviceConfigError(problem string) error {
 	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.FailureMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
 }
-func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupInput, needDashboard bool) (verbs.RuntimeSetup, error) {
-	r := p.forInput(in)
-	host, _, err := r.Prerequisites.Env.Choices.Effective(ctx, "run-on", in.RunOn)
-	if err != nil {
-		return r, err
-	}
-	if host == "" {
-		host = p.cfg.Host
-	}
-	if host != p.cfg.Host {
-		return r, p.remoteRunRefusal()
-	}
+
+// configuredRuntime is the runtime for steps 4 to 7: the run service on
+// this machine, from nova-config's record or built from the inventory, and
+// the board (configureDashboard); with the machine inventory it read.
+func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupInput) (verbs.RuntimeSetup, []verbs.FleetMachine, error) {
+	r := p.runtime
+	host := p.cfg.Host
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return r, serviceConfigFailure("cannot inspect machine inventory: ", err)
+		return r, nil, serviceConfigFailure("cannot inspect machine inventory: ", err)
 	}
-	found := false
-	for _, machine := range machines {
-		if machine.Name == host && slices.Contains(machine.Roles, "services") {
-			found = true
-		}
-	}
-	if !found {
-		return r, serviceConfigError("chosen run host is absent or lacks the services role")
+	if !slices.ContainsFunc(machines, func(m verbs.FleetMachine) bool { return m.Name == host && slices.Contains(m.Roles, "services") }) {
+		return r, nil, serviceConfigError("this machine (" + host + ") is absent from the inventory or lacks the services role; up runs the sprint on the machine it runs on")
 	}
 	rows, err := p.listServices(ctx)
 	if err != nil {
-		return r, err
+		return r, nil, err
 	}
 	run, err := p.resolveRunService(ctx, host, rows, machines)
 	if err != nil {
-		return r, err
+		return r, nil, err
 	}
 	if err := p.validateRunService(run); err != nil {
-		return r, err
+		return r, nil, err
 	}
 	expectedDSN, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return r, verbs.RefusalOr(err, serviceConfigError("sprint-run must name the configured passwordless sprint DSN: the configured DSN: "+err.Error()))
+		return r, nil, verbs.RefusalOr(err, serviceConfigError("sprint-run must name the configured passwordless sprint DSN: the configured DSN: "+err.Error()))
 	}
 	if run.Env["NOVA_PG_DSN"] != expectedDSN {
-		return r, serviceConfigError("sprint-run must name the configured passwordless sprint DSN")
+		return r, nil, serviceConfigError("sprint-run must name the configured passwordless sprint DSN")
 	}
 	r.RunService = run
-	r.DefaultRunHost = host
 	r.Services = verbs.FleetServices{Command: p.command}
-	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 7/8 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion}
-	if !needDashboard {
-		return r, nil
-	}
-	return p.configureDashboard(ctx, in, r, machines, rows, run)
-}
-func (p productionSetup) remoteRunRefusal() error {
-	return &verbs.OperationError{Problem: "run on another host needs nova-fleet install of nova-sprint (nova-tools 2.0.x); for now run here", Fix: "nova-sprint up --run-on " + p.cfg.Host, Exit: 1}
+	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 6/7 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present}
+	r.Board, err = dashboardTarget(in.Dash, run, machines, rows)
+	return r, machines, err
 }
 
 func (p productionSetup) validateRunService(run verbs.FleetService) error {
@@ -800,147 +405,83 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 	return verbs.FleetService{Name: "sprint-run", Machine: host, Seat: p.cfg.Secrets.Seat, Argv: []string{"nova-sprint", "run", "--listen", net.JoinHostPort(address, "8080")}, Keys: keys, Env: env}, nil
 }
 
-func (p productionSetup) configureDashboard(ctx context.Context, in verbs.SetupInput, r verbs.RuntimeSetup, machines []verbs.FleetMachine, rows []setupServiceRow, run verbs.FleetService) (verbs.RuntimeSetup, error) {
-	choice, _, err := r.Prerequisites.Env.Choices.Effective(ctx, "dashboard", in.Dash)
-	if err != nil {
-		return r, err
-	}
-	if choice == "" {
-		return r, nil
-	}
-	if in.Dash == "" {
-		if err = savedDashboardValid(choice, machines); err != nil {
-			return r, err
-		}
-	}
+// dashboardTarget is the board: --dash when given, else the public board
+// nova-config's sprint-dashboard record already names, else the tailnet
+// board run serves itself. A --dash tailnet beside a sprint-dashboard
+// record is refused: the record is the answer until it is removed.
+func dashboardTarget(dash string, run verbs.FleetService, machines []verbs.FleetMachine, rows []setupServiceRow) (verbs.DashboardTarget, error) {
 	privateURL, err := privateDashboardURL(run.Argv[3])
 	if err != nil {
-		return r, err
+		return verbs.DashboardTarget{}, err
 	}
-	target := verbs.DashboardTarget{URL: privateURL}
-	if strings.HasPrefix(choice, "public=") {
-		target, err = publicDashboardTarget(strings.TrimPrefix(choice, "public="), run.Machine, machines, rows, privateURL)
-		if err != nil {
-			return r, err
+	recorded := ""
+	for _, row := range rows {
+		if row.Name == "sprint-dashboard" {
+			recorded = row.Machine
 		}
 	}
-	if choice != "tailnet" && !strings.HasPrefix(choice, "public=") {
-		return r, serviceConfigError("invalid dashboard choice")
+	switch {
+	case dash == "tailnet" && recorded != "":
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "nova-config's sprint-dashboard record puts the board on " + recorded + ", public", Fix: "nova-config service rm sprint-dashboard --actor <you> --reason <why>, then nova-sprint up --dash tailnet; or nova-sprint up --dash public=" + recorded, Exit: 1}
+	case dash == "" && recorded != "":
+		dash = "public=" + recorded
+	case dash == "":
+		dash = "tailnet"
 	}
-	r.Dashboards = map[string]verbs.DashboardTarget{choice: target}
-	return r, nil
+	if chosen, public := strings.CutPrefix(dash, "public="); public {
+		return publicDashboardTarget(chosen, run.Machine, machines, rows, privateURL)
+	}
+	return verbs.DashboardTarget{URL: privateURL}, nil
 }
 
-// savedDashboardValid refuses a saved dashboard answer that no longer names
-// the private network or a machine in nova-config, with the flag that
-// answers again.
-func savedDashboardValid(choice string, machines []verbs.FleetMachine) error {
-	valid := choice == "tailnet"
-	if name, ok := strings.CutPrefix(choice, "public="); ok {
-		name, _, err := splitPublicChoice(name)
-		valid = err == nil && slices.ContainsFunc(machines, func(m verbs.FleetMachine) bool { return m.Name == name })
-	}
-	if valid {
+// release checks (nova-fleet install --check) or, with install, installs
+// this binary's release of nova-sprint on machines. A check whose recap
+// would change a machine, or does not name it, is a refusal naming the
+// install; a build that is not a release can be neither.
+func (p productionSetup) release(ctx context.Context, machines []string, install bool) error {
+	if len(machines) == 0 {
 		return nil
 	}
-	return &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("the saved dashboard answer %q is not valid", choice), edge.FailureMax), Fix: "answer again: nova-sprint up --dash tailnet, or --dash public=<machine>[:<port>]", Exit: 1}
-}
-
-type publicInstaller interface {
-	Install(context.Context, string, string) error
-}
-
-func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.RuntimeSetup, in verbs.SetupInput, install bool) (bool, error) {
-	choice, _, err := r.Prerequisites.Env.Choices.Effective(ctx, "dashboard", in.Dash)
+	want, names := p.cfg.BinaryVersion, strings.Join(machines, " ")
+	fix := "nova-fleet install --repo mas-bandwidth/nova-sprint --tag " + orWord(want, "<v>") + " --names nova-sprint " + names + ", then nova-sprint up again"
+	if !publicRelease.MatchString(want) {
+		return &verbs.OperationError{Problem: edge.RedactN("this nova-sprint is "+orWord(want, "unversioned")+", not a release: up installs and checks only a release on "+names, edge.FailureMax), Fix: "run up with a release's nova-sprint: " + fix, Exit: 1}
+	}
+	args := append([]string{"install", "--check", "--repo", "mas-bandwidth/nova-sprint", "--tag", want, "--names", "nova-sprint"}, machines...)
+	if install {
+		args = append(args[:1], args[2:]...)
+	}
+	out, err := p.command(ctx, "nova-fleet", args...)
 	if err != nil {
-		return false, err
+		return verbs.RefusalOr(err, &verbs.OperationError{Problem: edge.RedactN("nova-fleet "+strings.Join(args, " ")+" failed: "+err.Error(), edge.FailureMax), Fix: fix, Exit: 1})
 	}
-	if !strings.HasPrefix(choice, "public=") {
-		return true, nil
-	}
-	target, ok := r.Dashboards[choice]
-	if !ok || target.Service == nil {
-		return false, serviceConfigError(fmt.Sprintf("dashboard choice %q has no public service configured", choice))
-	}
-	return p.ensureServiceVersion(ctx, target.Service.Machine, install)
-}
-
-// ensureServiceVersion is true when the nova-sprint a service on machine
-// will run is this binary's version. A probe that disagrees is (false,
-// nil) unless install, which installs this version through nova-fleet and
-// probes again; the probe's own refusal is returned when that fails too.
-func (p productionSetup) ensureServiceVersion(ctx context.Context, machine string, install bool) (bool, error) {
-	err := p.checkServiceVersion(ctx, machine)
-	if err == nil {
-		return true, nil
-	}
-	if ctx.Err() != nil {
-		return false, ctx.Err()
-	}
-	if !install {
-		return false, nil
-	}
-	if p.installer == nil || !publicRelease.MatchString(p.cfg.BinaryVersion) {
-		return false, err
-	}
-	if installErr := p.installer.Install(ctx, machine, p.cfg.BinaryVersion); installErr != nil {
-		return false, serviceVersionRefusal(p.cfg.BinaryVersion, machine, "nova-fleet install on "+machine+" failed: "+installErr.Error())
-	}
-	if err = p.checkServiceVersion(ctx, machine); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// serviceBinDir is where a service's bare nova-sprint is found first:
-// nova-fleet's nova_bin_dir, the head of every service unit's PATH and
-// where nova-fleet install puts a release.
-const serviceBinDir = ".local/bin"
-
-// checkServiceVersion is the one check that the nova-sprint a service on
-// machine will run (<home>/.local/bin/nova-sprint) is this binary's
-// version: run here when machine is this one, else over ssh to the
-// inventory's address for it; its output read by the version verb's own
-// parser (verbs.ParseVersionOutput).
-func (p productionSetup) checkServiceVersion(ctx context.Context, machine string) error {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	want := p.cfg.BinaryVersion
-	if want == "" {
-		return serviceVersionRefusal(want, machine, "this build has no version to compare")
-	}
-	var data []byte
-	var err error
-	destination := machine
-	if run.SameMachine(machine, p.cfg.Host) {
-		home := p.home
-		if home == "" {
-			home, err = os.UserHomeDir()
-			if err != nil {
-				return serviceVersionRefusal(want, machine, "home directory: "+err.Error())
-			}
-		}
-		binary := filepath.Join(home, serviceBinDir, "nova-sprint")
-		if data, err = p.smallCommand(ctx, binary, "version"); err != nil {
-			return serviceVersionRefusal(want, machine, binary+" version: "+err.Error())
-		}
-	} else {
-		if destination, err = p.sshDestination(ctx, machine); err != nil {
-			return serviceVersionRefusal(want, machine, err.Error())
-		}
-		data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "~/"+serviceBinDir+"/nova-sprint", "version")
-		if err != nil {
-			return serviceVersionRefusal(want, machine, "ssh "+destination+": "+err.Error())
-		}
-	}
-	seen, err := verbs.ParseVersionOutput(data)
-	if err != nil {
-		seen = fmt.Sprintf("%q (not a v2 nova-sprint)", strings.TrimSpace(edge.FirstBytes(data)))
-	}
-	if seen != want {
-		return serviceVersionRefusal(want, machine, destination+" reports "+seen+", this binary is "+want)
+	if drift := releaseDrift(out, machines); !install && drift != "" {
+		return &verbs.OperationError{Problem: "nova-sprint " + want + " is not what " + drift + " runs (nova-fleet install --check would change it)", Fix: fix, Exit: 1}
 	}
 	return nil
+}
+
+// publicRelease is a release tag nova-fleet install can fetch.
+var publicRelease = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`)
+
+// recapLine is one host's line of the play recap ansible prints last.
+var recapLine = regexp.MustCompile(`(?m)^(\S+)\s+:\s+ok=\d+\s+changed=(\d+)\s+unreachable=(\d+)\s+failed=(\d+)`)
+
+// releaseDrift is the machines of a --check run's recap that would change,
+// are unreachable or failed, or are not in it: "" when every one is at the
+// release.
+func releaseDrift(out []byte, machines []string) string {
+	clean := map[string]bool{}
+	for _, m := range recapLine.FindAllStringSubmatch(string(out), -1) {
+		clean[m[1]] = m[2] == "0" && m[3] == "0" && m[4] == "0"
+	}
+	var drift []string
+	for _, machine := range machines {
+		if !clean[machine] {
+			drift = append(drift, machine)
+		}
+	}
+	return strings.Join(drift, ", ")
 }
 
 // sshDestination is the inventory's [user@]address for machine.
@@ -963,9 +504,6 @@ func (p productionSetup) sshDestination(ctx context.Context, machine string) (st
 		return inventory.User + "@" + inventory.Host, nil
 	}
 	return inventory.Host, nil
-}
-func serviceVersionRefusal(version, machine, why string) error {
-	return &verbs.OperationError{Problem: edge.RedactN("nova-sprint on "+machine+" is not this version: "+why, edge.FailureMax), Fix: "nova-fleet install --repo <org/repo> --tag " + orWord(version, "<v>") + " " + machine + ", then nova-sprint up again", Exit: 1}
 }
 func orWord(s, or string) string {
 	if s == "" {
@@ -1002,8 +540,22 @@ func runSetupCommand(ctx context.Context, clean bool, name string, args ...strin
 	return out.Bytes(), nil
 }
 
+// baseEnv is what every setup tool child gets: the paths, the locale and
+// the store's location, never a credential.
+func baseEnv(env []string) []string {
+	allowed := map[string]bool{"PATH": true, "HOME": true, "LANG": true, "LC_ALL": true, "TZ": true, "TMPDIR": true, "NOVA_PG_DSN": true, "SSL_CERT_DIR": true, "SSL_CERT_FILE": true}
+	result := []string{}
+	for _, entry := range env {
+		name, _, ok := strings.Cut(entry, "=")
+		if ok && allowed[name] {
+			result = append(result, entry)
+		}
+	}
+	return result
+}
+
 func setupCommandEnv(name string, env []string) []string {
-	result := continuationEnv(env)
+	result := baseEnv(env)
 	allowed := map[string]bool{}
 	if name == "nova-bus" {
 		allowed = map[string]bool{"NOVA_BUS_REDIS": true, "NOVA_BUS_USER": true, "NOVA_BUS_PASSWORD": true, "CODEX_THREAD_ID": true}

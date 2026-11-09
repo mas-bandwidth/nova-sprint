@@ -41,11 +41,11 @@ type Engine struct {
 	Archive  Archive  // backup and restore
 	Services Services // run, worker and dash
 	Setup    Setup    // up's steps
-	Lock     SetupLock
 
-	// ReportContinuation, SetupObserver: the up walk's handoff and trace (setup.go).
-	ReportContinuation func(context.Context, string, SetupInput) error
-	SetupObserver      func(SetupObservation)
+	// UpStoreOnly: this up holds no sprint credential and stops once step 2
+	// verifies; SetupObserver: the walk's trace (setup.go).
+	UpStoreOnly   bool
+	SetupObserver func(SetupObservation)
 
 	// CostReaders are the providers cost reconcile reads (nil: cost.Readers).
 	CostReaders []cost.Reader

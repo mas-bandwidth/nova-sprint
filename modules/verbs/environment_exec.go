@@ -23,7 +23,6 @@ func toolOutput(ctx context.Context, name string, args ...string) ([]byte, error
 // ExecEnvironment observes fleet, bus and schema state through their owners.
 type ExecEnvironment struct {
 	DSN, Password string
-	Choices       Choices
 	Command       CommandOutput
 	Getenv        func(string) string
 }

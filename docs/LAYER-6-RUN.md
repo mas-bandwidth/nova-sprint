@@ -17,7 +17,7 @@ send`; nobody polls (CORRECT-USE, "There is ONE WAY").
 5. **Verbs and their prerequisite tables.** Each verb checks what must be true before it acts, refuses in one line with the fix, ends with `next:`, exits 0, 1 or 2. Table tests, one per refusal, exact text.
 6. **`next`.** From the store, the bus and the machine, the one thing this name should do now. A table test over the seven questions of CORRECT-USE; the transcript in section 4 as a golden test.
 7. **Judgements.** Opened by layer 3, pushed once per group, answered only by `judge`, expired never silently. Layer 1's `JudgementClosedOnce`; functional tests.
-8. **`up`.** Setup as a resumable walk; no step before its prerequisites verify; each question asked once; keys never printed. `Setup.tla`; the cold-AI dogfood gate, twice.
+8. **`up`.** Setup as a resumable walk; no step before its prerequisites verify; the one question (the commit identity) asked once and stored by its own verb; no credential in the walking process. `Setup.tla`; the cold-AI dogfood gate, twice.
 9. **The dashboard.** v1's page over the shim of branch `v2-dash-shim`, fed from run's local copy each second, one poller however many viewers, public by pull with a cache. The shim's tests and screenshots; a traffic test.
 10. **Backup and restore.** `pg_dump` of schema `sprint`, verified by rebuilding from the log; restore only into an empty schema with no chooser. Functional round trip.
 11. **Release pin.** `check` refuses a nova-tools below the version the binary was built for. Unit test on version parsing; functional on the installed tools.
@@ -278,33 +278,53 @@ run: nova-sprint show fix-typos
 
 `up` is SETUP.md as a verb, resumable by construction: nothing records "step k done"; each
 run re-verifies from step 1 and stops at the first that fails, so a step that broke since is
-found again. An answer is stored and never asked again: the coordinator, the dashboard's
-place and the services as policy data (layer 5's `kind data`), the keys in nova-secrets.
-Each step's action is idempotent.
+found again. `up` stores no answers of its own: what it needs is read where it already lives
+(the coordinator is the row hooked as coordinator, the public dashboard is nova-config's
+`sprint-dashboard` record, the commit identity is the store's), and every action is
+idempotent, so the fix after a refusal is the same command again.
 
-| step | does | verified when | asked |
+**Credentials (Rowan, 2026-11-08, replacing the two-phase handoff).** The `up` process holds
+no database credential and refuses to start with one. Each credential lives only in a child
+`nova-secrets exec --only <names> -- nova-sprint <internal>`: the role child gets
+`NOVA_PG_ADMIN_PASSWORD,NOVA_SPRINT_PG_PASSWORD`, the schema child `NOVA_SPRINT_PG_PASSWORD`,
+nova-config's reads `NOVA_PG_PASSWORD`. Steps 1 and 2 run in the `up` process itself (their
+credentials only in those children); once they verify, the walk runs again from step 1 in one
+child holding `NOVA_SPRINT_PG_PASSWORD` and nothing else (`--internal-up`), which owns steps 3
+to 7 because each reads or writes the sprint's store. Nothing passes between the two but the
+command line: the child re-verifies steps 1 and 2 itself. No lease serializes two `up`s:
+every write a second `up` could race is refused or idempotent where it lands (below).
+
+| step | does | verified when | refused / asks |
 |---|---|---|---|
-| 1 nova-tools | nothing itself; prints the nova-tools walkthrough (`nova-fleet check`, the human's one paste of the Tailscale API token, `nova-fleet up`) | `nova-fleet check` exits 0; every tool's version at or above the pin | no |
-| 2 store | `Migrate`; the role `sprint` through nova-fleet's postgres play | `sprint.meta` at this binary's version and hash; the role owns the schema | no |
-| 3 coordinator | records the name | that name is in `nova-bus who` | the name, once (`--as`) |
-| 4 run | installs the `run` service on the chosen host (default: this one) | the advisory lock is held (`pg_locks`) and `sprint` is in `nova-bus who` | the host, only with `--run-on` |
-| 5 dashboard | installs `run --listen` on the tailnet, or `dash --pull` on the public host | `/healthz` 200 and `/api/sprint` at the store's epoch, fetched from this machine; for public, from the public address, with the cache headers | tailnet or public, once |
-| 6 services | for each chosen service, the key at a hidden prompt, piped into `nova-secrets set <SERVICE>_API_KEY` on stdin, then the grants, seats, worker rows and service rows | one request to the service's model list through `nova-secrets exec`, judged by its exit code only | which services, once; each key, once |
-| 7 workers | the sprint credential granted to each bench seat; one service record `sprint-worker-<machine>` per worker bench (every bench but the run machine) running `nova-sprint worker --as <machine>`, applied in one `nova-fleet services` play limited to those benches | each worker bench present on the bus and `up` in the store; the refusal names each that is not and its unit's last log line | no |
-| 8 first deal | nothing: a fresh sprint is stopped until `start` and moves nothing, so up deals no card | every worker row hooked, `up` and dealable (cores set in nova-config; a bench without is held at width 0) | no |
+| 1 nova-tools | nothing itself | `nova-fleet check` exits 0; nova-tools at or above the pin | below the pin: `nova-fleet install --tag <pin>` |
+| 2 store | mints `NOVA_SPRINT_PG_PASSWORD` into the control seat when absent; the role child makes `nova_sprint` with that password in one transaction (or sets the password from the seat when the role exists) and the schema `sprint` it owns; the schema child runs `Migrate` | the seat holds the credential; a login as `nova_sprint` with it opens the store; `sprint.meta` is this build's and `nova_sprint` owns the schema | PostgreSQL below 16; a schema another role owns; the admin without CREATEROLE or ADMIN OPTION (the fix is the superuser's GRANT) |
+| 3 coordinator | hooks `--as` in as the sprint's coordinator | `--as` is on the bus and its row is hooked as coordinator | not on the bus: the `nova-bus hook` line |
+| 4 run | stores and activates the built-in policy when none is active; grants the sprint credential to the run seat; installs this release on the run machine (`nova-fleet install --repo mas-bandwidth/nova-sprint --tag <this> --names nova-sprint <machine>`); writes and applies `sprint-run` | a policy is active; `nova-fleet install --check` of this release changes nothing on the run machine; run holds the chooser lock on this machine and `sprint` is on the bus | a `sprint-run` record that is not this machine's, not on the tailnet, or not this store and bus |
+| 5 dashboard | tailnet: nothing past run; public (`--dash public=<machine>[:<port>]`, or the `sprint-dashboard` record nova-config already holds): installs this release there and writes and applies the pull-only `sprint-dashboard` record | `/healthz` 200 and `/api/sprint` at the store's epoch, fetched from this machine (public: from the public address) | `--dash` naming another place than the record; a public machine without a public IP |
+| 6 workers | grants the sprint credential to each bench seat; installs this release on every bench; one `sprint-worker-<machine>` record per bench, applied in one `nova-fleet services` play | the commit identity is set; `nova-fleet install --check` changes nothing on any bench; each bench is on the bus and `up` in the store | no identity: ASK the human, then `nova-sprint identity`; each bench not up, by name |
+| 7 first deal | nothing: a fresh sprint is stopped until `start` | every worker row hooked, `up` and dealable (cores set in nova-config) | each bench without cores: `nova-config machine set <bench> --cores <n>` |
 
-**The key.** The prompt turns off echo on the human's terminal and reads one line. Without a
-terminal (an AI's shell) `up --key` refuses and names the terminal it must be run in. The
-key goes from the prompt to `nova-secrets set`'s stdin and nowhere else: never in argv, the
-environment, a log, the store or the bus; a leaked key is rotated. The human types nothing
-else for that service (SETUP section 3).
+**Provider keys are not `up`'s.** The human puts each key into the bench seats with
+`nova-secrets set <NAME> --as <bench>` (its own hidden prompt; the AI runs it, the human
+types the key there). A worker seat opens `NOVA_SPRINT_PG_PASSWORD`, `GH_GATE_TOKEN`,
+`DEEPSEEK_API_KEY`, `INCEPTION_API_KEY` and, with a bus user, `NOVA_BUS_PASSWORD`; the
+worker probes its harness with the policy's models and those keys before it hooks, so step
+6's "on the bus and up" is the key's proof.
 
-**Adopting a new build** is `up --version <v>`: install the new binary beside the old; `run
---shadow` with it against the live store (one tick planned, nothing applied); on a clean
-shadow, swap the service; watch three ticks; on an `OVERRUN`, a crash, or a tick whose op is
-refused, swap back to the old binary and print why (LESSONS 6.19). nova-sprint releases
-separately from nova-tools and carries the minimum nova-tools version it needs; step 1 and
-`check` refuse below it, naming `nova-fleet up` (SETUP, last paragraph).
+**A second `up` at the same time.** Without the lease, two walks may interleave. What lands
+twice is idempotent or refused by the store: `Migrate` takes the store's migration lock and
+is a no-op at this version; the policy write is fenced on the seq it read (a lost race is a
+refusal, and the second walk finds a policy active); a second coordinator hook is the hook's
+own refusal; `nova-fleet services`, `install` and `nova-secrets grant` change nothing the
+second time. The one race not caught by a store: two first-time walks that both find no
+`NOVA_SPRINT_PG_PASSWORD` both mint one, and the role takes whichever its child reads last.
+The next `up` finds the role's password is not the seat's (step 2's login is refused) and
+sets it; on a database whose pg_hba trusts this machine's connection the login cannot tell,
+and a bench's SCRAM login is what fails, naming step 2.
+
+**A new build** is installed with `nova-fleet install` and taken up by the next `up`: steps 4
+to 6 install this binary's release where it runs, and verify it with `nova-fleet install
+--check`. `up --version` (shadow, swap, swap back) is gone.
 
 **Backup and restore** (owed by layer 1, LESSONS 1.16). `backup` runs `pg_dump -n sprint
 -Fc` as the `sprint` role into `sprint-e<epoch>-s<seq>.dump`, then checks it: restored into
@@ -312,7 +332,7 @@ a throwaway PostgreSQL (`initdb` in a temporary directory), the log is rebuilt a
 with the snapshot at that seq; a dump that fails is deleted and reported, exit 1. `restore
 <file>` refuses unless schema `sprint` is empty and no run holds the lock, restores, runs
 the same check, and prints `next: nova-sprint run`. `clear`, the one op that leaves rows
-behind, takes a backup first and refuses if it fails. The first real store's `up` takes one.
+behind, takes a backup first and refuses if it fails.
 
 ## 6. The dashboard
 

@@ -1,8 +1,0 @@
-[
-  {
-    "name": "SetupChoicesWalk",
-    "module": "SetupChoicesWalk.tla",
-    "cfg": "SetupChoicesWalk.cfg",
-    "expect": "pass"
-  }
-]

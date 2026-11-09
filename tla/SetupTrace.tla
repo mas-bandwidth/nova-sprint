@@ -6,7 +6,7 @@ EXTENDS SetupWalk, SetupTraceLog, TLC
 \* See SetupTrace-MAPPING.md for sampled boundaries and hidden actions.
 VARIABLE l
 traceVars == <<vars,l>>
-TraceActions == {"Init","Probe","Ask","Do","Regress","Crash","Restart","Stutter"}
+TraceActions == {"Init","Probe","Ask","Do","Settle","Handoff","Regress","Crash","Restart","Stutter"}
 Has(r,f) == f \in DOMAIN r
 Logged(r) ==
   /\ world = r.world
@@ -16,7 +16,6 @@ Logged(r) ==
   /\ pc = r.pc
   /\ phase = r.phase
   /\ disruptions = r.disruptions
-  /\ keySinks = r.keySinks
 LoggedNext(r) ==
   /\ world' = r.world
   /\ verified' = r.verified
@@ -25,12 +24,13 @@ LoggedNext(r) ==
   /\ pc' = r.pc
   /\ phase' = r.phase
   /\ disruptions' = r.disruptions
-  /\ keySinks' = r.keySinks
 
 StepAs(r) ==
  CASE r.action = "Probe" -> Probe
    [] r.action = "Ask" -> Ask(r.q)
    [] r.action = "Do" -> Do
+   [] r.action = "Settle" -> Settle
+   [] r.action = "Handoff" -> Handoff
    [] r.action = "Regress" -> Regress(r.k)
    [] r.action = "Crash" -> Crash
    [] r.action = "Restart" -> Restart
@@ -54,7 +54,7 @@ TraceIndexed ==
  /\ Len(TraceLog) > 0
  /\ \A k \in 1..Len(TraceLog) :
      /\ {"i","action","world","verified","answers","asked","pc","phase",
-          "disruptions","keySinks"} \subseteq DOMAIN TraceLog[k]
+          "disruptions"} \subseteq DOMAIN TraceLog[k]
      /\ TraceLog[k].i = k
      /\ TraceLog[k].action \in TraceActions
      /\ (k = 1) = (TraceLog[k].action = "Init")

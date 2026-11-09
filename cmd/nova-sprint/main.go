@@ -64,7 +64,7 @@ func gatePresence(args []string) verbs.Presence {
 }
 
 // executeVerb runs one verb on the engine open.go builds; phase is the up
-// walk's ("phase1" reports its continuation through the handoff channel).
+// walk's (newEngine).
 func executeVerb(ctx context.Context, args []string, phase string) int {
 	e, closeAll := newEngine(args, phase)
 	defer closeAll()

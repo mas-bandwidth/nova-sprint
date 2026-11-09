@@ -7,10 +7,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
+
+	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
-	"testing"
 )
 
 type runtimeStore struct {
@@ -22,16 +22,10 @@ func (s *runtimeStore) Ready(context.Context) (bool, error) { return s.ready, ni
 func (s *runtimeStore) Install(context.Context) error       { s.ready = true; s.actions++; return nil }
 
 type runtimeWork struct {
-	services, workers, smoke bool
-	actions                  int
+	workers, smoke bool
+	actions        int
 }
 
-func (w *runtimeWork) ServicesReady(context.Context, []string) (bool, error) { return w.services, nil }
-func (w *runtimeWork) InstallServices(context.Context, []string) error {
-	w.services = true
-	w.actions++
-	return nil
-}
 func (w *runtimeWork) WorkersReady(context.Context) (bool, error) { return w.workers, nil }
 func (w *runtimeWork) InstallWorkers(context.Context) error {
 	w.workers = true
@@ -39,14 +33,12 @@ func (w *runtimeWork) InstallWorkers(context.Context) error {
 	return nil
 }
 func (w *runtimeWork) SmokeReady(context.Context) (bool, error) { return w.smoke, nil }
-func (w *runtimeWork) RunSmoke(context.Context) error           { w.smoke = true; w.actions++; return nil }
 func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := &runtimeStore{}
-	w := &runtimeWork{}
-	r := RuntimeSetup{Store: st, Workload: w}
-	for _, step := range []int{2, 8} {
+	r := RuntimeSetup{Store: st}
+	for _, step := range []int{2} {
 		for round := 0; round < 2; round++ {
 			check, err := r.Verify(ctx, step, SetupInput{})
 			if err != nil {
@@ -63,25 +55,13 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 			}
 		}
 	}
-	if st.actions != 1 || w.actions != 1 {
-		t.Fatal(st.actions, w.actions)
+	if st.actions != 1 {
+		t.Fatal(st.actions)
 	}
 	st.ready = false
 	check, err := r.Verify(ctx, 2, SetupInput{})
 	if err != nil || check.Verified || !check.Action {
 		t.Fatal(check, err)
-	}
-}
-func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
-	t.Parallel()
-	for _, value := range []string{"unknown", "deepseek,deepseek", "deepseek,"} {
-		if _, err := setupServices(value); err == nil {
-			t.Fatal(value)
-		}
-	}
-	names, err := setupServices("openrouter,deepseek")
-	if err != nil || len(names) != 2 || names[0] != "deepseek" {
-		t.Fatal(names, err)
 	}
 }
 
@@ -93,7 +73,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	ctx := context.Background()
 	db := store.NewFake()
 	st := &runtimeStore{}
-	worker := &runtimeWork{}
+	worker := &runtimeWork{smoke: true}
 	run := &runtimeRun{}
 	exists := false
 	fleetUp := true
@@ -132,7 +112,6 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 		t.Fatalf("unexpected command %s", name)
 		return nil, nil
 	}
-	c := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
 	transport := dashboardRoundTrip(func(req *http.Request) (*http.Response, error) {
 		body := "ok"
 		if req.URL.Path == "/api/sprint" {
@@ -140,11 +119,11 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
-	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c, Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Store: st, Run: run, Workload: worker, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, Snapshot: db, RunService: service, DefaultRunHost: "bench-a", Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}, Dashboard: DashboardProbe{Transport: transport}}
-	in := SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Store: st, Run: run, Workload: worker, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, Snapshot: db, RunService: service, Board: DashboardTarget{URL: "http://host"}, Dashboard: DashboardProbe{Transport: transport}}
+	in := SetupInput{Actor: "alice", Dash: "tailnet"}
 	for round := 0; round < 2; round++ {
-		for step := 1; step <= 8; step++ {
-			if step == 7 && round == 0 { // no commit identity yet: up asks the human, and no act makes it true
+		for _, step := range []int{1, 2, 4, 5, 6, 7} {
+			if step == 6 && round == 0 { // no commit identity yet: up asks the human, and no act makes it true
 				check, err := r.Verify(ctx, step, in)
 				if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "ASK the human which forge account") {
 					t.Fatal(step, check, err)
@@ -166,46 +145,13 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 			}
 		}
 	}
-	if st.actions != 1 || worker.actions != 3 || plays != 2 {
+	if st.actions != 1 || worker.actions != 1 || plays != 1 {
 		t.Fatal(st.actions, worker.actions, plays)
 	}
 	fleetUp = false
 	check, err := r.Verify(ctx, 1, in)
 	if err != nil || check.Verified || check.Next != "nova-fleet check" {
 		t.Fatal(check, err)
-	}
-}
-func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
-	t.Parallel()
-	db := store.NewFake()
-	choices := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
-	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices}}}
-	check, err := r.Verify(context.Background(), 5, SetupInput{})
-	if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "ASK the human") || !strings.Contains(check.Next, "--dash tailnet") {
-		t.Fatal(check, err)
-	}
-	_, saved, err := choices.Get(context.Background(), "dashboard")
-	if err != nil || saved {
-		t.Fatal("choice saved before asking", err)
-	}
-}
-func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
-	t.Parallel()
-	db := store.NewFake()
-	choices := Choices{Store: db, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
-	command := func(_ context.Context, name string, args ...string) ([]byte, error) {
-		switch name {
-		case "nova-bus":
-			return []byte("WHO OK present=0\n"), nil
-		default:
-			return nil, nil
-		}
-	}
-	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: command, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Store: &runtimeStore{ready: true}}
-	result := (&Engine{Actor: "rowan", Store: upStore(true), Bus: &fakeBus{}, Now: upNow, Setup: runtime, Lock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
-	want := "SPRINT REFUSED up: rowan is not on the bus: " + busRecipe("rowan") + "\n"
-	if result.Exit != 1 || result.Output != want {
-		t.Fatal(result)
 	}
 }
 

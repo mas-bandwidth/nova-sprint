@@ -46,7 +46,8 @@ func (c credentials) sprint() (string, error) {
 	return dsn, nil
 }
 
-// newEngine is the one way the binary opens what the verbs read and write:
+// newEngine is the one way the binary opens what the verbs read and write
+// (phase "store": the credential-less up, which stops after step 2):
 // the store and nova-config lazily (help and version open nothing), the
 // bus, the policy engine, the git and forge edges, the doctor, the
 // archive, the long-running services and the up walk.
@@ -60,15 +61,13 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 		Doctor: doctor{creds: creds}, Archive: newArchive(creds), Now: time.Now, Stdin: os.Stdin, Actor: actor, Version: versionString(), ToolPin: toolPin}
 	e.Lander = &lander{clones: &origin{git: git, dir: filepath.Join(stateDir(), "land")}, forge: fg}
 	e.Services = services{creds: creds, store: st, roster: ro, policy: pol, git: git, forge: fg}
-	env := verbs.ExecEnvironment{DSN: creds.dsn, Password: creds.password, Choices: verbs.Choices{Store: st, Actor: actor, Now: time.Now}, Command: toolCommand}
-	e.Setup, e.Lock = buildProductionSetup(st, env, actor, toolPin)
+	env := verbs.ExecEnvironment{DSN: creds.dsn, Password: creds.password, Command: toolCommand}
+	e.Setup = buildProductionSetup(st, env, toolPin)
 	e.Doctor = fleetDoctor(creds, e.Setup)
 	if len(args) > 0 && args[0] == "up" {
 		e.Bus = setupPresence{}
 	}
-	if phase == "phase1" {
-		e.ReportContinuation = reportHandoff
-	}
+	e.UpStoreOnly = phase == "store"
 	return e, func() { st.Close(); ro.Close() }
 }
 

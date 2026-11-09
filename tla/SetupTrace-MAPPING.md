@@ -1,78 +1,57 @@
 # Actual setup walk trace mapping
 
-The emitter must drive real verbs.up/setupStep code and observe real adapter
-calls/results. Fake external dependencies own the world and durable-answer
-fixture; they are not a TLA transition simulator. This binding proves finite
-observed walker executions, not production external services or liveness.
+The emitter (`TestSetupActualTrace`, modules/verbs/setup_trace_test.go) drives
+the real verbs.runUp/setupStep/coordinatorStep code and observes its
+SetupObserver events. A fake Setup owns the world of steps 1, 2 and 4 to 7;
+step 3's world is the store's coordinator row (hooked in the fixture). This
+binding proves finite observed walker executions, not production external
+services or liveness.
 
 ## Explicit initial boundary
 
-Trace begins at the actual under-lock walk after the readiness prefix. Prefix
-and handoff lease ordering belong to a separate SetupHandoff binding. Initial
-world/answers are observed fixture state, verified is empty, pc=1, phase=probe.
-Asked counters and key-sink history start at zero/empty for this execution;
-pre-existing answers do not imply invented earlier prompts. SetupWalk.WalkInit
-is a new, explicitly admitted initial condition. Setup.Init and Setup.Next
-remain unchanged. SetupWalk.cfg checks invariants and model liveness under all
-8-step initial boolean worlds and all subsets of four initial answers, with
-one bounded disruption. That is model evidence, distinct from actual traces.
+Initial world/answers are observed fixture state, verified is empty, pc=1,
+phase=probe, asked counters zero for this execution; a pre-existing identity
+does not imply an invented earlier question. SetupWalk.WalkInit is the
+admitted initial condition; Setup.Init and Setup.Next remain unchanged.
+SetupWalk.cfg checks the invariants and liveness under all 7-step initial
+worlds, with and without the identity, and one bounded disruption.
 
 ## Trace schema and projection
 
 Emit a TLA module SetupTraceLog defining TraceLog as a finite sequence. Every
-record requires i (1-based), action, world, verified, answers, asked, pc, phase,
-disruptions and keySinks. Ask additionally requires q; Regress requires k.
+record requires i (1-based), action, world, verified, answers, asked, pc, phase
+and disruptions. Ask additionally requires q; Regress requires k.
 
 | Field | Observed refinement |
 | --- | --- |
-| world | Full fake dependency readiness function over steps1..8, sampled from its actual state. |
-| answers | Actual durable fixture answers among coordinator/dashboard/services/key. |
-| asked | Per-question prompt/save counts in this observed execution, not historical totals. |
-| verified | Steps whose actual Verify returned true in the current under-lock invocation. |
-| pc, phase | Actual callback step and return: false Verify retains step in repair; true Verify moves to next step/probe (step8 gives9/done); completed Act returns to same-step probe. |
-| disruptions | Number of actual injected regressions/stops recorded in this trace. |
-| keySinks | Actual observed secret transport destinations within this execution; never secret bytes. |
+| world | The fake's readiness over steps 1..7, sampled from its actual state. |
+| answers | The identity, when the fixture's store holds one. |
+| asked | Questions asked in this observed execution, not historical totals. |
+| verified | Steps whose actual verify returned true in the current invocation. |
+| pc, phase | The observed step and result: a false verify stays at the step in repair; a true verify moves on (step 7 gives 8/done); a completed act returns to probe. |
+| disruptions | Injected regressions and handoffs recorded in this trace. |
 
-A successful Verify maps Probe; a failing readiness Verify also maps Probe
-with phase repair. Successful Act maps Do only when the observed dependency
-state satisfies that action's postcondition; do not set world true merely
-because Act returned nil. Durable answer events map Ask and retain their actual
-order within Act. An actual fixture regression maps Regress(k). Actual process
-stop maps Crash; a following actual inner invocation maps Restart. Acquisition
-is never mislabeled Crash. A completed walk's next invocation may also Restart.
+Observer events map: `begin` to Init (first) or Restart; `verify` to Probe;
+`act` to Do, only when the fake's world is then true; `store-only` (the
+credential-less process stopping once step 2 verifies, UpStoreOnly) to
+Handoff; an injected fixture regression to Regress(k). A step-7 refusal maps
+to Settle. A changed world, answer, counter or position is never hidden by a
+stutter. The emitter does not bind Ask (the identity is in the fixture) or
+cancellation.
 
-Unchanged projections may use Stutter only for genuinely hidden callbacks or
-read-only transport steps. A changed world, answer, receipt, counter or walk
-position cannot be silently hidden. The first emitter checkpoint uses already
-saved answers, a stable ready step1 prefix, random other world bits and actual
-repairs/regressions/repeated invocations. It therefore does not bind Ask,
-secret transports, cancellation, or two-child handoff effects.
+SetupTrace requires all projected fields and derives invariant monitors
+itself. TraceInit assigns the observed first record, then TraceInitialAllowed
+checks WalkInit as an invariant. TraceMatched is finite reachability of the
+last record, not implementation liveness. At a refusal with last matched
+index l, the first refused record is l+1.
 
-## Contract gaps and refusal diagnosis
+## The workload steps (6 and 7)
 
-Setup.Need(6) unconditionally requires services and key. Real services=none
-requires no key. The first trace uses service-requires-key only: never fabricate
-Ask(key) to fit none. A separate explicit conditional-obligation model extension
-is required before covering that supported branch. Also, an Act that returns
-before external readiness is true cannot be forced into Do; preserve the first
-refused transition and diagnose whether the model or contract needs correction.
-
-SetupTrace requires all projected fields and derives invariant monitors itself.
-It uses unchanged Setup actions (or explicit stuttering) at every matched step.
-TraceInit assigns the observed first record, then TraceInitialAllowed checks
-WalkInit as an invariant; invalid initial state cannot pass by yielding zero
-initial states. TraceMatched is finite reachability of the last record, not
-implementation liveness. At a temporal refusal with last matched index l, the
-first refused record is l+1. Malformed records/initial conditions fail their own
-invariants or parsing and must not be reported as a behavioral counterexample.
-
-## The workload steps (7 and 8)
-
-world[7] and world[8] are bound to the production workload adapter
+world[6] and world[7] are bound to the production workload adapter
 (cmd/nova-sprint/setup_workload.go) by TestWorkloadStepsMatchTheSetupModel,
-over every state of a two-bench fleet: world[7] is every worker bench on the
-bus and up in the store; world[8] is world[7] and every worker bench with
-cores. A step that is not ready is a `*verbs.WorkloadNotReady`, the model's
-repair phase: up acts once (InstallWorkers at 7, nothing at 8), and the
-second not-ready is the refusal naming each bench. That binding checks the
-step conditions, not a trace: the walk's traces still use the fake world.
+over every state of a two-bench fleet: world[6] is every worker bench on the
+bus and up in the store; world[7] is world[6] and every worker bench with
+cores. A step-6 not-ready is a `*verbs.WorkloadNotReady`, the model's repair:
+up acts once (InstallWorkers), and the second not-ready is the refusal naming
+each bench. Step 7 has no act: its not-ready is the refusal (Settle). That
+binding checks the step conditions, not a trace.

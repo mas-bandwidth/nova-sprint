@@ -1,15 +1,12 @@
 package main
 
 import (
-	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
@@ -103,26 +100,16 @@ func serviceLogPath(service string) string {
 	return filepath.Join(".local", "state", "nova", "services", service+".log")
 }
 
-// productionWorkload is up's steps 6 to 8 on a real fleet
+// productionWorkload is up's steps 6 and 7 on a real fleet
 // (verbs.SetupWorkload): services writes as up's actor; run is the
 // sprint-run record the workers share the store and bus with; store and
-// present observe the rows; lastLine reads a unit's last log line.
+// present observe the rows.
 type productionWorkload struct {
 	services verbs.FleetServices
 	run      verbs.FleetService
 	store    verbs.Reader
 	present  func(context.Context) (map[string]bool, error)
-	lastLine func(ctx context.Context, machine, service string) string
-	version  func(ctx context.Context, machine string) error // nil: this bench runs this binary's version
 }
-
-// ServicesReady is true: step 6's keys are proven by their model probe
-// (verbs.ServiceKey) and "none" needs nothing; the worker records that
-// open the provider keys are step 7's, proven by the workers coming up.
-func (productionWorkload) ServicesReady(context.Context, []string) (bool, error) { return true, nil }
-
-// InstallServices has nothing past the keys to install (ServicesReady).
-func (productionWorkload) InstallServices(context.Context, []string) error { return nil }
 
 // InstallWorkers writes one worker service record per worker bench (the
 // seats were granted the sprint credential first, verbs.RuntimeSetup) and
@@ -163,7 +150,7 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	return nil
 }
 
-// benchState is one worker bench as steps 7 and 8 see it.
+// benchState is one worker bench as steps 6 and 7 see it.
 type benchState struct {
 	name, row string // row: the store row's state, "no row" when absent
 	hooked    bool   // its name is on the bus
@@ -203,8 +190,8 @@ func (w productionWorkload) benchStates(ctx context.Context) ([]benchState, erro
 }
 
 // WorkersReady is every worker bench hooked on the bus and up in the
-// store, and running this binary's version; else the benches that are not,
-// each with its unit's last log line. A worker probes its harness with the
+// store; else the benches that are not (this release on each is step 6's
+// nova-fleet install --check, productionSetup.release). A worker probes its harness with the
 // policy's models, its seat's provider keys in hand, before it hooks
 // (worker.Runner.ServeRow), so hooked and up is probed (admission, intent
 // rule 34).
@@ -220,61 +207,20 @@ func (w productionWorkload) WorkersReady(ctx context.Context) (bool, error) {
 		}
 	}
 	if len(down) > 0 {
-		return false, &verbs.WorkloadNotReady{Why: w.downWhy(ctx, down), Fix: "read the unit's log on each bench named (~/" + serviceLogPath("sprint-worker-<bench>") + ") and fix what it says (a probe refusal names the model or key it lacks), or take the bench role off a machine that is gone; then nova-sprint up again"}
+		return false, &verbs.WorkloadNotReady{Why: downWhy(down), Fix: "read the unit's log on each bench named (~/" + serviceLogPath("sprint-worker-<bench>") + ") and fix what it says (a probe refusal names the model or key it lacks), or take the bench role off a machine that is gone; then nova-sprint up again"}
 	}
-	return w.versionsReady(ctx, states)
+	return true, nil
 }
 
-// versionsReady is every bench's nova-sprint at this binary's version, the
-// benches read at once (step 5's check, over ssh).
-func (w productionWorkload) versionsReady(ctx context.Context, states []benchState) (bool, error) {
-	if w.version == nil {
-		return false, fmt.Errorf("worker setup unavailable: no version check is wired")
-	}
-	errs := make([]error, len(states))
-	var wg sync.WaitGroup
-	for i, b := range states {
-		wg.Go(func() { errs[i] = w.version(ctx, b.name) })
-	}
-	wg.Wait()
-	var why []string
-	var first error
-	for _, err := range errs {
-		if err != nil {
-			why, first = append(why, err.Error()), cmp.Or(first, err)
-		}
-	}
-	if len(why) == 0 {
-		return true, nil
-	}
-	fix := "nova-fleet install --repo <org/repo> --tag <this version> <bench> for each bench named, then nova-sprint up again"
-	var op *verbs.OperationError
-	if errors.As(first, &op) {
-		fix = op.Fix
-	}
-	return false, &verbs.WorkloadNotReady{Why: strings.Join(why, "; "), Fix: fix}
-}
-
-// downWhy names each bench that is not up and its unit's last log line,
-// the logs read concurrently.
-func (w productionWorkload) downWhy(ctx context.Context, down []benchState) string {
-	lines := make([]string, len(down))
-	var wg sync.WaitGroup
-	for i, b := range down {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			lines[i] = w.lastLine(ctx, b.name, "sprint-worker-"+b.name)
-		}()
-	}
-	wg.Wait()
+// downWhy names each bench that is not up: on the bus or not, its row.
+func downWhy(down []benchState) string {
 	parts := make([]string, len(down))
 	for i, b := range down {
 		bus := "not on the bus"
 		if b.hooked {
 			bus = "on the bus"
 		}
-		parts[i] = fmt.Sprintf("%s (%s, store row %s; last log line: %s)", b.name, bus, b.row, lines[i])
+		parts[i] = fmt.Sprintf("%s (%s, store row %s)", b.name, bus, b.row)
 	}
 	return fmt.Sprintf("%d of the worker benches are not hooked and up: %s", len(down), strings.Join(parts, "; "))
 }
@@ -305,29 +251,12 @@ func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 	return false, &verbs.WorkloadNotReady{Why: "not every worker row is dealable: " + strings.Join(why, "; "), Fix: fix}
 }
 
-// RunSmoke has nothing to act: what SmokeReady needs is a worker coming up
-// (step 7) or a core count in nova-config, which its refusal names.
-func (productionWorkload) RunSmoke(context.Context) error { return nil }
-
 // workerUnit is machine's worker service as check and show read it
 // (verbs.Doctor.Workers): its unit's last log line, or why it is unreadable.
 func (p productionSetup) workerUnit(ctx context.Context, machine string) verbs.WorkerUnit {
 	u := verbs.WorkerUnit{Machine: machine, Service: "sprint-worker-" + machine}
 	u.LastLine, u.Unread = p.serviceLogLine(ctx, machine, u.Service)
 	return u
-}
-
-// lastServiceLogLine is the last line of service's unit log on machine,
-// quoted; "(the log is empty)"; or what failed when it cannot be read.
-func (p productionSetup) lastServiceLogLine(ctx context.Context, machine, service string) string {
-	line, unread := p.serviceLogLine(ctx, machine, service)
-	switch {
-	case unread != "":
-		return unread
-	case line == "":
-		return "(the log is empty)"
-	}
-	return fmt.Sprintf("%q", line)
 }
 
 // serviceLogLine is the last line of service's unit log on machine, over
