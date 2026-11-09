@@ -116,8 +116,8 @@ func TestBeatLoopBeatsEveryPeriod(t *testing.T) {
 	}
 }
 
-// A failure is one warning per distinct cause, and none when the load could
-// not be read at all sends no beat.
+// A failure is one warning per distinct cause, and a meter that read no
+// cores at all sends no beat.
 func TestBeatWarnsOncePerCause(t *testing.T) {
 	t.Parallel()
 	var warns []string
@@ -140,7 +140,7 @@ func TestBeatWarnsOncePerCause(t *testing.T) {
 	sent := len(rec.beats)
 	r.beat_internal(t.Context(), "b1")
 	if len(rec.beats) != sent || len(warns) != 3 {
-		t.Fatalf("a bench with no load sends no beat and says why: %d beats, %q", len(rec.beats)-sent, warns)
+		t.Fatalf("a meter with no cores sends no beat and says why: %d beats, %q", len(rec.beats)-sent, warns)
 	}
 }
 
@@ -181,5 +181,33 @@ func TestBeatReachesTheRow(t *testing.T) {
 	snap, _ := fs.Snapshot(t.Context())
 	if r := snap.Rows["b1"]; r.Load1Centi != 126 || r.Cores != 4 || r.SlotsUsed != 1 || r.SlotsTotal != 4 {
 		t.Fatalf("row %+v", r)
+	}
+}
+
+// A bench whose load average cannot be read still beats: its cores, slots
+// and tiers are what the deal needs, so the load goes as unknown (0, as
+// unread slots go as 0 of 0) and the worker says why once.
+func TestBeatWithoutLoadStillBeats(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("no load average on windows")
+	}
+	var warns []string
+	rec := &beatRecorder{}
+	r := &Runner{Beater: rec, Warn: func(s string) { warns = append(warns, s) }, advertised: "small,medium",
+		Meter: OSMeter{
+			Exec:       beatExec{reserve: "capacity=4\nfree=1/4\n", sysctl: "not a load"},
+			ReserveBin: "/bin/nova-reserve",
+			ReadFile:   func(string) ([]byte, error) { return nil, errors.New("permission denied") },
+		}}
+	for range 2 {
+		r.beat_internal(t.Context(), "b1")
+	}
+	want := Heartbeat{Cores: runtime.NumCPU(), SlotsUsed: 3, SlotsTotal: 4, Tiers: "small,medium"}
+	if len(rec.beats) != 2 || rec.beats[0] != want || rec.beats[1] != want {
+		t.Fatalf("beats %+v; want two of %+v", rec.beats, want)
+	}
+	if len(warns) != 1 || !strings.HasPrefix(warns[0], "WORKER WARNING heartbeat") || !strings.Contains(warns[0], "load average") {
+		t.Fatalf("warnings %q; want one WORKER WARNING naming the load average", warns)
 	}
 }
