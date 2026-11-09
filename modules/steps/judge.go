@@ -3,7 +3,6 @@ package steps
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -295,17 +294,17 @@ func (t *tick) alarms() {
 			if at, ok := t.v.Landed[s]; ok && at.After(since) {
 				since = at
 			}
-			if !t.in.Now.Before(since.Add(seconds(t.tmo.LandingStall))) && !t.recentlyAnswered("stall", s, seconds(t.tmo.LandingStall)) {
+			if !t.in.Now.Before(since.Add(seconds(t.tmo.LandingStall))) {
 				t.judge("stall", s, fmt.Sprintf("stream %s: nothing landed since %s while %d review and %d merging wait", s, since.UTC().Format("15:04:05"), f.Review, f.Merging))
 			}
 		}
-		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < t.lim.LandTarget && !t.recentlyAnswered("land-rate", s, seconds(t.tmo.LandingStall)) {
+		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < t.lim.LandTarget {
 			t.judge("land-rate", s, fmt.Sprintf("stream %s lands first time at %.0f%% over %d; the target is %.0f%%", s, rate*100, n, t.lim.LandTarget*100))
 		}
 	}
 	open, working := t.load()
 	waiting := len(t.v.byState["ready"]) + len(t.v.byState["waiting"])
-	if open > 0 && waiting > 0 && float64(working) < t.lim.IdleFloor*float64(open) && !t.recentlyAnswered("idle", "fleet", seconds(t.tmo.LandingStall)) {
+	if open > 0 && waiting > 0 && float64(working) < t.lim.IdleFloor*float64(open) {
 		t.judge("idle", "fleet", fmt.Sprintf("working %d of %d open width while %d ready and %d waiting: %s", working, open, len(t.v.byState["ready"]), len(t.v.byState["waiting"]), t.idleCauses()))
 	}
 }
@@ -388,16 +387,4 @@ func (t *tick) judgementOp() (store.Op, bool) {
 	}
 	op.ID = fmt.Sprintf("j%d.%d.%s", t.v.Epoch, t.v.Seq, hashBody(op.Expect, op.Writes))
 	return op, true
-}
-
-// recentlyAnswered reports whether an episode of kind about was answered
-// within d before t.in.Now, so answering retry on an alarm does not reopen
-// it on the very next 1s tick.
-func (t *tick) recentlyAnswered(kind, about string, d time.Duration) bool {
-	for _, j := range t.v.Judgements {
-		if j.Kind == kind && j.About == about && j.State == "answered" && !j.ClosedAt.IsZero() && t.in.Now.Before(j.ClosedAt.Add(d)) {
-			return true
-		}
-	}
-	return false
 }
