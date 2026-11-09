@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -31,6 +32,15 @@ func AckCursor(epoch int, c string) string {
 	}
 	sum := sha256.Sum256(fmt.Appendf(nil, "%d:%s", epoch, c))
 	return fmt.Sprintf("took-hash:%x", sum[:16])
+}
+
+// ShellWord is s as one word of a printed command a row runs in a shell:
+// as it is when it holds only safe characters, else single-quoted.
+func ShellWord(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:@/-") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // Nudge is one push run sends to a row this tick, outside the event log: a
@@ -84,7 +94,7 @@ func (t *tick) unacked() []Nudge {
 				continue // another step moves it this tick, or it is dealt again or back in the queue
 			}
 			if t.present(n) { // the bus only queues a nudge to an absent row
-				cmd := fmt.Sprintf("nova-sprint take %s@%d --as %s --epoch %d", id, c.Gen, n, t.v.Epoch)
+				cmd := fmt.Sprintf("nova-sprint take %s --as %s --epoch %d", ShellWord(fmt.Sprintf("%s@%d", id, c.Gen)), n, t.v.Epoch)
 				out = append(out, Nudge{Row: n, Card: id, Every: seconds(t.tmo.ReadyNag), Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
 					untaken, len(live)-untaken, t.room(n), id, since.Truncate(time.Second), cmd)})
 			}

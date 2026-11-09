@@ -116,8 +116,8 @@ same path.
   the process removed (`GH_TOKEN`, `GITHUB_TOKEN`, the enterprise tokens,
   `GH_CONFIG_DIR`), so one in the environment never makes the landing
   someone else (directive 59). `GH_GATE_TOKEN`, when set in run's
-  environment, is passed to gh as `GH_TOKEN` instead: an optional override,
-  not a requirement. Messages name the choice ("this host's gh login", or
+  environment, is passed to gh as `GH_TOKEN` instead. A bench worker
+  refuses to start without `GH_GATE_TOKEN` in its environment. Messages name the choice ("this host's gh login", or
   `GH_GATE_TOKEN`), never a login the sprint expects. No CI trigger on `sprint/**` is required: rung 1's PR is
   from the card branch and rung 2's from the group branch, and the
   repository's own `pull_request` workflow runs on both.

@@ -37,11 +37,15 @@ func (b testBus) edge() *bus.Edge { return bus.New(bus.Config{Bin: b.bin, Env: b
 func testRedisBus(t *testing.T) testBus {
 	t.Helper()
 	redis, err := exec.LookPath("redis-server")
-	if err != nil {
+	if err != nil && os.Getenv("CI") != "" {
+		t.Fatal("redis-server required: missing on a CI runner")
+	} else if err != nil {
 		t.Skip("redis-server required")
 	}
 	bin, err := exec.LookPath("nova-bus")
-	if err != nil {
+	if err != nil && os.Getenv("CI") != "" {
+		t.Fatal("nova-bus required: missing on a CI runner")
+	} else if err != nil {
 		t.Skip("nova-bus required")
 	}
 	l, err := net.Listen("tcp", "127.0.0.1:0")

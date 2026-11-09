@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -87,6 +88,9 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 		return nil, refuse("no stream "+stream, "nova-sprint stream add "+stream+" --repo <org/repo>")
 	}
 	if sentinel != "" {
+		if why := cardIDProblem(stream, sentinel); why != "" {
+			return nil, refuse(why, "name the sentinel with "+cardIDSet)
+		}
 		return []card.Add{{ID: sentinel, Kind: "sentinel", Stream: stream, Tier: "flash", Needs: needs}}, nil
 	}
 	adds := make([]card.Add, 0, len(files))
@@ -95,10 +99,27 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 		if err != nil {
 			return nil, err
 		}
+		if why := cardIDProblem(stream, a.ID); why != "" {
+			return nil, refuse(why, "rename the brief file "+f+" so its name without .md is "+cardIDSet)
+		}
 		a.Stream = stream
 		adds = append(adds, a)
 	}
 	return adds, nil
+}
+
+// cardIDSet is what a card id may be: a row name's characters without '.'.
+const cardIDSet = "1 to 104 of a-z A-Z 0-9 _ -, not starting with -"
+
+// cardIDProblem is why id cannot be a card id of stream, or "": a row name
+// (validName) with no '.', not starting with '-' (a flag in a command), and
+// its branch sprint/<stream>/<id> a git ref name. The id is one word in the
+// commands a row is told to run, and its branch is created by the worker.
+func cardIDProblem(stream, id string) string {
+	if !validName(id) || strings.Contains(id, ".") || strings.HasPrefix(id, "-") {
+		return strconv.Quote(clip(id)) + " is not a card id (" + cardIDSet + ")"
+	}
+	return refNameProblem("sprint/" + stream + "/" + id)
 }
 
 func orWord(s, or string) string {

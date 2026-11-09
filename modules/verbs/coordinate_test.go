@@ -3,6 +3,7 @@ package verbs
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,6 +116,34 @@ func TestAddRefusals(t *testing.T) {
 	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", group), 1, "card id group is the stream's group branch")
 	a := brief(t, "a1", "")
 	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", a, "--brief-file", a), 2, "card a1 is named twice")
+}
+
+// TestAddRefusesACardIDOutsideTheNameSet is add's admission of a card id:
+// a row name's characters without '.', not starting with '-', so its branch
+// sprint/<stream>/<id> is a git ref and the id is one word in the commands a
+// row is told to run. Each refused id is refused in one line naming the fix
+// and stored nowhere; the ids the tests and docs use are admitted.
+func TestAddRefusesACardIDOutsideTheNameSet(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"my card", "x~1", "a:b", "what?", "a;echo pwned;", "$(id)", "-rf"} {
+		s := sprint()
+		s.Cards = map[string]store.Card{}
+		w := worldFrom(t, s)
+		r := w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, id, ""))
+		if r.Exit != 1 || !strings.Contains(r.Output, "is not a card id") || !strings.Contains(r.Output, "rename the brief file") {
+			t.Errorf("add of card id %q: exit %d, want 1 and a refusal naming the fix:\n%s", id, r.Exit, r.Output)
+		}
+		if _, stored := w.snap(t).Cards[id]; stored {
+			t.Errorf("card id %q was stored", id)
+		}
+	}
+	s := sprint()
+	s.Cards = map[string]store.Card{}
+	w := worldFrom(t, s)
+	want(t, w.do("carol", "add", "--stream", "s", "--sentinel", "x y", "--needs", "a1"), 1, "is not a card id")
+	for _, id := range []string{"a1", "p_1", "fix-login", "A-9_z"} {
+		want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, id, "")), 0, "ADD "+id+" kind=producer")
+	}
 }
 
 func TestJudge(t *testing.T) {

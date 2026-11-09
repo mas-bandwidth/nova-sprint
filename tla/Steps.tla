@@ -545,6 +545,12 @@ DefaultRow(V, x, t) ==
 InDomain(V, x, ar, t) == ar \in Rows /\ Eligible(V, x, ar, t)
 RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN ar ELSE DefaultRow(V, x, t)
 MayMove(V, x, r) == IF x.kind = "work" THEN StartOK(V, x.p, r) ELSE ReadOK(V, x.p, r)
+\* A rows answer that names an offered row (up, on the bus, serving the
+\* candidate, not a read's author) while no row has room is no miss: the
+\* candidate waits for room, which is no failure of policy (the code's
+\* pickRows, TestTickRowsMissNamesNoRoom). With room on another row it is.
+Offered(V, x, r) == V.up[r] /\ bus[r] /\ Serves(r, x.p) /\ (x.kind = "read" => r # V.ps[x.p].author)
+FullAnswer(V, x, ar, t) == ar \in Rows /\ Offered(V, x, ar) /\ DefaultRow(V, x, t) = NoR
 
 \* acc: [gs, t (in-tick tally per row), miss, uns, cr]. useAns FALSE is the
 \* no-policy reference the policy check compares with.
@@ -556,7 +562,7 @@ DealFold(V, cands, i, acc, ar, useAns) ==
         r  == IF useAns THEN RowFor(V, x, acc.t, ar) ELSE DefaultRow(V, x, acc.t)
         ok == r # NoR /\ MayMove(V, x, r)
         g  == Grp(IF x.kind = "work" THEN "start" ELSE "read", x.p, NoC, r, 0, 0, V)
-        mi == IF InDomain(V, x, ar, acc.t) THEN {} ELSE {"rows"}
+        mi == IF InDomain(V, x, ar, acc.t) \/ FullAnswer(V, x, ar, acc.t) THEN {} ELSE {"rows"}
         un == IF x.kind = "work" /\ ServingOpen(V, x.p) = {} THEN {TierName(Tier[x.p])} ELSE {}
         cr == IF x.kind = "read" /\ ServingOpen(V, x.p) \subseteq {V.ps[x.p].author}
               THEN {x.p} ELSE {}
