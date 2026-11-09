@@ -193,3 +193,28 @@ func TestTickBurstSpreadsAcrossAnsweredRows(t *testing.T) {
 	}
 	assert.Equal(t, map[string]int{"r1": 2, "r2": 3}, held, "five cards in one tick, every one dealt")
 }
+
+// TestTickRowsMissNamesNoRoom: a rows answer naming only full rows is a miss
+// (the card goes where the engine ranks), and its policy judgement names the
+// card, the rows answered and the rows with room; no policy judgement is
+// opened with an empty reason (live run 2026-11-08: policy v51 answered only
+// friend rows while every friend was full, and the judgement read "failed
+// question rows: ;").
+func TestTickRowsMissNamesNoRoom(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Rows: map[string][]string{"p1": {"f1"}, "p2": {"f1"}}}}
+	s.row("b1", 1, "pro")
+	s.kin("f1", "m-friend", 1, "pro")
+	s.stream("s1")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.producer("p2", "s1", "pro", "a/y")
+	s.run(3)
+	assert.Equal(t, "f1", s.card("p1.w1").Holder)
+	assert.Equal(t, "b1", s.card("p2.w1").Holder, "f1 is full: the engine deals to the bench")
+	require.Contains(t, s.openJudgements("policy"), "policy.rows.1")
+	assert.Contains(t, s.snap().Judgements["policy.rows.1"].Question, "failed question rows: rows(p2) names f1, none with room (rows with room: b1)")
+	for _, id := range s.openJudgements("policy") {
+		assert.NotContains(t, s.snap().Judgements[id].Question, ": ;", id)
+	}
+}

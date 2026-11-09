@@ -159,7 +159,7 @@ func (t *tick) put(j judgement) store.Write {
 func (t *tick) judgements() {
 	t.alarms()
 	for _, q := range t.o.missed() {
-		t.judge("policy", q, fmt.Sprintf("policy v%d failed question %s: %s; the default answered this tick: run nova-sprint policy check", t.o.a.Version, q, t.o.a.Failed[q]))
+		t.judge("policy", q, fmt.Sprintf("policy v%d failed question %s: %s; the default answered this tick: run nova-sprint policy check", t.o.a.Version, q, t.o.why(q)))
 	}
 	for _, id := range sortedKeys(t.v.Judgements) {
 		j := t.v.Judgements[id]
