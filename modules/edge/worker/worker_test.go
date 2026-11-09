@@ -58,6 +58,7 @@ type fakeGit struct {
 	stagedJobs  []Job
 	commits     []string
 	fetches     map[string]int // per repo
+	fetchedJobs map[string]int // per repo: the jobs its fetches were for
 	fetchErr    error
 	pushLog     []fakePush
 }
@@ -73,13 +74,17 @@ func newFakeGit_internal() *fakeGit {
 	}
 }
 
-func (g *fakeGit) Fetch(_ context.Context, j Job) error {
+func (g *fakeGit) Fetch(_ context.Context, js ...Job) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.fetches == nil {
 		g.fetches = map[string]int{}
 	}
-	g.fetches[j.Repo]++
+	g.fetches[js[0].Repo]++
+	if g.fetchedJobs == nil {
+		g.fetchedJobs = map[string]int{}
+	}
+	g.fetchedJobs[js[0].Repo] += len(js)
 	return g.fetchErr
 }
 

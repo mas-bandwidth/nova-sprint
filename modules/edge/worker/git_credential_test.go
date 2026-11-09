@@ -59,8 +59,8 @@ func workerGitCalls_internal(t *testing.T, g *OSGitOps, fx *edge.FakeExec) []edg
 			remote, verbs[args[0]] = append(remote, c), true
 		}
 	}
-	if len(verbs) != 4 {
-		t.Fatalf("the worker's remote git verbs reached are %v, want clone, fetch, ls-remote and push", verbs)
+	if len(verbs) != 3 {
+		t.Fatalf("the worker's remote git verbs reached are %v, want fetch, ls-remote and push", verbs)
 	}
 	return remote
 }
@@ -264,7 +264,7 @@ func sealedFake_internal(fx *edge.FakeExec, sha string) {
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
 		args := c.Cmd.Argv[gitArg0_internal:]
 		switch {
-		case args[0] == "clone":
+		case args[0] == "init":
 			_ = os.MkdirAll(filepath.Join(args[len(args)-1], ".git"), 0o755)
 		case args[0] == "bundle" && args[1] == "create":
 			_ = os.WriteFile(args[2], []byte("bundle"), 0o600)
@@ -277,9 +277,10 @@ func sealedFake_internal(fx *edge.FakeExec, sha string) {
 	})
 }
 
-// The token is on the calls that reach a remote alone (the work clone's
-// clone and fetch, the rebase's fetch, ls-remote, push), never on a local
-// clone, the bundle fetch, rebase, rev-parse or config; every call carries
+// The token is on the calls that reach a remote alone (staging's fetch
+// into the mirror, the rebase's fetch, ls-remote, push), never on a local
+// init, the work clone's fetch from the mirror, the bundle fetch, rebase,
+// rev-parse or config; every call carries
 // the no-hooks, no-fsmonitor, no-submodule flags, reads no global or
 // system config, and fetch and push pass --no-recurse-submodules.
 func TestWorkerGitTokenOnlyOnNetworkCalls(t *testing.T) {
@@ -307,7 +308,7 @@ func TestWorkerGitTokenOnlyOnNetworkCalls(t *testing.T) {
 			t.Fatalf("%q reads the host's global or system git config: %q", args, c.Cmd.Env)
 		}
 	}
-	for _, v := range []string{"clone", "fetch", "ls-remote", "push", "rebase", "rev-parse", "config", "bundle", "merge-base", "checkout", "-c"} {
+	for _, v := range []string{"init", "fetch", "ls-remote", "push", "rebase", "rev-parse", "config", "bundle", "merge-base", "checkout", "-c"} {
 		if !seen[v] {
 			t.Fatalf("git %s was not reached: %v", v, seen)
 		}
@@ -361,7 +362,7 @@ func TestWorkerGitNeverRunsInTheJobDirAfterTheHarness(t *testing.T) {
 			t.Fatalf("worker git %q ran in the job directory (%s)", args, c.Cmd.Dir)
 		}
 	}
-	for _, v := range []string{"clone", "bundle", "merge-base", "push", "fetch", "rebase", "ls-remote"} {
+	for _, v := range []string{"init", "bundle", "merge-base", "push", "fetch", "rebase", "ls-remote"} {
 		if !verbs[v] {
 			t.Fatalf("git %s was not reached: %v", v, verbs)
 		}
@@ -434,9 +435,9 @@ func TestCollectRefusesAForeignHeadOrAGitlink(t *testing.T) {
 // remoteCall_internal: a worker git call that reaches a remote.
 func remoteCall_internal(args []string) bool {
 	switch args[0] {
-	case "fetch", "ls-remote", "push":
+	case "ls-remote", "push":
 		return true
-	case "clone":
+	case "fetch": // the work clone's fetch from the bench's mirror is local
 		return slices.Contains(args, "https://github.com/o/r.git")
 	}
 	return false

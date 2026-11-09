@@ -26,7 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
-    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown",
+    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -71,11 +71,15 @@ REACH = {
     "StepsNeverReadAgain": ("deal", "a review whose read faulted is read again"),
     "StepsNeverAbsent": ("deal", "a tick runs with an up row absent from the bus serving a ready card"),
     "StepsNeverUnadmitted": ("deal", "a producer failing admission opens its stream's admission judgement"),
+    "StepsNeverReopened": ("deal", "a judgement whose cause still holds at its deadline is reopened"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
     "StepsNeverLandJudged": ("land", "a result other than landed opens a land judgement"),
     "StepsNeverAfterHeld": ("land", "a landing waits on a queued after target"),
+    "StepsNeverOnBase": ("land", "a landed result on a workstream base records the base merge"),
+    "StepsNeverPromoteRequested": ("land", "a promote request is dispatched for a producer on base"),
+    "StepsNeverLandedOffMainBase": ("land", "a producer of a workstream base lands (on main)"),
     "StepsNeverCarried": ("burst", "the budget carries inbox items to the next tick"),
     "StepsNeverUndealt": ("burst", "a producer left ready with room two ticks opens undealt"),
 }
@@ -202,6 +206,11 @@ WITNESSES = [
      "with no request and no judgement.",
      [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
        "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT: was # \"merging\"", 1)]),
+    ("StepsLandedBeforeMain", "LandedOnMain", "land",
+     "A landed result is a Landed whatever the stream's base: a merge\n"
+     "onto a workstream base records landed before it is on main.",
+     [("LandKind(k, p) == IF k = \"promote\" \\/ MainBase[Stream[p]] THEN \"landed\" ELSE \"onbase\"",
+       "LandKind(k, p) == \"landed\"   \\* FAULT: was onbase off a main base", 1)]),
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",
@@ -262,6 +271,11 @@ WITNESSES = [
      "only check run by hand says why (item 4, 2026-11-08).",
      [("                   \\cup {[kind |-> \"admission\", about |-> s] : s \\in {s \\in Streams : Unadmitted(V, s) # {}}}\n",
        "", 1)]),
+    ("StepsExpiresSilently", "ExpiryNeverSilent", "deal",
+     "A deadline closes a judgement whatever holds (item 3, 2026-11-08): the\n"
+     "cause is still there and nothing says so until a later tick reopens it.",
+     [("         Lapsed == dueJ \\ jnew\n",
+       "         Lapsed == dueJ   \\* FAULT: was dueJ \\ jnew\n", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"

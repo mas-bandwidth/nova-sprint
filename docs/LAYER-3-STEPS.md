@@ -218,6 +218,13 @@ high, normal, low; within a rung, policy's order.
   card with the facts and the choices land, fix and retry, and nothing
   moves. A merging producer left with no request, no judgement and no
   after target merging is reported as an `engine` judgement.
+- Landed means on main (LANDING.md, 2026-11-08): a land result says whether
+  its merge is on main (`InboxItem.Main`); one that is not records
+  `OnBase` and the card stays merging. Producers on base are never asked to
+  land again: per stream with any, not judged, and no promotion in flight,
+  one `promote` request carries their merges (`EdgeRequest.Merges`); its
+  landed result is `Landed` for each card whose merge it lists, and
+  anything else is the same `land` judgement per card.
 - The mechanics (PR, group branch, gate, merge) are layer 4's; there is no
   bisection and no blame. Request ids hash epoch, stream, base, cards,
   heads and reviews, so a restart reissues the same request (LPM R22).
@@ -258,7 +265,13 @@ for each candidate, and the engine refuses one below the card's tier.
   group key (one push for a shared cause; LESSONS 4.9), policy's deadline and
   the command that answers it; `ExpireJudgement` when the cause clears, or
   at the deadline with the kind's safe default, which never drops, accepts,
-  merges or lands (LESSONS 5.7).
+  merges or lands (LESSONS 5.7). At the deadline a judgement whose cause a
+  step detected this tick is never closed silently: it expires as
+  `reopened as <kind.about.n+1> (repeat n)` and that episode opens in the
+  same op, its question headed `UNANSWERED n TIMES, ESCALATED: `, so it is
+  pushed again as NEEDS YOU; one whose cause no step detects closes as
+  `cleared` (tla/Steps.tla `ExpiryNeverSilent`, witness
+  `StepsExpiresSilently`).
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,

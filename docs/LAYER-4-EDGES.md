@@ -704,6 +704,12 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
 Supersedes the landing parts of the two stitch notes above where they
 differ (LANDING.md, "The ladder, as built").
 
+- *`PromotePass`* (`modules/edge/git/land.go`, 2026-11-08) is one pass of a
+  stream's base to main (LANDING.md "Landed means on main"): merges already
+  on main land at main's tip; a merge not on base is `missing` and a base
+  behind main is `base_behind`, both the coordinator's; otherwise the PR
+  base -> main is gated at base's tip as rung 1 gates a card. `Git.Main` is
+  the default branch and its tip at origin.
 - *`LandPass`* (`modules/edge/git/land.go`, rewritten) is one pass of rung 1 or 2.
   All heads already on base: landed at base's tip. One head whose branch
   already contains base's tip: rung 1, its own branch's PR against base,
@@ -885,10 +891,20 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   repo is the receipt's, its clone URL a URL or path as it is, or
   `https://github.com/<owner>/<name>.git` for owner/name on the github forge
   (`CloneURL`, a local helper; the stream edge's own clone URL is another
-  child's); its mirror `<mirror-root>/<name>.git` (mirror-refresh's layout,
-  cloned `--mirror` on first use), its work clone `<work-root>/<name>`
-  (cloned `--reference` the mirror on first use, once per URL under a lock),
-  and a work clone of another repo in the way is refused. The worktree's
+  child's); its mirror `<mirror-root>/<name>.git` (the bench's object
+  cache, made empty on first use), its work clone `<work-root>/<name>` (made
+  empty on first use, borrowing the mirror's objects, once per URL under a
+  lock), and a work clone of another repo in the way is refused. Staging
+  fetches shallow (2026-11-08, `stage.go`): a pass's one fetch per repo
+  takes only the commits its jobs check out (base, prior head, head) and
+  the tips of the branches they name (the stream's base, the card's branch,
+  by one `ls-remote`), at depth 1, never every branch; the mirror from the
+  clone URL under a bench-wide lock, the work clone from the mirror. A head
+  that shares no fetched commit with its base is deepened for (64, 1024,
+  then unshallow), since the rebase and the job's sandbox need the fork
+  point. A deep mirror and work clone from before stay deep. A job's tree
+  and the worker's clone share the work clone's objects and copy its
+  shallow boundary (`clone --shared` of a shallow repo copies objects). The worktree's
   origin is the clone URL, so its fetch, push and the clean step's head check
   go to the repo. Flags: `--work-root` (default `<root>/clones`) and
   `--mirror-root` (default `~/nova-bench/mirror`) replace `--work-clone`,

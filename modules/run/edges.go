@@ -83,7 +83,7 @@ func (e *Edges) Heads() map[string]string {
 func (e *Edges) Dispatch(ctx context.Context, reqs []steps.EdgeRequest, snap store.Snapshot) {
 	for _, r := range reqs {
 		switch r.Kind {
-		case "land":
+		case "land", "promote":
 			s := snap.Streams[r.Stream]
 			// the landing's merge commits are the store's identity (round 24), never a literal
 			go e.land(git.WithIdentity(ctx, snap.Identity.Name, snap.Identity.Email), r, s)
@@ -121,9 +121,13 @@ func (e *Edges) fault(what string, err error) {
 	}
 }
 
-// land runs LandPass until it is not pending (LANDING.md). A stream that
-// lands by hand (mode hand, or no forge) is answered at once with outcome
-// hand: its cards are the coordinator's judgement.
+// land runs LandPass (PromotePass for a promote request) until it is not
+// pending (LANDING.md). A stream that lands by hand (mode hand, or no
+// forge) is answered at once with outcome hand: its cards are the
+// coordinator's judgement. A landing's result says whether the base is
+// main (Main), so layer 3 records landed only on main; a promotion's
+// landed merges are on main by definition (LANDING.md, "Landed means on
+// main").
 func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	if s.Mode == "hand" || s.Forge == "" || e.Forge == nil {
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "hand", Reason: "stream " + r.Stream + " lands by hand (mode " + cmp.Or(s.Mode, "auto") + ", forge " + cmp.Or(s.Forge, "none") + ")"})
@@ -135,14 +139,21 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault", Reason: "the clone of " + s.Repo + " failed: " + err.Error()})
 		return
 	}
-	req := git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches}
+	pass := func() (git.LandResult, error) {
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches})
+	}
+	if r.Kind == "promote" {
+		pass = func() (git.LandResult, error) {
+			return git.PromotePass(ctx, e.Git, e.Forge, git.PromoteRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Merges: r.Merges})
+		}
+	}
 	wait := time.Duration(r.Wait) * time.Second
 	if wait <= 0 {
 		wait = CIWait
 	}
 	absent := time.Duration(0)
 	for {
-		res, err := e.pass(ctx, req)
+		res, err := e.pass(ctx, dir, pass)
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			absent = waited
 			if e.Pause(ctx, LandPoll) != nil {
@@ -151,6 +162,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 			continue
 		}
 		it := landItem(r.ID, res, err, wait)
+		it.Main = r.Kind == "promote" || it.Landed != nil && e.isMain(ctx, dir, s.Base)
 		if err != nil {
 			e.fault("land "+r.ID+" stream "+r.Stream, err)
 		}
@@ -250,18 +262,29 @@ func (e *Edges) clone(ctx context.Context, s store.Stream) (string, error) {
 	return dir, errors.Join(e.Git.Clone(ctx, url, dir), lock.Close())
 }
 
-// pass is one LandPass under the clone's lock (git.LockClone): streams on
-// one repository share the clone, one land goroutine each, and a pass's
-// fetch, MergeGroup (checkout and merge in the work tree) and push must not
-// meet another stream's, nor nova-sprint check's fetch. LandPass's own
-// fetch and push do not lock again; the Pause between passes holds nothing.
-func (e *Edges) pass(ctx context.Context, req git.LandRequest) (git.LandResult, error) {
-	lock, err := git.LockClone(ctx, req.RepoDir)
+// pass is one LandPass or PromotePass under the clone's lock
+// (git.LockClone): streams on one repository share the clone, one land
+// goroutine each, and a pass's fetch, MergeGroup (checkout and merge in the
+// work tree) and push must not meet another stream's, nor nova-sprint
+// check's fetch; two streams on one base promote one after the other, so
+// the second reads main after the first merged. The pass's own fetch and
+// push do not lock again; the Pause between passes holds nothing.
+func (e *Edges) pass(ctx context.Context, dir string, pass func() (git.LandResult, error)) (git.LandResult, error) {
+	lock, err := git.LockClone(ctx, dir)
 	if err != nil {
 		return git.LandResult{}, err
 	}
-	res, err := git.LandPass(ctx, e.Git, e.Forge, req)
+	res, err := pass()
 	return res, errors.Join(err, lock.Close())
+}
+
+// isMain is whether base is origin's default branch; a read that fails is
+// no (the card is then recorded on base, and its promotion finds it on
+// main), said as an edge fault.
+func (e *Edges) isMain(ctx context.Context, dir, base string) bool {
+	main, _, err := e.Git.Main(ctx, dir)
+	e.fault("main of "+dir, err)
+	return err == nil && main == base
 }
 
 // Stale asks the heads loop to read again now.

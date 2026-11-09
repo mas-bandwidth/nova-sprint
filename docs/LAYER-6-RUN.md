@@ -378,7 +378,9 @@ same op as the move that raised it.
   someone else answered. A second answer is refused naming the first.
 - **Expired.** At its deadline the step expires it and applies policy's declared safe
   default for that kind, which never drops, accepts, merges or lands (LESSONS 5.7), and
-  pushes `EXPIRED judgement=<id>: <what the default did>`. A `held` judgement has no deadline by
+  pushes `EXPIRED judgement=<id>: <why>`. A cause a step still detects is reopened in the
+  same op as the next episode with the repeat count (`UNANSWERED n TIMES, ESCALATED: ...`,
+  pushed as NEEDS YOU); one no step detects is recorded as cleared. A `held` judgement has no deadline by
   Glenn's ruling ("sits there until you review it").
 
 Landings, a stream done, a red, a hold, a stall and an orphan reach the coordinator by the
@@ -878,12 +880,14 @@ github.com credential is always gh as the host's login (no switch on
   of <card>` per stream whose producers wait (the three largest of each, then
   a count), and a `CHECK WARN stream <s>: its longest NEEDS chain is K cards:
   a -> b -> ... -> z; at the stream's land rate (R an hour over its last N
-  landings) that is about H hours` per stream at `steps.ChainWarn` (4, a
-  guess) or more. Warnings, never red: an idle fleet is not a fault of the
-  tool.
-- `add` prints `CHAIN stream <s>: its longest NEEDS chain is K cards: ...`
-  with the cards in (dry run too), a `WARN CHAIN ...: <how to flatten>` from
-  4 cards; never a refusal.
+  landings) that is about H hours` per stream longer than the policy's
+  `chain_limit` (3 by default). Warnings, never red: an idle fleet is not a
+  fault of the tool.
+- `add` prints `CHAIN stream <s>: the longest NEEDS chain through these cards
+  is K cards (chain_limit L): ...` (dry run too), and refuses an add whose
+  chain is longer than `chain_limit`, naming the chain, its hours at the land
+  rate and how to flatten it (`steps.ChainThrough`: a chain elsewhere in the
+  stream does not refuse an add beside it).
 - The land rate reads the store's last 5,000 events of the epoch (a guess,
   about an hour of a busy sprint; bounded however long the sprint): each
   producer an accepted event moved into landed. Under two landings, or none

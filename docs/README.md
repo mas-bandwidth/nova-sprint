@@ -532,8 +532,9 @@ the base continues it: its line ends ` head=<sha12> (adopted
 sprint/<stream>/<id>)`, and its first deal starts from that head.
 
 A dependency-chain line follows, then `(dry run)` and the next command.
-An actual add instead reports `ADDED <n> cards applied at seq <n>`. Review any
-dependency-chain warnings before proceeding.
+An actual add instead reports `ADDED <n> cards applied at seq <n>`. An add
+whose NEEDS chain is longer than the policy's `chain_limit` (3 by default) is
+refused with the chain and how to flatten it.
 
 ### Start, observe and answer decisions
 

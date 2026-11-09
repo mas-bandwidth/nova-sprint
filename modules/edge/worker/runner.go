@@ -43,10 +43,11 @@ type (
 		Cause     error
 	}
 	GitOps interface {
-		// Fetch brings j's repo's work clone up to date from its origin
-		// (making it on first use). A pass fetches each repo it stages from
-		// once, before any of its jobs stage (defect 72).
-		Fetch(ctx context.Context, j Job) error
+		// Fetch brings the work clone of js's repo (one repo) up to date
+		// from its origin with what js check out, shallow (making it on
+		// first use). A pass fetches each repo it stages from once, for all
+		// its jobs of that repo, before any of them stage (defect 72).
+		Fetch(ctx context.Context, js ...Job) error
 		// StageWorktree makes j's worktree from the work clone as the last
 		// Fetch left it; it fetches nothing.
 		StageWorktree(ctx context.Context, j Job) (headSHA string, err error)
@@ -859,10 +860,11 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 
 // OSGitOps stages from one work clone per stream repo (directive 42): the
 // repo is the deal receipt's; its bare mirror is <MirrorRoot>/<name>.git,
-// the layout mirror-refresh keeps, cloned on first use when absent; its work
-// clone is <WorkRoot>/<name>, made on first use borrowing the mirror's
-// objects. A job's worktree is a shared clone of the work clone whose origin
-// is the repo's clone URL, so its fetches and pushes go to the repo.
+// the bench's object cache, made empty on first use; its work clone is
+// <WorkRoot>/<name>, made empty on first use borrowing the mirror's objects.
+// Fetch fills both shallow with what a pass's jobs check out (stage.go). A
+// job's worktree is a shared clone of the work clone whose origin is the
+// repo's clone URL, so its fetches and pushes go to the repo.
 type OSGitOps struct {
 	WorkRoot, MirrorRoot string
 	Exec                 edge.Exec
@@ -917,22 +919,19 @@ func cloneURL_internal(j Job) (string, string, error) {
 }
 
 // workClone_internal is url's work clone, made (with its mirror) on first
-// use, and refused when the clone there is another repo's. The caller holds
-// url's write lock.
+// use, empty: staging's fetches fill both, shallow (fetchShallow_internal);
+// refused when the clone there is another repo's. The caller holds url's
+// write lock.
 func (g *OSGitOps) workClone_internal(ctx context.Context, url, name string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
 	mirror, work := filepath.Join(g.MirrorRoot, name+".git"), filepath.Join(g.WorkRoot, name)
 	if g.MirrorRoot != "" && !fileExists_internal(mirror) {
-		if _, err := g.runRemoteGit_internal(ctx, to, "", "clone", "--quiet", "--mirror", url, mirror); err != nil {
+		if _, err := g.runGit_internal(ctx, to, "", "init", "--quiet", "--bare", mirror); err != nil {
 			return "", fmt.Errorf("stage: the mirror of %s: %w", url, err)
 		}
 	}
 	if !fileExists_internal(work) {
-		args := []string{"clone", "--quiet", "--no-checkout"}
-		if g.MirrorRoot != "" {
-			args = append(args, "--reference", mirror)
-		}
-		if _, err := g.runRemoteGit_internal(ctx, to, "", append(args, url, work)...); err != nil {
+		if err := g.newWorkClone_internal(ctx, to, url, mirror, work); err != nil {
 			return "", fmt.Errorf("stage: the work clone of %s: %w", url, err)
 		}
 	} else if got, err := g.runGit_internal(ctx, to, work, "remote", "get-url", "origin"); err != nil || strings.TrimSpace(got) != url {
@@ -941,10 +940,33 @@ func (g *OSGitOps) workClone_internal(ctx context.Context, url, name string) (st
 	return work, nil
 }
 
-// Fetch brings j's repo's work clone up to date: one fetch of every branch,
-// under the clone's write lock.
-func (g *OSGitOps) Fetch(ctx context.Context, j Job) error {
-	url, name, err := cloneURL_internal(j)
+// newWorkClone_internal makes an empty work clone of url at work, borrowing
+// the mirror's objects when the worker has one.
+func (g *OSGitOps) newWorkClone_internal(ctx context.Context, to time.Duration, url, mirror, work string) error {
+	if _, err := g.runGit_internal(ctx, to, "", "init", "--quiet", work); err != nil {
+		return err
+	}
+	if _, err := g.runGit_internal(ctx, to, work, "remote", "add", "origin", url); err != nil {
+		return err
+	}
+	if g.MirrorRoot == "" {
+		return nil
+	}
+	absMirror, err := filepath.Abs(mirror)
+	if err != nil {
+		return err
+	}
+	return writeGitFile_internal(filepath.Join(work, ".git", "objects", "info", "alternates"), []byte(filepath.Join(absMirror, "objects")+"\n"))
+}
+
+// Fetch brings js's repo's mirror and work clone up to date with what js
+// check out, shallow (fetchShallow_internal), under the clone's write lock
+// and the mirror's bench-wide lock. Every job is of js[0]'s repo.
+func (g *OSGitOps) Fetch(ctx context.Context, js ...Job) error {
+	if len(js) == 0 {
+		return nil
+	}
+	url, name, err := cloneURL_internal(js[0])
 	if err != nil {
 		return err
 	}
@@ -955,7 +977,15 @@ func (g *OSGitOps) Fetch(ctx context.Context, j Job) error {
 	if err != nil {
 		return err
 	}
-	if _, err := g.runRemoteGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), work, "fetch", "--quiet", "--no-recurse-submodules", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+	unlock, err := g.lockMirror_internal(ctx, name)
+	if err != nil {
+		return fmt.Errorf("fetch %s: %w", url, err)
+	}
+	err = g.fetchShallow_internal(ctx, url, name, work, js)
+	if uerr := unlock(); err == nil {
+		err = uerr
+	}
+	if err != nil {
 		return fmt.Errorf("fetch %s: %w", url, err)
 	}
 	return nil
@@ -980,20 +1010,10 @@ func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 		return "", fmt.Errorf("stage: clear the work tree: %w", err)
 	}
 	lock.RLock()
-	_, err = g.runGit_internal(ctx, to, work, "clone", "--shared", "--no-checkout", work, j.WorktreeDir)
+	err = g.sharedClone_internal(ctx, to, work, j.WorktreeDir)
 	lock.RUnlock()
 	if err != nil {
-		return "", err
-	}
-	if alt, err := os.ReadFile(filepath.Join(work, ".git", "objects", "info", "alternates")); err == nil && len(alt) > 0 {
-		wtAlt := filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")
-		cur, err := os.ReadFile(wtAlt)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("stage: read the work tree's alternates: %w", err)
-		}
-		if err := os.WriteFile(wtAlt, append(cur, alt...), 0o644); err != nil {
-			return "", fmt.Errorf("stage: write the work tree's alternates: %w", err)
-		}
+		return "", fmt.Errorf("stage: the work tree: %w", err)
 	}
 	if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", url); err != nil {
 		return "", err
@@ -1112,7 +1132,7 @@ func (g *OSGitOps) Collect(ctx context.Context, s Sealed) (string, error) {
 	}
 	lock := g.cloneLock_internal(s.Remote)
 	lock.RLock()
-	_, err = g.runGit_internal(ctx, to, "", "clone", "--quiet", "--shared", "--no-checkout", filepath.Join(g.WorkRoot, name), s.Clone)
+	err = g.sharedClone_internal(ctx, to, filepath.Join(g.WorkRoot, name), s.Clone)
 	lock.RUnlock()
 	if err != nil {
 		return "", fmt.Errorf("collect: the worker's clone: %w", err)

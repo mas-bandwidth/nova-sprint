@@ -80,6 +80,17 @@
 (*   ignores.                                                             *)
 (* - "burst": land with budget 1, pack 1 and redelivered results: the    *)
 (*   carry.                                                               *)
+(* Landed means on main (LANDING.md, 2026-11-08): in land and burst s2's *)
+(* base is a workstream branch, s1's is main (MainBase). A landed result *)
+(* of a land request on s2 records the base merge (w.ob, the reason's     *)
+(* "on base" record; the producer stays merging) and the tick asks a     *)
+(* promote request for it (one per stream, the first on base, as rung 1; *)
+(* the code asks one for all of a stream's, and the scenarios have one). *)
+(* A landed promote result is its Landed. onmain is git's main: the       *)
+(* producers whose merge is reachable from it, added when an edge merged *)
+(* onto main (a land result on a main base, a promote result) or the     *)
+(* coordinator did (a hand landing). LandedOnMain: a landed producer is  *)
+(* on main.                                                               *)
 (* A work fault report is a fail that spends no bounce, so no scenario   *)
 (* needs it; red results come only in land and burst. A read may fault   *)
 (* (p's, in deal): a faulted read is done but is not a read. It is owed   *)
@@ -117,6 +128,14 @@
 (* move under p (an environment move). NeverDealtUnadmitted: no accepted   *)
 (* Start or preemption is of a producer that failed; AdmissionShown: a     *)
 (* waiting or ready one has its stream's judgement.                        *)
+(*                                                                         *)
+(* Deadlines (item 3, 2026-11-08): Tick(a, due) with due a deadline      *)
+(* passing for every open judgement that has one (all but land and        *)
+(* no-policy) this tick. A due judgement whose cause the tick detects      *)
+(* (jnew) stays open: the code expires it and opens its next episode in    *)
+(* the same op, which is the same [kind, about] here; one no step detects  *)
+(* closes (Lapsed). ExpiryNeverSilent: every cause the tick detects is     *)
+(* open after it.                                                          *)
 (*                                                                         *)
 (* last is the step monitor of the last tick: bad is the set of checks    *)
 (* the tick broke (each computed from the view, the store before and      *)
@@ -176,6 +195,9 @@ ReadResults == IF Scenario = "deal" THEN {"ok", "fix", "fault"} ELSE {"ok"}
 MayBounce(p) == Scenario = "deal" /\ p = "p"
 MayFault(p)  == Scenario = "deal" /\ p = "p"
 LandOutcomes == IF LandLike THEN {"landed", "red"} ELSE {"landed"}
+\* Whether a stream's base is main: s2's is a workstream branch in land
+\* and burst.
+MainBase == [s \in Streams |-> ~(LandLike /\ s = "s2")]
 
 NoR     == "-"
 NoC     == <<"-", 0>>
@@ -198,7 +220,8 @@ W0 == [ps  |-> [p \in Prods |-> P0(p)],
        rg  |-> [r \in Rows |-> 0],
        sh  |-> [s \in Streams |-> Scenario = "pre" /\ s = "s2"],
        tko |-> <<>>,
-       pol |-> TRUE]
+       pol |-> TRUE,
+       ob  |-> {}]
 
 \* The oracle's answer: rows(candidates, rows). A policy that answers
 \* prefers one row for every candidate (in domain for a candidate when that
@@ -213,7 +236,7 @@ Answers == {[rows |-> "r1"], [rows |-> "r2"], [rows |-> "failed"]}
 Unasked == [rows |-> "failed"]
 
 VARIABLES
-  w,         \* the store: [ps, cs, up, rg, sh, tko, pol]; rg is each row's generation, which every row write raises; pol is whether an active policy answers
+  w,         \* the store: [ps, cs, up, rg, sh, tko, pol, ob]; rg is each row's generation, which every row write raises; pol is whether an active policy answers; ob the merging producers recorded on base
   snap,      \* the view the next tick plans on (W0 while idle)
   phase,     \* "idle" or "snapped"
   inbox,     \* edge results: Seq of [stamp, id, out]
@@ -228,9 +251,10 @@ VARIABLES
   rdy,       \* producer -> ticks in a row it was left ready with room (0..UndealtTicks)
   ju,        \* producers with an open undealt judgement
   bus,       \* row -> on nova-bus this tick (Present; not the store's up)
-  admitted   \* producer -> passed admission at its stream's base (layer 6's re-proof)
+  admitted,  \* producer -> passed admission at its stream's base (layer 6's re-proof)
+  onmain     \* git's main: the producers whose merge is reachable from it
 
-vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last, rdy, ju, bus, admitted>>
+vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last, rdy, ju, bus, admitted, onmain>>
 aux  == <<rdy, ju>>
 Clean == [tags |-> {}, bad |-> {}]
 
@@ -343,7 +367,7 @@ Grp(kind, p, c, r, stamp, sha, V) ==
    cards |-> CardsOf(kind, p, c, V),
    rk    |-> ReadKeys(kind, p, c, V),
    rr    |-> IF r = NoR THEN {} ELSE {r},
-   rsx   |-> IF kind \in {"none", "yes", "landed"} THEN {} ELSE {Stream[p]},
+   rsx   |-> IF kind \in {"none", "yes", "landed", "onbase"} THEN {} ELSE {Stream[p]},
    req   |-> IF kind = "pre" THEN {StopReq(c)} ELSE {}]
 NoneG(stamp, V) == Grp("none", "-", NoC, NoR, stamp, 0, V)
 
@@ -365,7 +389,7 @@ Legal(W, g) ==
     [] g.kind = "yes"     -> Settled(W, g.p) /\ Verdict(W, g.p) = "yes"
     [] g.kind = "fix"     -> Settled(W, g.p) /\ Verdict(W, g.p) = "fix"
     [] g.kind = "resolve" -> W.ps[g.p].st = "waiting" /\ NeedsLanded(W, g.p) /\ ~W.sh[Stream[g.p]]
-    [] g.kind = "landed"  -> W.ps[g.p].st = "merging" /\ W.ps[g.p].head = g.sha
+    [] g.kind \in {"landed", "onbase"} -> W.ps[g.p].st = "merging" /\ W.ps[g.p].head = g.sha
     [] OTHER              -> TRUE
 
 \* The writes. pre is CardMachine Preempt: Withdraw of the victim (which
@@ -389,7 +413,8 @@ ApplyG(W, g) ==
     [] g.kind = "yes"     -> [W EXCEPT !.ps[g.p].st = "merging"]
     [] g.kind = "fix"     -> [W EXCEPT !.ps[g.p].st = BackOf(W, g.p), !.ps[g.p].bounces = @ + 1]
     [] g.kind = "resolve" -> [W EXCEPT !.ps[g.p].st = "ready"]
-    [] g.kind = "landed"  -> [W EXCEPT !.ps[g.p].st = "landed"]
+    [] g.kind = "landed"  -> [W EXCEPT !.ps[g.p].st = "landed", !.ob = @ \ {g.p}]
+    [] g.kind = "onbase"  -> [W EXCEPT !.ob = @ \cup {g.p}]
     [] OTHER              -> W
 
 -----------------------------------------------------------------------------
@@ -438,14 +463,17 @@ PreStep(V, a) == PreFold(V, a, 1, [gs |-> <<>>, used |-> {}, uns |-> {}, miss |-
 NoPlan == [gs |-> <<>>, t |-> [r \in Rows |-> 0], used |-> {}, uns |-> {}, miss |-> {}, cr |-> {}]
 
 \* Land results, in arrival order. A landed result for a producer still
-\* merging at the request's head is its Landed; anything else (a judged
+\* merging at the request's head is its Landed when the merge is on main
+\* (a promote result, or a land result on a main base), else its OnBase
+\* (the base merge recorded, still merging); anything else (a judged
 \* outcome, an ack, a stale or repeated result) is consumed with no move.
+LandKind(k, p) == IF k = "promote" \/ MainBase[Stream[p]] THEN "landed" ELSE "onbase"
 ItemGroup(V, it, cl) ==
   LET p == it.id[3][1]
-  IN IF /\ it.id[2] = "land" /\ it.out = "landed"
+  IN IF /\ it.id[2] \in {"land", "promote"} /\ it.out = "landed"
         /\ V.ps[p].st = "merging" /\ V.ps[p].head = it.id[4]
         /\ PKey(p) \notin cl
-     THEN Grp(it.out, p, NoC, NoR, it.stamp, it.id[4], V)
+     THEN Grp(LandKind(it.id[2], p), p, NoC, NoR, it.stamp, it.id[4], V)
      ELSE NoneG(it.stamp, V)
 
 \* The land judgements a tick opens: every judged result in the inbox for a
@@ -454,7 +482,7 @@ LandJ(p) == [kind |-> "land", about |-> p]
 Judged(J, p) == LandJ(p) \in J
 LandJudged(V, I, F) ==
   {LandJ(I[i].id[3][1]) : i \in {i \in 1..Len(I) :
-      /\ I[i].id[2] = "land" /\ I[i].out # "landed"
+      /\ I[i].id[2] \in {"land", "promote"} /\ I[i].out # "landed"
       /\ \E f \in F : f.id = I[i].id
       /\ V.ps[I[i].id[3][1]].st = "merging" /\ V.ps[I[i].id[3][1]].head = I[i].id[4]}}
 RECURSIVE InboxFold(_, _, _, _)
@@ -547,13 +575,20 @@ DealStep(V, cl, ar, useAns) ==
            [gs |-> <<>>, t |-> [r \in Rows |-> 0], miss |-> {}, uns |-> {}, cr |-> {}], ar, useAns)
 
 \* Land requests: per stream with none in flight, flowing: the first
-\* merging producer under no land judgement (J, open or opened this tick)
-\* none of whose after targets is merging. A hold never touches landing.
-Merging(V, s, cl) == {p \in Prods : Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin cl}
-Busy(F, s) == \E f \in F : f.stream = s /\ f.id[2] = "land"
+\* merging producer not on base, under no land judgement (J, open or
+\* opened this tick), none of whose after targets is merging. A hold
+\* never touches landing. Promote requests: per stream with none in
+\* flight, the first producer on base under no land judgement.
+Merging(V, s, cl) == {p \in Prods : Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin cl /\ p \notin V.ob}
+BusyK(F, s, k) == \E f \in F : f.stream = s /\ f.id[2] = k
+Busy(F, s) == BusyK(F, s, "land")
 LandElig(V, s, cl, J) == {p \in Merging(V, s, cl) : ~Judged(J, p) /\ \A t \in After[p] : V.ps[t].st # "merging"}
 LandPicks(V, cl, F, J) ==
   {First(ProdSeq, LandElig(V, s, cl, J)) : s \in {s \in Streams : ~Busy(F, s) /\ LandElig(V, s, cl, J) # {}}}
+PromElig(V, s, cl, J) == {p \in V.ob : Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin cl /\ ~Judged(J, p)}
+PromPicks(V, cl, F, J) ==
+  {First(ProdSeq, PromElig(V, s, cl, J)) : s \in {s \in Streams : ~BusyK(F, s, "promote") /\ PromElig(V, s, cl, J) # {}}}
+PromReq(V, p) == [id |-> <<Epoch, "promote", PKey(p), V.ps[p].head>>, stream |-> Stream[p], sent |-> FALSE]
 
 -----------------------------------------------------------------------------
 (* Order, budget, pack, apply                                             *)
@@ -630,7 +665,7 @@ Resolvable(V, cl, p) ==
   /\ \A n \in Needs[p] : V.ps[n].st = "landed"
   /\ ~\E q \in Prods : FileShared(p, q) /\ V.ps[q].st \in Started \cup {"ready"}
 
-TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res, clr) ==
+TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl4, res, clr, jnew) ==
   LET nb  == SelectSeq(adm, LAMBDA g : ~g.blk)
       bt  == SumSize(SelectSeq(adm, LAMBDA g : g.blk), Len(SelectSeq(adm, LAMBDA g : g.blk)))
       gs  == SelectSeq(E, LAMBDA g : g.kind # "none")
@@ -640,7 +675,8 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
              "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
              "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
              "NoDealWithoutPolicy", "ResolveFromState", "HeldBehindShown",
-             "VerdictHasItsRead", "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown"} :
+             "VerdictHasItsRead", "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown",
+             "ExpiryNeverSilent"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -671,16 +707,18 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
         [] n = "AfterNeverHolds" ->
              \A s \in Streams :
                (~Busy(inflight, s) /\ \E p \in Prods :
-                   Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin Cards(gs)
+                   Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin Cards(gs) /\ p \notin V.ob
                    /\ ~Judged(jv, p) /\ \A t \in After[p] : V.ps[t].st # "merging")
                  => \E p \in picks : Stream[p] = s
         [] n = "MergingCovered" ->
              \A p \in Prods :
                (V.ps[p].st = "merging" /\ PKey(p) \notin cl4) =>
-                 \/ Busy(inflight, Stream[p])
-                 \/ \E q \in picks : Stream[q] = Stream[p]
+                 \/ p \notin V.ob /\ Busy(inflight, Stream[p])
+                 \/ p \notin V.ob /\ \E q \in picks : Stream[q] = Stream[p]
+                 \/ p \in V.ob /\ BusyK(inflight, Stream[p], "promote")
+                 \/ p \in V.ob /\ \E q \in proms : Stream[q] = Stream[p]
                  \/ Judged(jv, p)
-                 \/ \E t \in After[p] : V.ps[t].st = "merging"
+                 \/ p \notin V.ob /\ \E t \in After[p] : V.ps[t].st = "merging"
         [] n = "NoDealWithoutPolicy" ->
              ~V.pol => /\ \A g \in accd : g.kind \notin {"pre", "start", "read"}
                        /\ [kind |-> "no-policy", about |-> "coord"] \in jsn
@@ -704,7 +742,9 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
              \A g \in accd : g.kind \in {"pre", "start"} => admitted[g.p]
         [] n = "AdmissionShown" ->
              \A p \in Prods : (V.ps[p].st \in {"waiting", "ready"} /\ ~admitted[p])
-                              => [kind |-> "admission", about |-> Stream[p]] \in jsn}
+                              => [kind |-> "admission", about |-> Stream[p]] \in jsn
+        [] n = "ExpiryNeverSilent" ->
+             jnew \subseteq jsn}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
@@ -731,6 +771,7 @@ Init ==
   /\ ju = {}
   /\ bus = [r \in Rows |-> TRUE]
   /\ admitted = [p \in Prods |-> TRUE]
+  /\ onmain = {}
 
 Snap ==
   /\ phase = "idle"
@@ -739,7 +780,7 @@ Snap ==
   /\ jsnap' = js
   /\ last' = Clean
   /\ UNCHANGED <<w, inbox, inflight, js, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus, admitted>>
+  /\ UNCHANGED <<aux, bus, admitted, onmain>>
 
 \* A stream's waiting and ready producers that failed admission.
 Unadmitted(V, s) == {p \in Prods : Stream[p] = s /\ V.ps[p].st \in {"waiting", "ready"} /\ ~admitted[p]}
@@ -757,7 +798,11 @@ Expired(V, J) ==
              \/ j.kind = "no-policy" /\ V.pol
              \/ j.kind = "admission" /\ Unadmitted(V, j.about) = {}}
 
-Tick(a) ==
+\* The judgements a deadline can close: all but land and no-policy, which
+\* sit until answered or cleared (the code's held too).
+Deadlined(J) == {j \in J : j.kind \notin {"land", "no-policy"}}
+
+Tick(a, due) ==
   /\ phase = "snapped"
   /\ LET V    == snap
          W    == w
@@ -776,6 +821,7 @@ Tick(a) ==
          jl   == LandJudged(V, inbox, inflight)
          jv   == jsnap \cup jl   \* the judgements as the tick sees them: its snapshot's and its own
          picks == LandPicks(V, cl4, inflight, jv)
+         proms == PromPicks(V, cl4, inflight, jv)
          E    == pre.gs \o dblk \o inb.es \o rgs \o fyes \o ffix \o drst
          adm  == Admit(E)
          ops  == PackOps(adm, split)
@@ -788,7 +834,7 @@ Tick(a) ==
          ustamps == {g.stamp : g \in used}
          uids  == {inbox[i].id : i \in {i \in 1..Len(inbox) : inbox[i].stamp \in ustamps}}
          stops == UNION {g.req : g \in UNION {GroupsIn(ops[i]) : i \in ap.ok}}
-         lands == {LandReq(V, p) : p \in picks}
+         lands == {LandReq(V, p) : p \in picks} \cup {PromReq(V, p) : p \in proms}
          jnew == {[kind |-> "unserved", about |-> t] : t \in pre.uns \cup dl.uns}
                    \cup {[kind |-> "cannot-read", about |-> p] : p \in dl.cr}
                    \cup {[kind |-> "policy", about |-> q] : q \in pre.miss \cup dl.miss}
@@ -796,7 +842,11 @@ Tick(a) ==
                    \cup {[kind |-> "overlap", about |-> p] : p \in Held(V, inb.cl, res)}
                    \cup (IF V.pol THEN {} ELSE {[kind |-> "no-policy", about |-> "coord"]})
                    \cup {[kind |-> "admission", about |-> s] : s \in {s \in Streams : Unadmitted(V, s) # {}}}
-         jsn  == (js \ Expired(V, js)) \cup jnew
+         dueJ == IF due THEN Deadlined(js) ELSE {}
+         \* At a deadline a cause the tick still detects is reopened, never
+         \* closed; only one no step detects lapses.
+         Lapsed == dueJ \ jnew
+         jsn  == ((js \ Expired(V, js)) \cup jnew) \ Lapsed
          accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
          \* Left ready with room: a candidate of the view the tick did not deal.
          \* A run with no active policy deals nothing and says so (no-policy),
@@ -808,10 +858,12 @@ Tick(a) ==
                  \cup (IF \E i \in 1..Len(Real(adm)) : Alone(Real(adm)[i], split) THEN {"split"} ELSE {})
                  \cup (IF \E i \in 1..Len(inbox) : inbox[i].stamp \notin ustamps THEN {"carry"} ELSE {})
                  \cup (IF picks # {} THEN {"landreq"} ELSE {})
+                 \cup (IF proms # {} THEN {"promreq"} ELSE {})
                  \cup (IF \E s \in Streams : \E p \in Merging(V, s, cl4) \ LandElig(V, s, cl4, jv) :
                           ~Judged(jv, p)
                        THEN {"afterheld"} ELSE {})
                  \cup (IF jl \ js # {} THEN {"judged"} ELSE {})
+                 \cup (IF dueJ \cap jnew # {} THEN {"reopened"} ELSE {})
                  \cup (IF \E i \in 1..Len(inbox) : inbox[i].stamp \in ustamps /\ inbox[i].out = "ack"
                        THEN {"ack"} ELSE {})
                  \cup (IF \E r \in Rows : V.up[r] /\ ~bus[r] /\ \E p \in Prods : V.ps[p].st = "ready" /\ Serves(r, p)
@@ -826,15 +878,15 @@ Tick(a) ==
         /\ js' = jsn
         /\ split' = UNION {GroupsIn(ops[i]) : i \in {i \in ap.ref : Len(ops[i]) > 1}}
         /\ last' = [tags |-> tags,
-                    bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4,
-                                        res, inb.cl)]
+                    bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl4,
+                                        res, inb.cl, jnew)]
         /\ rdy' = [p \in Prods |-> IF p \in und THEN IF rdy[p] < UndealtTicks THEN rdy[p] + 1 ELSE rdy[p]
                                                 ELSE 0]
         /\ ju' = {p \in ju : V.ps[p].st = "ready"} \cup {p \in und : rdy[p] + 1 >= UndealtTicks}
   /\ phase' = "idle"
   /\ snap' = W0
   /\ jsnap' = {}
-  /\ UNCHANGED <<arrived, env, bus, admitted>>
+  /\ UNCHANGED <<arrived, env, bus, admitted, onmain>>
 
 \* There is no Take (defect 52): a consumer is dealt working, in its row's
 \* hand; the row's acknowledgement moves nothing the steps read.
@@ -860,7 +912,7 @@ Report(c, res) ==
                             !.ps[c[1]] = ReportMove(w, c[1], c, res)]
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus, admitted>>
+  /\ UNCHANGED <<aux, bus, admitted, onmain>>
 
 \* The coordinator's hold (with Park of the stream's ready producers in the
 \* same op, LESSONS 2.20) and its lifting; a row's Gone and Seen.
@@ -905,6 +957,8 @@ EnvMove ==
            \/ \E p \in HandLandsOf : HandLandOK(p) /\ w' = [w EXCEPT !.ps[p].st = "landed"]
      \/ \E r \in BusFlipsOf : bus' = [bus EXCEPT ![r] = ~@] /\ w' = w /\ admitted' = admitted
      \/ \E p \in AdmFlipsOf : admitted' = [admitted EXCEPT ![p] = ~@] /\ w' = w /\ bus' = bus
+  \* A hand landing in deal is onto s1's base, main.
+  /\ onmain' = onmain \cup {p \in Prods : w.ps[p].st # "landed" /\ w'.ps[p].st = "landed"}
   \* The hand land is tagged for its reach check (StepsNeverHandLanded).
   /\ last' = IF \E p \in Prods : w.ps[p].st # "landed" /\ w'.ps[p].st = "landed"
              THEN [tags |-> {"handland"}, bad |-> {}] ELSE Clean
@@ -915,12 +969,15 @@ EnvMove ==
 EdgeResult(f, out, n) ==
   /\ f \in inflight
   /\ ~f.sent
-  /\ out \in (IF f.id[2] = "land" THEN LandOutcomes ELSE {"ack"})
+  /\ out \in (IF f.id[2] \in {"land", "promote"} THEN LandOutcomes ELSE {"ack"})
   /\ arrived + n <= MaxArrive
   /\ LET it(k) == [stamp |-> arrived + k, id |-> f.id, out |-> out]
      IN inbox' = IF n = 1 THEN Append(inbox, it(1)) ELSE Append(Append(inbox, it(1)), it(2))
   /\ arrived' = arrived + n
   /\ inflight' = (inflight \ {f}) \cup {[f EXCEPT !.sent = TRUE]}
+  \* A landed promote, or a landed land onto a main base, merged onto main.
+  /\ onmain' = IF out = "landed" /\ (f.id[2] = "promote" \/ (f.id[2] = "land" /\ MainBase[f.stream]))
+               THEN onmain \cup {f.id[3][1]} ELSE onmain
   /\ last' = Clean
   /\ UNCHANGED <<w, snap, jsnap, phase, js, split, processed, env>>
   /\ UNCHANGED <<aux, bus, admitted>>
@@ -932,14 +989,21 @@ EdgeResult(f, out, n) ==
 \* judgement open and the producer merging. It may come between Snap and
 \* Tick: the tick then still sees the judgement open (jsnap, its view's),
 \* asks nothing for the card, and the next tick does (the code's race).
+\* A hand landing is landed only on main: the head merged onto a main
+\* base, or a producer on base whose base the coordinator merged into
+\* main (the verb refuses one that is not on main yet); a head merged
+\* onto a workstream base is recorded on base, still merging.
+HandOnMain(p) == p \in w.ob \/ MainBase[Stream[p]]
 Answer(p, choice) ==
   /\ Judged(js, p)
   /\ choice \in {"land", "fix", "retry"}
   /\ choice # "retry" => w.ps[p].st = "merging"
-  /\ w' = CASE choice = "land" -> [w EXCEPT !.ps[p].st = "landed"]
+  /\ w' = CASE choice = "land" /\ HandOnMain(p) -> [w EXCEPT !.ps[p].st = "landed", !.ob = @ \ {p}]
+            [] choice = "land" -> [w EXCEPT !.ob = @ \cup {p}]
             [] choice = "fix"  -> [w EXCEPT !.ps[p].st = BackOf(w, p), !.ps[p].review = @ + 1,
-                                            !.ps[p].red = TRUE]   \* to fix (intent rule 30)
+                                            !.ps[p].red = TRUE, !.ob = @ \ {p}]   \* to fix (intent rule 30)
             [] OTHER           -> w
+  /\ onmain' = IF choice = "land" /\ HandOnMain(p) THEN onmain \cup {p} ELSE onmain
   /\ js' = js \ {LandJ(p)}
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, split, arrived, processed, env>>
@@ -947,7 +1011,7 @@ Answer(p, choice) ==
 
 Next ==
   \/ Snap
-  \/ \E a \in AnswersFor(snap) : Tick(a)
+  \/ \E a \in AnswersFor(snap), due \in BOOLEAN : Tick(a, due)
   \/ \E c \in CIds, res \in WorkResults \cup ReadResults : Report(c, res)
   \/ EnvMove
   \/ \E f \in inflight, out \in {"landed", "red", "ack"}, n \in 1..2 : EdgeResult(f, out, n)
@@ -956,7 +1020,7 @@ Next ==
 Spec == Init /\ [][Next]_vars
 
 \* Liveness: weak fairness on the tick (Snap, then Tick with any answer).
-FairSpec == Spec /\ WF_vars(Snap) /\ WF_vars(\E a \in AnswersFor(snap) : Tick(a))
+FairSpec == Spec /\ WF_vars(Snap) /\ WF_vars(\E a \in AnswersFor(snap), due \in BOOLEAN : Tick(a, due))
 
 -----------------------------------------------------------------------------
 (* Invariants, named as the design names its guarantees                   *)
@@ -976,6 +1040,8 @@ TypeOK ==
   /\ w.rg \in [Rows -> 0..MaxEnv]
   /\ w.sh \in [Streams -> BOOLEAN]
   /\ w.pol \in BOOLEAN
+  /\ w.ob \subseteq {p \in Prods : w.ps[p].st = "merging"}
+  /\ onmain \subseteq Prods
   /\ phase \in {"idle", "snapped"}
   /\ arrived \in 0..MaxArrive
   /\ processed \in 0..MaxArrive
@@ -1039,9 +1105,13 @@ CarryFIFO ==
 EdgeAfterAccepted ==
   \A f \in inflight :
     /\ f.id[2] = "stop" => w.cs[f.id[3]].st = "fail"
-    /\ f.id[2] = "land" => \/ w.ps[f.id[3][1]].st = "merging" /\ w.ps[f.id[3][1]].head = f.id[4]
+    /\ f.id[2] \in {"land", "promote"} => \/ w.ps[f.id[3][1]].st = "merging" /\ w.ps[f.id[3][1]].head = f.id[4]
                           \/ w.ps[f.id[3][1]].st = "landed" \/ w.ps[f.id[3][1]].red
                           \/ w.ps[f.id[3][1]].att > f.id[4]
+
+(* Landed means on main (LANDING.md, 2026-11-08): a producer is recorded *)
+(* landed only when its merge is on main.                                 *)
+LandedOnMain == \A p \in Prods : w.ps[p].st = "landed" => p \in onmain
 
 (* The tick's checks (TickChecks), each kept by the last tick:           *)
 (* OneGroupPerCard and GroupWhole (the group, list item 4);              *)
@@ -1080,6 +1150,7 @@ VerdictHasItsRead        == "VerdictHasItsRead" \notin last.bad
 NeverDealtAbsent         == "NeverDealtAbsent" \notin last.bad
 NeverDealtUnadmitted     == "NeverDealtUnadmitted" \notin last.bad
 AdmissionShown           == "AdmissionShown" \notin last.bad
+ExpiryNeverSilent        == "ExpiryNeverSilent" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width) is     *)
@@ -1114,6 +1185,9 @@ StepsNeverRefused     == "refused" \notin last.tags
 StepsNeverSplit       == "split" \notin last.tags
 StepsNeverCarried     == "carry" \notin last.tags
 StepsNeverLandRequested == "landreq" \notin last.tags
+StepsNeverPromoteRequested == "promreq" \notin last.tags
+StepsNeverOnBase      == w.ob = {}
+StepsNeverLandedOffMainBase == \A p \in Prods : ~MainBase[Stream[p]] => w.ps[p].st # "landed"
 StepsNeverAfterHeld   == "afterheld" \notin last.tags
 StepsNeverStopAcked   == "ack" \notin last.tags
 StepsNeverEscalated   == "escal" \notin last.tags
@@ -1135,6 +1209,7 @@ StepsNeverHandLanded  == "handland" \notin last.tags
 StepsNeverUndealt     == ju = {}
 StepsNeverAbsent      == "absent" \notin last.tags
 StepsNeverUnadmitted  == ~\E j \in js : j.kind = "admission"
+StepsNeverReopened    == "reopened" \notin last.tags
 StepsNeverReadAgain   == ~\E p \in Prods : \E c, d \in CurReads(w, p) :
                            Faulted(w, c) /\ d # c /\ w.cs[d].st \in {"working", "done"} /\ ~Faulted(w, d)
 

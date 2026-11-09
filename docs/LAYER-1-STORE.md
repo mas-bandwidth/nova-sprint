@@ -326,8 +326,11 @@ and returns the first's receipt.
 a condition. It is idempotent by id, logged with the epoch it closed, and its
 receipt carries the new epoch. Streams and cards of the old epoch stay readable
 through `Events` and are not in the next `Snapshot`; policy is kept; rows are
-carried forward into the new epoch in the same transaction (copied: same name, held flag,
-kind, width and session, state `down`, flaps 0), because the rows are the
+carried forward into the new epoch in the same transaction (copied: same name,
+kind, width and session, state `down`, flaps 0, not held and its reason empty:
+a hold is the coordinator's decision for one epoch, and the coordinator holds
+again in the new one if it wants to; on 2026-11-08 three friends came up in
+epoch 2 still held with epoch 1's reasons and sat idle), because the rows are the
 fleet, not the sprint's work, and a clear must not make every worker and kin
 register again. Nothing is ever deleted: a clear opens a new epoch, it does
 not remove the old one.

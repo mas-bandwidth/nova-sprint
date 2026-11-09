@@ -17,7 +17,7 @@ import (
 // TLC then checks the trace is a behaviour of the model
 // (tla/check-trace.sh).
 //
-// The mapping. The model's store w is [ps, cs, up, sh, tko, pol]:
+// The mapping. The model's store w is [ps, cs, up, sh, tko, pol, ob]:
 //   - ps[p]: the producer p of the view: st its state (a card hold is not in the
 //     model and never arises in a scenario), att its attempt, head the
 //     attempt number of its head (heads are attempt numbers in the model: the
@@ -31,6 +31,7 @@ import (
 //   - up[r]: the row is up. rg[r]: the row's gen less its gen at Init (every
 //     row write raises it; the fence reads it). sh[s]: the stream is held.
 //   - tko: the working consumers in take order (View.TakenAt).
+//   - ob: the merging producers with their base merge recorded (onBase).
 //   - pol: an active policy answers. It is not logged (left to the model):
 //     the walk's asker always answers, so the gate never closes in a walk.
 // inbox is the items in arrival order as [stamp, id, out], stamp the arrival
@@ -78,11 +79,14 @@ func Sha(n int) string { return fmt.Sprintf("%040x", n) }
 // StoreTLA is the model's w projected from the view, as the fields of a
 // trace record (ps, cs, up, sh, tko), joined with ", ".
 func StoreTLA(v *View, sc TraceScenario) string {
-	var ps, cs []string
+	var ps, cs, ob []string
 	for _, p := range sortedKeys(v.Cards) {
 		c := v.Cards[p]
 		if isConsumer(c) {
 			continue
+		}
+		if onBase(c) {
+			ob = append(ob, fmt.Sprintf("%q", p))
 		}
 		ps = append(ps, p+" |-> "+producerTLA(v, c))
 		for i, k := range v.Consumers(p) {
@@ -101,8 +105,8 @@ func StoreTLA(v *View, sc TraceScenario) string {
 	for _, s := range sortedKeys(v.Streams) {
 		sh = append(sh, fmt.Sprintf("%s |-> %s", s, tlaBool(v.Streams[s].Held)))
 	}
-	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], rg |-> [%s], sh |-> [%s], tko |-> <<%s>>",
-		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(rg, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "))
+	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], rg |-> [%s], sh |-> [%s], tko |-> <<%s>>, ob |-> {%s}",
+		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(rg, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "), strings.Join(ob, ", "))
 }
 
 func producerTLA(v *View, c store.Card) string {
@@ -163,8 +167,8 @@ func SlotTLA(v *View, id string) string {
 }
 
 // ReqID is an edge request's model id <<epoch, kind, card, head>>: for a
-// land of one producer <<e, "land", <<p, 0>>, n>>; for a stop <<e, "stop",
-// slot, 0>>.
+// land (or a promote) of one producer <<e, "land", <<p, 0>>, n>>; for a
+// stop <<e, "stop", slot, 0>>.
 func ReqID(v *View, r EdgeRequest) string {
 	if r.Kind == "stop" {
 		return fmt.Sprintf("<<%d, \"stop\", %s, 0>>", v.Epoch, SlotTLA(v, r.Consumer))
@@ -173,7 +177,7 @@ func ReqID(v *View, r EdgeRequest) string {
 	if len(r.Heads) > 0 {
 		n = HeadN(r.Heads[0])
 	}
-	return fmt.Sprintf("<<%d, \"land\", <<%q, 0>>, %d>>", v.Epoch, firstOr(r.Cards, "-"), n)
+	return fmt.Sprintf("<<%d, %q, <<%q, 0>>, %d>>", v.Epoch, r.Kind, firstOr(r.Cards, "-"), n)
 }
 
 // InboxTLA is the inbox as [stamp, id, out] in arrival order; stamps and

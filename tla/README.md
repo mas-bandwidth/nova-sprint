@@ -16,8 +16,9 @@ order, the step:
    and appends a refused event.
 
 Epochs start at 1. `Clear` is an op with no writes and its epoch is checked
-too. It opens the next epoch and carries the rows forward: same held flag,
-session and role, state `down`, gen + 1. It keeps the cursors (global, as
+too. It opens the next epoch and carries the rows forward: same session and
+role, state `down`, gen + 1, not held (a hold is the coordinator's decision
+for one epoch; 2026-11-08). It keeps the cursors (global, as
 the log's seq is, so a subscriber resumes where it was), the policies and
 the sprint's stop, and leaves the cards and judgements behind (keyed by
 epoch). It is idempotent by id and logged with the epoch it closed. The
@@ -257,8 +258,8 @@ TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run,
 - **GenPerOp**: each accepted op raises the gen of each card and row it
   writes that existed before it by exactly one; one it creates is at 0; a
   clear raises every carried row's gen by one.
-- **ClearCarriesRows**: a clear keeps every row's held flag, session and
-  role, sets it down, leaves no card or judgement, and keeps every cursor,
+- **ClearCarriesRows**: a clear keeps every row's session and role, sets it
+  down and not held, leaves no card or judgement, and keeps every cursor,
   the policies and the stop.
 - **HookKept**: no accepted op moves a row from one session straight to
   another; it is unhooked between.
@@ -290,6 +291,7 @@ TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run,
 | `StoreRedOnConsumer` | set red accepts a consumer | RedOnlyOnProducers violated |
 | `StoreWidthInStore` | the store caps a row at one working consumer | NoSpuriousRefusal violated |
 | `StoreHookStolen` | put row lets another session hook a hooked row | HookKept violated |
+| `StoreHoldCarried` | a clear carries a row's hold | ClearCarriesRows violated |
 | `StoreStopDropped` | a clear resets the stop | ClearCarriesRows violated |
 | `StoreJudgementTwice` (records) | answer and expire refuse only an absent judgement | JudgementClosedOnce violated |
 | `StoreCursorBack` (records) | set cursor accepts a lower value | CursorMonotone violated |
@@ -304,7 +306,7 @@ TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run,
 | reach `NeverTwoWorking` | none | r1 holds two working consumers (u1, u2) |
 | reach `NeverProducerRefused` | none | s3 is refused |
 | reach `NeverSentinelRefused` | none | s4 is refused |
-| reach `NeverHeldCarried` | none | r1's hold survives the clear |
+| reach `NeverHoldReleased` | none | k1 opens epoch 2 with g1's hold on r1 released |
 | reach `NeverHeldRefused` | none | a1 is refused on RowHeld after g1 |
 | reach `NeverRowDown` | none | e1 sets r1 down |
 | reach `NeverRowFenced` | none | e1 is refused on a stale RowGen |
@@ -337,6 +339,9 @@ ok, 0 FAIL, exit 0, the 44 store results among them. The numbers below are
 from run 2's logs (`Store.tla`'s behaviour is the same at both commits);
 run 3's working directory is removed by the script on exit, so the
 StoreEpochUnfenced row has only its result line.
+The StoreHoldCarried and NeverHoldReleased rows are from 2026-11-08, when
+a clear began releasing holds; every store run was repeated then (48 ok, 0
+FAIL), Store passing at 120730 / 70841 states, depth 36.
 
 | Module | Result | States generated / distinct | Depth | Time |
 |---|---|---|---|---|
@@ -348,7 +353,7 @@ StoreEpochUnfenced row has only its result line.
 | reach `NeverCursorPastRefused` | violated | 32 / 32 | 24 | 06s |
 | reach `NeverCursorRefused` | violated | 84 / 78 | 25 | 06s |
 | reach `NeverDealtStopped` | violated | 24 / 24 | 24 | 05s |
-| reach `NeverHeldCarried` | violated | 77 / 72 | 25 | 05s |
+| reach `NeverHoldReleased` | violated | 103 / 98 | 29 | 01s |
 | reach `NeverHeldRefused` | violated | 72 / 68 | 25 | 05s |
 | reach `NeverHookRefused` | violated | 19 / 19 | 19 | 06s |
 | reach `NeverJudgementFenced` | violated | 58 / 55 | 25 | 05s |
@@ -382,6 +387,7 @@ StoreEpochUnfenced row has only its result line.
 | `StoreRowStale` | Invariant ConditionsAtomic is violated | 68 / 64 | 25 | 07s |
 | `StoreSentinelHolds` | Invariant ProducerNeverHeld is violated | 5 / 5 | 5 | 03s |
 | `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 415 / 279 | 49 | 14s |
+| `StoreHoldCarried` | Invariant ClearCarriesRows is violated | 103 / 98 | 29 | 01s |
 | `StoreStopDropped` | Invariant ClearCarriesRows is violated | 30 / 30 | 24 | 07s |
 | `StoreWidthInStore` | Invariant NoSpuriousRefusal is violated | 109 / 94 | 26 | 09s |
 
@@ -402,6 +408,8 @@ s15..s18 and s22 refused as designed), then:
   raised r1's gen to 1.
 - **StoreWidthInStore:** a1 deals u1 working to r1, b1 adds u2 ready, b2 is
   refused by the store's cap: no rule of the design refuses it.
+- **StoreHoldCarried:** after g1 held r1, k1 opens epoch 2 with r1 still
+  held (the defect of 2026-11-08).
 - **StoreStopDropped:** after s21 stopped the sprint, k1 opens epoch 2
   running.
 - **StoreJudgementTwice:** h1 answers j1, then the unfenced h2 answers it

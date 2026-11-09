@@ -25,9 +25,10 @@ var choices = map[string]string{
 	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "unacked": "retry", "undealt": "retry", "admission": "retry",
 }
 
-// judge opens kind about about unless one is open (a cause opens once).
+// judge opens kind about about unless one is open (a cause opens once); an
+// open one's cause is detected again (held).
 func (t *tick) judge(kind, about, question string) {
-	if t.isOpen(kind, about) || t.pending(kind, about) {
+	if t.held(kind, about) || t.pending(kind, about) {
 		return
 	}
 	t.addJudge(judgement{kind: kind, about: about, question: question})
@@ -36,7 +37,10 @@ func (t *tick) judge(kind, about, question string) {
 // judgeAt opens episode n of kind about about once: a count that only grows
 // (a row's flaps) names its own episode.
 func (t *tick) judgeAt(kind, about string, n int, question string) {
-	if _, exists := t.v.Judgements[fmt.Sprintf("%s.%s.%d", kind, about, n)]; exists || t.pending(kind, about) {
+	if j, exists := t.v.Judgements[fmt.Sprintf("%s.%s.%d", kind, about, n)]; exists || t.pending(kind, about) {
+		if exists && j.State == "open" {
+			t.held(kind, about)
+		}
 		return
 	}
 	t.addJudge(judgement{kind: kind, about: about, question: question, episode: n})
@@ -70,6 +74,19 @@ func (t *tick) isOpen(kind, about string) bool {
 	return ok
 }
 
+// held is isOpen, and records that a step detected the open judgement's
+// cause this tick: at its deadline it is reopened, never closed (expiry).
+func (t *tick) held(kind, about string) bool {
+	if !t.isOpen(kind, about) {
+		return false
+	}
+	if t.detected == nil {
+		t.detected = set{}
+	}
+	t.detected[jkey(kind, about)] = struct{}{}
+	return true
+}
+
 // episodes is how many judgements of kind about about exist, open or closed.
 func (t *tick) episodes(kind, about string) int { return t.jindex().episodes[jkey(kind, about)] }
 
@@ -99,7 +116,7 @@ func (t *tick) jindex() judgedIndex {
 // riding is the writes of a judgement that rides in a group's op (a hold's
 // held, a sentinel's landed-sentinel), taken out of the judgement op.
 func (t *tick) riding(kind, about, question string) []store.Write {
-	if t.isOpen(kind, about) || t.pending(kind, about) {
+	if t.held(kind, about) || t.pending(kind, about) {
 		return nil
 	}
 	j := judgement{kind: kind, about: about, question: question}
@@ -131,11 +148,15 @@ func (t *tick) put(j judgement) store.Write {
 	return w
 }
 
-// judgements is the judgements step (LAYER-3 "Judgements"; the model's jnew
-// and Expired): the alarms, one policy judgement per missed question, and
-// the expiries: a cause that cleared in the view, or a deadline passed with
-// the kind's safe default, which never drops, accepts, merges or lands
-// (LESSONS 5.7).
+// judgements is the judgements step (LAYER-3 "Judgements"; the model's jnew,
+// Expired and Lapsed): the alarms, one policy judgement per missed
+// question, and the expiries: a cause that cleared in the view; at the
+// deadline (the kind's safe default never drops, accepts, merges or lands,
+// LESSONS 5.7) a cause no step detected this tick closes as cleared, and one
+// still detected is never closed silently (the structure notices, pushes,
+// repeats and escalates; Glenn 2026-11-07): it expires naming its next
+// episode, which opens in the same op with the repeat count, and is pushed
+// to the coordinator again as NEEDS YOU.
 func (t *tick) judgements() {
 	t.alarms()
 	for _, q := range t.o.missed() {
@@ -149,10 +170,35 @@ func (t *tick) judgements() {
 		if why := t.cleared(j); why != "" {
 			t.expires[id] = why
 		} else if !j.Deadline.IsZero() && !t.in.Now.Before(j.Deadline) {
-			t.expires[id] = fmt.Sprintf("deadline passed; %s's safe default: nothing dropped, accepted, merged or landed", j.Kind)
+			t.lapse(j)
 		}
 	}
 }
+
+// lapse is the deadline of open judgement j: closed as cleared when no step
+// detected its cause this tick, else expired and reopened as the next
+// episode with the repeat count (episodes so far) at the head of its
+// question (repeated replaces the last count).
+func (t *tick) lapse(j store.Judgement) {
+	if _, still := t.detected[jkey(j.Kind, j.About)]; !still {
+		t.expires[j.ID] = "cleared: no step detects its cause at its deadline"
+		return
+	}
+	n := t.episodes(j.Kind, j.About)
+	t.expires[j.ID] = fmt.Sprintf("deadline passed unanswered and it still holds: reopened as %s.%s.%d (repeat %d)", j.Kind, j.About, n+1, n)
+	times := "TIMES"
+	if n == 1 {
+		times = "TIME"
+	}
+	_, question, again := strings.Cut(j.Question, repeated)
+	if !again {
+		question = j.Question
+	}
+	t.addJudge(judgement{kind: j.Kind, about: j.About, question: fmt.Sprintf("UNANSWERED %d %s%s%s", n, times, repeated, question)})
+}
+
+// repeated ends a reopened judgement's count.
+const repeated = ", ESCALATED: "
 
 // cleared is why an open judgement's cause no longer holds in the view, or
 // "" while it does.
