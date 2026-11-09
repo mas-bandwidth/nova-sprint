@@ -30,9 +30,10 @@
 (* paths, tiers, which results occur) is the one the Go walk drives. The  *)
 (* oracle's answer for a Tick is the record's answer field when present   *)
 (* ([rows |-> r], r a row or "failed"), any of AnswersFor(snap) when       *)
-(* absent. The Go walk logs w in parts: ps, up, sh, tko whole, and cs as  *)
+(* absent. The Go walk logs w in parts: ps, up, sh, tko, ob whole, cs as  *)
 (* the slots that are not "none" (every other slot must be "none"), so a   *)
-(* record stays small whatever K is; a record may log w whole instead. rg  *)
+(* record stays small whatever K is; a record may log w instead (each of *)
+(* its fields, so a field added to w later is left to the model). rg     *)
 (* is each row's generation less its generation at Init.                   *)
 (* A record that logs nothing of w leaves it to the model. bus, who is on *)
 (* nova-bus (the walk's away rows), is logged whole or left to the model; *)
@@ -56,12 +57,13 @@ Parts(W, r) ==
   /\ Has(r, "rg")  => W.rg = r.rg
   /\ Has(r, "sh")  => W.sh = r.sh
   /\ Has(r, "tko") => W.tko = r.tko
+  /\ Has(r, "ob")  => W.ob = r.ob
   /\ Has(r, "cs")  => /\ \A c \in DOMAIN r.cs : c \in CIds /\ W.cs[c] = r.cs[c]
                       /\ \A c \in CIds \ DOMAIN r.cs : W.cs[c].st = "none"
 
 \* The logged variables: a present field equals the variable.
 Logged(r) ==
-  /\ Has(r, "w")        => w = r.w
+  /\ Has(r, "w")        => \A f \in DOMAIN r.w : w[f] = r.w[f]
   /\ Parts(w, r)
   /\ Has(r, "snap")     => snap = r.snap
   /\ Has(r, "phase")    => phase = r.phase
@@ -74,7 +76,7 @@ Logged(r) ==
 
 \* The same after a step (written out, so the record index is not primed).
 LoggedNext(r) ==
-  /\ Has(r, "w")        => w' = r.w
+  /\ Has(r, "w")        => \A f \in DOMAIN r.w : w'[f] = r.w[f]
   /\ Parts(w', r)
   /\ Has(r, "snap")     => snap' = r.snap
   /\ Has(r, "phase")    => phase' = r.phase

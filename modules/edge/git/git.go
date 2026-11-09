@@ -54,6 +54,9 @@ type Git interface {
 	IsAncestor(ctx context.Context, repoDir, ancestor, descendant string) (bool, error)
 	MergeGroup(ctx context.Context, repoDir, onto string, heads []string) (MergeResult, error)
 	Push(ctx context.Context, repoDir, sha, ref, expectOld string) error
+	// Main is origin's default branch and its tip (LANDING.md, "Landed
+	// means on main").
+	Main(ctx context.Context, repoDir string) (branch, tip string, err error)
 }
 type Config struct {
 	Binary, AuthorName, AuthorEmail string
@@ -244,6 +247,30 @@ func (c *Client) Tip(ctx context.Context, url, branch string) (string, bool, err
 		return strings.ToLower(fields[0]), true, nil
 	}
 	return "", false, c.failed_internal(code, stdout, stderr, fmt.Errorf("no sha in its output"), "ls-remote", "--exit-code", url, ref)
+}
+
+// Main is origin's default branch and its tip, read with one
+// `git ls-remote --symref origin HEAD`.
+func (c *Client) Main(ctx context.Context, repoDir string) (string, string, error) {
+	args := []string{"ls-remote", "--symref", "origin", "HEAD"}
+	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.PushTimeout, args...)
+	if err != nil || code != 0 {
+		return "", "", cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, args...))
+	}
+	branch, tip := "", ""
+	for _, line := range strings.Split(stdout, "\n") {
+		f := strings.Fields(line)
+		switch {
+		case len(f) == 3 && f[0] == "ref:" && f[2] == "HEAD":
+			branch = strings.TrimPrefix(f[1], "refs/heads/")
+		case len(f) == 2 && f[1] == "HEAD" && isFullSHA_internal(f[0]):
+			tip = strings.ToLower(f[0])
+		}
+	}
+	if branch == "" || tip == "" {
+		return "", "", c.failed_internal(code, stdout, stderr, fmt.Errorf("origin names no default branch"), args...)
+	}
+	return branch, tip, nil
 }
 
 func (c *Client) lsRemoteSHA_internal(ctx context.Context, repoDir, target string) (string, bool, error) {

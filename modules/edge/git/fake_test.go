@@ -250,6 +250,16 @@ func (f *Fake) Fetch(_ context.Context, _ string, refs ...string) error {
 	}
 	return nil
 }
+
+// Main is the fake origin's default branch: main.
+func (f *Fake) Main(ctx context.Context, dir string) (string, string, error) {
+	tip, ok, err := f.LsRemote(ctx, dir, "main")
+	if !ok {
+		return "", "", cmp.Or(err, fmt.Errorf("%w: main", ErrMissingRef))
+	}
+	return "main", tip, nil
+}
+
 func (f *Fake) LsRemote(_ context.Context, _, ref string) (string, bool, error) {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()

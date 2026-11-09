@@ -214,6 +214,17 @@ func TestCheckLandingWaits(t *testing.T) {
 		{name: "waits for its landing", args: []string{"check"}, exit: 0, prep: healthy,
 			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st },
 			want: []string{"CHECK landing s: 1 merging (p2) waits for its landing PR's CI (rung 1 the card's branch, rung 2 sprint-group/s; run asks every 30s)"}},
+		{name: "on base", args: []string{"check"}, exit: 0, prep: healthy,
+			snap: func(s *store.Snapshot) {
+				merging(s)
+				st := s.Streams["s"]
+				st.Forge = "github"
+				s.Streams["s"] = st
+				c := s.Cards["p2"]
+				c.Reason = store.OnBaseReason(st.Base, "")
+				s.Cards["p2"] = c
+			},
+			want: []string{"CHECK landing s: 1 merging (p2), 1 on base, waits for main's PR to main and its CI (run asks every 30s)"}},
 		{name: "a hand stream", args: []string{"check"}, exit: 0, prep: healthy,
 			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Mode = "hand"; s.Streams["s"] = st },
 			want: []string{"CHECK landing s: 1 merging (p2) waits for a hand landing (mode hand, forge none)"}},

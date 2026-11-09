@@ -149,6 +149,87 @@ report is the check that there is none.
 result: neither ok nor fail. The re-deal is a new attempt of the same
 review, and nothing is counted against the card or the row.
 
+## Landed means on main (2026-11-08)
+
+The owner, 2026-11-08: "to me landed means on main". Until then a card was
+recorded `landed` when it merged into its stream's base, and a base is often
+a workstream branch (`sprint/<workstream>`) that nothing merged into main:
+319 cards read landed while their work was off main. Workstream bases stay
+(many cards move `sprint/<workstream>` forward while main moves fast); the
+landing now also carries each base to main.
+
+- **main** is the repository's default branch, read at origin
+  (`git ls-remote --symref origin HEAD`), never a name in the sprint.
+- **A card is `landed` only when its work is on main**: its merge sha (the
+  commit its landing made, or found, on its base) is reachable from main's
+  tip, checked with `git merge-base --is-ancestor` after a fetch, as the
+  landing checks everything else. It is never recorded landed earlier.
+- **On a stream whose base is main nothing changes**: rung 1 or 2 merges
+  onto main and the card is `landed` at the merge.
+- **On any other base, the merge onto base is an intermediate step, not a
+  state.** The card stays `merging`, and the move `OnBase{Head, Merge}`
+  records the base merge in its reason: `on base <merge>: merged onto
+  <base>; landed when that merge is on main`. A merging producer with that
+  record is *on base*: it is never asked to land onto its base again, and
+  nothing else about it changes (a coordinator's `fix` sends it back as
+  before, and the reason that move writes clears the record).
+- **Promotion.** Per stream with producers on base, not under a land
+  judgement, and no promotion in flight, the tick asks one *promote*
+  request (edge request kind `promote`): the stream, its on-base cards,
+  their heads and their recorded merges. Layer 4's `PromotePass`:
+  1. reads main's name and tip; every recorded merge already reachable
+     from main is landed at main's tip (this comes first, so a base
+     deleted, or another stream's promotion that already carried it, is
+     no fault);
+  2. reads base's tip; a recorded merge that is not on base (the base was
+     force-pushed or reset) is the coordinator's judgement;
+  3. a base that does not contain main's tip (behind main: it needs main
+     merged in) is the coordinator's judgement (`base_behind`), never a
+     merge the sprint makes;
+  4. otherwise it finds or opens the one PR base -> main and gates it at
+     base's tip exactly as rung 1 gates a card's branch (`gateAndMerge`):
+     green at that sha while main is still the gated tip merges by the
+     repository's allowed method; pending CI, a PR head not yet at the
+     gated sha and a main that moved are asked again; red, no CI, a
+     conflict, a refused merge and a PR that cannot be opened are the
+     coordinator's judgement.
+  A landed promotion lands every card of the request whose merge is on
+  the gated base tip, at the merge commit main then has. Its results come
+  back as land results; anything not landed opens the same `land`
+  judgement per card, with the same choices: **land** (the hand landing
+  below), **fix**, **retry**.
+- **Hand landings follow the same rule**: `nova-sprint land` (and a `land`
+  answer) merges a card not yet on base onto its base as before, then reads
+  whether that merge is on main (`Lander.OnMain`): on main it is `landed`,
+  else it is recorded on base and promoted. A card already on base is not
+  merged again: it is `landed` when its recorded merge (its head when none
+  is recorded) is on main, and otherwise refused, naming the fix (merge
+  the base into main, then land again).
+- **Two streams on one base** each ask their own promotion; the passes run
+  under the one clone lock of their repository, so the second reads main
+  after the first merged and finds its merges already there.
+- **Counts follow the state**: the board's landed count, `check` and the
+  land-rate count `landed` producers, so they count landed-on-main only.
+  `check`'s landing line says how many of a stream's merging producers are
+  on base. The board's merging column counts them, as before.
+- **Store.** `Migrate` moves every producer of the current epoch recorded
+  landed before this change (reason `landed at <merge>`; the v1 import's
+  excluded) back to `merging`, on base at that merge (no merge in the
+  reason: on base with none, and the promotion checks the head instead),
+  the reason noting `recorded landed before landed meant on main`. The
+  next ticks promote them: those already on main land at once. New
+  landings read `landed on main at <merge>`, so the migration is a no-op
+  the second time. The ETA's landing times skip the re-landing of a
+  migrated card, so no card is counted twice. Earlier epochs, which no
+  rebuild reads, are left as they are.
+
+Known gaps of this step: the check is reachability, so a promotion merged
+by squash or rebase leaves the merges unreachable (the cards stay on base
+and the next promotion is a `base_behind` judgement: prefer merge commits
+for base -> main); a base merge later reverted on base is still reachable
+and lands; a base that moves faster than its CI restarts the promotion's
+gate each time.
+
 ## Kept from the first design
 
 - **Conflicts are prevented, not resolved.** Every card declares its paths;
@@ -183,7 +264,17 @@ are left with neither a request nor a judgement). Reach checks show rung 2, a
 judgement, a hand landing and a red gate. `tla/Steps.tla` carries the land
 judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
 `MergingCovered` (judgements as the tick's snapshot saw them) and the
-reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the earlier card lands, so a card after one sent to fix sits with no request). The
+reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the earlier card lands, so a card after one sent to fix sits with no request).
+Landed means on main is modelled there too: `w.ob` (the merging producers
+on base), `onmain` (the producers whose work is on main, set only by a
+promotion, a landing onto a main base or a hand landing on main), stream
+`s2`'s base not main in the land and burst configurations, the promote
+request (`PromReq`) and its results, and the invariant `LandedOnMain`
+(every landed producer is in `onmain`), with `MergingCovered` counting a
+promotion in flight. Its reversed witness `StepsLandedBeforeMain` records
+a merge onto a base that is not main as landed and breaks `LandedOnMain`;
+reach checks show a promote request, a card on base and a landing off a
+main base reaching main. The
 code is bound to `LandEdge.tla` by `modules/edge/git/trace_test.go`
 (`TestLandEdgeTraceRefinementWalk`: `LandPass` on the git fake and a
 truthful forge, with the tick, outside commits and the answers played by
@@ -210,11 +301,17 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
   results (landed as one group; anything else a land judgement), the
   unlanded report; `modules/steps/judge.go`: the land judgement's choices and no
   deadline.
-- Layer 4 (`modules/edge/git/land.go` `LandPass`; `modules/edge/forge` PR, Checks, Merge,
+- Layer 2 (`modules/card`): `OnBase{Head, Merge, Base}`, the on-base
+  record; `modules/store/landings.go`: the reasons (`landed on main`, `on
+  base`), `BaseMerge`; `modules/store/pg.go` `migrateLanded`: the store's
+  migration.
+- Layer 4 (`modules/edge/git/land.go` `LandPass` and `PromotePass`; `Git.Main`; `modules/edge/forge` PR, Checks, Merge,
   FailedLines): one pass of either automatic rung, a red one with the base
   tip's own red beside it; `modules/edge/git/git.go`: the
   group branch's name and its blockers.
 - Layer 6 (`modules/run/edges.go`): passes asked again on pending CI and a moved
-  base, `ci_wait` for absent CI, the facts; `modules/verbs/land.go`: `land`, the
+  base, `ci_wait` for absent CI, the facts, whether a landing is on main
+  (`InboxItem.Main`); `modules/verbs/land.go`: `land`, the
   group branch at `stream add`; `modules/verbs/judge.go`: the answers;
-  `cmd/nova-sprint/lander.go`: the hand merge as the host's gh identity.
+  `cmd/nova-sprint/lander.go`: the hand merge as the host's gh identity, and
+  `OnMain`; `modules/verbs/check_landing.go`: the on-base count.

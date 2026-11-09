@@ -192,6 +192,7 @@ type fakeLander struct {
 	landErr, headErr error
 	createErr        error
 	landed, created  []string
+	offMain          bool // OnMain says no
 }
 
 func (l *fakeLander) Land(_ context.Context, _ store.Stream, branch, head string) (string, error) {
@@ -343,3 +344,7 @@ func (l fakeLock) Restore(_ context.Context, digest string, _ func(run.RestoreWr
 }
 
 var errBroken = errors.New("connection refused")
+
+func (l *fakeLander) OnMain(context.Context, store.Stream, string) (bool, error) {
+	return !l.offMain, nil
+}

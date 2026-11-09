@@ -155,6 +155,8 @@ func (m *mover) producerEvent(e Event) *Refusal {
 		return m.waiveRed(v)
 	case Landed:
 		return m.landed(v)
+	case OnBase:
+		return m.onBase(v)
 	case Red:
 		return m.red(v)
 	case Released:
@@ -744,14 +746,28 @@ func (m *mover) landed(e Landed) *Refusal {
 		return r
 	}
 	m.state(m.p.ID, LandedState)
-	why := ""
+	why := store.LandedReason
 	if e.Merge != "" {
-		why = "landed at " + e.Merge
+		why += " at " + e.Merge
 	}
 	if e.Reason != "" {
-		why = strings.TrimPrefix(why+": "+e.Reason, ": ")
+		why += ": " + e.Reason
 	}
 	m.reason(m.p.ID, m.p.Reason, why)
+	return nil
+}
+
+// onBase records a merging producer's merge onto its stream's base, not
+// main: it stays merging, the base merge in its reason, until the merge is
+// on main (LANDING.md, "Landed means on main").
+func (m *mover) onBase(e OnBase) *Refusal {
+	if r := m.atHead(e, e.Head); r != nil {
+		return r
+	}
+	if e.Base == "" {
+		return no("an on-base record names the base")
+	}
+	m.reason(m.p.ID, m.p.Reason, store.OnBaseReason(e.Base, e.Merge))
 	return nil
 }
 

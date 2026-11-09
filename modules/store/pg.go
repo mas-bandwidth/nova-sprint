@@ -296,6 +296,9 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if err := migrateBlocked(ctx, tx); err != nil {
 		return err
 	}
+	if err := migrateLanded(ctx, tx); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, "UPDATE sprint.meta SET hash = $1 WHERE id = 1", schemaHash); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
@@ -373,6 +376,61 @@ func migrateBlocked(ctx context.Context, tx pgx.Tx) error {
 	}
 	if _, err := tx.Exec(ctx, "ALTER TABLE sprint.cards VALIDATE CONSTRAINT cards_state_check"); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
+	}
+	return nil
+}
+
+// migrateLanded moves every producer of the current epoch recorded landed
+// before landed meant on main (Glenn, 2026-11-08: "to me landed means on
+// main"; its reason does not start with LandedReason, the v1 import's
+// excluded) back to merging, on base at the merge its reason names
+// ("landed at <merge>"; none named: on base with none, and the promotion
+// checks its head), through one op of the protocol (actor store-migrate),
+// so the log rebuilds to it. The store does not know main: the landing's
+// promotion lands again, at once, each one whose merge is on main
+// (LANDING.md, "Landed means on main"). Earlier epochs, which no rebuild
+// reads, are left as they are. A second Migrate finds none and logs
+// nothing.
+func migrateLanded(ctx context.Context, tx pgx.Tx) error {
+	type landed struct{ ID, Reason, Base string }
+	rows, err := tx.Query(ctx, `SELECT c.id, c.reason, s.base FROM sprint.cards c
+		JOIN sprint.streams s ON s.epoch = c.epoch AND s.name = c.stream
+		JOIN sprint.epoch e ON e.id = 1 AND e.n = c.epoch
+		WHERE c.kind = 'producer' AND c.state = 'landed' AND c.reason NOT LIKE $1 AND c.reason NOT LIKE $2
+		ORDER BY c.id`, LandedReason+"%", ImportedReason+"%")
+	if err != nil {
+		return fmt.Errorf("store: migrate: reading the producers recorded landed off main: %w", err)
+	}
+	cards, err := pgx.CollectRows(rows, pgx.RowToStructByPos[landed])
+	if err != nil {
+		return fmt.Errorf("store: migrate: reading the producers recorded landed off main: %w", err)
+	}
+	if len(cards) == 0 {
+		return nil
+	}
+	var epoch int
+	var now time.Time
+	if err := tx.QueryRow(ctx, "SELECT n, transaction_timestamp() FROM sprint.epoch WHERE id = 1").Scan(&epoch, &now); err != nil {
+		return fmt.Errorf("store: migrate: reading the epoch: %w", err)
+	}
+	var writes []Write
+	sum := sha256.New()
+	for _, c := range cards {
+		fmt.Fprintf(sum, "%s\x00%s\x00", c.ID, c.Reason)
+		merge := ""
+		if rest, ok := strings.CutPrefix(c.Reason, "landed at "); ok {
+			merge, _, _ = strings.Cut(rest, ":")
+		}
+		writes = append(writes, SetCardState{Card: c.ID, State: "merging"},
+			SetCardReason{Card: c.ID, Reason: OnBaseReason(c.Base, merge) + " (" + c.Reason + "); " + MigratedNote})
+	}
+	op := Op{ID: fmt.Sprintf("migrate-landed-%x", sum.Sum(nil)[:16]), Epoch: epoch, Actor: "store-migrate", Kind: "migrate", At: at(now), Writes: writes}
+	r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+	switch {
+	case err != nil:
+		return fmt.Errorf("store: migrate: moving the producers recorded landed off main to merging: %w", err)
+	case !r.Accepted:
+		return fmt.Errorf("store: migrate: moving the producers recorded landed off main to merging was refused: %s", r.Reason)
 	}
 	return nil
 }

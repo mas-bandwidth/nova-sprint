@@ -218,6 +218,13 @@ high, normal, low; within a rung, policy's order.
   card with the facts and the choices land, fix and retry, and nothing
   moves. A merging producer left with no request, no judgement and no
   after target merging is reported as an `engine` judgement.
+- Landed means on main (LANDING.md, 2026-11-08): a land result says whether
+  its merge is on main (`InboxItem.Main`); one that is not records
+  `OnBase` and the card stays merging. Producers on base are never asked to
+  land again: per stream with any, not judged, and no promotion in flight,
+  one `promote` request carries their merges (`EdgeRequest.Merges`); its
+  landed result is `Landed` for each card whose merge it lists, and
+  anything else is the same `land` judgement per card.
 - The mechanics (PR, group branch, gate, merge) are layer 4's; there is no
   bisection and no blame. Request ids hash epoch, stream, base, cards,
   heads and reviews, so a restart reissues the same request (LPM R22).

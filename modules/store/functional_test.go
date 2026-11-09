@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -493,6 +494,54 @@ func TestFunctionalMigrateRound28(t *testing.T) {
 	fresh := newDatabase(t, dsn, "fresh")
 	openPG(t, fresh)
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
+// Landed means on main (2026-11-08): Migrate moves the current epoch's
+// producers recorded landed before it did (reason "landed at <merge>: ..."
+// or none) to merging with an on-base record naming their stream's base and
+// merge (none when unrecorded), in one logged op of the protocol; landings
+// already on main, v1 imports and earlier epochs are untouched, the dash's
+// landing count never counts the moved card twice, and a second Migrate
+// logs nothing.
+func TestFunctionalMigrateLandedOffMain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dsn := startPG(t)
+	p := openPG(t, dsn)
+	c := connect(t, dsn)
+	merge := strings.Repeat("a", 40)
+	for _, q := range []string{"UPDATE sprint.epoch SET n = 2 WHERE id = 1",
+		"INSERT INTO sprint.streams (name, repo, base, epoch) VALUES ('s1', 'o/r', 'sprint/w', 1), ('s1', 'o/r', 'sprint/w', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('old', 'producer', 's1', 'landed', 2, 'pro', 'landed at " + merge + ": ok', 1)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p1', 'producer', 's1', 'landed', 3, 'pro', 'landed at " + merge + ": ok', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p2', 'producer', 's1', 'landed', 3, 'pro', '', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p3', 'producer', 's1', 'landed', 3, 'pro', '" + LandedReason + " at " + merge + "', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p4', 'producer', 's1', 'landed', 3, 'pro', '" + ImportedReason + "', 2)"} {
+		_, err := c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	before := len((&harness{t: t, s: p, ctx: ctx, epoch: 2}).events())
+	require.NoError(t, p.Migrate(ctx))
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 2}
+	cards := h.snap().Cards
+	assert.Equal(t, []string{"merging", OnBaseReason("sprint/w", merge) + " (landed at " + merge + ": ok); " + MigratedNote}, []string{cards["p1"].State, cards["p1"].Reason}, "a landing with its merge is on base at that merge")
+	got, ok := BaseMerge(cards["p1"].Reason)
+	assert.Equal(t, []any{merge, true}, []any{got, ok})
+	assert.Equal(t, []string{"merging", OnBaseReason("sprint/w", "") + " (); " + MigratedNote}, []string{cards["p2"].State, cards["p2"].Reason}, "a landing with no merge recorded is on base with none")
+	assert.Equal(t, "landed", cards["p3"].State, "a landing on main is untouched")
+	assert.Equal(t, "landed", cards["p4"].State, "a v1 import is untouched")
+	var oldState string
+	require.NoError(t, c.QueryRow(ctx, "SELECT state FROM sprint.cards WHERE id = 'old' AND epoch = 1").Scan(&oldState))
+	assert.Equal(t, "landed", oldState, "an earlier epoch is untouched")
+	events := h.events()
+	require.Len(t, events, before+1, "one logged op")
+	assert.Equal(t, "store-migrate", events[len(events)-1].Actor)
+	assert.Equal(t, 0, LandedIn(events[len(events)-1]))
+	ts, err := p.Landings(ctx, 2, events[len(events)-1].Seq)
+	require.NoError(t, err)
+	assert.Empty(t, ts, "the migration is no landing")
+	require.NoError(t, p.Migrate(ctx), "a second Migrate")
+	assert.Len(t, h.events(), len(events), "a second Migrate logs nothing")
 }
 
 // Round 30: a store made by round 29's schema (round29Hash: cards without

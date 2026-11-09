@@ -37,6 +37,15 @@ func (e *Engine) checkLandings(ctx context.Context, r *checkReport, snap store.S
 // checkLanding is one stream's landing and its wait.
 func (e *Engine) checkLanding(ctx context.Context, r *checkReport, snap store.Snapshot, s store.Stream, ids []string, readable, running bool) {
 	what := fmt.Sprintf("landing %s: %d merging (%s)", s.Name, len(ids), firstN(ids, 5))
+	onBase := 0
+	for _, id := range ids {
+		if _, ok := store.BaseMerge(snap.Cards[id].Reason); ok {
+			onBase++
+		}
+	}
+	if onBase > 0 {
+		what += fmt.Sprintf(", %d on base,", onBase)
+	}
 	if j, ok := landingJudgement(snap, s, ids); ok {
 		r.red(refuse(fmt.Sprintf("%s waits for judgement %s (%s, open since %s): %s", what, j.ID, j.Kind, j.OpenedAt.UTC().Format("2006-01-02 15:04:05"), clipN(j.Question, 160)),
 			orWord(strings.TrimSpace(j.Command), "nova-sprint show "+j.ID)))
@@ -51,6 +60,8 @@ func (e *Engine) checkLanding(ctx context.Context, r *checkReport, snap store.Sn
 		r.ok("%s waits for a hand landing (mode %s, forge %s)", what, s.Mode, orWord(s.Forge, "none"))
 	case !readable:
 		r.ok("%s waits for its repository (the stream's red line above)", what)
+	case onBase == len(ids):
+		r.ok("%s waits for %s's PR to main and its CI (run asks every %s)", what, s.Base, run.LandPoll)
 	default:
 		r.ok("%s %s", what, e.groupWait(ctx, s))
 	}

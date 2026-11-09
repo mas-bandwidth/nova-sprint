@@ -434,8 +434,13 @@ func (w *traceWalk) edgeOne() {
 	}
 	req := open[w.rng.Intn(len(open))]
 	it := InboxItem{Kind: req.Kind, Request: req.ID, Outcome: "ack"}
-	if req.Kind == "land" {
-		it.Outcome, it.Landed = "landed", req.Heads
+	if req.Kind == "land" || req.Kind == "promote" {
+		// s1's base is main, s2's a workstream branch (the model's MainBase);
+		// a promotion reports the merges it found on main.
+		it.Kind, it.Outcome, it.Landed, it.Main = "land", "landed", req.Heads, req.Stream == "s1"
+		if req.Kind == "promote" {
+			it.Landed = req.Merges
+		}
 		if (w.scen == "land" || w.scen == "burst") && w.rng.Intn(2) == 0 {
 			it.Outcome, it.Landed = "red", nil
 		}
@@ -472,10 +477,14 @@ func (w *traceWalk) answerOne() {
 	p := ps[w.rng.Intn(len(ps))]
 	choice := []string{"land", "fix", "retry"}[w.rng.Intn(3)]
 	r := Request{Actor: "rowan", Judgement: "land." + p + "." + fmt.Sprint(w.episodes("land", p)), Answer: choice}
-	head := w.snap().Cards[p].Head
+	c := w.snap().Cards[p]
+	head := c.Head
 	switch choice {
-	case "land":
+	case "land": // landed only on main: s1's base, or s2's merged into main by hand (the model's HandOnMain)
 		r.Card, r.Event = p, card.Landed{Head: head, Merge: Sha(90), Reason: "by hand: the walk"}
+		if c.Stream == "s2" && !onBase(c) {
+			r.Event = card.OnBase{Head: head, Merge: Sha(90), Base: "sprint/s2"}
+		}
 	case "fix":
 		r.Card, r.Event = p, card.Red{Head: head, Reason: "the walk's finding"}
 	}

@@ -29,6 +29,7 @@ const (
 	OutcomeBranch     LandOutcome = "branch_failed" // the group branch could not be created or pushed
 	OutcomeMissing    LandOutcome = "missing_head"  // a card's branch is not on origin
 	OutcomeMoved      LandOutcome = "head_moved"    // a card's branch is no longer at the head the read passed
+	OutcomeBehind     LandOutcome = "base_behind"   // a promotion's base does not contain main's tip
 )
 
 // LandRequest is one landing: the stream's heads (in landing order) and the
@@ -87,6 +88,91 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 	}
 	res.GatedSHA = gated
 	return gateAndMerge_internal(ctx, g, fg, req, prHead, res)
+}
+
+// PromoteRequest is one promotion of a stream's base to main (LANDING.md,
+// "Landed means on main"): Merges are the base merges of the cards on
+// base (a card's head where none is recorded).
+type PromoteRequest struct {
+	RepoDir, Repo, Stream, Base string
+	Merges                      []string
+}
+
+// PromotePass is one pass of a promotion. Merges already on main's tip are
+// landed there (so a base deleted, or a promotion another stream on the
+// same base made, is no fault). Otherwise, of the merges on base's tip, a
+// base that contains main's tip is gated as rung 1 gates a card's branch:
+// the one PR base -> main, its checks at base's tip, merged green by the
+// repository's allowed method while main is still the tip it was gated
+// on, landing those merges. No merge on base (base force-pushed or reset)
+// and a base behind main are the coordinator's judgement; so is anything
+// gateAndMerge does not merge, as on rung 1.
+func PromotePass(ctx context.Context, g Git, fg forge.Forge, req PromoteRequest) (LandResult, error) {
+	if len(req.Merges) == 0 || req.Stream == "" || req.Base == "" || req.Repo == "" {
+		return LandResult{}, fmt.Errorf("promote refused: PromotePass needs a repo, a stream, a base and the merges")
+	}
+	if fg == nil {
+		return LandResult{}, fmt.Errorf("promote refused: stream %s has no forge, so nothing lands automatically: land each card by hand with nova-sprint land <card> --reason <why>", req.Stream)
+	}
+	main, mainTip, err := g.Main(ctx, req.RepoDir)
+	if err != nil {
+		return LandResult{}, err
+	}
+	res := LandResult{Rung: 1, BaseTip: mainTip}
+	baseTip, based, err := g.LsRemote(ctx, req.RepoDir, "refs/heads/"+req.Base)
+	if err != nil {
+		return res, err
+	}
+	refs := []string{"refs/heads/" + main}
+	if based {
+		refs = append(refs, "refs/heads/"+req.Base)
+	}
+	if err := g.Fetch(ctx, req.RepoDir, refs...); err != nil {
+		return res, err
+	}
+	on, err := onTip_internal(ctx, g, req.RepoDir, req.Merges, mainTip)
+	switch {
+	case err != nil:
+		return res, err
+	case len(on) > 0:
+		res.Outcome, res.MergeSHA, res.LandedHeads = OutcomeLanded, mainTip, on
+		return res, nil
+	case !based:
+		return res, fmt.Errorf("promote refused: base branch %s is not on origin", req.Base)
+	}
+	onBase, err := onTip_internal(ctx, g, req.RepoDir, req.Merges, baseTip)
+	if err != nil {
+		return res, err
+	}
+	if len(onBase) == 0 {
+		res.Outcome, res.Reason = OutcomeMissing, fmt.Sprintf("none of the merges %s is on %s at %s: was it force-pushed or reset?", strings.Join(req.Merges, ", "), req.Base, baseTip)
+		return res, nil
+	}
+	up, err := g.IsAncestor(ctx, req.RepoDir, mainTip, baseTip)
+	if err != nil {
+		return res, err
+	}
+	if !up {
+		res.Outcome, res.Reason = OutcomeBehind, fmt.Sprintf("%s at %s does not contain %s at %s: merge %s into it, then answer retry", req.Base, baseTip, main, mainTip, main)
+		return res, nil
+	}
+	res.GatedSHA = baseTip
+	return gateAndMerge_internal(ctx, g, fg, LandRequest{RepoDir: req.RepoDir, Repo: req.Repo, Stream: req.Stream, Base: main, Heads: onBase, Branches: []string{req.Base}}, req.Base, res)
+}
+
+// onTip_internal is the shas that are tip or its ancestors.
+func onTip_internal(ctx context.Context, g Git, repoDir string, shas []string, tip string) ([]string, error) {
+	var on []string
+	for _, s := range shas {
+		ok, err := g.IsAncestor(ctx, repoDir, s, tip)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			on = append(on, s)
+		}
+	}
+	return on, nil
 }
 
 func checkRequest_internal(req LandRequest, fg forge.Forge) error {

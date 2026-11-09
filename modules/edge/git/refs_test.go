@@ -102,3 +102,27 @@ func TestListTreeBeyondDefaultCap(t *testing.T) {
 		t.Fatalf("a truncated ls-tree: %v", err)
 	}
 }
+
+// TestMainBranch: Main is origin's default branch and tip from one ls-remote
+// --symref origin HEAD; output naming no default branch is a failure.
+func TestMainBranch(t *testing.T) {
+	t.Parallel()
+	a := strings.Repeat("A", 40)
+	var argv []string
+	out := "ref: refs/heads/trunk\tHEAD\n" + a + "\tHEAD\n"
+	c := New(Config{Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		argv = cmd.Argv
+		return edge.Result{Stdout: out}, nil
+	})})
+	branch, tip, err := c.Main(context.Background(), "/repo")
+	if err != nil || branch != "trunk" || tip != strings.ToLower(a) {
+		t.Fatalf("Main = %q %q %v", branch, tip, err)
+	}
+	if strings.Join(argv, " ") != "git ls-remote --symref origin HEAD" {
+		t.Fatalf("argv %v", argv)
+	}
+	out = a + "\tHEAD\n"
+	if _, _, err := c.Main(context.Background(), "/repo"); err == nil || !strings.Contains(err.Error(), "no default branch") {
+		t.Fatalf("no symref: %v", err)
+	}
+}
