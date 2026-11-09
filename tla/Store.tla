@@ -10,7 +10,8 @@
 (* under its own rule; then either everything lands and an accepted event  *)
 (* is appended, or nothing changes and a refused event is appended. Clear  *)
 (* is an op with no writes: it opens the next epoch, carries the rows      *)
-(* forward (state down, gen + 1, held kept), keeps the                    *)
+(* forward (state down, gen + 1, held released: a hold is epoch-scoped),  *)
+(* keeps the                                                               *)
 (* cursors (global, as the log's seq is) and leaves the cards and          *)
 (* judgements behind (both are epoch-scoped). The event log is append-only *)
 (* (triggers refuse UPDATE and DELETE, and TRUNCATE by a statement         *)
@@ -386,14 +387,16 @@ RECURSIVE DoAll(_, _)
 DoAll(st, ws) == IF ws = <<>> THEN st ELSE DoAll(Do(st, Head(ws)), Tail(ws))
 
 (* Clear: the next epoch, the rows carried forward as down with gen + 1    *)
-(* (the clear writes them) and held kept; no cards or                      *)
+(* (the clear writes them) and not held (a hold is the coordinator's       *)
+(* decision for one epoch; 2026-11-08, three rows sat idle in epoch 2 on   *)
+(* epoch 1's holds); no cards or                                           *)
 (* judgements (keyed by epoch, not carried); cursors and policies kept     *)
 (* (global).                                                               *)
 ClearState(st) ==
   [epoch |-> st.epoch + 1,
    cards |-> [c \in Cards |-> NoCard],
    rows  |-> [r \in Rows |-> IF st.rows[r].state = Absent THEN NoRow
-                             ELSE [st.rows[r] EXCEPT !.state = "down", !.gen = @ + 1]],
+                             ELSE [st.rows[r] EXCEPT !.state = "down", !.gen = @ + 1, !.held = FALSE]],
    judgements |-> [j \in Judgements |-> Absent],
    cursors |-> st.cursors,
    policies |-> st.policies,
@@ -659,7 +662,7 @@ GenPerOp ==
                                 ELSE IF r \in RowsWritten(Ops[o].writes) THEN b.rows[r].gen + 1
                                 ELSE b.rows[r].gen
 
-(* A clear carries every row forward: the same held flag, state down; a    *)
+(* A clear carries every row forward: not held, state down; a            *)
 (* row that did not exist stays absent; no card or judgement survives;     *)
 (* every cursor is kept.                                                   *)
 ClearCarriesRows ==
@@ -674,7 +677,7 @@ ClearCarriesRows ==
       /\ \A r \in Rows :
            IF b.rows[r].state = Absent THEN a.rows[r] = NoRow
            ELSE /\ a.rows[r].state = "down"
-                /\ a.rows[r].held = b.rows[r].held
+                /\ ~a.rows[r].held
                 /\ a.rows[r].sess = b.rows[r].sess
                 /\ a.rows[r].role = b.rows[r].role
 
@@ -764,8 +767,10 @@ NeverTwoWorking ==
   Cardinality({c \in Cards : cards[c].holder = "r1" /\ cards[c].state = "working"}) < 2
 NeverProducerRefused  == "s3" \notin RefusedIds
 NeverSentinelRefused  == "s4" \notin RefusedIds
-\* g1 holds r1 and the hold survives the clear into epoch 2
-NeverHeldCarried      == ~(epoch = 2 /\ rows["r1"].held)
+\* g1 holds r1, and the clear opens epoch 2 with r1 not held
+NeverHoldReleased     == ~\E i \in DOMAIN events :
+                           /\ events[i].accepted /\ Ops[events[i].id].kind = "clear"
+                           /\ events[i].before.rows["r1"].held /\ ~events[i].after.rows["r1"].held
 \* a1 is refused because g1 held r1 first (RowHeld)
 NeverHeldRefused      == ~FencedBy("a1", RowHeld("r1", FALSE))
 \* s23 is refused because s21 stopped the sprint first (Running)

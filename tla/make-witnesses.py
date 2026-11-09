@@ -36,7 +36,7 @@ REACH = {
     "NeverTwoWorking": ("deal", "the store takes two working consumers on one row (a1, b2): width is the roster's"),
     "NeverProducerRefused": ("deal", "a producer added with a holder is refused (s3)"),
     "NeverSentinelRefused": ("deal", "a sentinel added with a holder is refused (s4)"),
-    "NeverHeldCarried": ("deal", "a row's hold survives the clear"),
+    "NeverHoldReleased": ("deal", "a clear releases a row's hold (g1, then k1)"),
     "NeverHeldRefused": ("deal", "a deal is refused on RowHeld after a hold (a1)"),
     "NeverRowDown": ("deal", "a fenced row state write is accepted (e1)"),
     "NeverTwoPolicies": ("deal", "a second policy version is put beside the first (s13)"),
@@ -208,6 +208,13 @@ WITNESSES = [
        "                                /\\ w.s # None\n"
        "                                /\\ w.s # st.rows[w.r].sess)\n",
        "    [] w.k = \"putRow\"      -> TRUE   \\* FAULT: no session check\n", 1)]),
+    ("StoreHoldCarried", "ClearCarriesRows", "deal",
+     "A clear carries a row's hold into the next epoch (the defect of\n"
+     "2026-11-08: emma, johnny and stella came up in epoch 2 still held\n"
+     "with epoch 1's reasons): after g1 holds r1, k1 opens epoch 2 with r1\n"
+     "held.",
+     [("ELSE [st.rows[r] EXCEPT !.state = \"down\", !.gen = @ + 1, !.held = FALSE]],",
+       "ELSE [st.rows[r] EXCEPT !.state = \"down\", !.gen = @ + 1]],   \\* FAULT: the hold is carried", 1)]),
     ("StoreStopDropped", "ClearCarriesRows", "deal",
      "A clear does not keep the sprint's stop: after s21 stops it, k1\n"
      "opens epoch 2 running.",

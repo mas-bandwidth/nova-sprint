@@ -32,6 +32,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"idempotent":              idempotent,
 		"clear":                   clearCarriesRows,
 		"clear refusals":          clearRefusals,
+		"clear releases holds":    clearReleasesHolds,
 		"rebuild":                 rebuild,
 		"events":                  eventsPaging,
 		"policy":                  policy,
@@ -424,6 +425,26 @@ func clearCarriesRows(h *harness) {
 		PutCard{Tier: "pro", ID: "u1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w1"}))
 	assert.Equal(h.t, map[string]Card{"c1": {Tier: "pro", Priority: "normal", ID: "c1", Kind: "producer", Stream: "s1", State: "waiting"}, "u1": {Tier: "pro", Priority: "normal", ID: "u1", Kind: "work", Of: "c1", Stream: "s1", State: "waiting", Holder: "w1"}}, h.snap().Cards)
 	assert.Equal(h.t, 2, h.events()[6].Epoch)
+}
+
+// A hold is the coordinator's decision for one epoch: a clear opens the next
+// epoch with every row unheld and its reason empty, the coordinator's own row
+// too (2026-11-08: emma, johnny and stella came up in epoch 2 still held
+// with epoch 1's reason, and sat idle). A deal fenced on the row not being
+// held lands in the new epoch.
+func clearReleasesHolds(h *harness) {
+	h.seed()
+	h.ok(h.op("hook", nil, PutRow{Name: "k1", Session: "sess-k", Role: "coordinator"}))
+	h.ok(h.op("hold", nil, SetRowHeld{"w1", true, "dogfood of v2.0.13, released within the hour"}, SetRowHeld{"k1", true, "coordinating"}))
+	r := h.clear()
+	for _, name := range []string{"w1", "k1"} {
+		row := h.snap().Rows[name]
+		assert.Equal(h.t, []any{false, ""}, []any{row.Held, row.Reason}, "row %s starts epoch 2 unheld with no reason", name)
+		assert.Equal(h.t, []any{false, ""}, []any{r.After.Rows[name].Held, r.After.Rows[name].Reason}, "the clear's after-image of %s is unheld", name)
+	}
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "the rebuild agrees")
+	h.ok(h.op("deal", []Expect{RowHeld{"w1", false}}, PutStream{Name: "s1"}, PutCard{Tier: "pro", Kind: "producer", ID: "c1", Stream: "s1"},
+		PutCard{Tier: "pro", ID: "u1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w1"}))
 }
 
 func clearRefusals(h *harness) {
@@ -892,7 +913,7 @@ func rebuild(h *harness) {
 	h.seed()
 	h.ok(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}, SetCardState{"u1", "working"}, SetCardResult{"u2", "fix"}))
 	h.refused(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), "card c1 is at gen 1, expected gen 0")
-	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowFlaps{"w1", 4}, SetRowHeld{"w1", true, ""},
+	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowFlaps{"w1", 4}, SetRowHeld{"w1", true, "epoch 1's reason"},
 		SetCardAfter{"c2", []string{"c0"}}, PutCard{Tier: "pro", Kind: "sentinel", ID: "g1", Stream: "s1", Needs: []string{"c2"}}, SetCardState{"c0", "fail"}))
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 	h.clear()
@@ -904,7 +925,7 @@ func rebuild(h *harness) {
 	assert.Equal(h.t, 2, got.Epoch)
 	assert.Equal(h.t, []string{"", ""}, []string{got.Rows["w1"].Session, got.Rows["w1"].Role}, "unhooked after the clear")
 	assert.Equal(h.t, 4, got.Rows["w1"].Gen, "row gen survives the clear and the rebuild")
-	assert.True(h.t, got.Rows["w1"].Held, "the hold survives the clear and the rebuild")
+	assert.Equal(h.t, []any{false, ""}, []any{got.Rows["w1"].Held, got.Rows["w1"].Reason}, "a hold is epoch-scoped: the clear releases it and its reason, and the rebuild agrees")
 }
 
 // A sentinel is a producer with no brief: it has needs and after, and never
@@ -966,7 +987,7 @@ func noBlockedState(h *harness) {
 }
 
 // held is the coordinator's hold on a row: its own write, kept by put row,
-// carried by a clear, and it raises the row's gen.
+// released by a clear (a hold is for one epoch), and it raises the row's gen.
 func rowHeld(h *harness) {
 	h.seed()
 	h.ok(h.op("hold", []Expect{RowGen{"w1", 0}}, SetRowHeld{"w1", true, ""}))
@@ -978,12 +999,13 @@ func rowHeld(h *harness) {
 	h.refused(h.op("bad", nil, SetRowHeld{"w9", true, ""}), "row w9 does not exist")
 	h.clear()
 	got := h.snap()
-	assert.True(h.t, got.Rows["w1"].Held, "a clear carries the hold")
+	assert.False(h.t, got.Rows["w1"].Held, "a clear releases the hold")
 	assert.Equal(h.t, Rebuild(h.events()), got)
+	h.ok(h.op("hold", []Expect{RowGen{"w1", 3}, RowHeld{"w1", false}}, SetRowHeld{"w1", true, ""}))
 	h.ok(h.op("deal", []Expect{RowHeld{"w1", true}}, SetRowState{"w1", "up"}))
 	h.refused(h.op("deal", []Expect{RowHeld{"w1", false}}, SetRowState{"w1", "down"}), "row w1 is held, expected not held")
 	h.refused(h.op("deal", []Expect{RowHeld{"w9", false}}), "row w9 does not exist")
-	h.ok(h.op("unhold", []Expect{RowGen{"w1", 4}}, SetRowHeld{"w1", false, ""}))
+	h.ok(h.op("unhold", []Expect{RowGen{"w1", 5}}, SetRowHeld{"w1", false, ""}))
 	h.ok(h.op("deal", []Expect{RowHeld{"w1", false}}))
 	h.refused(h.op("deal", []Expect{RowHeld{"w1", true}}), "row w1 is not held, expected held")
 	assert.False(h.t, h.snap().Rows["w1"].Held)
