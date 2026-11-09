@@ -144,6 +144,24 @@ func TestPlaybookCommandsParse(t *testing.T) {
 	}
 }
 
+// A conflict goes back as a merge, never a rebase: the next head must
+// descend from the prior head, so both playbooks say so.
+func TestPlaybooksMergeNeverRebase(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]string{
+		"../playbooks/PLAYBOOK-WORKER.md":      "merge it into your branch and resolve the conflicts; never rebase",
+		"../playbooks/PLAYBOOK-COORDINATOR.md": "merge current <base> into the card branch and resolve the conflicts; never rebase",
+	} {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.Join(strings.Fields(string(b)), " "), want) {
+			t.Errorf("%s lacks %q", name, want)
+		}
+	}
+}
+
 // The checker refuses what the playbooks once taught (edit, drop --expect,
 // a bare subcommand) and passes what the binary takes.
 func TestCheckTaughtRefusesDrift(t *testing.T) {

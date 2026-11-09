@@ -171,6 +171,9 @@ func TestLiveJobMDAndPromptAgree(t *testing.T) {
 		if !strings.Contains(prompt, rules) || !strings.Contains(prompt, JobMDName) {
 			t.Errorf("%s prompt does not carry JOB.md's finish rules:\n%s", kind, prompt)
 		}
+		if kind == "work" && !strings.Contains(rules, "merge it into the branch, never rebase") {
+			t.Errorf("work finish rules must say a newer base is merged in, never rebased:\n%s", rules)
+		}
 		if !strings.Contains(rules, "no git push and no gh") {
 			t.Errorf("%s finish rules must forbid push and gh:\n%s", kind, rules)
 		}
