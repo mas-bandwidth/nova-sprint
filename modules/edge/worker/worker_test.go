@@ -703,8 +703,15 @@ func TestReportRequiresAcceptedMatchingReceiptBeforeClean(t *testing.T) {
 		t.Fatalf("job directory must remain when receipt.Op != ResultID: %v", err)
 	}
 
-	// Matching accepted receipt records and cleans.
-	sp.receipt = store.Receipt{Accepted: true, Op: rec.ResultID}
+	// Nor is an id that only shares the result ID's text as a prefix.
+	sp.receipt = store.Receipt{Accepted: true, Op: rec.ResultID + "x"}
+	if err := r.sendReportAndClean_internal(ctx, jobDir, rec); !errors.Is(err, ErrRefused) {
+		t.Fatalf("a receipt of another op must refuse and not clean: got %v", err)
+	}
+
+	// An accepted receipt of the report retried after a refusal (the next
+	// link of the result ID's chain) records and cleans.
+	sp.receipt = store.Receipt{Accepted: true, Op: store.ConsumerRetryID(rec.ResultID, 7)}
 	if err := r.sendReportAndClean_internal(ctx, jobDir, rec); err != nil {
 		t.Fatalf("expected clean on accepted matching receipt: %v", err)
 	}

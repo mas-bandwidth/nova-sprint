@@ -50,11 +50,16 @@ def verdict(card, reads):
     return "retry"  # every done read faulted: ask one more read
 
 def width(row):
-    return {"work": row.width, "ahead": 0}  # no deal-ahead: a worker takes only what it can run now (defect 74)
+    # dogfood 2026-11-07 (Glenn: a ready card never sits): no deal-ahead for
+    # anyone; a bench runs at most 4 harnesses at once (nova-reserve shared
+    # slots), so its work width is 4 whatever its cores say (defect 65).
+    if row.kind == "worker":
+        return {"work": min(row.width, 4), "ahead": 0}
+    return {"work": row.width, "ahead": 0}
 
 def limits():
     return {
-        "bounces": 6,              # guess (PRIORITY G1: no source for n)
+        "bounces": 12,             # dogfood 2026-11-07 (defect 75): unblock keeps the count, so the limit must leave room for the escalated attempts
         "faults": 3,               # guess
         "same_finding": 2,         # v1 DISPATCHER section 7
         "reports_per_tick": 1000,  # derived from the layer 1 load test: a guess
@@ -65,29 +70,30 @@ def limits():
         "flap_limit": 3,           # unmeasured: a guess (layer 3's engine default)
         "fleet_width_cap": 8,      # guess (roster's FleetWidthCap before round 6)
         "idle_floor": 0.5,         # guess (LESSONS 3.18: under half the open width)
-        "land_target": 0.9,        # guess (layer 3's engine default, over 20 landings)
+        "land_target": 0.3,        # guess (layer 3's engine default, over 20 landings)
         "chain_limit": 3,          # Glenn 2026-11-08: wide and flat; add refuses a longer NEEDS chain
     }
 
 def landing(stream):
-    # rung 2 at more than one head waiting (intent rule 32); ci_wait a guess
-    return {"backed_up": 2, "flowing": 1, "ci_wait": 600}
+    # rung 2 at more than four heads waiting; ci_wait a guess
+    return {"backed_up": 4, "flowing": 1, "ci_wait": 600}
 
 def timeouts():
     return {
         "row_silent_gone": 600,       # guess; never one missed challenge (LESSONS 4.7)
         "row_silent_withdraw": 1800,  # guess; above a 600 s gate (LESSONS 2.9)
-        "landing_stall": 60,          # v1 (LANDING step 10)
+        "landing_stall": 1200,        # 20m so active merges and reviews do not re-trigger stall.<stream> every minute
         "base_regate": [120, 300],    # v1 (LANDING step 8)
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
         "tick": 10,                   # guess: run's budget for one tick
-        "ready_nag": 1,               # Glenn 2026-11-07: nag a row holding ready cards every second
+        "ready_nag": 30,              # nag an unacknowledged deal every 30s, not every 1s
         "ready_take": 180,            # Glenn 2026-11-07: a card ready this long is dealt elsewhere
-        "consumer": {                 # a consumer's deadline by tier: nova-worker's old literals, guesses
-            "flash": 900,
-            "pro": 2700,
-            "heavy": 5400,
+        "judgement_unseen": 300,      # Glenn 2026-11-08: a judgement open this long was pushed to nobody
+        "consumer": {                 # a consumer's deadline by tier
+            "flash": 3600,
+            "pro": 7200,
+            "heavy": 7200,
             "frontier": 7200,
         },
     }

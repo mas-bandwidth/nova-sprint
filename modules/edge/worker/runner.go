@@ -582,11 +582,27 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	return last, runErr
 }
 func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
-	if strings.Contains(string(res.Output), "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
-		return true, fmt.Sprintf("wall/binary fault (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
-	}
 	if runErr != nil {
 		return true, "wall execution fault: " + runErr.Error()
+	}
+	if res.ExitCode == 0 {
+		return false, ""
+	}
+	tail := TailBytes(res.Output, 512)
+	if strings.Contains(tail, "SANDBOX REFUSED") || strings.HasPrefix(strings.TrimSpace(string(res.Output)), "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
+		return true, fmt.Sprintf("wall/binary fault (exit %d): %s", res.ExitCode, tail)
+	}
+	return false, ""
+}
+func isMissingTestToolchain_internal(res WallRunResult) (bool, string) {
+	if res.ExitCode == 0 {
+		return false, ""
+	}
+	out := string(res.Output)
+	for _, needle := range []string{"command not found", ": not found", "No such file or directory: 'elixir'", "No such file or directory: 'luau'", "No such file or directory: 'sbcl'", "No such file or directory: 'dart'", "No such file or directory: 'dotnet'"} {
+		if strings.Contains(out, needle) && (strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")) {
+			return true, fmt.Sprintf("test toolchain missing in wall (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
+		}
 	}
 	return false, ""
 }
@@ -597,7 +613,7 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	}
 	job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus(job.Consumer))
 	out := ClassifyJob(h, job, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
-	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" {
+	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" && (runErr != nil || (out.Result != "ok" && out.Result != "yes" && out.Result != "fix")) {
 		out = Outcome{Result: "fault", Reason: why}
 	}
 	if cost, ok := h.Usage(job); ok {
@@ -630,11 +646,17 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 		return out
 	case sha != "" && sha != job.BaseSHA && sha != job.PriorHead:
 		if perr := r.pushBranch_internal(ctx, rec, sha); perr != nil {
-			if out.Result == "ok" {
+			if out.Result == "ok" || out.NoVerdict {
 				return Outcome{Result: "fault", Head: rec.PushedHead, Reason: "push fault: " + perr.Error()}
 			}
 			return out
 		}
+		if out.NoVerdict {
+			return Outcome{Result: "ok", Head: sha}
+		}
+		out.Head = sha
+	case out.Result == "ok" && sha != "" && sha != job.BaseSHA && sha == job.PriorHead:
+		rec.PushedHead = cmp.Or(rec.PushedHead, sha)
 		out.Head = sha
 	case out.Result == "ok":
 		return Outcome{Result: "fail", Reason: "harness reported ok without advancing HEAD past base_sha and prior_head, and left nothing to commit"}
@@ -712,6 +734,11 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	if rec.Kind != "work" || rec.Outcome.Result != "ok" {
 		return nil
 	}
+	if rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead { // the store refuses the prior head as a report's head
+		rec.Outcome = Outcome{Result: "fail", Reason: "harness reported ok but committed nothing over the prior head"}
+		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
+		return nil
+	}
 	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
 	if r.Git != nil && rec.StreamRef != "" {
 		remote, err := r.jobRemote_internal(*rec)
@@ -751,6 +778,8 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, TailBytes(tres.Output, MaxReasonBytes))}
 				if fault, why := isInfraFault_internal(tres, err); fault {
+					rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}
+				} else if fault, why := isMissingTestToolchain_internal(tres); fault {
 					rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}
 				}
 				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
@@ -818,7 +847,7 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	if err != nil {
 		return err
 	}
-	if !receipt.Accepted || receipt.Op != req.ResultID {
+	if !receipt.Accepted || !store.IsConsumerOp(receipt.Op, req.ResultID) {
 		return fmt.Errorf("%w: report %s was not accepted (accepted=%v op=%q reason=%q): keeping job directory",
 			ErrRefused, req.ResultID, receipt.Accepted, receipt.Op, receipt.Reason)
 	}

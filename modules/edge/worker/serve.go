@@ -106,7 +106,9 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 	root := cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row))
 	workRoot, mirrorRoot := cmp.Or(c.WorkRoot, filepath.Join(root, "clones")), cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror"))
 	stateDir := cmp.Or(c.StateDir, filepath.Join(home, ".local", "state"))
-	wall, err := osWallConfig_internal(ctx, c, ex, timeouts.Stage, home, [][2]string{{"--root", root}, {"--state-dir", stateDir}, {"--work-root", workRoot}, {"--mirror-root", mirrorRoot}, {"secrets store", c.lookupEnv_internal("NOVA_SECRETS_STORE")}}, out)
+	own := [][2]string{{"--root", root}, {"--state-dir", stateDir}, {"--work-root", workRoot}, {"--mirror-root", mirrorRoot}, {"secrets store", c.lookupEnv_internal("NOVA_SECRETS_STORE")}}
+	c = withBenchSDK_internal(c, home, own, out)
+	wall, err := osWallConfig_internal(ctx, c, ex, timeouts.Stage, home, own, out)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +162,37 @@ func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout 
 		out(n)
 	}
 	return cfg, nil
+}
+
+// withBenchSDK_internal wires the bench's ~/sdk and ~/go toolchains when
+// ~/sdk/bin exists on the bench: prepending ~/sdk/bin and ~/go/bin to PATH so
+// DetectGo and the wall's commands find go, elixir, luau, sbcl, dart, javac,
+// rustc and dotnet under systemd's minimal PATH, and granting ~/sdk and ~/go
+// read-only to the wall when CheckWallReads admits them.
+func withBenchSDK_internal(c Config, home string, own [][2]string, out func(string)) Config {
+	sdkBin := filepath.Join(home, "sdk", "bin")
+	if checkWallReadForm_internal(sdkBin) != nil {
+		return c
+	}
+	curPath := cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin")
+	pathEntries := filepath.SplitList(curPath)
+	var prepend []string
+	for _, binDir := range []string{sdkBin, filepath.Join(home, "go", "bin")} {
+		if checkWallReadForm_internal(binDir) == nil && !slices.Contains(pathEntries, binDir) {
+			prepend = append(prepend, binDir)
+		}
+	}
+	if len(prepend) > 0 {
+		reportTo(out, "setting PATH for bench SDK", os.Setenv("PATH", strings.Join(append(prepend, curPath), string(os.PathListSeparator))))
+	}
+	reportTo(out, "setting DOTNET_CLI_TELEMETRY_OPTOUT", os.Setenv("DOTNET_CLI_TELEMETRY_OPTOUT", "1"))
+	reportTo(out, "setting DOTNET_NOLOGO", os.Setenv("DOTNET_NOLOGO", "1"))
+	for _, dir := range []string{filepath.Join(home, "sdk"), filepath.Join(home, "go")} {
+		if _, err := CheckWallReads([]string{dir}, home, own); err == nil && !slices.Contains(c.WallReads, dir) {
+			c.WallReads = append(c.WallReads, dir)
+		}
+	}
+	return c
 }
 
 // SplitList is a comma-separated flag as a list, blanks dropped.

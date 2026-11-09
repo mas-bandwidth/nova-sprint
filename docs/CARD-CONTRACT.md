@@ -159,6 +159,20 @@ nothing). The first deal then carries that head as the work consumer's
 prior_head: the tree starts from it, JOB.md says to continue from it, the
 push lands on top of it, and an ok finish must push past it.
 
+A red base is said, never refused (added 2026-11-08, after 171 cards went
+onto a base red on 155 of 205 jobs unseen and none could land for an hour;
+not refused because the cards that make the base green must get in too).
+For a github stream, `add` (dry run too) and `stream add` read the base
+tip's checks once, through the forge the landing reads them with
+(`forge.Forge.Checks`), and red is the landing's own rule (`forge.CheckRed`,
+the rule behind its "the base itself is red": a check completed in failure,
+other checks still running or not). They admit and print `BASE RED <repo>
+<base> at <sha12>: <n> checks red (<first five> and <m> more); cards land
+only once it is green: make it green first (cards for that are admitted)`;
+`check` shows a `CHECK RED` line for the stream (one read per stream).
+Pending checks, no checks, green and a gate fault print nothing; a read that
+fails is not red, as the landing reads it, and is a `WARN`.
+
 `stream add` (and `check`, per stream) also reads the status checks the base
 branch requires (branch protection and rulesets, one `gh api` each) and,
 when one is named like a contributor agreement (`CLA`, `CAA`, "contributor",

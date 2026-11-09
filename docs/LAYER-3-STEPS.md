@@ -92,15 +92,13 @@ folded after every apply; a snapshot per tick is a defect (LAYER-1).
   judgement in the group; for a failed need, one group with
   `NeedFailed{InThisOp}` over the whole closure of dependants, or the
   `Waive` or `Relink` the drop named.
-- Ready, deciding LESSONS 2.20: every hard need landed, the stream not
-  held, and no started producer of its stream (working, review, merging)
-  overlapping its paths, ledgers aside (LANDING step 2). Room on a row is
-  not a condition: ready producers queue and the deal fills rows, so ready
-  never flips with row load (LESSONS 3.2). Resolve counts the stream's
-  ready producers as started for the overlap check, so two overlapping
-  producers are never ready together and a start never strands a ready
-  one; so `Park` stays for held streams only. Until ready, the view names
-  the cause (held, overlap with X). Policy: none; needs are hard.
+- Ready, deciding LESSONS 2.20: every hard need landed, the card not held
+  and the stream not held. Only a NEEDS orders starts: two producers that
+  name the same file both start, and landing stitches them (the group
+  rung, then a land judgement). Room on a row is not a condition: ready
+  producers queue and the deal fills rows, so ready never flips with row
+  load (LESSONS 3.2). `Park` is for held streams only. Until ready, the
+  view names the cause (a need, or a hold). Policy: none; needs are hard.
 
 ### Holds
 
@@ -171,9 +169,11 @@ high, normal, low; within a rung, policy's order.
 - Ready timeout: at timeouts `ready_take` (180 s, the human's number) a work
   card still not acknowledged is withdrawn and its producer dealt, in the
   same group, to another row with room, never the slow one (`redeal`).
-- `unacked`: at `ready_take`, for a card no other row can take (a read, or
-  no room elsewhere), one judgement for the coordinator naming the row and
-  the card (choices as any judgement's; `release` deals it again).
+- At `ready_take`, a card no other row can take (a read, or no room
+  elsewhere) is withdrawn back to the queue, its branch kept and the reason
+  recorded ("in <row>'s hand N s, not taken"); the deal ranks the row it was
+  withdrawn from last (item 2, 2026-11-08: no card is left in a hand that
+  never took it). There is no `unacked` judgement.
 - `undealt`: a ready producer still ready `UndealtAfter` (2 s: more than one
   one-second tick; a guess) after it went ready, while an open row serving
   its tier has room, opens one judgement naming the row, the card and the
@@ -236,7 +236,10 @@ high, normal, low; within a rung, policy's order.
 - Plans: `HoldCard` (reason `held: ...`) with a `held` judgement when bounces since the
   producer's last unhold (`bounces - bounce_base`) reach the limit (a fault never counts;
   LESSONS 2.24; an unhold is a fresh budget); `Withdraw` of a working consumer whose
-  row is silent past the bound, branch kept; `Gone` for a row whose session
+  row is silent past the bound (a row not seen on the bus since the run started counts
+  from the view's start), or that is past its tier's deadline (timeouts `consumer`,
+  after the deal and `ready_take`) with no report, branch kept and the reason
+  recorded (item 2, 2026-11-08); `Gone` for a row whose session
   has not acked past its bound, never for one missed challenge in a long
   turn (LESSONS 4.7); a `flap` judgement past the flap limit.
 - Policy: `bounce_limit` (3; v1 left it unsourced, LPM G1); `silence`
@@ -274,8 +277,8 @@ for each candidate, and the engine refuses one below the card's tier.
   `StepsExpiresSilently`).
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
-  `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,
-  `no-policy`, `unacked`, `undealt`, `admission` (`conflict`, `base-red`,
+  `landed-sentinel`, `policy`, `engine`, `roster`, `no-model`,
+  `no-policy`, `undealt`, `admission` (`conflict`, `base-red`,
   `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
   the tick (LESSONS 3.17).
@@ -303,7 +306,7 @@ acknowledgement cursor); Add is anyone hooked in. Refused:
 
 Glenn's rule: if being wrong could corrupt, it is in the engine; if only
 slow, it is policy. Layer 3 delegates exactly the questions named above plus
-`budget` and `pack`; legality, needs, holds, width, overlap, the coordinator set, op ids
+`budget` and `pack`; legality, needs, holds, width, the coordinator set, op ids
 and the refused-op rule stay in the engine. Policy absent: every default.
 An answer that fails (a Starlark error, the tick's 100 ms of policy time
 spent, out of range, naming a row or card not offered) is the default for
@@ -364,7 +367,7 @@ default deals, reads, lands or names a cause; none stalls.
 8. Ready never depends on row load; a ready producer is started when a row
    serving it has room under its width, in rung order, or an `undealt`
    judgement names it within `UndealtAfter`; a waiting
-   producer whose needs landed has a named cause (held, or overlap with X).
+   producer whose needs landed is held, with its reason, or resolves.
 9. Every non-final producer is waited on by a named actor, the next tick or
    an open judgement (LAYER-2, nothing stalls).
 10. No policy answer, absence or error makes a step plan an illegal move or
@@ -395,9 +398,8 @@ of the last tick's groups.
   deal counting ready against width; a carry that drops overflow; a carry
   newest first (a report starves); a refused op resent blind; a refused op
   split by halves of writes (a preemption lands without its deal); an unqueued `after` holding a landing; a step that
-  plans nothing when policy fails; a stale report applied; resolve without
-  the overlap check (two overlapping producers ready); ready conditioned
-  on room (ready flips with row load).
+  plans nothing when policy fails; a stale report applied; ready
+  conditioned on room (ready flips with row load).
 - Sizes: three producers (one a blocker), two rows of width 1 and 2, three
   slots, budget and pack 1 and 2, inbox 3; scenarios `deal`, `land`,
   `burst`; `tla/ci-tlc.sh` on hetzner2, never the working machine. The inbox
@@ -448,7 +450,7 @@ asker 300, requests 350): an estimate; layer 1's first was half its size.
 | 3.17 mechanical judgements answered by rule | Judgements (the closed list) |
 | 3.18 the idle alarm | Judgements (`idle`) |
 | 3.21 first-time land rate | Judgements (`land-rate`) |
-| 2.20 ready that cannot start | Sentinels and needs (ready: needs, hold, overlap; never room) |
+| 2.20 ready that cannot start | Sentinels and needs (ready: needs, hold; never room) |
 | 2.21 nothing stalls, with the tick | the model's liveness; guarantee 9 |
 | 1.14 running-time deadlines | in part: every bound is compared in one function of `Now`; excluding stopped spans is owed to layer 6's stop and start |
 | 4.5 who redelivers | in part: the ack from the record (Reports); redelivery is layer 4's |
@@ -518,7 +520,7 @@ measured below.
 **The steps.** Planned in this order, each skipping claimed cards: reports
 and takes (so a consumer that has reported is never preempted), preemption,
 land results, needs (drops, Reached with a `landed-sentinel` judgement in
-the op, Resolve with the overlap tally), holds (Park, withdraw of untaken
+the op, Resolve), holds (Park, withdraw of untaken
 consumers on held rows at once and down rows after `row_silent_gone`),
 limits (HoldCard with its judgement in the op, withdraw of a silent row's
 working consumers, Gone, flap), fix (every yes before every fix, as the
@@ -932,3 +934,26 @@ and 40 on one front per stream) is 3.9 ms on the working machine (measured,
 one run, Apple M3 Ultra). Tests (unit, no clock): `TestWaitsGroupsByChainFrontAndHolder`,
 `TestWaitsLineNamesThreeAndCounts`, `TestWaitsSurvivesACycle`,
 `TestIdleWhyAndFix`, `TestIdleJudgementSaysWhyNothingDeals`.
+
+## Removed: the PATHS-overlap start hold (2026-11-08)
+
+A waiting producer that named a file a ready or started producer of its
+stream named was held from the deal, with an `overlap` judgement ("held
+behind <card> on <path>"), overlap counts in `check`, the idle judgement
+and `steps.Waits`. It serialized cards with no real dependency, against
+the promise of parallel work at width. It is gone: only a NEEDS (B
+consumes A's landed output), a hold, a missing serving row and width keep
+a ready card from starting. Two cards that edit one file both start; the
+landing ladder (the group rung on `sprint-group/<s>`, then a land
+judgement) and the coordinator's merge stitch them. PATHS stays for
+admission (each path exists at the base) and for the worker's
+confinement. Removed with it: the view's paths index, `Concrete`,
+`Overlaps`, `heldBehind`, `leastHolder`, `Holder` and the `overlap`
+judgement kind (an open one left in a store expires at its deadline).
+The model loses `Overlap`, `NeverOverlapStarted`, `HeldBehindShown`, the
+witnesses `StepsNoOverlapCheck`, `StepsGlobOverlaps` and
+`StepsHeldUnshown`, and the reach check `StepsNeverHeldBehind`; the reach
+check `StepsNeverBothStarted` shows p and q of one stream, naming one file,
+working together. Test: `TestTickSameFileCardsBothStart` (replaces
+`TestTickOverlapIsAFile`). The sections above that describe the hold are
+history.

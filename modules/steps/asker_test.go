@@ -128,3 +128,28 @@ func benchModels() map[string]string {
 	}
 	return out
 }
+
+// TestAskerMissSaysWhy: every miss carries its reason, the first per
+// question, so a policy judgement is never "failed question rows: ;" (an
+// absent answer and a refused one had none; the live run, 2026-11-07/08).
+func TestAskerMissSaysWhy(t *testing.T) {
+	t.Parallel()
+	a := Answers{Version: 4, Failed: map[string]string{"verdict": "division by zero"},
+		Rows:  map[string][]string{"p1": {"r9"}, "p2": {}},
+		Reads: map[string]int{"p1": 9}}
+	o := newOracle(a, Engine)
+	o.rows(RowsQuestion{Card: CardFacts{ID: "p1"}, Candidates: rowsQ("r1").Candidates})
+	o.rows(RowsQuestion{Card: CardFacts{ID: "p2"}, Candidates: rowsQ("r1").Candidates})
+	o.reads(CardFacts{ID: "p1"})
+	o.verdict(VerdictQuestion{Card: CardFacts{ID: "p1"}})
+	o.width(RowFacts{Name: "r1", Width: 2})
+	o.limits()
+	assert.Equal(t, "rows(p1) names r9, not a candidate (candidates: r1)", o.why("rows"), "the first reason stands")
+	assert.Equal(t, "reads(p1) is 9, outside 1..5", o.why("reads"))
+	assert.Equal(t, "division by zero", o.why("verdict"))
+	assert.Equal(t, "no answer for width(r1)", o.why("width"))
+	assert.Equal(t, "no answer for limits()", o.why("limits"))
+	for _, q := range o.missed() {
+		assert.NotEmpty(t, o.why(q), q)
+	}
+}

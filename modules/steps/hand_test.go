@@ -24,13 +24,14 @@ func dealOne(t *testing.T) *sim {
 	return s
 }
 
-// TestHandNudgesThenJudgesUnacked: a card in hand the row has not
+// TestHandNudgesThenReturnsUntaken: a card in hand the row has not
 // acknowledged is nudged each tick from timeouts ready_nag after the deal,
 // in the human's words with the row's counts, naming the card and its
-// command; at ready_take, with no other row to deal it to, one judgement
-// names the row and the card; the acknowledgement stops both. The clock is
-// the world's.
-func TestHandNudgesThenJudgesUnacked(t *testing.T) {
+// command; at ready_take, with no other row to deal it to, it goes back to
+// the queue by structure (item 2, 2026-11-08: 15 cards sat dealt and not
+// taken past 180 s), its branch kept and the reason recorded, and is dealt
+// again; the acknowledgement stops the nudges. The clock is the world's.
+func TestHandNudgesThenReturnsUntaken(t *testing.T) {
 	t.Parallel()
 	s := dealOne(t)
 	p := s.tick() // the first one-second tick after the deal: ready_nag is 1 s
@@ -44,16 +45,60 @@ func TestHandNudgesThenJudgesUnacked(t *testing.T) {
 	assert.Len(t, p.Nudges, 1, "a nudge each tick")
 	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
 	s.tick()
-	js := s.openJudgements("unacked")
-	require.Len(t, js, 1)
-	q := s.snap().Judgements[js[0]].Question
-	assert.Contains(t, q, "row r1")
-	assert.Contains(t, q, "card p1.w1")
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "fail")
+	assert.Equal(t, "in r1's hand 182 s, not taken; back to the queue, branch sprint/s1/p1 kept", s.card("p1.w1").Reason)
+	s.requireState("p1", "ready")
+	assert.Empty(t, s.openJudgements("unacked"))
 	s.tick()
-	assert.Len(t, s.openJudgements("unacked"), 1, "one judgement, not one a tick")
-	s.ack("p1.w1")
+	s.requireState("p1.w2", "working") // r1 is the only row: dealt again, nudged again
+	s.ack("p1.w2")
 	p = s.tick()
 	assert.Empty(t, p.Nudges, "acknowledged: no nudge")
+}
+
+// TestShellWord: a ref of safe characters prints as it is; anything else is
+// one single-quoted shell word, a single quote inside closed, escaped and
+// reopened.
+func TestShellWord(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"p1.w1@1":       "p1.w1@1",
+		"/usr/bin/x":    "/usr/bin/x",
+		"":              "''",
+		"a b@1":         "'a b@1'",
+		"a;b@1":         "'a;b@1'",
+		"$(id)@1":       "'$(id)@1'",
+		"`id`@1":        "'`id`@1'",
+		"it's@1":        `'it'\''s@1'`,
+		"a'; rm x; '@1": `'a'\''; rm x; '\''@1'`,
+	} {
+		assert.Equal(t, want, ShellWord(in), "ShellWord(%q)", in)
+	}
+}
+
+// TestHandNudgeQuotesTheRef: a card stored with a shell character in its id
+// (admission refuses one now; an older store may hold it) is named in the
+// NUDGE's take command and in a judgement's command as one quoted shell
+// word. The card is seeded below admission, straight into the store.
+func TestHandNudgeQuotesTheRef(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("a;b", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("a;b.w1", "working")
+	p := s.tick()
+	require.Len(t, p.Nudges, 1)
+	assert.Contains(t, p.Nudges[0].Line, "run: nova-sprint take 'a;b.w1@0' --as r1 ")
+	s.report("a;b.w1", "fault", "", card.MissingRoute+" adb no device on this row")
+	s.tick()
+	js := s.openJudgements("held")
+	require.Len(t, js, 1)
+	assert.True(t, strings.HasPrefix(s.snap().Judgements[js[0]].Command, "nova-sprint judge 'held.a;b.1' <choice> "), s.snap().Judgements[js[0]].Command)
 }
 
 // TestHandNoNudgeAfterTheReport: a row that reports without a take is not
@@ -263,16 +308,15 @@ func TestHandAbsentRowNotNudgedAndRedealt(t *testing.T) {
 	p = s.tick()
 	require.Empty(t, s.rejected)
 	assert.Empty(t, p.Nudges)
-	s.requireState("p1.w1", "working") // the only other row is absent too: not re-dealt there
-	js := s.openJudgements("unacked")
-	require.Len(t, js, 1)
-	assert.Contains(t, s.snap().Judgements[js[0]].Question, "not nudged: the row is absent from the bus")
+	s.requireState("p1.w1", "fail") // the only other row is absent too: back to the queue, not re-dealt there
+	s.requireState("p1", "ready")
+	s.tick()
+	assert.Len(t, s.openJudgements("unserved"), 1, "no present row serves it: unserved says so")
 	delete(s.away, other)
 	s.tick()
 	require.Empty(t, s.rejected)
-	s.requireState("p1.w1", "fail")
 	s.requireState("p1.w2", "working")
-	assert.Equal(t, other, s.card("p1.w2").Holder, "re-dealt to the present row")
+	assert.Equal(t, other, s.card("p1.w2").Holder, "dealt to the present row")
 }
 
 // TestDealPresentThroughOneFailedWho (D1' cold read): a `nova-bus who` read
@@ -324,4 +368,46 @@ func TestHandRedealOverBudgetStillNudges(t *testing.T) { // unitlint: serial, it
 	require.Empty(t, s.rejected)
 	s.requireState("p1.w1", "working")
 	assert.Len(t, p.Nudges, 1, "not re-dealt, so still nudged")
+}
+
+// TestLimitsReleaseLostCards is item 2 (2026-11-08): a card on a row that
+// was never seen on the bus since the run started (a friend off the bus
+// across a run restart: 14 held until a manual release) is withdrawn at the
+// silence bound counted from the run's start; a card its row took and never
+// reported is withdrawn past its tier's deadline (timeouts consumer, after
+// the take window: 8 sat 4 to 7 hours past it). Each goes back to the
+// queue with its branch kept and the reason recorded.
+func TestLimitsReleaseLostCards(t *testing.T) {
+	t.Parallel()
+	t.Run("never seen", func(t *testing.T) {
+		t.Parallel()
+		s := dealOne(t)
+		s.ack("p1.w1")
+		s.away = set{"r1": {}}
+		s.tick()
+		s.requireState("p1.w1", "working")
+		s.now = s.v.Since.Add(seconds(Engine.Timeouts.RowSilentWithdraw))
+		s.tick()
+		require.Empty(t, s.rejected)
+		s.requireState("p1.w1", "fail")
+		assert.Contains(t, s.card("p1.w1").Reason, "row r1 silent for")
+		assert.Contains(t, s.card("p1.w1").Reason, "branch sprint/s1/p1 is kept")
+	})
+	t.Run("past its deadline", func(t *testing.T) {
+		t.Parallel()
+		s := dealOne(t)
+		s.ack("p1.w1")
+		s.fold()
+		dealt, ok := s.v.TakenAt["p1.w1"]
+		require.True(t, ok, "the fold witnessed the deal")
+		s.now = dealt.Add(seconds(Engine.Timeouts.ReadyTake + Engine.Timeouts.Consumer["pro"] - 5))
+		s.tick()
+		s.requireState("p1.w1", "working")
+		s.now = dealt.Add(seconds(Engine.Timeouts.ReadyTake + Engine.Timeouts.Consumer["pro"]))
+		s.tick()
+		require.Empty(t, s.rejected)
+		s.requireState("p1.w1", "fail")
+		assert.Equal(t, "working 2881 s with no report, past tier pro's deadline of 2700 s after the take window; branch sprint/s1/p1 is kept", s.card("p1.w1").Reason)
+		s.requireState("p1", "ready")
+	})
 }

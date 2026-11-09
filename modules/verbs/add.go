@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -30,6 +31,10 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	if err != nil {
 		return "", err
 	}
+	redLine, err := e.addBaseRed(ctx, snap, adds)
+	if err != nil {
+		return "", err
+	}
 	heads, err := e.admitAdds(ctx, snap, adds)
 	if err != nil {
 		return "", err
@@ -43,6 +48,9 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 		}
 	}
 	lines = append(lines, chain)
+	if redLine != "" {
+		lines = append(lines, redLine)
+	}
 	if in.has("dry-run") {
 		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
 	}
@@ -85,6 +93,9 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 		return nil, refuse("no stream "+stream, "nova-sprint stream add "+stream+" --repo <org/repo>")
 	}
 	if sentinel != "" {
+		if why := cardIDProblem(stream, sentinel); why != "" {
+			return nil, refuse(why, "name the sentinel with "+cardIDSet)
+		}
 		return []card.Add{{ID: sentinel, Kind: "sentinel", Stream: stream, Tier: "flash", Needs: needs}}, nil
 	}
 	adds := make([]card.Add, 0, len(files))
@@ -93,10 +104,27 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 		if err != nil {
 			return nil, err
 		}
+		if why := cardIDProblem(stream, a.ID); why != "" {
+			return nil, refuse(why, "rename the brief file "+f+" so its name without .md is "+cardIDSet)
+		}
 		a.Stream = stream
 		adds = append(adds, a)
 	}
 	return adds, nil
+}
+
+// cardIDSet is what a card id may be: a row name's characters without '.'.
+const cardIDSet = "1 to 104 of a-z A-Z 0-9 _ -, not starting with -"
+
+// cardIDProblem is why id cannot be a card id of stream, or "": a row name
+// (validName) with no '.', not starting with '-' (a flag in a command), and
+// its branch sprint/<stream>/<id> a git ref name. The id is one word in the
+// commands a row is told to run, and its branch is created by the worker.
+func cardIDProblem(stream, id string) string {
+	if !validName(id) || strings.Contains(id, ".") || strings.HasPrefix(id, "-") {
+		return strconv.Quote(clip(id)) + " is not a card id (" + cardIDSet + ")"
+	}
+	return refNameProblem("sprint/" + stream + "/" + id)
 }
 
 func orWord(s, or string) string {
@@ -192,6 +220,21 @@ func addOrder(pending map[string]card.Add) ([]string, error) {
 		}
 	}
 	return order, nil
+}
+
+// addBaseRed is add's BASE RED line for producers onto a github stream whose
+// base tip is red (baseRedLine; the cards are admitted), or its warning when
+// the checks cannot be read; a sentinel alone is never dealt and needs none.
+func (e *Engine) addBaseRed(ctx context.Context, snap store.Snapshot, adds []card.Add) (string, error) {
+	s := snap.Streams[adds[0].Stream]
+	if s.Forge != "github" || !slices.ContainsFunc(adds, func(a card.Add) bool { return a.Kind == "producer" }) {
+		return "", nil
+	}
+	tip, err := e.baseTip(ctx, s, "add the card again")
+	if err != nil {
+		return "", err
+	}
+	return e.baseRedLine(ctx, s, tip), nil
 }
 
 // admitAdds is add's admission of its producers (admitCards): the first

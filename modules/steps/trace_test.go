@@ -124,7 +124,7 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	} else if scen == "deal" {
 		qPath = "a/x"
 	}
-	w.producer("p", "s1", "pro", "a/x", "a/*") // the model's glob a/* both list: never an overlap
+	w.producer("p", "s1", "pro", "a/x", "a/*") // in deal q names p's file too: both start
 	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath, "a/*"}}
 	if landLike {
 		q.After = []string{"p"}

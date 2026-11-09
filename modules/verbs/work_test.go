@@ -178,6 +178,69 @@ func TestReadCarriesCost(t *testing.T) {
 	}
 }
 
+// racingRoster applies op to the store on its first read: another row's op
+// landing between a report's snapshot and its apply (a report reads the
+// roster to price itself).
+type racingRoster struct {
+	*fakeRoster
+	f    *store.Fake
+	op   store.Op
+	done bool
+	r    store.Receipt
+	err  error
+}
+
+func (r *racingRoster) ReadRosterAt(ctx context.Context, n int) (roster.Roster, error) {
+	if !r.done {
+		r.done = true
+		r.r, r.err = r.f.Apply(ctx, r.op)
+	}
+	return r.fakeRoster.ReadRosterAt(ctx, n)
+}
+
+// A report the store refuses (the producer moved between the report's
+// snapshot and its apply) leaves the consumer in hand at its gen, and the
+// retry at that gen applies a fresh plan: the same answer or another. An
+// accepted report sent again is its first receipt and writes nothing.
+func TestReportRetriedAfterARefusalApplies(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		retry  []string
+		result string
+	}{
+		{[]string{"yes"}, "ok"},
+		{[]string{"fix", "--finding", "a.go:1: off by one; use <="}, "fix"},
+	} {
+		t.Run(c.result, func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			takeR1(t, w)
+			race := &racingRoster{fakeRoster: w.roster, f: w.f, op: store.Op{ID: "priority-p2", Epoch: 1, Actor: "carol", Kind: "priority", At: t0,
+				Expect: []store.Expect{store.CardGen{Card: "p2", Gen: 1}}, Writes: []store.Write{store.SetCardPriority{Card: "p2", Priority: "high"}}}}
+			w.e.Roster = race
+			want(t, w.do("bob", "read", "p2.r1@1", "yes"), 1, "card p2 is at gen 2, expected gen 1")
+			if race.err != nil || !race.r.Accepted {
+				t.Fatalf("the racing op did not land: %+v %v", race.r, race.err)
+			}
+			if k := w.snap(t).Cards["p2.r1"]; k.State != "working" || k.Gen != 1 || k.Holder != "bob" {
+				t.Fatalf("a refused report moved the consumer: %+v", k)
+			}
+			retry := w.do("bob", append([]string{"read", "p2.r1@1"}, c.retry...)...)
+			want(t, retry, 0, "READ p2.r1 head="+head+" result="+c.result)
+			if k := w.snap(t).Cards["p2.r1"]; k.State != "done" || k.Result != c.result {
+				t.Fatalf("the retry did not apply as its answer: %+v", k)
+			}
+			seq := w.snap(t).Seq
+			if again := w.do("bob", append([]string{"read", "p2.r1@1"}, c.retry...)...); again != retry {
+				t.Fatalf("an accepted report sent again is its first receipt:\n%s\n%s", again.Output, retry.Output)
+			}
+			if w.snap(t).Seq != seq {
+				t.Fatalf("an accepted report sent again wrote to the log")
+			}
+		})
+	}
+}
+
 func TestReadRefusals(t *testing.T) {
 	t.Parallel()
 	aliceReads := both(setCard("p2.r1", func(c *store.Card) { c.Holder, c.State = "alice", "working" }))
@@ -349,6 +412,20 @@ func TestReleaseDryRun(t *testing.T) {
 	if c := w.snap(t).Cards["p1.w1"]; c.State != before.Cards["p1.w1"].State || w.snap(t).Seq != before.Seq {
 		t.Fatalf("a dry run released the card: %+v", c)
 	}
+}
+
+// A card stored with a shell character in its id (admission refuses one
+// now; an older store may hold it) is printed as one quoted shell word in
+// the command a verb tells its caller to run. Seeded below admission.
+func TestPrintedRefIsOneShellWord(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	c := s.Cards["p1.w1"]
+	delete(s.Cards, "p1.w1")
+	c.ID = "a;b.w1"
+	s.Cards[c.ID] = c
+	w := worldFrom(t, s)
+	want(t, w.do("alice", "release", "a;b.w1@1", "--reason", "tier", "--dry-run"), 0, "RELEASE 'a;b.w1@1' (dry run)", "nova-sprint release 'a;b.w1@1' --reason")
 }
 
 // failedAnswers is a policy engine whose active version failed: it answers

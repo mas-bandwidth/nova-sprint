@@ -42,7 +42,9 @@ together (`Report` with `Finished`, `Broken` or `Faulted`; a read's `Report` mov
 consumer, since `ReadYes` and `ReadFix` are policy's from all reads, in the tick) and `Apply`
 it themselves: one transaction, fenced on both gens. The op id is fixed by the consumer and
 its gen, so a repeat or a retry after an unknown outcome replays the stored receipt (layer
-1). The verb's wait is that receipt: it prints accepted or the refusal and exits. Nothing
+1). A refused report is not final at that gen (the producer can move while the consumer
+does not): a retry applies a fresh plan under the next id of the refused one's chain
+(`store.ConsumerRetryID`), and an accepted report at any link replays. The verb's wait is that receipt: it prints accepted or the refusal and exits. Nothing
 reaches run over the bus; the tick sees each report in its next fold. A person's or the
 coordinator's verbs (`add`, `priority`, `judge`, `hold`, `drop`, `edit`) apply the same way.
 The DSN reaches only the verb's process, by `nova-secrets exec`, never a harness or agent.
@@ -876,8 +878,7 @@ github.com credential is always gh as the host's login (no switch on
 - `check` (`check_waits.go`, `check_width.go`): with nothing ready and the
   fleet under its open width, the width line is a `CHECK WARN ... nothing
   dealable: <steps.IdleWhy>` naming the command for the top card; then one
-  `CHECK waits <s>: <n> wait on <card> (<state>), ...; <n> held behind <file>
-  of <card>` per stream whose producers wait (the three largest of each, then
+  `CHECK waits <s>: <n> wait on <card> (<state>), ...` per stream whose producers wait (the three largest of each, then
   a count), and a `CHECK WARN stream <s>: its longest NEEDS chain is K cards:
   a -> b -> ... -> z; at the stream's land rate (R an hour over its last N
   landings) that is about H hours` per stream longer than the policy's

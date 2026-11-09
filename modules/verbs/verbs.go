@@ -154,7 +154,12 @@ func (e *Engine) call(ctx context.Context, v *verb, in *input) (string, error) {
 		if err = epochNow(in.epoch(), snap); err != nil {
 			return "", err
 		}
-		return v.run(e, ctx, in, snap)
+		out, err := v.run(e, ctx, in, snap)
+		if err != nil {
+			return "", err
+		}
+		// every hooked verb's output tells the coordinator its pushes go unseen
+		return e.withUnseen(ctx, in, out), nil
 	}
 	return v.run(e, ctx, in, store.Snapshot{})
 }

@@ -40,8 +40,19 @@ func (o *origin) Branches(ctx context.Context, url, prefix string) (map[string]s
 }
 
 // hostForge is GitHub as this host's own gh identity (the identity the run
-// does the forge work with), as admission reads it: two cheap reads.
-type hostForge struct{ exec edge.Exec }
+// does the forge work with), as admission reads it: two cheap reads, and a
+// commit's checks through the landing's own forge (land, the forge.Client
+// the lander reads checks with), so admission and the landing agree on what
+// a red base is.
+type hostForge struct {
+	exec edge.Exec
+	land forge.Forge
+}
+
+// Checks is the landing forge's read of each sha's check rollup.
+func (f hostForge) Checks(ctx context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error) {
+	return f.land.Checks(ctx, repo, shas)
+}
 
 // actingPermissions are the repository permissions that may push branches
 // and open and merge pull requests.

@@ -9,6 +9,19 @@ coordinator's part. Read both once now, then follow the commands the sprint push
 Notation is the worker playbook's: `<you>`, `<card>@<gen>`, `<e>`. `<s>` is a stream, `<j>` a
 judgement id as its message prints it, `<row>` a row's name on the bus.
 
+## The first rule: your pushes must wake you
+
+Run your bus hook under your harness's wake tool, so that each push wakes you: Claude Code and
+Muse Code run it as the Monitor tool's command; Grok and Antigravity pass `--harness grok` or
+`--harness antigravity` with their flags; a Codex session is hooked by its service form.
+`nova-bus help hook` is authoritative. Never run it with `&`, never under nohup, never into a
+file: the pushes still arrive, but they wake nobody, and a push you do not see is a judgement
+nobody answers (2026-11-08: 60 judgements sat unanswered for over an hour behind a hook writing
+to a log file, and nothing landed). A harness's watch can expire (Claude Code's Monitor lasts
+at most 30 minutes): re-arm it the moment it ends. When an open judgement has waited longer
+than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every verb you run
+print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answer them.
+
 ## Who you are now
 
 1. You are the coordinator: the one name `up` recorded, the only name that may answer a
@@ -49,9 +62,8 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    each long NEEDS chain, each landing's wait) and `next: nova-sprint next`. A `CHECK RED` line
    names its fix and makes the exit non-zero; run the fix, then `check` again. Read the width
    and waits lines before you add cards and before `start`: `CHECK WARN width: ... nothing
-   dealable: 2 chains (longest 9, top: <card> blocks 53), 8 overlaps` says the fleet will sit
-   idle; `CHECK waits <s>: 53 wait on <card> (working); 3 held behind <file> of <card>` says on
-   what; `CHECK WARN stream <s>: its longest NEEDS chain is 9 cards: ...` says which chain to
+   dealable: 2 chains (longest 9, top: <card> blocks 53)` says the fleet will sit idle;
+   `CHECK waits <s>: 53 wait on <card> (working)` says on what; `CHECK WARN stream <s>: its longest NEEDS chain is 9 cards: ...` says which chain to
    flatten (section 4, "Keep everybody at width").
 4. Ask what is owed: `nova-sprint next --as <you>`. It names your own card's step first, then
    the oldest open judgement, then what the streams need (`add`, or done), then, on a stopped
@@ -105,9 +117,6 @@ What each judgement kind asks of you, and where to look before you choose:
   again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
   that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
   `unhold`; or `drop` it.
-- `unacked`: a card has been in a row's hand a minute and the row has not acknowledged it
-  (`take`), though it was nudged every tick. Reach the row on the bus; if its session is gone,
-  `nova-sprint release <card>@<gen> --as <you> --reason "<why>"` deals the card again.
 - `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
   than a tick. The message names the row, the card and the cause: the tick's budget spent before
   it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the
@@ -156,8 +165,8 @@ doing, and the exact blocker when nothing can start.
    a gate its own result needs; correct it with `replace` (section 4) before another attempt. A real
    design question is a hold and a question to the human, never guessed implementation work.
 4. Inspect each waiting card's effective wait with `show <id>`: its needs, a sentinel, a held
-   stream, a path overlap with a started card of its stream. `after` orders landing only and
-   never keeps a card from starting. Remove only a wait that is not true (a need written for
+   stream, a hold on the card. A shared file never keeps a card from starting, and `after`
+   orders landing only. Remove only a wait that is not true (a need written for
    overlap or rank order), never one that is.
 5. Keep evidence levels apart. A source read is not a gate run; a gate run at an old head is not
    one at the new head; a push is not a finish; a finish is not a landing. Judge the sprint by
@@ -182,8 +191,7 @@ named it:
    each setup step and restarts the run service at the first that fails. Never start a second
    `run` by hand.
 3. Run `nova-sprint show <producer>` and read what it waits on:
-   - `waiting`: each need's own state, the stream's hold, or a path overlap with a started card;
-     follow the chain to the card or hold at its end.
+   - `waiting`: each need's own state, the stream's hold, or the card's hold; follow the chain to the card or hold at its end.
    - `working`: the work card's holder. Ask it on the bus, as in section 3, step 1; if it is
      absent from `nova-bus who`, the `orphan` judgement comes at the silence bound.
    - `review` with read cards live: their holders, as for working. With no read card live and
@@ -203,7 +211,7 @@ every path, with no bypass, and refuses naming the section; lint before you add 
 `nova-sprint add --stream <s> --brief-file <f> --dry-run`, which prints one
 `ADD <id> kind=<kind> stream=<stream> tier=<tier> priority=<priority> needs=<needs>` line
 per card, then a dependency-chain line, then `(dry run)` and the next command.
-The card id is the file's name without `.md`. A brief is:
+The card id is the file's name without `.md`: 1 to 104 of a-z A-Z 0-9 _ -, not starting with -. A brief is:
 
 1. Line 1: `tier: <flash|pro|heavy|frontier>`. Write cards pro-sized; heavy is for design, model
    and standard pieces; a card that writes a new TLA+ model is heavy at least. A tier is the
@@ -246,13 +254,28 @@ prints `ADD <id> kind=producer stream=<s> tier=<t> priority=<level> needs=<ids>`
 `ADDED <n> cards applied at seq <n>` and `next: nothing; wait for the bus`.
 
 **Keep everybody at width.** The fleet works in parallel only as far as the cards let it.
-Keep NEEDS chains flat (a NEEDS only on a consumed output), PATHS concrete (the files the card
-edits; a shared glob or directory holds nothing), and one card per file set. `add` prints the
-longest NEEDS chain through the cards it adds (`CHAIN stream <s>: the longest NEEDS chain
-through these cards is <k> cards (chain_limit 3): a -> b -> ...`), and refuses an add whose
-chain is longer than the policy's `chain_limit`, with the chain and how to flatten it. During a sprint the steps' `idle` judgement
-says "nothing dealable: N chains (longest K, top: <card> blocks M), H overlaps" with the
-command for the top card, and the board's Why waiting panel shows the same lines as `check`.
+
+- Granular cards. Cut the work into many small, checkable cards, each id prefixed by its area
+  (`net-`, `docs-`), so the board shows progress. The sprint deals them by tier and width;
+  never hand cards out per person.
+- Flat. A NEEDS only for a hard dependency: B consumes A's landed output. Touching the same
+  file is not a dependency, and a small merge risk is fine: both cards start.
+- You stitch. After cards land, you do the holistic merge: conflicts across cards, the
+  integration, the base kept green (section 5).
+- Workstream branches when main moves fast. When main moves fast or landing backs up, give
+  each workstream its own stream base, `sprint/<workstream>`: push the branch, then
+  `stream add <s> --base sprint/<workstream>` with a stream name other than the workstream's
+  (a stream `<s>` cannot use `sprint/<s>` as its base: its card branches live under it). Many
+  cards move that branch forward without each one chasing main; the sprint promotes each
+  workstream branch into main through one gated PR when it is green, and what is not green
+  comes to you as land judgements. Never rebase card after card onto a moving main.
+
+`add` prints the longest NEEDS chain through the cards it adds (`CHAIN stream <s>: the longest
+NEEDS chain through these cards is <k> cards (chain_limit 3): a -> b -> ...`), and refuses an add
+whose chain is longer than the policy's `chain_limit`, with the chain and how to flatten it.
+During a sprint the steps' `idle`
+judgement says "nothing dealable: N chains (longest K, top: <card> blocks M)" with the command
+for the top card, and `check` says the same.
 
 To correct a brief, add the corrected brief under a new id and replace the old card with it:
 `nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants
@@ -282,8 +305,15 @@ automatic path is green-and-merge only; everything else is yours. Each stream is
    as one. Red is yours: no bisection, no blame.
 3. Anything else is one `land` judgement per card on your row, within a tick, with the facts.
    Answer it: `nova-sprint judge land.<card>.<n> land|fix|retry --reason "<why>"`. Look across
-   streams when two of them conflict, and fix the cause (a brief, a need, the order) before you
-   answer `retry`.
+   streams when two of them conflict, and fix the cause (a brief, the order) before you answer
+   `retry`.
+
+**You stitch.** Cards that edit the same file run at the same time, so their heads can meet in
+a conflict. That is expected, not a fault of the cards: the group rung merges what merges
+cleanly, and what does not comes to you. Do the holistic merge yourself (by hand, below):
+resolve the conflicts across cards, integrate, and keep the base green. On a workstream base
+(`sprint/<workstream>`), cards merge onto that branch first, and the sprint promotes the branch
+into main.
 
 **By hand.** `nova-sprint land <card> --reason "<why>"` merges a merging card's read head into
 the base with no CI gate (you looked): its PR on a stream with a forge, a fast-forward push on

@@ -2,6 +2,7 @@ package steps
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -222,11 +223,11 @@ func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 // among them, then among the rest. An answer naming no row with room is a
 // miss, as an answer naming a row not offered is.
 func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
-	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
-		t.o.refuse("rows")
-	}
 	if len(rows) == 0 || n <= 0 {
 		return nil
+	}
+	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
+		t.o.refuse("rows", fmt.Sprintf("rows(%s) names %s, none with room (rows with room: %s)", c.ID, firstIDs(answered), cmp.Or(firstIDs(rows), "none")))
 	}
 	allowed := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return !slices.Contains(answered, r) })
 	out := t.ranked(c, kindOf(c), allowed, n)[:min(n, len(allowed))]

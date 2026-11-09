@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -15,8 +16,9 @@ import (
 // row what it holds. The row's acknowledgement is its `take`, which writes
 // AckCursor once; until then the steps nudge the row each tick from
 // timeouts ready_nag, and at ready_take withdraw the card and deal it to
-// another row with room, or open an unacked judgement for the coordinator
-// naming the row and the card when no other row can take it.
+// another row with room, or, when no other row can take it, withdraw it
+// back to the queue, its branch
+// kept, to be dealt again (item 2, 2026-11-08: never left in a row's hand).
 
 // AckCursor is the cursor a row's take writes on consumer c of epoch: the
 // row's acknowledgement that it holds c. A cursor, not a card column, so
@@ -32,9 +34,21 @@ func AckCursor(epoch int, c string) string {
 	return fmt.Sprintf("took-hash:%x", sum[:16])
 }
 
+// ShellWord is s as one word of a printed command a row runs in a shell:
+// as it is when it holds only safe characters, else single-quoted.
+func ShellWord(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:@/-") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
 // Nudge is one push run sends to a row this tick, outside the event log: a
 // dealt card the row has not acknowledged, and the command that does.
-type Nudge struct{ Row, Card, Line string }
+type Nudge struct {
+	Row, Card, Line string
+	Every           time.Duration
+}
 
 // dealtAt is when consumer c was dealt (went working): the fold's witness,
 // else the view's start.
@@ -53,8 +67,9 @@ func (t *tick) dealtAt(c string) time.Time {
 // such cards, the cards it has taken and its width; at ready_take a work
 // card is withdrawn and its producer dealt in the same group, by the
 // engine's ranking, to another row with room, never the slow one, and a
-// card no other row can take (a read, or no room elsewhere) is one
-// judgement for the coordinator naming the row and the card.
+// card no other row can take (a read, or no room elsewhere) is withdrawn
+// back to the queue, its branch kept and the reason recorded: the deal
+// gives it to another row first (ranked) when one has room.
 func (t *tick) unacked() []Nudge {
 	var out []Nudge
 	for _, n := range t.rowNames {
@@ -74,21 +89,14 @@ func (t *tick) unacked() []Nudge {
 			if since < seconds(t.tmo.ReadyNag) {
 				continue
 			}
-			if since >= seconds(t.tmo.ReadyTake) && t.redeal(n, c, since) {
-				continue
+			if since >= seconds(t.tmo.ReadyTake) && (!t.unclaimed(id) || !t.free(c.Of) || t.redeal(n, c, since) ||
+				t.group("withdraw", id, t.withdraw(id, fmt.Sprintf("in %s's hand %d s, not taken; back to the queue, branch %s kept", n, int(since/time.Second), branch(t.v.Cards[c.Of])))) != nil) {
+				continue // another step moves it this tick, or it is dealt again or back in the queue
 			}
 			if t.present(n) { // the bus only queues a nudge to an absent row
-				cmd := fmt.Sprintf("nova-sprint take %s@%d --as %s --epoch %d", id, c.Gen, n, t.v.Epoch)
-				out = append(out, Nudge{Row: n, Card: id, Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
+				cmd := fmt.Sprintf("nova-sprint take %s --as %s --epoch %d", ShellWord(fmt.Sprintf("%s@%d", id, c.Gen)), n, t.v.Epoch)
+				out = append(out, Nudge{Row: n, Card: id, Every: seconds(t.tmo.ReadyNag), Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
 					untaken, len(live)-untaken, t.room(n), id, since.Truncate(time.Second), cmd)})
-			}
-			if since >= seconds(t.tmo.ReadyTake) {
-				nudged := fmt.Sprintf("nudged each tick since %ds", t.tmo.ReadyNag)
-				if !t.present(n) {
-					nudged = "not nudged: the row is absent from the bus"
-				}
-				t.judge("unacked", id, fmt.Sprintf("row %s has not acknowledged card %s, dealt %s ago and %s, and no other row with room serves it: is the row's session alive? (nova-sprint release %s@%d --reason <why> deals it again)",
-					n, id, since.Truncate(time.Second), nudged, id, c.Gen))
 			}
 		}
 	}

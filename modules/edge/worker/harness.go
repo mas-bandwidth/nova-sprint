@@ -482,12 +482,34 @@ func normalizeFileOutcome_internal(res, reason, finding string, exit int, tail s
 	case "fix":
 		return Outcome{Result: "fix", Reason: cmp.Or(reason, finding), Finding: cmp.Or(finding, reason)}
 	case "broken", "fail":
-		return Outcome{Result: "fail", Reason: cmp.Or(reason, tail, "harness reported broken")}
+		r := cmp.Or(reason, tail, "harness reported broken")
+		if isBlockedWorkReason_internal(r) {
+			return Outcome{Result: "fault", Reason: r}
+		}
+		return Outcome{Result: "fail", Reason: r}
 	case "fault":
 		return Outcome{Result: "fault", Reason: cmp.Or(reason, tail, "harness reported fault")}
 	default:
 		return Outcome{Result: "fail", Reason: fmt.Sprintf("unknown verdict %q in result.json", res), NoVerdict: true}
 	}
+}
+
+func isBlockedWorkReason_internal(reason string) bool {
+	low := strings.ToLower(strings.TrimSpace(reason))
+	if strings.HasPrefix(low, "missing-route:") {
+		return true
+	}
+	for _, needle := range []string{
+		"does not resolve on this bench",
+		"toolchain is not installed",
+		"outside allowed paths",
+		"outside card paths",
+	} {
+		if strings.Contains(low, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // usageFile is usage.json, a harness's own report of a run: its dollars
@@ -643,16 +665,21 @@ func HarnessDirs(name string, lookPath func(string) (string, error)) []string {
 	return dirs
 }
 func baseWallEnv_internal(j Job) []string {
-	return []string{
+	env := []string{
 		"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "LANG=" + cmp.Or(os.Getenv("LANG"), "C.UTF-8"),
 		"HOME=" + filepath.Join(j.JobDir, "home"), "TMPDIR=" + filepath.Join(j.JobDir, "tmp"), "XDG_DATA_HOME=" + filepath.Join(j.JobDir, "data"),
 		"GIT_TERMINAL_PROMPT=0", "NOVA_WORKER_CONSUMER=" + j.Consumer, "NOVA_WORKER_ROW=" + j.Row,
 	}
+	if os.Getenv("DOTNET_CLI_TELEMETRY_OPTOUT") != "" {
+		env = append(env, "DOTNET_CLI_TELEMETRY_OPTOUT=1", "DOTNET_NOLOGO=1")
+	}
+	return env
 }
 func SanitizeWallEnv(env []string, jobDir string) []string {
 	var clean []string
 	hasPath := false
-	allowed := []string{"LANG", "LC_ALL", "GIT_TERMINAL_PROMPT", "NOVA_WORKER_CONSUMER", "NOVA_WORKER_ROW", "NOVA_WORKER_NONCE", "CLAUDE_CONFIG_DIR", "CODEX_HOME"}
+	hasDotnetOptout := false
+	allowed := []string{"LANG", "LC_ALL", "GIT_TERMINAL_PROMPT", "NOVA_WORKER_CONSUMER", "NOVA_WORKER_ROW", "NOVA_WORKER_NONCE", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "DOTNET_CLI_TELEMETRY_OPTOUT", "DOTNET_NOLOGO"}
 	for _, kv := range env {
 		k, v, ok := strings.Cut(kv, "=")
 		u := strings.ToUpper(k)
@@ -662,9 +689,12 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 			hasPath, clean = true, append(clean, kv)
 		case u == "OPENCODE_CONFIG_CONTENT" && openCodeConfigRefusal_internal(v) == nil:
 			clean = append(clean, kv)
-		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME") && jobDir == "":
+		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME" || u == "DOTNET_CLI_HOME") && jobDir == "":
 			clean = append(clean, kv)
 		case slices.Contains(allowed, u):
+			if u == "DOTNET_CLI_TELEMETRY_OPTOUT" {
+				hasDotnetOptout = true
+			}
 			clean = append(clean, kv)
 		}
 	}
@@ -673,6 +703,9 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 	}
 	if jobDir != "" {
 		clean = append(clean, "HOME="+filepath.Join(jobDir, "home"), "TMPDIR="+filepath.Join(jobDir, "tmp"), "XDG_DATA_HOME="+filepath.Join(jobDir, "data"))
+		if hasDotnetOptout {
+			clean = append(clean, "DOTNET_CLI_HOME="+filepath.Join(jobDir, "home"))
+		}
 	}
 	return clean
 }

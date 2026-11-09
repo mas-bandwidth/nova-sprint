@@ -59,28 +59,41 @@ and by the engine when the move is applied.
 The promise is parallel to width: every friend and bench busy while there is
 work. Cards decide whether that can happen; the deal cannot deal a card that
 waits. A dogfood board had 5 working of 74 width with 144 waiting, 136 of
-them on NEEDS not yet landed (long chains) and 8 on a shared file. So:
+them on NEEDS not yet landed (long chains). So:
 
-- **Flat chains.** A NEEDS only when the card consumes the other's output,
-  never for order or overlap. A chain of N cards lands one after another
+- **Granular cards.** Cut work into many small, checkable cards, ids
+  prefixed by area, so the board shows progress. The sprint deals cards by
+  tier and width; they are never handed out per person.
+- **Flat.** A NEEDS only for a hard dependency: B consumes A's landed
+  output. Touching the same file is not a dependency; a small merge risk is
+  fine, and both cards start. A chain of N cards lands one after another
   while the rest of the fleet waits. `add` prints the longest NEEDS chain
   through the cards it adds (`CHAIN ...`) and refuses an add that makes one
   longer than the policy's `chain_limit` (3 by default), naming the chain,
   what it takes at the stream's land rate and how to flatten it;
   `--dry-run` refuses the same, before anything is added.
-- **Concrete PATHS.** Overlap is a file both cards name (a glob or a
-  directory both add to holds nothing); a card waiting behind another's file
-  is "held behind <file> of <card>". List the files a card edits.
-- **One card per file set.** Cards that edit the same file run one at a
-  time; split work so independent cards name different files.
+- **The coordinator stitches.** After cards land, the coordinator does the
+  holistic merge: conflicts across cards, integration, the base kept green.
+- **Workstream branches when main moves fast.** When main moves fast or
+  landing backs up, give each workstream its own stream base,
+  `sprint/<workstream>`, under a stream name other than the workstream's
+  (`stream add` refuses a stream `<s>` on `sprint/<s>`: its card branches
+  live under it). Many cards move that branch forward without each one
+  chasing main; the sprint promotes each workstream branch into main through
+  one gated PR when it is green, and anything not green is the
+  coordinator's land judgement. No rebasing card after card onto a moving
+  main.
+
+PATHS lists the files a card edits: `add` checks each exists at the base,
+and the worker is confined to them. It never orders starts.
 
 Before `start`, and whenever the fleet is under width, run `nova-sprint check`
 and read its lines: the width line (a `WARN ... nothing dealable: N chains
-(longest K, top: <card> blocks M), H overlaps` when nothing is ready), one
-`waits <stream>:` line per stream ("53 wait on <card> (<state>); 3 held behind
-<file> of <card>"), and a `WARN stream <s>: its longest NEEDS chain is K
-cards` line per long chain. The board's Why waiting panel and the steps'
-idle judgement say the same thing, from the same function (`steps.Waits`).
+(longest K, top: <card> blocks M)` when nothing is ready), one
+`waits <stream>:` line per stream ("53 wait on <card> (<state>)"), and a
+`WARN stream <s>: its longest NEEDS chain is K cards` line per long chain.
+The steps' idle judgement says the same thing, from the same function
+(`steps.Waits`).
 
 ## Hooked before anything that acts as you
 
@@ -199,7 +212,9 @@ So:
   and each refusal names its one fix. The checks as built are listed in
   [CARD-CONTRACT.md](CARD-CONTRACT.md) "Admission". `stream add` proves the
   repository, the base, the card branch names and the forge identity; `add`
-  proves each producer against the roster and the base tree; `hook` proves
+  proves each producer against the roster and the base tree; both print
+  `BASE RED` (and `check` a `CHECK RED` line) for a github stream whose base
+  tip is red by the landing's rule, admitting the cards (2026-11-08); `hook` proves
   the store credential (the snapshot read) and that every stream's base is
   readable from this process (finish and read need it), and asks no forge
   token of a worker; `up` step 7 says VERIFIED only when every worker bench
@@ -270,9 +285,7 @@ with `nova-sprint identity --name "<git user.name>" --email "<git user.email>" -
 
 - `steps.Waits` groups each stream's waiting producers by the front of the
   NEEDS chain they wait on (the first need not landed, followed while that
-  need itself waits on a need) and by the producer and file they are held
-  behind (`leastHolder`, the needs step's own overlap rule, now shared), and
-  finds the stream's longest NEEDS chain of cards not landed (sentinels add
+  need itself waits on a need), and finds the stream's longest NEEDS chain of cards not landed (sentinels add
   no length). `check`, the board and the idle judgement all read it. Its cost
   is 3.9 ms for 5,000 producers on the working machine (measured, one
   benchmark run, `BenchmarkWaits5000`).
@@ -284,6 +297,6 @@ with `nova-sprint identity --name "<git user.name>" --email "<git user.email>" -
   landings it says "no land rate yet". A chain's hours are its cards over that
   rate: an estimate, since a chain's cards land one after another and the
   stream's rate counts all its landings.
-- The idle judgement's text names the chains and overlaps only when no ready
+- The idle judgement's text names the chains only when no ready
   producer is dealable and none resolved that tick; otherwise it keeps its
   held/unserved counts.

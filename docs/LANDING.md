@@ -116,8 +116,8 @@ same path.
   the process removed (`GH_TOKEN`, `GITHUB_TOKEN`, the enterprise tokens,
   `GH_CONFIG_DIR`), so one in the environment never makes the landing
   someone else (directive 59). `GH_GATE_TOKEN`, when set in run's
-  environment, is passed to gh as `GH_TOKEN` instead: an optional override,
-  not a requirement. Messages name the choice ("this host's gh login", or
+  environment, is passed to gh as `GH_TOKEN` instead. A bench worker
+  refuses to start without `GH_GATE_TOKEN` in its environment. Messages name the choice ("this host's gh login", or
   `GH_GATE_TOKEN`), never a login the sprint expects. No CI trigger on `sprint/**` is required: rung 1's PR is
   from the card branch and rung 2's from the group branch, and the
   repository's own `pull_request` workflow runs on both.
@@ -232,10 +232,11 @@ gate each time.
 
 ## Kept from the first design
 
-- **Conflicts are prevented, not resolved.** Every card declares its paths;
-  two live cards in one stream never overlap in paths (the deal refuses the
-  second, layer 3). Merges inside a stream are then textually clean; one
-  that is not is a rung-3 judgement.
+- **Conflicts are stitched, not prevented.** Every card declares its paths
+  (admission and the worker's confinement), but two cards that edit one
+  file both start: only a NEEDS orders starts (2026-11-08). Their heads meet
+  on the group rung; a conflict there is a rung-3 judgement, and the
+  coordinator stitches it in the holistic merge.
 - **In-order landing.** Producers land in score order; the soft `after`
   orders landings across streams only among cards both queued to land, and
   an `after` whose target is not merging never holds a landing (LESSONS

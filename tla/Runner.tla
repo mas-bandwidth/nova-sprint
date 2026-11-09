@@ -152,6 +152,8 @@ Rebase(c) ==
   /\ jobState' = [jobState EXCEPT ![c] = "rebased"]
   /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass, branch>>
 
+\* A rebase conflict, or an ok at the prior head (nothing new to rebase or
+\* report): a fail that bounces (runner.go rebaseAndTestStep_internal).
 Conflict(c) ==
   /\ ~env.crashed
   /\ storeState[c] = "working"   \* a withdrawn job moves only to Retire

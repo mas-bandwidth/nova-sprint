@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 )
 
 func TestFunctionalNovaBusAdapter(t *testing.T) {
@@ -17,7 +19,7 @@ func TestFunctionalNovaBusAdapter(t *testing.T) {
 	defer cancel()
 	fixture := testRedisBus(t)
 	path := filepath.Join(t.TempDir(), "received")
-	hookTestName(t, fixture, "alice", `printf '%s\t%s\n' "$NOVA_BUS_ID" "$NOVA_BUS_BODY" >> `+shellWord(path))
+	hookTestName(t, fixture, "alice", `printf '%s\t%s\n' "$NOVA_BUS_ID" "$NOVA_BUS_BODY" >> `+steps.ShellWord(path))
 	bus := fixture.edge()
 	lease, err := SprintHook{Bin: fixture.bin, Env: fixture.env, Reply: "/usr/bin/true"}.Acquire(ctx, "sprint")
 	require.NoError(t, err)

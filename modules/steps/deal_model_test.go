@@ -127,33 +127,19 @@ func TestTickResolvesFromState(t *testing.T) {
 	assert.Equal(t, "ready", cold.state("p2"), "a cold view (restore) resolves it too")
 }
 
-// TestTickOverlapIsAFile: producers that list the same glob or directory
-// are not held behind each other (they add files); one naming a file a
-// started producer names is held, with an overlap judgement saying "held
-// behind <card> on <path>", which clears when it resolves (defect 50).
-func TestTickOverlapIsAFile(t *testing.T) {
+// TestTickSameFileCardsBothStart: only a NEEDS orders starts. Two
+// producers of one stream that name the same file, with no NEEDS between
+// them, are both dealt in the same tick, and no judgement holds either
+// back; their landing stitches them.
+func TestTickSameFileCardsBothStart(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 8, "pro")
 	s.stream("s1")
-	for _, id := range []string{"a1", "a2", "a3"} {
-		s.producer(id, "s1", "pro", "corpus/**", "corpus/", "audits/"+id+".md")
-	}
-	s.producer("e1", "s1", "pro", "internal/x.go", "corpus/**")
+	s.producer("e1", "s1", "pro", "internal/x.go")
 	s.producer("e2", "s1", "pro", "internal/x.go")
 	s.run(3)
-	assert.Equal(t, []string{"working", "working", "working", "working", "waiting"},
-		[]string{s.state("a1"), s.state("a2"), s.state("a3"), s.state("e1"), s.state("e2")}, "a shared glob or directory holds nothing; a shared file does")
-	require.Equal(t, []string{"overlap.e2.1"}, s.openJudgements("overlap"))
-	assert.Equal(t, "held behind e1 on internal/x.go", s.snap().Judgements["overlap.e2.1"].Question)
-	s.must("land", store.SetCardState{Card: "e1", State: "landed"})
-	s.run(3)
-	assert.Equal(t, "working", s.state("e2"))
-	assert.Empty(t, s.openJudgements("overlap"), "cleared once e2 is no longer held")
-	assert.True(t, Concrete("a/b.go"))
-	for _, p := range []string{"a/**", "a/*.go", "a/b?.go", "a/[bc].go", "a/", ""} {
-		assert.False(t, Concrete(p), p)
-	}
+	assert.Equal(t, []string{"working", "working"}, []string{s.state("e1"), s.state("e2")}, "a shared file holds nothing")
 }
 
 // listRows is a policy whose rows answer names every candidate in name
@@ -206,4 +192,36 @@ func TestTickBurstSpreadsAcrossAnsweredRows(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]int{"r1": 2, "r2": 3}, held, "five cards in one tick, every one dealt")
+}
+
+// TestTickRowsMissNamesNoRoom: a rows answer naming only full rows is a miss
+// (the card goes where the engine ranks), and its policy judgement names the
+// card, the rows answered and the rows with room; no policy judgement is
+// opened with an empty reason (live run 2026-11-08: policy v51 answered only
+// friend rows while every friend was full, and the judgement read "failed
+// question rows: ;").
+func TestTickRowsMissNamesNoRoom(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Rows: map[string][]string{"p1": {"f1"}, "p2": {"f1"}}}}
+	s.row("b1", 1, "pro")
+	s.kin("f1", "m-friend", 1, "pro")
+	s.stream("s1")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.producer("p2", "s1", "pro", "a/y")
+	s.run(3)
+	assert.Equal(t, "f1", s.card("p1.w1").Holder)
+	assert.Equal(t, "b1", s.card("p2.w1").Holder, "f1 is full: the engine deals to the bench")
+	require.Contains(t, s.openJudgements("policy"), "policy.rows.1")
+	assert.Contains(t, s.snap().Judgements["policy.rows.1"].Question, "failed question rows: rows(p2) names f1, none with room (rows with room: b1)")
+	for _, id := range s.openJudgements("policy") {
+		assert.NotContains(t, s.snap().Judgements[id].Question, ": ;", id)
+	}
+	// A third card p3 when every row (f1 and b1) is full simply waits in ready;
+	// it is not a policy miss when no row has room anywhere in the fleet.
+	s.ask = scripted{Answers{Version: 2, Models: benchModels(), Rows: map[string][]string{"p3": {"f1", "b1"}}}}
+	s.producer("p3", "s1", "pro", "a/z")
+	s.run(2)
+	assert.Equal(t, "ready", s.card("p3").State)
+	assert.NotContains(t, s.openJudgements("policy"), "policy.rows.2")
 }
