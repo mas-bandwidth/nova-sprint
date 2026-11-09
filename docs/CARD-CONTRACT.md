@@ -149,20 +149,21 @@ Then, against the roster and origin:
   directory is declared, never implied);
 - the work is not already at the base: the card's branch at origin, a HEAD
   line, or a PR's head is not an ancestor of the base tip, and the PR has not
-  merged;
-- with forge github, the base tip is not red (`add` and `stream add` only,
-  dry run too; added 2026-11-08, after 171 cards were admitted onto a base
-  red on 155 of 205 jobs and none could land for an hour). The tip's checks
-  are read through the forge the landing reads them with
-  (`forge.Forge.Checks`), and red is the landing's own rule (`forge.CheckRed`,
-  the rule behind the landing's "the base itself is red"): a check completed
-  in failure, other checks still running or not. The refusal names the first
-  five red checks and their count, and its fix is to make the base green at
-  that sha, then add again. Pending checks, no checks, green and a gate fault
-  are admitted (admission does not wait for CI). A read that fails is not
-  red, as the landing reads it: the card or stream is admitted with a `WARN`
-  line saying the base is not known green. `check` and run's re-proof at a
-  base move do not apply it to cards already in.
+  merged.
+
+A red base is said, never refused (added 2026-11-08, after 171 cards went
+onto a base red on 155 of 205 jobs unseen and none could land for an hour;
+not refused because the cards that make the base green must get in too).
+For a github stream, `add` (dry run too) and `stream add` read the base
+tip's checks once, through the forge the landing reads them with
+(`forge.Forge.Checks`), and red is the landing's own rule (`forge.CheckRed`,
+the rule behind its "the base itself is red": a check completed in failure,
+other checks still running or not). They admit and print `BASE RED <repo>
+<base> at <sha12>: <n> checks red (<first five> and <m> more); cards land
+only once it is green: make it green first (cards for that are admitted)`;
+`check` shows a `CHECK RED` line for the stream (one read per stream).
+Pending checks, no checks, green and a gate fault print nothing; a read that
+fails is not red, as the landing reads it, and is a `WARN`.
 
 `stream add` (and `check`, per stream) also reads the status checks the base
 branch requires (branch protection and rulesets, one `gh api` each) and,

@@ -199,8 +199,9 @@ So:
   and each refusal names its one fix. The checks as built are listed in
   [CARD-CONTRACT.md](CARD-CONTRACT.md) "Admission". `stream add` proves the
   repository, the base, the card branch names and the forge identity; `add`
-  proves each producer against the roster and the base tree; both refuse a
-  github stream whose base tip is red by the landing's rule (2026-11-08); `hook` proves
+  proves each producer against the roster and the base tree; both print
+  `BASE RED` (and `check` a `CHECK RED` line) for a github stream whose base
+  tip is red by the landing's rule, admitting the cards (2026-11-08); `hook` proves
   the store credential (the snapshot read) and that every stream's base is
   readable from this process (finish and read need it), and asks no forge
   token of a worker; `up` step 7 says VERIFIED only when every worker bench

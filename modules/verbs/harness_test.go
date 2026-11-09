@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -256,9 +257,13 @@ type fakeForge struct {
 	checkE  error
 	rollups map[string]forge.CheckRollup
 	rollupE error
+	calls   atomic.Int32 // Checks calls
 }
 
+func (f *fakeForge) checksCalls() int { return int(f.calls.Load()) }
+
 func (f *fakeForge) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
+	f.calls.Add(1)
 	out := map[string]forge.CheckRollup{}
 	for _, sha := range shas {
 		if r, ok := f.rollups[sha]; ok {

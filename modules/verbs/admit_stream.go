@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -29,46 +30,64 @@ type Forge interface {
 	Checks(ctx context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error)
 }
 
-// baseRedNamed is how many of a red base's failing checks a refusal names.
+// baseRedNamed is how many of a red base's failing checks a line names.
 const baseRedNamed = 5
 
-// baseRed refuses a github stream whose base tip is red by the landing's own
-// rule (forge.CheckRed: a check completed in failure, other checks still
-// running or not), naming the first red checks, their count and the fix:
-// every landing onto it would be refused "the base itself is red", so a card
-// added onto it can only wait (2026-11-08: 171 cards were admitted onto a
-// base red on 155 of 205 jobs, and nothing landed for an hour). Pending
-// checks, no checks, green and a gate fault are admitted: admission does not
-// wait for CI. A stream with no forge has no checks to read. A read that
-// fails is not red, as the landing reads it (baseRed_internal notes it and
-// goes on): it admits with a warning (what, fix), never silently.
-func (e *Engine) baseRed(ctx context.Context, s store.Stream, tip, again string) (string, error) {
+// baseRed is a github stream's base tip read by the landing's own rule
+// (forge.CheckRed, what makes the landing say "the base itself is red": a
+// check completed in failure, other checks still running or not), through
+// the forge the landing reads checks with, in one read: the failing checks
+// when it is red, none otherwise (pending, no checks, green, a gate fault),
+// and an error when the read failed (not red, as the landing reads it). A
+// stream with no forge has no checks to read. Nothing is refused on it: the
+// cards that make the base green must be admitted too (Rowan, 2026-11-08);
+// add and stream add print BASE RED and check a CHECK RED line, because on
+// 2026-11-08 171 cards went onto a base red on 155 of 205 jobs unseen and
+// none landed for an hour.
+func (e *Engine) baseRed(ctx context.Context, s store.Stream, tip string) ([]string, error) {
 	if s.Forge != "github" {
-		return "", nil
+		return nil, nil
 	}
 	if e.Forge == nil {
-		return "", broken("the forge is not configured", "take it to the project's own tracker with this line")
+		return nil, errors.New("the forge is not configured")
 	}
-	at := shortSHA(tip)
 	rollups, err := e.Forge.Checks(ctx, s.Repo, []string{tip})
 	if err != nil {
-		return "WARN stream " + s.Name + ": the checks of " + s.Repo + "'s " + s.Base + " at " + at + " cannot be read (" + oneLine(errText(err)) + "), so it is not known green: " +
-			"if it is red, no card of it lands until it is green (gh auth status on this host shows who reads them)", nil
+		return nil, err
 	}
-	r := rollups[tip]
-	if r.State != forge.CheckRed {
-		return "", nil
+	if r := rollups[tip]; r.State == forge.CheckRed {
+		return r.Failing, nil
 	}
-	named := strings.Join(r.Failing[:min(len(r.Failing), baseRedNamed)], ", ")
-	if more := len(r.Failing) - baseRedNamed; more > 0 {
+	return nil, nil
+}
+
+// redChecks is n failing checks as a line says them: "<n> check(s) red
+// (<the first five> and <m> more)".
+func redChecks(failing []string) string {
+	named := strings.Join(failing[:min(len(failing), baseRedNamed)], ", ")
+	if more := len(failing) - baseRedNamed; more > 0 {
 		named += fmt.Sprintf(" and %d more", more)
 	}
 	checks := "checks"
-	if len(r.Failing) == 1 {
+	if len(failing) == 1 {
 		checks = "check"
 	}
-	return "", refuse(fmt.Sprintf("stream %s: %s's %s is red at %s on %d %s (%s), so no card of it can land", s.Name, s.Repo, s.Base, at, len(r.Failing), checks, named),
-		"make "+s.Repo+"'s "+s.Base+" green at "+at+", then "+again)
+	return fmt.Sprintf("%d %s red (%s)", len(failing), checks, named)
+}
+
+// baseRedLine is add's and stream add's line for stream s at tip: BASE RED
+// when the base is red, a WARN when its checks could not be read, else "".
+func (e *Engine) baseRedLine(ctx context.Context, s store.Stream, tip string) string {
+	failing, err := e.baseRed(ctx, s, tip)
+	at := shortSHA(tip)
+	switch {
+	case err != nil:
+		return "WARN stream " + s.Name + ": the checks of " + s.Repo + "'s " + s.Base + " at " + at + " cannot be read (" + oneLine(errText(err)) + "), so it is not known green: " +
+			"if it is red, no card of it lands until it is green (gh auth status on this host shows who reads them)"
+	case len(failing) > 0:
+		return "BASE RED " + s.Repo + " " + s.Base + " at " + at + ": " + redChecks(failing) + "; cards land only once it is green: make it green first (cards for that are admitted)"
+	}
+	return ""
 }
 
 // admitStream is stream add's admission, and check's of each stream: the
