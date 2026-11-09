@@ -211,7 +211,7 @@ every path, with no bypass, and refuses naming the section; lint before you add 
 `nova-sprint add --stream <s> --brief-file <f> --dry-run`, which prints one
 `ADD <id> kind=<kind> stream=<stream> tier=<tier> priority=<priority> needs=<needs>` line
 per card, then a dependency-chain line, then `(dry run)` and the next command.
-The card id is the file's name without `.md`. A brief is:
+The card id is the file's name without `.md`: 1 to 104 of a-z A-Z 0-9 _ -, not starting with -. A brief is:
 
 1. Line 1: `tier: <flash|pro|heavy|frontier>`. Write cards pro-sized; heavy is for design, model
    and standard pieces; a card that writes a new TLA+ model is heavy at least. A tier is the

@@ -167,7 +167,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 		}
 	} else {
 		var reqs []steps.EdgeRequest
-		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version,
+		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Unread: werr != nil, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version,
 			Unadmitted: l.admit.Unadmitted()})
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
@@ -190,9 +190,9 @@ func (l *loop) tick(ctx context.Context, n int) error {
 }
 
 // present is who is on the bus, by name; a failed read is no one seen
-// this tick, logged. The steps count a row present for PresentGrace after
-// it was last seen, so one failed read deals and judges as the last good
-// one did.
+// this tick, logged. The Ticker holds every row's silence still across a
+// failed read (Observed.Unread), so a bus outage deals and judges as the
+// last good read did and never counts as rows going silent.
 func (l *loop) present(ctx context.Context) ([]string, error) {
 	who, err := l.cfg.Bus.Who(ctx)
 	if err != nil {

@@ -191,6 +191,39 @@ func TestColdread3InfraFailureAfterTheHarnessIsAFaultNotAFail(t *testing.T) {
 	}
 }
 
+// runner.go rebaseAndTestStep_internal: a retry whose harness wrote ok
+// with no new commit has the prior head as its head. It was rebased in a
+// clone with nothing checked out, reported as a fault at the prior head,
+// refused by the store three times and quarantined. It is a fail, with no
+// head, and no rebase is tried.
+func TestRetryOkAtThePriorHeadIsAFailWithNoHead(t *testing.T) {
+	t.Parallel()
+	g := newFakeGit_internal()
+	g.rebaseErr = errors.New("git rebase: exit 128: fatal: Could not resolve HEAD to a commit")
+	r, err := NewRunner(Runner{Now: testClock_internal(), Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: &cr2Sprint{}, Wall: &infraWall_internal{}, Git: g, DefaultHarness: &ScriptHarness{}, Warn: func(string) {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := JobRecord{Consumer: "p1.w2", Kind: "work", Row: "vision.ds", Repo: "o/r", Forge: "github", Gen: 2, StreamRef: "sprint/s1", Branch: "sprint/s1/p1",
+		BaseSHA: testPriorSHA, PriorHead: testCommitSHA, PushedHead: testCommitSHA, DoneWhen: []string{"go test ./..."}, Outcome: Outcome{Result: "ok", Head: testCommitSHA}}
+	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
+	if err := WriteJobRecord(jobDir, rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(r.RootDir, RemotesDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(r.RootDir, RemotesDir, rec.Consumer), []byte(recordRemote_internal(rec)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.rebaseAndTestStep_internal(context.Background(), jobDir, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Outcome.Result != "fail" || rec.Outcome.Head != "" || !strings.Contains(rec.Outcome.Reason, "committed nothing over the prior head") {
+		t.Fatalf("outcome %+v, want fail with no head: the harness committed nothing over the prior head", rec.Outcome)
+	}
+}
+
 // runner.go runWallCmd_internal: no slot was any exit 1 whose output held
 // "nova-reserve:" and not "nova-reserve: HELD", so a harness or test that
 // failed mentioning it was no slot and ran again for ever. nova-reserve's

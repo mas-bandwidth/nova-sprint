@@ -131,7 +131,7 @@ func (t *tick) put(j judgement) store.Write {
 	}
 	id := fmt.Sprintf("%s.%s.%d", j.kind, j.about, n)
 	w := store.PutJudgement{ID: id, Kind: j.kind, About: j.about, Question: j.question, Group: j.kind,
-		Command: fmt.Sprintf("nova-sprint judge %s <choice> --reason <why>   choices: %s", id, choices[j.kind])}
+		Command: fmt.Sprintf("nova-sprint judge %s <choice> --reason <why>   choices: %s", ShellWord(id), choices[j.kind])}
 	if j.kind == "policy" {
 		w.Group = fmt.Sprintf("policy:v%d", t.o.a.Version)
 	}

@@ -57,6 +57,50 @@ func TestHandNudgesThenReturnsUntaken(t *testing.T) {
 	assert.Empty(t, p.Nudges, "acknowledged: no nudge")
 }
 
+// TestShellWord: a ref of safe characters prints as it is; anything else is
+// one single-quoted shell word, a single quote inside closed, escaped and
+// reopened.
+func TestShellWord(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"p1.w1@1":       "p1.w1@1",
+		"/usr/bin/x":    "/usr/bin/x",
+		"":              "''",
+		"a b@1":         "'a b@1'",
+		"a;b@1":         "'a;b@1'",
+		"$(id)@1":       "'$(id)@1'",
+		"`id`@1":        "'`id`@1'",
+		"it's@1":        `'it'\''s@1'`,
+		"a'; rm x; '@1": `'a'\''; rm x; '\''@1'`,
+	} {
+		assert.Equal(t, want, ShellWord(in), "ShellWord(%q)", in)
+	}
+}
+
+// TestHandNudgeQuotesTheRef: a card stored with a shell character in its id
+// (admission refuses one now; an older store may hold it) is named in the
+// NUDGE's take command and in a judgement's command as one quoted shell
+// word. The card is seeded below admission, straight into the store.
+func TestHandNudgeQuotesTheRef(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("a;b", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("a;b.w1", "working")
+	p := s.tick()
+	require.Len(t, p.Nudges, 1)
+	assert.Contains(t, p.Nudges[0].Line, "run: nova-sprint take 'a;b.w1@0' --as r1 ")
+	s.report("a;b.w1", "fault", "", card.MissingRoute+" adb no device on this row")
+	s.tick()
+	js := s.openJudgements("held")
+	require.Len(t, js, 1)
+	assert.True(t, strings.HasPrefix(s.snap().Judgements[js[0]].Command, "nova-sprint judge 'held.a;b.1' <choice> "), s.snap().Judgements[js[0]].Command)
+}
+
 // TestHandNoNudgeAfterTheReport: a row that reports without a take is not
 // nudged; the report is the first word the nudges wait for.
 func TestHandNoNudgeAfterTheReport(t *testing.T) {

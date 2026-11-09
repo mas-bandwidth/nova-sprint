@@ -24,23 +24,34 @@ type outcome struct {
 
 // runReport is `finish`, `read` and `report`: one op by the row itself, the
 // consumer and its producer together (card.ReportPlan), fenced by gen, its
-// id canonical (LAYER-6 section 2, "Reports are ordinary ops").
+// id canonical (LAYER-6 section 2, "Reports are ordinary ops"). The plan
+// fences the producer too, which can move while the consumer's gen does
+// not, so a refusal is never the last word at that gen: a retry follows the
+// refused ids' chain (store.ConsumerRetryID) to its first unused link and
+// applies a fresh plan there. An accepted report at any link replays.
 func runReport(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	o, err := readOutcome(in)
 	if err != nil {
 		return "", err
 	}
-	opID := consumerOpID("report", snap.Epoch, o.id, o.gen)
-	r, found, err := e.Store.Replay(ctx, opID)
-	if err != nil {
-		return "", err
-	}
-	if !found {
-		if r, err = e.report(ctx, in, snap, o, opID); err != nil {
+	base := consumerOpID("report", snap.Epoch, o.id, o.gen)
+	opID := base
+	for {
+		r, found, err := e.Store.Replay(ctx, opID)
+		if err != nil {
 			return "", err
 		}
+		if !found {
+			if r, err = e.report(ctx, in, snap, o, opID); err != nil {
+				return "", err
+			}
+			return reportOutput(in, snap, r, o.id)
+		}
+		if r.Accepted || r.Actor != in.actor || r.Kind != "report" {
+			return reportOutput(in, snap, r, o.id)
+		}
+		opID = store.ConsumerRetryID(base, r.Seq)
 	}
-	return reportOutput(in, snap, r, o.id)
 }
 
 // readOutcome parses the verb's form into one outcome.
