@@ -59,7 +59,7 @@ func (w *world) cold5Flat(t *testing.T, id string, rep Report) []Plan {
 	c := all[id]
 	p := all[c.Of]
 	s := StreamFromStore(w.snap().Streams[p.Stream])
-	cp, r := MoveConsumer(c, p, w.rows()[c.Holder], rep)
+	cp, r := MoveConsumer(c, p, cons[p.ID], w.rows()[c.Holder], rep)
 	require.Nil(t, r)
 	ev, r := workFollow(c.ID, rep.Result)
 	require.Nil(t, r)
