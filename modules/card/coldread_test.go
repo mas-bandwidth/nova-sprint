@@ -772,6 +772,25 @@ func TestColdSuspectOkHeadEqualsPriorHead(t *testing.T) {
 	refusal{r, "head " + h1 + " is the prior head; nothing new was pushed"}.check(t)
 }
 
+// A prior head no attempt finished is work the next attempt continues from,
+// and it may finish there (nc-go-sockbuf-fallback.w3, nc-rs-reuse-test-real.w3):
+// the fix attempt pushed h2 and was withdrawn before it finished.
+func TestColdOkHeadEqualsUnfinishedPriorHead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, producer("p1"))
+	w.move("p1", Resolve{})
+	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
+	w.read("p1", "r2", "fix", "rename x")
+	w.move("p1", ReadFix{Finding: "rename x"})
+	w.move("p1", Start{Row: "r3", Branch: "b", Base: base})
+	w.consume("p1.w2", Withdraw{Reason: "deadline", Head: h2})
+	w.move("p1", Start{Row: "r3", Branch: "b", Base: base})
+	require.Equal(t, h2, w.card("p1.w3").PriorHead)
+	w.consume("p1.w3", Report{Row: "r3", Result: "ok", Head: h2})
+	w.move("p1", Finished{Consumer: "p1.w3"})
+	assert.Equal(t, []any{Review, h2}, []any{w.card("p1").State, w.card("p1").Head})
+}
+
 // S2. ReadYes counts reads by review number only; it never compares the
 // read's head with p.head or checks the read is p's (Of). Unreachable through
 // the machine's own moves today (Finished and Red raise review), but the
