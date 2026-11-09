@@ -26,7 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
-    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain",
+    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -71,6 +71,7 @@ REACH = {
     "StepsNeverReadAgain": ("deal", "a review whose read faulted is read again"),
     "StepsNeverAbsent": ("deal", "a tick runs with an up row absent from the bus serving a ready card"),
     "StepsNeverUnadmitted": ("deal", "a producer failing admission opens its stream's admission judgement"),
+    "StepsNeverReopened": ("deal", "a judgement whose cause still holds at its deadline is reopened"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
@@ -270,6 +271,11 @@ WITNESSES = [
      "only check run by hand says why (item 4, 2026-11-08).",
      [("                   \\cup {[kind |-> \"admission\", about |-> s] : s \\in {s \\in Streams : Unadmitted(V, s) # {}}}\n",
        "", 1)]),
+    ("StepsExpiresSilently", "ExpiryNeverSilent", "deal",
+     "A deadline closes a judgement whatever holds (item 3, 2026-11-08): the\n"
+     "cause is still there and nothing says so until a later tick reopens it.",
+     [("         Lapsed == dueJ \\ jnew\n",
+       "         Lapsed == dueJ   \\* FAULT: was dueJ \\ jnew\n", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"

@@ -102,9 +102,9 @@ EnvKind(r) ==
 \* The model action a record names, with its arguments.
 StepAs(r) ==
   CASE r.action = "Snap"       -> Snap
-    [] r.action = "Tick"       -> \E a \in AnswersFor(snap) :
+    [] r.action = "Tick"       -> \E a \in AnswersFor(snap), due \in BOOLEAN :
                                     /\ Has(r, "answer") => a = r.answer
-                                    /\ Tick(a)
+                                    /\ Tick(a, due)
     [] r.action = "Report"     -> Report(r.card, r.res)
     [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "Refuse", "Admit", "EnvMove"} -> EnvMove /\ EnvKind(r)
     [] r.action = "EdgeResult" -> \E f \in inflight : f.id = r.id /\ EdgeResult(f, r.out, r.n)
