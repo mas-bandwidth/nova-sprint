@@ -35,6 +35,7 @@ type tick struct {
 	edges     []EdgeRequest // land requests, waiting on no op
 	judges    []judgement
 	pend      set               // kind and about of every judgement in judges (addJudge)
+	detected  set               // kind and about of every open judgement a step detected again this tick (held)
 	jidx      judgedIndex       // the view's judgements by kind and about (judged)
 	expires   map[string]string // judgement id -> why it expires
 	leftOut   map[string]string // refusedAlone key -> the store's reason ("" for one already judged), built once (leaveOut)
@@ -347,13 +348,15 @@ func (t *tick) leaveOut(k GroupKey) bool {
 	}
 	name := refusedAlone(k)
 	why, out := t.leftOut[name]
+	about := k.Row
+	if len(k.Cards) > 0 {
+		about = k.Cards[0]
+	}
 	if out && why != "" {
-		about := k.Row
-		if len(k.Cards) > 0 {
-			about = k.Cards[0]
-		}
 		t.engine(about, name+": "+why+"; left out until its cards change")
 		t.leftOut[name] = ""
+	} else if out {
+		t.held("engine", about)
 	}
 	return out
 }

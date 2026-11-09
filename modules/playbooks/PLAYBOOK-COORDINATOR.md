@@ -88,8 +88,8 @@ present or has a named reason (held, away, broken) that you are repairing.
    older, shorter form of these lines; the run loop's form is this one.
 2. `STREAM LANDED <s> range=<a>...<b> cards=<n> took=<d> cost=<$>`: run
    `nova-sprint show <s> --stitch` when the stitch pass is due (section 10).
-3. `EXPIRED judgement=<j>: <what the safe default did>`: the default never drops, accepts, merges
-   or lands; decide whether more is needed.
+3. `EXPIRED judgement=<j>: <why>`: `cleared` needs nothing; `reopened as <j'> (repeat n)` comes
+   with `NEEDS YOU id=<j'>: UNANSWERED n TIMES, ESCALATED: ...`: its cause still holds, answer it.
 4. `ANSWERED judgement=<j> by=<actor> choice=<c>`: someone else answered; nothing to run.
 5. A deal or a read ask for your own row: the worker playbook.
 6. A message from a friend row, usually "stuck" with evidence: section 6.

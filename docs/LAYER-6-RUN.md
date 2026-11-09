@@ -378,7 +378,9 @@ same op as the move that raised it.
   someone else answered. A second answer is refused naming the first.
 - **Expired.** At its deadline the step expires it and applies policy's declared safe
   default for that kind, which never drops, accepts, merges or lands (LESSONS 5.7), and
-  pushes `EXPIRED judgement=<id>: <what the default did>`. A `held` judgement has no deadline by
+  pushes `EXPIRED judgement=<id>: <why>`. A cause a step still detects is reopened in the
+  same op as the next episode with the repeat count (`UNANSWERED n TIMES, ESCALATED: ...`,
+  pushed as NEEDS YOU); one no step detects is recorded as cleared. A `held` judgement has no deadline by
   Glenn's ruling ("sits there until you review it").
 
 Landings, a stream done, a red, a hold, a stall and an orphan reach the coordinator by the
