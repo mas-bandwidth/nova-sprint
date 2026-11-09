@@ -1329,7 +1329,7 @@ Two kinds of fixture, both under `traces/`:
   races it as in the model. The cfg sets the model's bounds above anything a
   walk reaches (K 60, MaxAtt 30, MaxBounce 30, MaxEnv and MaxArrive 1000)
   and the scenario's Budget and Pack. `TestTraceFixtures` writes the fixed
-  seed set (4 scenarios x 3 seeds x 150 steps) under `NOVA_TRACES`; the CI
+  seed set (4 scenarios x 3 seeds x 150 steps) under `NOVA_TRACE_DIR`; the CI
   job `trace` writes it every push and runs `check-trace.sh` on it.
   `TestTraceWalk` runs 100 seeds x 2,000 steps per scenario for depth (at
   least 40% of the picked moves legal while a producer is not final) and
