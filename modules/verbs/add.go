@@ -30,6 +30,10 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	if err != nil {
 		return "", err
 	}
+	redLine, err := e.addBaseRed(ctx, snap, adds)
+	if err != nil {
+		return "", err
+	}
 	if err := e.admitAdds(ctx, snap, adds); err != nil {
 		return "", err
 	}
@@ -38,6 +42,9 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 		lines[i] = fmt.Sprintf("ADD %s kind=%s stream=%s tier=%s priority=%s needs=%s", a.ID, a.Kind, a.Stream, a.Tier, orWord(a.Priority, "normal"), orWord(strings.Join(a.Needs, ","), "-"))
 	}
 	lines = append(lines, chain)
+	if redLine != "" {
+		lines = append(lines, redLine)
+	}
 	if in.has("dry-run") {
 		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
 	}
@@ -187,6 +194,21 @@ func addOrder(pending map[string]card.Add) ([]string, error) {
 		}
 	}
 	return order, nil
+}
+
+// addBaseRed is add's BASE RED line for producers onto a github stream whose
+// base tip is red (baseRedLine; the cards are admitted), or its warning when
+// the checks cannot be read; a sentinel alone is never dealt and needs none.
+func (e *Engine) addBaseRed(ctx context.Context, snap store.Snapshot, adds []card.Add) (string, error) {
+	s := snap.Streams[adds[0].Stream]
+	if s.Forge != "github" || !slices.ContainsFunc(adds, func(a card.Add) bool { return a.Kind == "producer" }) {
+		return "", nil
+	}
+	tip, err := e.baseTip(ctx, s, "add the card again")
+	if err != nil {
+		return "", err
+	}
+	return e.baseRedLine(ctx, s, tip), nil
 }
 
 // admitAdds is add's admission of its producers (admitCards): the first

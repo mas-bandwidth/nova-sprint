@@ -62,11 +62,15 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 	}
 	ss := streamsInOrder(snap)
 	shas, errs, agree := make([]string, len(ss)), make([]error, len(ss)), make([][2]string, len(ss))
+	reds, redErrs := make([][]string, len(ss)), make([]error, len(ss))
 	var wg sync.WaitGroup
 	for i, s := range ss { // the streams' reads are independent: all at once
 		wg.Go(func() {
 			shas[i], errs[i] = e.admitStream(ctx, s, "nova-sprint check")
 			agree[i][0], agree[i][1] = e.agreementWarning(ctx, snap, s)
+			if errs[i] == nil {
+				reds[i], redErrs[i] = e.baseRed(ctx, s, shas[i])
+			}
 		})
 	}
 	wg.Wait()
@@ -80,6 +84,14 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 		r.ok("stream %s: %s reachable, base %s at %s", s.Name, s.Repo, s.Base, shortSHA(sha))
 		if agree[i][0] != "" {
 			r.warn(agree[i][0], agree[i][1])
+		}
+		at := shortSHA(sha)
+		if redErrs[i] != nil {
+			r.warn("stream "+s.Name+": the checks of "+s.Repo+"'s "+s.Base+" at "+at+" cannot be read ("+errText(redErrs[i])+"), so it is not known green",
+				"gh auth status on this host shows who reads them; run check again")
+		} else if len(reds[i]) > 0 {
+			r.red(refuse("stream "+s.Name+": base "+s.Repo+" "+s.Base+" is red at "+at+": "+redChecks(reds[i])+", so no card of it lands",
+				"make "+s.Repo+"'s "+s.Base+" green at "+at+" (cards for that are admitted), then check again"))
 		}
 	}
 	return heads
