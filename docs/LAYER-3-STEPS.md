@@ -171,9 +171,11 @@ high, normal, low; within a rung, policy's order.
 - Ready timeout: at timeouts `ready_take` (180 s, the human's number) a work
   card still not acknowledged is withdrawn and its producer dealt, in the
   same group, to another row with room, never the slow one (`redeal`).
-- `unacked`: at `ready_take`, for a card no other row can take (a read, or
-  no room elsewhere), one judgement for the coordinator naming the row and
-  the card (choices as any judgement's; `release` deals it again).
+- At `ready_take`, a card no other row can take (a read, or no room
+  elsewhere) is withdrawn back to the queue, its branch kept and the reason
+  recorded ("in <row>'s hand N s, not taken"); the deal ranks the row it was
+  withdrawn from last (item 2, 2026-11-08: no card is left in a hand that
+  never took it). There is no `unacked` judgement.
 - `undealt`: a ready producer still ready `UndealtAfter` (2 s: more than one
   one-second tick; a guess) after it went ready, while an open row serving
   its tier has room, opens one judgement naming the row, the card and the
@@ -236,7 +238,10 @@ high, normal, low; within a rung, policy's order.
 - Plans: `HoldCard` (reason `held: ...`) with a `held` judgement when bounces since the
   producer's last unhold (`bounces - bounce_base`) reach the limit (a fault never counts;
   LESSONS 2.24; an unhold is a fresh budget); `Withdraw` of a working consumer whose
-  row is silent past the bound, branch kept; `Gone` for a row whose session
+  row is silent past the bound (a row not seen on the bus since the run started counts
+  from the view's start), or that is past its tier's deadline (timeouts `consumer`,
+  after the deal and `ready_take`) with no report, branch kept and the reason
+  recorded (item 2, 2026-11-08); `Gone` for a row whose session
   has not acked past its bound, never for one missed challenge in a long
   turn (LESSONS 4.7); a `flap` judgement past the flap limit.
 - Policy: `bounce_limit` (3; v1 left it unsourced, LPM G1); `silence`
@@ -275,7 +280,7 @@ for each candidate, and the engine refuses one below the card's tier.
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,
-  `no-policy`, `unacked`, `undealt`, `admission` (`conflict`, `base-red`,
+  `no-policy`, `undealt`, `admission` (`conflict`, `base-red`,
   `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
   the tick (LESSONS 3.17).
