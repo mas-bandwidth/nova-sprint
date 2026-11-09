@@ -65,12 +65,14 @@ func (t *tick) preemptOn(b store.Card, row, victim string) {
 	g.edges = []EdgeRequest{{ID: "stop." + victim, Kind: "stop", Stream: vc.Stream, Cards: []string{victim}, Row: row, Consumer: victim}}
 }
 
-// serving is the open (up, not held), unclaimed, unrested rows serving c's
-// tier, by name (the candidates' names).
+// serving is the open (up, not held), unrested rows serving c's tier, by
+// name (the candidates without the rows resting after faults). A row an
+// earlier group claimed this tick stays: its room is the deal's tally
+// (Steps.tla Eligible).
 func (t *tick) serving(c store.Card) []string {
 	var out []string
 	for _, f := range t.candidates(c, "work") {
-		if _, resting := t.rested[f.Name]; !resting && t.unclaimed(f.Name) {
+		if _, resting := t.rested[f.Name]; !resting {
 			out = append(out, f.Name)
 		}
 	}

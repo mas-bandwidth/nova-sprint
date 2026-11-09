@@ -218,9 +218,8 @@ func (t *tick) streamFacts(s string) StreamFacts {
 // bus (present; Steps.tla Eligible and ServingOpen), serving c's tier, and
 // for a read not c's author and not holding a live read of c's head. Room
 // is the engine's check at the deal. The work list is built once per tier
-// per tick, by questions() before the rest and before any claim, so it is
-// what policy was asked; serving drops the resting and claimed rows. A
-// read's is filtered from it.
+// per tick, by questions() before the rest, so it is what policy was asked;
+// serving drops the resting rows. A read's is filtered from it.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	routes := card.NeedsRoutes(c.Brief) // only rows serving every route the card declares
 	key := c.Tier + "\x00" + strings.Join(routes, ",")
