@@ -153,8 +153,13 @@ func (tr *cardTrace) consumerArgs(subject string, slot func(string) (string, err
 	case Released:
 		id, rest = workID(subject, tr.w.snap().Cards[subject].Attempt), []string{"Released", "p", p}
 	case Report:
-		res := TraceResult(tr.w.snap().Cards[subject].Kind, e.Result, e.Reason)
-		id, rest = subject, []string{"Report", "r", quoted(e.Row), "res", quoted(res), "h", head(e.Head)}
+		c := tr.w.snap().Cards[subject]
+		res := TraceResult(c.Kind, e.Result, e.Reason)
+		h := e.Head
+		if c.Kind == "read" && h == "" { // a read reports at the head it was cut at, named or not (readReportHead)
+			h = c.Head
+		}
+		id, rest = subject, []string{"Report", "r", quoted(e.Row), "res", quoted(res), "h", head(h)}
 	case Withdraw:
 		id, rest = subject, []string{"Withdraw", "h", head(e.Head)}
 	default:
