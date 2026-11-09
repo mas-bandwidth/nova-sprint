@@ -31,9 +31,11 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
 	}
-	if _, err := e.admitStream(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
+	tip, err := e.admitStream(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again")
+	if err != nil {
 		return "", err
 	}
+	redLine := e.baseRedLine(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, tip)
 	if err := e.ensureGroup(ctx, store.Stream{Name: name, Repo: repo, Base: base, Mode: mode, Forge: forge}); err != nil {
 		return "", err
 	}
@@ -57,6 +59,9 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		return "", err
 	}
 	lines := []string{fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)}
+	if redLine != "" {
+		lines = append(lines, redLine)
+	}
 	if what, fix := e.agreementWarning(ctx, snap, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}); what != "" {
 		lines = append(lines, "WARN "+oneLine(what)+": "+oneLine(fix))
 	}

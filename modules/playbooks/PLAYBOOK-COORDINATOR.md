@@ -118,9 +118,6 @@ What each judgement kind asks of you, and where to look before you choose:
   again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
   that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
   `unhold`; or `drop` it.
-- `unacked`: a card has been in a row's hand a minute and the row has not acknowledged it
-  (`take`), though it was nudged every tick. Reach the row on the bus; if its session is gone,
-  `nova-sprint release <card>@<gen> --as <you> --reason "<why>"` deals the card again.
 - `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
   than a tick. The message names the row, the card and the cause: the tick's budget spent before
   it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the

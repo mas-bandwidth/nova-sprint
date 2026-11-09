@@ -219,3 +219,28 @@ func TestLandedEvenWhenTheLockFailsToRelease(t *testing.T) {
 		t.Fatal("a failed merge must stay a failure")
 	}
 }
+
+// landChecks is the landing's forge as admission's Checks reaches it: only
+// Checks answers (any other method is a nil interface call, a test failure).
+type landChecks struct {
+	forge.Forge
+	repo string
+	shas []string
+}
+
+func (l *landChecks) Checks(_ context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error) {
+	l.repo, l.shas = repo, shas
+	return map[string]forge.CheckRollup{shas[0]: {SHA: shas[0], State: forge.CheckRed, Failing: []string{"unit"}}}, nil
+}
+
+// TestHostForgeChecksAreTheLandings: admission's read of a base tip's
+// checks is the landing forge's own Checks, so admission and the landing
+// agree on what a red base is. No network.
+func TestHostForgeChecksAreTheLandings(t *testing.T) {
+	t.Parallel()
+	land := &landChecks{}
+	got, err := hostForge{land: land}.Checks(context.Background(), "o/r", []string{"b1"})
+	if err != nil || got["b1"].State != forge.CheckRed || land.repo != "o/r" || !slices.Equal(land.shas, []string{"b1"}) {
+		t.Fatalf("got %v %v, landing forge saw %q %v", got, err, land.repo, land.shas)
+	}
+}

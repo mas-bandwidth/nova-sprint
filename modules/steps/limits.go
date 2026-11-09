@@ -11,7 +11,8 @@ import (
 // limits"): HoldCard with a held judgement when bounces since the last
 // unhold reach the limit (a fault never counts, LESSONS 2.24; an unhold is a
 // fresh budget); Withdraw of a working consumer whose
-// row is silent past the bound, branch kept; Gone for a row unseen past its
+// row is silent past the bound, or that is past its tier's deadline with no
+// report, branch kept; Gone for a row unseen past its
 // bound, never for one missed challenge (LESSONS 4.7: the bound is policy's
 // and long); a flap judgement at the flap limit.
 func (t *tick) limits() {
@@ -46,8 +47,13 @@ func (t *tick) hasLive(p string) bool {
 	return false
 }
 
-// rowLimits is the silence and flap rules of one row. A row absent from
-// Seen is unknown, and nothing fires on it.
+// rowLimits is the silence, deadline and flap rules of one row. A row
+// absent from Seen has not been seen on the bus since the run started, so
+// its silence counts from the view's start (item 2, 2026-11-08: a friend
+// off the bus across a run restart held its cards until a manual release).
+// A working consumer past its tier's deadline (timeouts consumer, counted
+// from the deal plus the take window, so never before the take receipt's
+// deadline) with no report is withdrawn.
 func (t *tick) rowLimits(n string) {
 	r := t.v.Rows[n]
 	if r.Flaps >= t.lim.FlapLimit {
@@ -55,14 +61,19 @@ func (t *tick) rowLimits(n string) {
 	}
 	seen, known := t.in.Seen[n]
 	if !known {
-		return
+		seen = t.v.Since
 	}
 	silent := t.in.Now.Sub(seen)
-	if silent >= seconds(t.tmo.RowSilentWithdraw) {
-		for _, id := range t.v.Live(n) {
-			if c := t.v.Cards[id]; c.State == "working" && t.unclaimed(id) && t.free(c.Of) {
-				t.group("withdraw", id, t.withdraw(id, fmt.Sprintf("row %s silent for %s; branch %s is kept", n, silent.Truncate(time.Second), c.Branch)))
-			}
+	for _, id := range t.v.Live(n) {
+		c := t.v.Cards[id]
+		if c.State != "working" || !t.unclaimed(id) || !t.free(c.Of) {
+			continue
+		}
+		deadline := t.tmo.Consumer[c.Tier]
+		if since := t.in.Now.Sub(t.dealtAt(id)); deadline > 0 && since >= seconds(t.tmo.ReadyTake+deadline) {
+			t.group("withdraw", id, t.withdraw(id, fmt.Sprintf("working %d s with no report, past tier %s's deadline of %d s after the take window; branch %s is kept", int(since/time.Second), c.Tier, deadline, c.Branch)))
+		} else if silent >= seconds(t.tmo.RowSilentWithdraw) {
+			t.group("withdraw", id, t.withdraw(id, fmt.Sprintf("row %s silent for %s; branch %s is kept", n, silent.Truncate(time.Second), c.Branch)))
 		}
 	}
 	if r.State == "up" && silent >= seconds(t.tmo.RowSilentGone) && t.unclaimed(n) {

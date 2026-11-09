@@ -121,10 +121,14 @@ type Limits struct {
 // Timeouts is timeouts(): seconds of running time, each 1..86400. ReadyNag
 // is the seconds after a deal from which a row is nagged each tick for a
 // card in hand it has not taken; ReadyTake the seconds after which such a
-// card is withdrawn and dealt to another row with room.
+// card is withdrawn and dealt to another row with room. Consumer is a
+// consumer's deadline by tier, the take receipt's: past it (and the take
+// window) with no report the card is withdrawn; a tier it lacks has none
+// here (policy's timeouts() names every tier).
 type Timeouts struct {
 	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, ReadyNag, ReadyTake int
 	BaseRegate                                                                                   []int
+	Consumer                                                                                     map[string]int
 }
 
 // Default answers nothing: the engine's defaults answer the tick.
@@ -168,8 +172,9 @@ var Engine = Defaults{
 	UndealtAfter: 2, PresentGrace: 30, Reads: 1, IdleCeiling: 0.75, LandSample: 20,
 	Limits: Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
 		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 250, Pack: 50},
-	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300}},
-	Landing:  LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
+	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300},
+		Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}},
+	Landing: LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
 }
 
 // oracle is one tick's answers: the version's where usable, the defaults
