@@ -129,6 +129,14 @@
 (* Start or preemption is of a producer that failed; AdmissionShown: a     *)
 (* waiting or ready one has its stream's judgement.                        *)
 (*                                                                         *)
+(* Deadlines (item 3, 2026-11-08): Tick(a, due) with due a deadline      *)
+(* passing for every open judgement that has one (all but land and        *)
+(* no-policy) this tick. A due judgement whose cause the tick detects      *)
+(* (jnew) stays open: the code expires it and opens its next episode in    *)
+(* the same op, which is the same [kind, about] here; one no step detects  *)
+(* closes (Lapsed). ExpiryNeverSilent: every cause the tick detects is     *)
+(* open after it.                                                          *)
+(*                                                                         *)
 (* last is the step monitor of the last tick: bad is the set of checks    *)
 (* the tick broke (each computed from the view, the store before and      *)
 (* after, and the plan, independently of the planning operators where     *)
@@ -657,7 +665,7 @@ Resolvable(V, cl, p) ==
   /\ \A n \in Needs[p] : V.ps[n].st = "landed"
   /\ ~\E q \in Prods : FileShared(p, q) /\ V.ps[q].st \in Started \cup {"ready"}
 
-TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl4, res, clr) ==
+TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl4, res, clr, jnew) ==
   LET nb  == SelectSeq(adm, LAMBDA g : ~g.blk)
       bt  == SumSize(SelectSeq(adm, LAMBDA g : g.blk), Len(SelectSeq(adm, LAMBDA g : g.blk)))
       gs  == SelectSeq(E, LAMBDA g : g.kind # "none")
@@ -667,7 +675,8 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl
              "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
              "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
              "NoDealWithoutPolicy", "ResolveFromState", "HeldBehindShown",
-             "VerdictHasItsRead", "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown"} :
+             "VerdictHasItsRead", "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown",
+             "ExpiryNeverSilent"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -733,7 +742,9 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl
              \A g \in accd : g.kind \in {"pre", "start"} => admitted[g.p]
         [] n = "AdmissionShown" ->
              \A p \in Prods : (V.ps[p].st \in {"waiting", "ready"} /\ ~admitted[p])
-                              => [kind |-> "admission", about |-> Stream[p]] \in jsn}
+                              => [kind |-> "admission", about |-> Stream[p]] \in jsn
+        [] n = "ExpiryNeverSilent" ->
+             jnew \subseteq jsn}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
@@ -787,7 +798,11 @@ Expired(V, J) ==
              \/ j.kind = "no-policy" /\ V.pol
              \/ j.kind = "admission" /\ Unadmitted(V, j.about) = {}}
 
-Tick(a) ==
+\* The judgements a deadline can close: all but land and no-policy, which
+\* sit until answered or cleared (the code's held too).
+Deadlined(J) == {j \in J : j.kind \notin {"land", "no-policy"}}
+
+Tick(a, due) ==
   /\ phase = "snapped"
   /\ LET V    == snap
          W    == w
@@ -827,7 +842,11 @@ Tick(a) ==
                    \cup {[kind |-> "overlap", about |-> p] : p \in Held(V, inb.cl, res)}
                    \cup (IF V.pol THEN {} ELSE {[kind |-> "no-policy", about |-> "coord"]})
                    \cup {[kind |-> "admission", about |-> s] : s \in {s \in Streams : Unadmitted(V, s) # {}}}
-         jsn  == (js \ Expired(V, js)) \cup jnew
+         dueJ == IF due THEN Deadlined(js) ELSE {}
+         \* At a deadline a cause the tick still detects is reopened, never
+         \* closed; only one no step detects lapses.
+         Lapsed == dueJ \ jnew
+         jsn  == ((js \ Expired(V, js)) \cup jnew) \ Lapsed
          accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
          \* Left ready with room: a candidate of the view the tick did not deal.
          \* A run with no active policy deals nothing and says so (no-policy),
@@ -844,6 +863,7 @@ Tick(a) ==
                           ~Judged(jv, p)
                        THEN {"afterheld"} ELSE {})
                  \cup (IF jl \ js # {} THEN {"judged"} ELSE {})
+                 \cup (IF dueJ \cap jnew # {} THEN {"reopened"} ELSE {})
                  \cup (IF \E i \in 1..Len(inbox) : inbox[i].stamp \in ustamps /\ inbox[i].out = "ack"
                        THEN {"ack"} ELSE {})
                  \cup (IF \E r \in Rows : V.up[r] /\ ~bus[r] /\ \E p \in Prods : V.ps[p].st = "ready" /\ Serves(r, p)
@@ -859,7 +879,7 @@ Tick(a) ==
         /\ split' = UNION {GroupsIn(ops[i]) : i \in {i \in ap.ref : Len(ops[i]) > 1}}
         /\ last' = [tags |-> tags,
                     bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl4,
-                                        res, inb.cl)]
+                                        res, inb.cl, jnew)]
         /\ rdy' = [p \in Prods |-> IF p \in und THEN IF rdy[p] < UndealtTicks THEN rdy[p] + 1 ELSE rdy[p]
                                                 ELSE 0]
         /\ ju' = {p \in ju : V.ps[p].st = "ready"} \cup {p \in und : rdy[p] + 1 >= UndealtTicks}
@@ -991,7 +1011,7 @@ Answer(p, choice) ==
 
 Next ==
   \/ Snap
-  \/ \E a \in AnswersFor(snap) : Tick(a)
+  \/ \E a \in AnswersFor(snap), due \in BOOLEAN : Tick(a, due)
   \/ \E c \in CIds, res \in WorkResults \cup ReadResults : Report(c, res)
   \/ EnvMove
   \/ \E f \in inflight, out \in {"landed", "red", "ack"}, n \in 1..2 : EdgeResult(f, out, n)
@@ -1000,7 +1020,7 @@ Next ==
 Spec == Init /\ [][Next]_vars
 
 \* Liveness: weak fairness on the tick (Snap, then Tick with any answer).
-FairSpec == Spec /\ WF_vars(Snap) /\ WF_vars(\E a \in AnswersFor(snap) : Tick(a))
+FairSpec == Spec /\ WF_vars(Snap) /\ WF_vars(\E a \in AnswersFor(snap), due \in BOOLEAN : Tick(a, due))
 
 -----------------------------------------------------------------------------
 (* Invariants, named as the design names its guarantees                   *)
@@ -1130,6 +1150,7 @@ VerdictHasItsRead        == "VerdictHasItsRead" \notin last.bad
 NeverDealtAbsent         == "NeverDealtAbsent" \notin last.bad
 NeverDealtUnadmitted     == "NeverDealtUnadmitted" \notin last.bad
 AdmissionShown           == "AdmissionShown" \notin last.bad
+ExpiryNeverSilent        == "ExpiryNeverSilent" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width) is     *)
@@ -1188,6 +1209,7 @@ StepsNeverHandLanded  == "handland" \notin last.tags
 StepsNeverUndealt     == ju = {}
 StepsNeverAbsent      == "absent" \notin last.tags
 StepsNeverUnadmitted  == ~\E j \in js : j.kind = "admission"
+StepsNeverReopened    == "reopened" \notin last.tags
 StepsNeverReadAgain   == ~\E p \in Prods : \E c, d \in CurReads(w, p) :
                            Faulted(w, c) /\ d # c /\ w.cs[d].st \in {"working", "done"} /\ ~Faulted(w, d)
 
