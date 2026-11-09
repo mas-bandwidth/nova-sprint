@@ -2,9 +2,11 @@ package verbs
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -22,6 +24,49 @@ type Forge interface {
 	// RequiredChecks are the names of the status checks the base branch
 	// of repo requires to merge (branch protection and rulesets).
 	RequiredChecks(ctx context.Context, repo, branch string) ([]string, error)
+	// Checks is each sha's check rollup, read by the forge the landing reads
+	// them with (forge.Forge.Checks); a sha with no checks has no entry.
+	Checks(ctx context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error)
+}
+
+// baseRedNamed is how many of a red base's failing checks a refusal names.
+const baseRedNamed = 5
+
+// baseRed refuses a github stream whose base tip is red by the landing's own
+// rule (forge.CheckRed: a check completed in failure, other checks still
+// running or not), naming the first red checks, their count and the fix:
+// every landing onto it would be refused "the base itself is red", so a card
+// added onto it can only wait (2026-11-08: 171 cards were admitted onto a
+// base red on 155 of 205 jobs, and nothing landed for an hour). Pending
+// checks, no checks, green and a gate fault are admitted: admission does not
+// wait for CI. A stream with no forge has no checks to read; a read that
+// fails is a failure, never an admission.
+func (e *Engine) baseRed(ctx context.Context, s store.Stream, tip, again string) error {
+	if s.Forge != "github" {
+		return nil
+	}
+	if e.Forge == nil {
+		return broken("the forge is not configured", "take it to the project's own tracker with this line")
+	}
+	at := shortSHA(tip)
+	rollups, err := e.Forge.Checks(ctx, s.Repo, []string{tip})
+	if err != nil {
+		return RefusalOr(err, broken("the checks of "+s.Repo+"'s "+s.Base+" at "+at+" cannot be read ("+errText(err)+")", "make "+s.Repo+" readable by this host's gh, then "+again))
+	}
+	r := rollups[tip]
+	if r.State != forge.CheckRed {
+		return nil
+	}
+	named := strings.Join(r.Failing[:min(len(r.Failing), baseRedNamed)], ", ")
+	if more := len(r.Failing) - baseRedNamed; more > 0 {
+		named += fmt.Sprintf(" and %d more", more)
+	}
+	checks := "checks"
+	if len(r.Failing) == 1 {
+		checks = "check"
+	}
+	return refuse(fmt.Sprintf("stream %s: %s's %s is red at %s on %d %s (%s), so no card of it can land", s.Name, s.Repo, s.Base, at, len(r.Failing), checks, named),
+		"make "+s.Repo+"'s "+s.Base+" green at "+at+", then "+again)
 }
 
 // admitStream is stream add's admission, and check's of each stream: the

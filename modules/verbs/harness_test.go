@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -247,11 +248,24 @@ func (o *fakeOrigin) Branches(_ context.Context, url, prefix string) (map[string
 	return out, o.err
 }
 
-// fakeForge is the host's gh identity: act is CanAct's answer.
+// fakeForge is the host's gh identity: act is CanAct's answer; rollups are
+// Checks' answer by sha (a sha it lacks has no rollup), rollupE its error.
 type fakeForge struct {
-	act    error
-	checks []string // the base's required checks
-	checkE error
+	act     error
+	checks  []string // the base's required checks
+	checkE  error
+	rollups map[string]forge.CheckRollup
+	rollupE error
+}
+
+func (f *fakeForge) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
+	out := map[string]forge.CheckRollup{}
+	for _, sha := range shas {
+		if r, ok := f.rollups[sha]; ok {
+			out[sha] = r
+		}
+	}
+	return out, f.rollupE
 }
 
 func (f *fakeForge) RequiredChecks(context.Context, string, string) ([]string, error) {

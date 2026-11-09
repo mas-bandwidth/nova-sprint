@@ -149,7 +149,19 @@ Then, against the roster and origin:
   directory is declared, never implied);
 - the work is not already at the base: the card's branch at origin, a HEAD
   line, or a PR's head is not an ancestor of the base tip, and the PR has not
-  merged.
+  merged;
+- with forge github, the base tip is not red (`add` and `stream add` only,
+  dry run too; added 2026-11-08, after 171 cards were admitted onto a base
+  red on 155 of 205 jobs and none could land for an hour). The tip's checks
+  are read through the forge the landing reads them with
+  (`forge.Forge.Checks`), and red is the landing's own rule (`forge.CheckRed`,
+  the rule behind the landing's "the base itself is red"): a check completed
+  in failure, other checks still running or not. The refusal names the first
+  five red checks and their count, and its fix is to make the base green at
+  that sha, then add again. Pending checks, no checks, green and a gate fault
+  are admitted (admission does not wait for CI); a read that fails is a
+  failure (exit 2), never an admission. `check` and run's re-proof at a base
+  move do not apply it to cards already in.
 
 `stream add` (and `check`, per stream) also reads the status checks the base
 branch requires (branch protection and rulesets, one `gh api` each) and,

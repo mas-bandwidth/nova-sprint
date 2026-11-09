@@ -56,7 +56,7 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 	ro := &lazyRoster{creds: creds}
 	pol := policy.NewEngine(policy.RealClock{})
 	git, fg := gitEdge(), forgeEdge()
-	e := &verbs.Engine{Store: st, Bus: busEdge(), Roster: ro, Answers: pol, Policy: pol, Origin: &origin{git: git, dir: reposDir()}, Forge: hostForge{exec: edge.NewOSExec()},
+	e := &verbs.Engine{Store: st, Bus: busEdge(), Roster: ro, Answers: pol, Policy: pol, Origin: &origin{git: git, dir: reposDir()}, Forge: hostForge{exec: edge.NewOSExec(), land: fg},
 		Doctor: doctor{creds: creds}, Archive: newArchive(creds), Now: time.Now, Stdin: os.Stdin, Actor: actor, Version: versionString(), ToolPin: toolPin}
 	e.Lander = &lander{clones: &origin{git: git, dir: filepath.Join(stateDir(), "land")}, forge: fg}
 	e.Services = services{creds: creds, store: st, roster: ro, policy: pol, git: git, forge: fg, admit: e.ReproveStream}

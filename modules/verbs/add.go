@@ -189,9 +189,11 @@ func addOrder(pending map[string]card.Add) ([]string, error) {
 	return order, nil
 }
 
-// admitAdds is add's admission of its producers (admitCards): the first
-// refused card, by id, is the refusal. A sentinel has no brief and is
-// never dealt; its stream was checked by readAdds.
+// admitAdds is add's admission of its producers: the stream's base is not
+// red (baseRed, add's own: check and run's re-proof leave cards already in
+// alone), then admitCards, the first refused card, by id, being the refusal.
+// A sentinel has no brief and is never dealt; its stream was checked by
+// readAdds.
 func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card.Add) error {
 	var facts []cardFacts
 	for _, a := range adds {
@@ -201,6 +203,15 @@ func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card
 	}
 	if len(facts) == 0 {
 		return nil
+	}
+	if s := snap.Streams[facts[0].Stream]; s.Forge == "github" {
+		tip, err := e.baseTip(ctx, s, "add the card again")
+		if err != nil {
+			return err
+		}
+		if err := e.baseRed(ctx, s, tip, "add again"); err != nil {
+			return err
+		}
 	}
 	refused, err := e.admitCards(ctx, snap, facts)
 	if err != nil {
