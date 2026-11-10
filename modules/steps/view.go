@@ -4,6 +4,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -37,9 +38,12 @@ type View struct {
 	Landed  map[string]time.Time // stream -> when a producer of it last landed
 	Down    map[string]time.Time // row -> when it last went down
 	Ends    map[string][]End     // row -> its consumers' last finishes, oldest first (at most maxEnds)
-	acks    set                  // the acknowledgement cursors written (AckCursor)
-	born    map[string]int64     // card -> the seq that put it (0: before the view)
-	touched map[string]int64     // card -> the seq that last wrote it (0: before the view)
+	// RateLimited is model -> when a consumer on it last faulted on a
+	// provider's rate limit (card.RateLimited): the model rests (deal.go).
+	RateLimited map[string]time.Time
+	acks        set              // the acknowledgement cursors written (AckCursor)
+	born        map[string]int64 // card -> the seq that put it (0: before the view)
+	touched     map[string]int64 // card -> the seq that last wrote it (0: before the view)
 }
 
 type set = map[string]struct{}
@@ -86,6 +90,7 @@ func (v *View) reset(epoch int) {
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
 	v.ReadyAt = map[string]time.Time{}
 	v.Ends, v.born, v.touched = map[string][]End{}, map[string]int64{}, map[string]int64{}
+	v.RateLimited = map[string]time.Time{}
 	if v.acks == nil { // the store keeps cursors across epochs; so does the view
 		v.acks = set{}
 	}
@@ -164,6 +169,9 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 	case isConsumer(c) && c.State == "done" && (!had || old.State != "done"):
 		ends := append(v.Ends[c.Holder], End{At: e.At, Fault: c.Result == "fault"})
 		v.Ends[c.Holder] = ends[max(0, len(ends)-maxEnds):]
+		if c.Result == "fault" && c.Model != "" && card.RateLimited(c.Reason) {
+			v.RateLimited[c.Model] = e.At
+		}
 	case !isConsumer(c) && c.State == "ready" && (!had || old.State != "ready"):
 		v.ReadyAt[c.ID] = e.At
 	case !isConsumer(c) && c.State == "landed" && (!had || old.State != "landed"):
