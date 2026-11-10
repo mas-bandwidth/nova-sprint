@@ -145,11 +145,12 @@ jobs:
     runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 2
     # One job per model group, each on its own runner: the whole set on one
-    # runner overran the 2-minute rule under fleet load.
+    # runner overran the 2-minute rule under fleet load, and so did the steps
+    # traces alone (101-132 s), so they are split by scenario and fixtures.
     strategy:
       fail-fast: false
       matrix:
-        group: [store, card, policy, steps, edge]
+        group: [store, card, policy, steps-pre, steps-deal, steps-land, steps-burst, steps-fixtures, edge]
     name: trace (${{ matrix.group }})
     steps:
       - *clean
