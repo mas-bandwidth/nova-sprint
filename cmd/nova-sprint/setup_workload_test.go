@@ -79,7 +79,7 @@ type snapReader struct{ snap store.Snapshot }
 func (s snapReader) Snapshot(context.Context) (store.Snapshot, error) { return s.snap, nil }
 
 func testWorkload(f *fleetFake, rows map[string]store.Row, present map[string]bool) productionWorkload {
-	return productionWorkload{services: verbs.FleetServices{Command: f.command}.For("rowan", "nova-sprint up 7/8 workers"), run: workloadRun(),
+	return productionWorkload{services: verbs.FleetServices{Command: f.command}.For("rowan", "nova-sprint up 9/10 workers"), run: workloadRun(),
 		store:   snapReader{store.Snapshot{Epoch: 1, Rows: rows}},
 		present: func(context.Context) (map[string]bool, error) { return present, nil },
 		lastLine: func(_ context.Context, machine, service string) string {
@@ -112,7 +112,7 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
 		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,GH_GATE_TOKEN,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
-		"--actor", "rowan", "--reason", "nova-sprint up 7/8 workers"}
+		"--actor", "rowan", "--reason", "nova-sprint up 9/10 workers"}
 	if len(adds) != 2 || !slices.Equal(adds[0], want) || adds[1][3] != "sprint-worker-amd-2" {
 		t.Fatalf("records:\n%q\nwant\n%q", adds, want)
 	}
@@ -161,30 +161,30 @@ func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
 	}
 	// No commit identity yet: a question for the human, no act, before any
 	// bench is looked at.
-	check, err := (verbs.RuntimeSetup{Workload: w, Snapshot: snapReader{store.Snapshot{Epoch: 1}}}).Verify(context.Background(), 7, verbs.SetupInput{})
+	check, err := (verbs.RuntimeSetup{Workload: w, Snapshot: snapReader{store.Snapshot{Epoch: 1}}}).Verify(context.Background(), verbs.StepWorkers, verbs.SetupInput{})
 	if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "the sprint has no commit identity\nASK the human") || !strings.HasPrefix(check.Next, "nova-sprint identity --name") {
 		t.Fatalf("%+v %v", check, err)
 	}
 	withID := snapReader{store.Snapshot{Epoch: 1, Identity: store.Identity{Name: "Sprint Bot", Email: "1+bot@users.noreply.example.test"}}}
-	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{})
+	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), verbs.StepWorkers, verbs.SetupInput{})
 	if err != nil || check.Verified || !check.Action || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-2 (not on the bus") || !strings.Contains(check.Refusal.Fix, "sprint-worker-<bench>") {
 		t.Fatalf("%+v %v", check, err)
 	}
 	rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Role: "worker"}
 	w = testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
-	if check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{}); err != nil || !check.Verified || !strings.Contains(check.Line, "probed with the policy's models") ||
+	if check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), verbs.StepWorkers, verbs.SetupInput{}); err != nil || !check.Verified || !strings.Contains(check.Line, "probed with the policy's models") ||
 		!strings.Contains(check.Line, "each committing as Sprint Bot <1+bot@users.noreply.example.test>: VERIFIED") {
 		t.Fatalf("%+v %v", check, err)
 	}
 	// Every bench up, one at another version: not verified, naming it and
-	// the install that fixes it (step 5's check, per bench).
+	// the install that fixes it (check's per-bench read).
 	w.version = func(_ context.Context, m string) error {
 		if m == "amd-2" {
 			return serviceVersionRefusal("v2.1.0", m, "amd-2 reports v2.0.9, this binary is v2.1.0")
 		}
 		return nil
 	}
-	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{})
+	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), verbs.StepWorkers, verbs.SetupInput{})
 	if err != nil || check.Verified || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-2 reports v2.0.9") || !strings.Contains(check.Refusal.Fix, "--tag v2.1.0 amd-2") {
 		t.Fatalf("%+v %v", check, err)
 	}

@@ -1,7 +1,7 @@
 # Setup durable-choice trace refinement
 
 SetupChoices is a new contract model; the historical Setup model and its checked
-artifacts remain unchanged. Step 6 has a durable services choice of unknown,
+artifacts remain unchanged. Step 8 (StepServices) has a durable services choice of unknown,
 none, or configured. None has no key obligation. Configured requires each key
 identity in the bounded `KeyQuestions` constant. Prompt counts are per identity,
 not an aggregate count pretending that several providers share one prompt.

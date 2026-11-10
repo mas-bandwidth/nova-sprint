@@ -285,7 +285,7 @@ func internalSprintRole(ctx context.Context, fresh bool) int {
 	return 0
 }
 
-// InternalSprintRolePassword is step 2's verify of the role's password
+// InternalSprintRolePassword is the store step's verify of the role's password
 // (defect 37), in its own child under nova-secrets exec with both
 // credentials: false when the role does not exist yet (the act makes it);
 // else the password proven, or set from the seat and proven

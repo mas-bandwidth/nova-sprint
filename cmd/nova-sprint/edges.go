@@ -114,7 +114,7 @@ type doctor struct {
 }
 
 // Workers is every bench in nova-config's inventory with its worker unit's
-// last log line, the logs read at once over ssh (the read up's step 7 makes
+// last log line, the logs read at once over ssh (the read up's workers step makes
 // of a bench that is not up, productionWorkload.downWhy).
 func (d doctor) Workers(ctx context.Context) ([]verbs.WorkerUnit, error) {
 	benches, err := d.benches(ctx)

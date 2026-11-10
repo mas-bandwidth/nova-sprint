@@ -217,7 +217,7 @@ func TestProbeFailureIsReadable(t *testing.T) {
 		return edge.FakeOutcome{ExitCode: 1, Stdout: "", Stderr: "WALL grants=/job net=denied\n\x1b[91mError: \x1b[0mUnexpected server error\n\x1b[0m\n", Duration: 300 * time.Millisecond}
 	})
 	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return "/opt/oc/bin/opencode", nil },
-		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
+		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
 	r := probeRunner_internal(t, sp, wall, fx, threeProviders_internal(t, allKeys_internal))
 	err := r.ProbeRow(context.Background(), "b1", "opencode")
 	if err == nil {
@@ -227,7 +227,7 @@ func TestProbeFailureIsReadable(t *testing.T) {
 	for _, want := range []string{
 		"opencode with deepseek/deepseek-flash: exit 1: Error: Unexpected server error",
 		"the harness died inside the wall before writing a log; nova-sandbox show --write ",
-		"--unix --net-deny --net-allow 127.0.0.1:7000",
+		"--net-deny --net-allow 127.0.0.1:7000",
 		"known limits of opencode: opencode 2.x starts a background service",
 	} {
 		if !strings.Contains(msg, want) {
@@ -270,12 +270,12 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 	}
 	fx := edge.NewFakeExec()
 	fx.On("nova-reserve", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{} })
-	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
+	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
 	cases := []struct {
 		h          Harness
 		want, lack []string
 	}{
-		{&OpenCodeHarness{}, []string{"--read " + filepath.Dir(link), "--read " + realDir, "--unix", "--net-deny --net-allow 127.0.0.1:7000", "--env TMPDIR", "--env OPENCODE_CONFIG_CONTENT", "--env NOVA_WORKER_NONCE"}, []string{"--env PATH", "--env HOME"}},
+		{&OpenCodeHarness{}, []string{"--read " + filepath.Dir(link), "--read " + realDir, "--net-deny --net-allow 127.0.0.1:7000", "--env TMPDIR", "--env OPENCODE_CONFIG_CONTENT", "--env NOVA_WORKER_NONCE"}, []string{"--unix", "--env PATH", "--env HOME"}},
 		{&ClaudeHarness{ConfigDir: "/cfg/claude"}, []string{"--write /cfg/claude", "--env CLAUDE_CONFIG_DIR"}, []string{"--unix", "--net-deny"}},
 		{&ScriptHarness{}, []string{"--net-deny"}, []string{"--unix", "--net-allow"}},
 	}
@@ -296,20 +296,6 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 			if strings.Contains(got, l) {
 				t.Errorf("%s: %q must not be in %s", c.h.Name(), l, got)
 			}
-		}
-	}
-}
-
-// nova-sandbox refuses --unix on macOS (bad_unix, exit 2), where a socket
-// inside a --write grant is reachable without it: an adapter's Unix need is
-// passed on Linux only, or every macOS row's probe fails and the row is held.
-func TestWallPassesUnixOnLinuxOnly(t *testing.T) {
-	t.Parallel()
-	j := Job{Consumer: "c1", JobDir: "/job", ProxyAddr: "127.0.0.1:7000", Needs: (&OpenCodeHarness{}).Needs()}
-	for goos, want := range map[string]bool{"linux": true, "darwin": false} {
-		got := strings.Join(sandboxFlags_internal(WallConfig{NetDeny: true, GOOS: goos}, j, nil), " ")
-		if strings.Contains(got, "--unix") != want || !strings.Contains(got, "--net-deny --net-allow 127.0.0.1:7000") {
-			t.Errorf("%s: want --unix %t and the proxy's --net-allow: %s", goos, want, got)
 		}
 	}
 }
@@ -476,7 +462,7 @@ func TestStagePerStreamRepo(t *testing.T) {
 // The binary's order: the bus hook and the self-unhook, the probe, and
 // only then the sprint hook: a failed probe never hooks the row in to the
 // sprint and stops the bus hook, so no bench is up with no worker able to
-// run (and a hooked row is a probed one: up's step 7, admission); the row
+// run (and a hooked row is a probed one: up's workers step, admission); the row
 // is held and probed again. A passed probe hooks once.
 func TestServeRowProbesBeforeTheSprintHook(t *testing.T) {
 	t.Parallel()

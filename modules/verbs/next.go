@@ -79,7 +79,7 @@ func runNext(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 // hook, then the row's cards, its judgements, what check reds before the
 // sprint can deal, and the streams.
 func (e *Engine) look(ctx context.Context, v *nextView, epoch int, inventory bool) error {
-	snap, err := e.read(ctx, store.Scope{Holder: v.Row, Final: true, Producers: true, Unworded: true}) // the inventory and the streams answer: no card text
+	snap, err := e.read(ctx, store.Scope{Holder: v.Row, Final: true, Producers: true, Unworded: true, OpenJudgements: true}) // the inventory and the streams answer: no card text, no closed judgement
 	if err != nil {
 		return e.unready(ctx, v, err)
 	}
@@ -96,7 +96,7 @@ func (e *Engine) look(ctx context.Context, v *nextView, epoch int, inventory boo
 	}
 	row := snap.Rows[v.Row]
 	v.State, v.Role, v.Held = row.State, row.Role, row.Held
-	if inventory { // before the hook too: a worker probes its models before it hooks (up step 7)
+	if inventory { // before the hook too: a worker probes its models before it hooks (up's workers step)
 		e.fillRoster(ctx, v, snap)
 	}
 	if row.Session == "" {

@@ -42,7 +42,7 @@ func runHelp(_ *Engine, _ context.Context, in *input, _ store.Snapshot) (string,
 func helpIndex() string {
 	lines := []string{"nova-sprint <verb> [flags]; every verb takes --as <name> (or NOVA_SPRINT_AS) and --epoch <e> (left out: the active epoch; given, any other is refused).",
 		"Exit 0: done, the last line says next. Exit 1: refused, one line naming the fix. Exit 2: bad usage, or the store, bus or an edge failed.",
-		"Before up: help and version run anywhere; up, check and every other verb need the acting name hooked in to the bus (NOVA_BUS_REDIS set, then nova-bus hook --as <you>). Every verb but help, version, up and check also needs the store up makes at its step 2 (an epoch), whatever step up is at; a fresh store is stopped, never started, until the coordinator runs start."}
+		"Before up: help and version run anywhere; up, check and every other verb need the acting name hooked in to the bus (NOVA_BUS_REDIS set, then nova-bus hook --as <you>). Every verb but help, version, up and check also needs the store up makes at its step 4 (an epoch), whatever step up is at; a fresh store is stopped, never started, until the coordinator runs start."}
 	for _, g := range groups {
 		lines = append(lines, "", g+":")
 		for _, v := range table {
@@ -72,7 +72,7 @@ func helpVerb(v *verb) string {
 
 // upNeed is what a verb needs from up (the matrix, LAYER-6 section 3): no
 // verb waits on up's step; help, version, up and check need nothing, and
-// every other verb needs the store up makes at step 2 (its epoch) and the
+// every other verb needs the store up makes at step 4 (its epoch) and the
 // sprint's credential in the process (Glenn, 2026-11-07: a sprint that can
 // move must be stoppable, whatever up's step).
 func upNeed(v *verb) string {
@@ -82,5 +82,5 @@ func upNeed(v *verb) string {
 	case "check":
 		return "nothing; it names the first piece that is missing"
 	}
-	return "the store up makes at step 2 (an epoch), at any later step of up; without it: nova-sprint up --as <coordinator>"
+	return "the store up makes at step 4 (an epoch), at any later step of up; without it: nova-sprint up --as <coordinator>"
 }

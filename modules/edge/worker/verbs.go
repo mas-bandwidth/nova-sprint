@@ -25,6 +25,9 @@ var (
 	// with (model, deadline, commit identity). It is fatal: every further
 	// card would be refused the same way.
 	ErrReceipt = errors.New("worker: take receipt refused")
+	// ErrTruncated is a sprint verb whose output overran the worker's cap:
+	// what it printed is not the answer, so none of it is parsed.
+	ErrTruncated = errors.New("worker: sprint output truncated")
 )
 
 type (
@@ -93,9 +96,17 @@ func (c *CLISprintClient) argv_internal(args ...string) []string {
 	return append([]string{cmp.Or(c.SprintBin, "nova-sprint")}, args...)
 }
 
+// outputMaxBytes_internal caps a sprint verb's or a git listing's output, far
+// above edge's 64 KiB default: `next --json` lists every finished card the
+// row held this epoch (nine of twelve benches passed 64 KiB on 2026-11-09,
+// and the capped bytes were parsed: "parse failed at byte 32759", no card
+// taken anywhere), and collect reads a whole `ls-tree -r`.
+const outputMaxBytes_internal = 16 << 20
+
 // run_internal runs argv for its output (stdout then stderr, as the parsers
 // read it); a failure is an edge.CommandError naming the command, its exit
-// code and its output's first lines.
+// code and its output's first lines; an output past its cap is ErrTruncated,
+// naming the command, and is never handed to a parser.
 func (c *CLISprintClient) run_internal(ctx context.Context, argv []string) ([]byte, int, error) {
 	if c.Run != nil {
 		out, code, err := c.Run(ctx, argv)
@@ -104,11 +115,15 @@ func (c *CLISprintClient) run_internal(ctx context.Context, argv []string) ([]by
 		}
 		return out, code, nil
 	}
-	res, err := cmp.Or[edge.Exec](c.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: argv, Timeout: c.Timeout})
+	res, err := cmp.Or[edge.Exec](c.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: argv, Timeout: c.Timeout, MaxBytes: outputMaxBytes_internal})
+	out := []byte(res.Stdout + res.Stderr)
 	if err != nil || res.ExitCode != 0 {
-		return []byte(res.Stdout + res.Stderr), res.ExitCode, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
+		return out, res.ExitCode, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	}
-	return []byte(res.Stdout + res.Stderr), res.ExitCode, nil
+	if res.Truncated {
+		return out, res.ExitCode, fmt.Errorf("%w at %d bytes: %s", ErrTruncated, outputMaxBytes_internal, edge.CommandLine(argv, nil))
+	}
+	return out, res.ExitCode, nil
 }
 
 // classifyCLIError_internal is a sprint verb's failure: the store
@@ -120,6 +135,9 @@ func (c *CLISprintClient) run_internal(ctx context.Context, argv []string) ([]by
 func (c *CLISprintClient) classifyCLIError_internal(out []byte, code int, err error) error {
 	if code == 0 && err == nil {
 		return nil
+	}
+	if errors.Is(err, ErrTruncated) {
+		return err
 	}
 	if storeDown_internal(out, code, err) {
 		return fmt.Errorf("%w: %w", ErrStoreDown, err)

@@ -614,10 +614,12 @@ ReadFix writes it, Start copies it; in the code it is the reader's text and
 written only when non-empty and changed). These
 are not: reason, brief, cost, priced (written, read by no guard); prose,
 paths and done_when are read only by Edit's own "changes nothing" refusal,
-which moves no other state, so Edit is a stutter here. HoldStream's AtSeq
-fence is the atomic step itself: the model parks exactly the ready set of
-the state it steps from, which is what a plan fenced at the snapshot's seq
-can apply. NeedFailed, Waive and Relink {InThisOp} are one step together
+which moves no other state, so Edit is a stutter here. HoldStream's fence
+is the atomic step itself: the model parks exactly the ready set of the
+state it steps from, which is what a plan fenced on no stream or card
+written since the snapshot's seq (UnchangedSince) can apply; rows, the
+only other part of this model, are neither read nor written by it, so a
+beat or a row move between is a step before it. NeedFailed, Waive and Relink {InThisOp} are one step together
 with the Cancel of the need. Relink names a producer or a sentinel and walks
 needs and after for a cycle, so the two cycle witnesses fault only the
 cycle check.
@@ -625,8 +627,8 @@ cycle check.
 ## Files
 
 - `CardMachine.tla` and its seven passing cfgs.
-- `witnesses/Card*.tla`: thirty-six reversed witnesses; `reach/Card*.cfg`:
-  seventeen reachability checks. Generated with every card cfg by
+- `witnesses/Card*.tla`: forty-one reversed witnesses; `reach/Card*.cfg`:
+  twenty reachability checks. Generated with every card cfg by
   `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
   in the script, in the same shape as `make-witnesses.py`: a replacement
   that no longer matches stops the script.
@@ -662,7 +664,14 @@ State invariants:
   or fail (it never has a consumer).
 - **NeedsAcyclic**: the needs graph stays acyclic.
 - **OrderAcyclic**: needs and after together stay acyclic.
-- **ResultsByKind**: a work consumer's result is ok, fail or fault; a read's
+- **RefutedNeverRedealt**: a refuted card is never dealt again until the
+  coordinator acts (live 2026-11-09: one card refuted at w24, w25 and w26).
+  A work consumer's fail whose reason refutes its brief (result `refuted`,
+  `card.Refuted`) leaves its producer waiting with `why` held, a bounce
+  spent; the producer is ready again with that consumer current only after
+  an UnholdCard, which set its bounce base to its bounces.
+- **ResultsByKind**: a work consumer's result is ok, fail (refuted, a fail
+  refuting its brief), fault or route; a read's
   ok, fix or fault.
 - **OneLiveReadPerRow**: at most one live read of a head per row.
 - **IdsDistinct**: no existing card's id is a cut consumer's id (one
@@ -739,6 +748,7 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardCutReady` | life | Start cuts its consumer ready | DealIsTake |
 | `witnesses/CardDealOverWidth` | pre | Start has no room guard | WidthKept |
 | `witnesses/CardRouteRedealt` | life | a route fault goes back to ready | RouteFaultWaits |
+| `witnesses/CardRefutedRedealt` | life | a fail refuting its brief goes back to ready, dealt again | RefutedNeverRedealt |
 | `witnesses/CardHeldDealt` | life | Resolve takes a held producer | HeldNeverDealt |
 | `witnesses/CardUnholdBudgetSpent` | life | UnholdCard leaves the bounce base, so the limit holds it again | UnholdFreshBudget |
 | `witnesses/CardNeedsCycle` | deps | Relink without the cycle check | NeedsAcyclic |
@@ -773,6 +783,7 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverHeld` | life | none | violated: a producer waits on a hold |
 | `reach/CardNeverUnheldBounced` | life | none | violated: a producer held after a bounce is unheld with a fresh budget |
 | `reach/CardNeverRouteHeld` | life | none | violated: a route fault leaves its producer waiting on it |
+| `reach/CardNeverRefutedHeld` | life | none | violated: a fail refuting its brief leaves its producer waiting held on it |
 | `reach/CardNeverSentinelReached` | life | none | violated: the sentinel lands on its landed need |
 | `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |
 | `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |
@@ -1453,7 +1464,9 @@ On hetzner2 (never the studio), from the repository root:
 the step and record k. Each trace's cfg has an `\* expect:` line (`matched` or
 `forbidden at K`); the script exits 0 when the outcome is the expected one, 1
 when it is not, 2 on any other TLC failure. The CI job `trace` runs
-`make-traces.sh check` on every push, with `NOVA_TRACE_PG=1` so a missing
+`make-traces.sh check <group>` on every push, one job per group (store, card,
+policy, edge, and the steps traces in five parts: steps-pre, steps-deal,
+steps-land, steps-burst, steps-fixtures) on its own runner, with `NOVA_TRACE_PG=1` so a missing
 initdb fails the job instead of skipping the PostgreSQL walk.
 
 The walks write traces only when `NOVA_TRACE_DIR` names a directory

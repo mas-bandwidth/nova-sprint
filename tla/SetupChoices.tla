@@ -9,12 +9,30 @@ EXTENDS Naturals, Sequences, FiniteSets
  unprompted ChooseServices record actual CLI/default saves with zero prompts.
 ***************************************************************************)
 CONSTANTS MaxDisruptions, KeyQuestions
-Steps == 1..8
+\* up's steps by name, as modules/verbs/setup.go numbers them: the fleet,
+\* nova-fleet's two plays every bench needs (runner-packages, then netwatch),
+\* then the sprint's own setup from the store up.
+StepTools == 1
+StepPackages == 2
+StepNetwatch == 3
+StepStore == 4
+StepCoordinator == 5
+StepRun == 6
+StepDashboard == 7
+StepServices == 8
+StepWorkers == 9
+StepSmoke == 10
+LastStep == StepSmoke
+\* A play step's world is nova-fleet <play> --check reporting nothing to
+\* change, nothing unreachable and nothing failed on every bench; its Do
+\* is the play itself (FleetPlays in modules/verbs/setup_runtime_plays.go).
+PlaySteps == {StepPackages, StepNetwatch}
+Steps == 1..LastStep
 Questions == {"coordinator", "dashboard", "services"} \cup KeyQuestions
 VARIABLE servicesChoice
-Need(k) == CASE k = 3 -> {"coordinator"}
-            [] k = 5 -> {"dashboard"}
-            [] k = 6 -> {"services"} \cup (IF servicesChoice = "none" THEN {} ELSE KeyQuestions)
+Need(k) == CASE k = StepCoordinator -> {"coordinator"}
+            [] k = StepDashboard -> {"dashboard"}
+            [] k = StepServices -> {"services"} \cup (IF servicesChoice = "none" THEN {} ELSE KeyQuestions)
             [] OTHER -> {}
 VARIABLES world, verified, answers, asked, pc, phase, disruptions,
           keySinks, orderOK, verifiedOnly, resumeOK
@@ -37,7 +55,7 @@ Probe ==
   /\ (1..(pc-1)) \subseteq verified
   /\ IF world[pc] /\ Need(pc) \subseteq answers
      THEN /\ verified' = verified \cup {pc}
-          /\ pc' = pc + 1 /\ phase' = IF pc = 8 THEN "done" ELSE "probe"
+          /\ pc' = pc + 1 /\ phase' = IF pc = LastStep THEN "done" ELSE "probe"
           /\ verifiedOnly' = (verifiedOnly /\ world[pc])
      ELSE /\ phase' = "repair" /\ UNCHANGED <<servicesChoice, verified, pc, verifiedOnly>>
   /\ UNCHANGED <<servicesChoice, world, answers, asked, disruptions, keySinks, orderOK, resumeOK>>
@@ -73,7 +91,7 @@ Supply(q) ==
   /\ UNCHANGED <<servicesChoice, world, verified, asked, pc, phase, disruptions,
        keySinks, orderOK, verifiedOnly, resumeOK>>
 ChooseServices(value, prompted) ==
-  /\ phase = "repair" /\ pc = 6 /\ "services" \notin answers
+  /\ phase = "repair" /\ pc = StepServices /\ "services" \notin answers
   /\ value \in {"none","configured"} /\ prompted \in BOOLEAN
   /\ servicesChoice' = value /\ answers' = answers \cup {"services"}
   /\ asked' = [asked EXCEPT !["services"] = @ + IF prompted THEN 1 ELSE 0]
@@ -87,7 +105,7 @@ TypeOK == /\ servicesChoice \in {"unknown","none","configured"}
           /\ (("services" \in answers) = (servicesChoice # "unknown"))
           /\ world \in [Steps -> BOOLEAN] /\ verified \subseteq Steps
           /\ answers \subseteq Questions /\ asked \in [Questions -> 0..2]
-          /\ pc \in 1..9 /\ phase \in {"probe", "repair", "done", "stopped"}
+          /\ pc \in 1..(LastStep+1) /\ phase \in {"probe", "repair", "done", "stopped"}
           /\ disruptions \in 0..MaxDisruptions
 NeverAhead == orderOK /\ (phase # "stopped" => (1..(pc-1)) \subseteq verified)
 OnlyVerified == verifiedOnly

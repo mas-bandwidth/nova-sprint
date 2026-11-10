@@ -168,10 +168,10 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	return s, nil
 }
 
-// Read is Snapshot with only the cards scope names.
+// Read is Snapshot with only the cards and judgements scope names.
 func (f *Fake) Read(ctx context.Context, scope Scope) (Snapshot, error) {
 	s, err := f.Snapshot(ctx)
-	s.Cards = scope.of(s.Cards)
+	s.Cards, s.Judgements = scope.of(s.Cards), scope.judgements(s.Judgements)
 	return s, err
 }
 
@@ -266,6 +266,16 @@ func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 }
 
 func (t *fakeTx) lastSeq() (int64, error) { return t.base.seq0 + int64(len(t.events)), nil }
+
+func (t *fakeTx) acceptedSince(seq int64) ([]Event, error) {
+	var out []Event
+	for _, fe := range t.events {
+		if fe.Seq > seq && fe.Accepted {
+			out = append(out, Event{Seq: fe.Seq, Before: decodeState(fe.before), After: decodeState(fe.after)})
+		}
+	}
+	return out, nil
+}
 
 func (t *fakeTx) rows() ([]Row, error) {
 	var out []Row

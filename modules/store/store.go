@@ -22,8 +22,9 @@ type Store interface {
 	// Snapshot is one consistent read of the current epoch, with the seq it
 	// was read at.
 	Snapshot(ctx context.Context) (Snapshot, error)
-	// Read is Snapshot with only the cards scope names: the rest of the
-	// snapshot is whole. Snapshot is Read of Scope{All: true}.
+	// Read is Snapshot with only the cards scope names, and only the open
+	// judgements when it says OpenJudgements: the rest of the snapshot is
+	// whole. Snapshot is Read of Scope{All: true}.
 	Read(ctx context.Context, scope Scope) (Snapshot, error)
 	// Apply runs one operation as one transaction. It ends one of four ways:
 	// an accepted receipt; a refused receipt (nothing changed, the refusal is
@@ -42,7 +43,7 @@ type Store interface {
 	// same dump can tell the data is already in. It only reads.
 	Restored(ctx context.Context) (digest string, at time.Time, ok bool, err error)
 	// Clear opens a new epoch (n = n + 1) with the protocol of Apply: an op of
-	// kind clear, no writes, at most an AtSeq condition. It is logged with the
+	// kind clear, no writes, AtSeq and RowsOnlySince conditions only. It is logged with the
 	// epoch it closed; the receipt's NewEpoch is the one it opened.
 	Clear(ctx context.Context, op Op) (Receipt, error)
 	// Policy returns one policy version; ErrNotFound when there is none.
@@ -374,14 +375,31 @@ type Snapshot struct {
 
 // Scope is the cards a Read takes: the zero value none. A far bench pays for
 // every byte of every card (2026-11-09: 36 MB, 20-44 s a read), so a verb
-// reads the cards it touches.
+// reads the cards it touches. OpenJudgements narrows the judgements too:
+// the epoch's closed ones are most of a read once it is old (2026-11-10:
+// 2,374 judgements, 2.3 MB, read by every worker's next and beat).
 type Scope struct {
-	All       bool     // every card
-	IDs       []string // these cards, each with its producer (itself, for a producer) and every consumer of that producer
-	Holder    string   // every consumer this row holds in hand (not done or fail), with each one's producer
-	Final     bool     // with Holder: its done and failed consumers too
-	Producers bool     // every producer and sentinel
-	Unworded  bool     // the cards with brief, reason, prose and finding empty: for a verb that reads none of them (next)
+	All            bool     // every card
+	IDs            []string // these cards, each with its producer (itself, for a producer) and every consumer of that producer
+	Holder         string   // every consumer this row holds in hand (not done or fail), with each one's producer
+	Final          bool     // with Holder: its done and failed consumers too
+	Producers      bool     // every producer and sentinel
+	Unworded       bool     // the cards with brief, reason, prose and finding empty: for a verb that reads none of them (next)
+	OpenJudgements bool     // only the open judgements: for a verb that reads no closed one (next, beat, the UNSEEN line)
+}
+
+// judgements is the judgements of all that s takes, as cards is for cards.
+func (s Scope) judgements(all map[string]Judgement) map[string]Judgement {
+	if !s.OpenJudgements {
+		return all
+	}
+	out := map[string]Judgement{}
+	for id, j := range all {
+		if j.State == "open" {
+			out[id] = j
+		}
+	}
+	return out
 }
 
 // of is the cards of all that s takes: the one meaning of a Scope, which

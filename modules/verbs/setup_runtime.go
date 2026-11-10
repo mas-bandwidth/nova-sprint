@@ -26,7 +26,7 @@ type SetupRun interface {
 	Ready(ctx context.Context, machine, service string) (bool, error)
 }
 
-// SetupWorkload is supplied by the binary for steps 6 to 8 (services,
+// SetupWorkload is supplied by the binary for steps 8 to 10 (services,
 // workers, first deal). WorkersReady proves every worker bench
 // (WorkerBenches) is hooked on the bus and up in the store; SmokeReady
 // proves every worker row is dealable when the sprint starts. A not-ready
@@ -41,7 +41,7 @@ type SetupWorkload interface {
 	RunSmoke(context.Context) error
 }
 
-// WorkloadNotReady is a step 7 or 8 that is not ready: Why names each
+// WorkloadNotReady is a step 9 or 10 that is not ready: Why names each
 // bench that is not and why, Fix the one thing to do.
 type WorkloadNotReady struct{ Why, Fix string }
 
@@ -60,7 +60,7 @@ func WorkerBenches(machines []FleetMachine) []string {
 	return benches
 }
 
-// workloadReady is setupReady for steps 7 and 8: a *WorkloadNotReady is
+// workloadReady is setupReady for steps 9 and 10: a *WorkloadNotReady is
 // an act first, then its refusal.
 func workloadReady(ctx context.Context, ok bool, line string, err error) (SetupCheck, error) {
 	var notReady *WorkloadNotReady
@@ -84,6 +84,7 @@ type DashboardTarget struct {
 // RuntimeSetup combines real tools with owner-supplied store/run/worker seams.
 type RuntimeSetup struct {
 	Prerequisites  SetupPrerequisites
+	Plays          FleetPlays
 	Store          SetupStore
 	Run            SetupRun
 	Workload       SetupWorkload
@@ -96,7 +97,7 @@ type RuntimeSetup struct {
 	RunService     FleetService
 	DefaultRunHost string
 	Dashboards     map[string]DashboardTarget
-	// PolicyStore is where step 4 stores and activates the built-in
+	// PolicyStore is where the run step stores and activates the built-in
 	// default policy (policy.Up) before run starts; nil skips it.
 	PolicyStore store.Store
 	Now         func() time.Time // nil: time.Now
@@ -104,30 +105,32 @@ type RuntimeSetup struct {
 
 func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (SetupCheck, error) {
 	switch step {
-	case 1:
+	case StepTools:
 		return r.Prerequisites.Tools(ctx)
-	case 2:
+	case StepPackages, StepNetwatch:
+		return r.Plays.Verify(ctx, step)
+	case StepStore:
 		if r.Store == nil {
 			return SetupCheck{}, fmt.Errorf("store setup unavailable")
 		}
 		ok, err := r.Store.Ready(ctx)
 		if err != nil || !ok || in.Version == "" {
-			return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d and backup: VERIFIED", store.SchemaVersion), err)
+			return setupReady(ok, fmt.Sprintf("UP 4/10 store: schema sprint version %d and backup: VERIFIED", store.SchemaVersion), err)
 		}
 		if r.Adoption == nil {
 			return SetupCheck{}, fmt.Errorf("version adoption unavailable")
 		}
 		ok, err = r.Adoption.Ready(ctx, in.Version)
-		return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d, backup and version check: VERIFIED", store.SchemaVersion), err)
-	case 3:
+		return setupReady(ok, fmt.Sprintf("UP 4/10 store: schema sprint version %d, backup and version check: VERIFIED", store.SchemaVersion), err)
+	case StepCoordinator:
 		return r.Prerequisites.Coordinator(ctx, in.Actor)
-	case 4:
+	case StepRun:
 		return r.runCheck(ctx, in)
-	case 5:
+	case StepDashboard:
 		return r.dashboardCheck(ctx, in)
-	case 6:
+	case StepServices:
 		return r.servicesCheck(ctx, in)
-	case 7:
+	case StepWorkers:
 		if r.Workload == nil {
 			return SetupCheck{}, fmt.Errorf("worker setup unavailable")
 		}
@@ -136,18 +139,18 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 			return check, err
 		}
 		ok, err := r.Workload.WorkersReady(ctx)
-		return workloadReady(ctx, ok, "UP 7/8 workers: every worker bench at this version, its harness probed with the policy's models and its seat's provider keys, hooked on the bus and up in the store, each committing as "+id.Name+" <"+id.Email+">: VERIFIED", err)
-	case 8:
+		return workloadReady(ctx, ok, "UP 9/10 workers: every worker bench at this version, its harness probed with the policy's models and its seat's provider keys, hooked on the bus and up in the store, each committing as "+id.Name+" <"+id.Email+">: VERIFIED", err)
+	case StepSmoke:
 		if r.Workload == nil {
 			return SetupCheck{}, fmt.Errorf("smoke setup unavailable")
 		}
 		ok, err := r.Workload.SmokeReady(ctx)
-		return workloadReady(ctx, ok, "UP 8/8 first deal: every worker row hooked, up and dealable (width from its cores); the sprint deals once started: VERIFIED", err)
+		return workloadReady(ctx, ok, "UP 10/10 first deal: every worker row hooked, up and dealable (width from its cores); the sprint deals once started: VERIFIED", err)
 	}
 	return SetupCheck{}, fmt.Errorf("invalid setup step")
 }
 
-// commitIdentity is step 7's first condition: the sprint's commit identity
+// commitIdentity is the workers step's first condition: the sprint's commit identity
 // (store.Identity) is set, since a worker hooks only once it is (hook
 // refuses) and each job's clone takes it from the take receipt. None set is
 // a question for the human, like an unchosen dashboard: up stops with the
@@ -160,7 +163,7 @@ func (r RuntimeSetup) commitIdentity(ctx context.Context) (store.Identity, Setup
 	if err != nil || snap.Identity.Set() {
 		return snap.Identity, SetupCheck{}, err
 	}
-	return snap.Identity, SetupCheck{Line: "UP 7/8 workers: the sprint has no commit identity\nASK the human which forge account on the repositories' contributor-agreement allowlist every commit is made as (its git user.name and user.email, typically its noreply address)",
+	return snap.Identity, SetupCheck{Line: "UP 9/10 workers: the sprint has no commit identity\nASK the human which forge account on the repositories' contributor-agreement allowlist every commit is made as (its git user.name and user.email, typically its noreply address)",
 		Next: identityFix + "   then nova-sprint up again"}, nil
 }
 
@@ -208,7 +211,7 @@ func (r RuntimeSetup) runCheck(ctx context.Context, in SetupInput) (SetupCheck, 
 	if !active {
 		return SetupCheck{Action: true, Refusal: &OperationError{Problem: "no policy version is active after storing the built-in default", Fix: "nova-sprint policy show --list", Exit: 1}}, nil
 	}
-	secrets := "UP 4/8 run: on " + host + "; " + runSecretsLine(r.RunService)
+	secrets := "UP 6/10 run: on " + host + "; " + runSecretsLine(r.RunService)
 	ok, err := r.Run.Ready(ctx, host, r.RunService.Name)
 	if err != nil && ctx.Err() == nil {
 		// Not up yet: act; when it still is not after the act, the
@@ -271,7 +274,7 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 		return SetupCheck{}, err
 	}
 	if !saved && choice == "" {
-		return SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
+		return SetupCheck{Line: "UP 7/10 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
 	}
 	target, err := r.dashboardTarget(choice)
 	if err != nil {
@@ -293,7 +296,7 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 		// the refusal is the probe's own error and its fix.
 		return SetupCheck{Action: true, Refusal: refusal}, nil
 	}
-	return setupReady(ok, "UP 5/8 dashboard: "+target.URL+": VERIFIED", err)
+	return setupReady(ok, "UP 7/10 dashboard: "+target.URL+": VERIFIED", err)
 }
 
 // dashboardRefusal is the probe's error as a refusal with its fix: an
@@ -328,7 +331,7 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 		return SetupCheck{}, err
 	}
 	if value == "" {
-		return SetupCheck{Line: "UP 6/8 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
+		return SetupCheck{Line: "UP 8/10 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
 	}
 	names, err := setupServices(value)
 	if err != nil {
@@ -353,9 +356,9 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 		return SetupCheck{}, fmt.Errorf("service setup unavailable")
 	}
 	ok, err := r.Workload.ServicesReady(ctx, names)
-	line := "UP 6/8 services: none selected: VERIFIED"
+	line := "UP 8/10 services: none selected: VERIFIED"
 	if len(names) > 0 {
-		line = "UP 6/8 services: account and model endpoints answered; configuration: VERIFIED"
+		line = "UP 8/10 services: account and model endpoints answered; configuration: VERIFIED"
 	}
 	return setupReady(ok, line, err)
 }
@@ -376,19 +379,21 @@ func setupServices(value string) ([]string, error) {
 }
 func (r RuntimeSetup) Act(ctx context.Context, step int, in SetupInput) error {
 	switch step {
-	case 2:
+	case StepPackages, StepNetwatch:
+		return r.Plays.Act(ctx, step)
+	case StepStore:
 		return r.storeAct(ctx, in)
-	case 3:
+	case StepCoordinator:
 		return r.Prerequisites.SaveCoordinator(ctx, in.Actor)
-	case 4:
+	case StepRun:
 		return r.runAct(ctx, in)
-	case 5:
+	case StepDashboard:
 		return r.dashboardAct(ctx, in)
-	case 6:
+	case StepServices:
 		return r.servicesAct(ctx, in)
-	case 7:
+	case StepWorkers:
 		return r.workersAct(ctx)
-	case 8:
+	case StepSmoke:
 		if r.Workload == nil {
 			return fmt.Errorf("smoke setup unavailable")
 		}
@@ -450,7 +455,7 @@ func (r RuntimeSetup) runAct(ctx context.Context, in SetupInput) error {
 	if err = r.Role.GrantSeat(ctx, SprintSeat{Seat: r.RunService.Seat, Machine: host}); err != nil {
 		return err
 	}
-	services := r.Services.For(in.Actor, "nova-sprint up 4/8 run")
+	services := r.Services.For(in.Actor, "nova-sprint up 6/10 run")
 	if _, err = services.Ensure(ctx, r.RunService); err != nil {
 		return err
 	}
@@ -477,7 +482,7 @@ func (r RuntimeSetup) dashboardAct(ctx context.Context, in SetupInput) error {
 	if target.Service != nil {
 		service = *target.Service
 	}
-	services := r.Services.For(in.Actor, "nova-sprint up 5/8 dashboard")
+	services := r.Services.For(in.Actor, "nova-sprint up 7/10 dashboard")
 	if _, err = services.Ensure(ctx, service); err != nil {
 		return err
 	}

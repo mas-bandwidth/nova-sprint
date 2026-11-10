@@ -96,7 +96,7 @@ Producer events:
 | `Reached` | waiting | landed | state | `NeedsLanded(p)`; a sentinel only: it has no brief and never a consumer; its landing is the signal (a release gate, a phase mark), reported to the coordinator |
 | `Start{row, branch, base}` | ready | working | state, attempt+1, author=""; **cuts** a work consumer: kind work, of p, holder row, attempt, branch, base_sha, prior_head=p.head, reason=p.reason, state **working** (the deal is the take) | row up and not held; stream not held; width is not checked here, the machine seeing one producer's consumers: the dealer (layer 3) deals only to a row whose `working` consumers are below its roster width (LESSONS 3.3), and the model guards the cut with that check |
 | `Finished{c}` (its work consumer reported ok with head H) | working | review | state, head=H, author=c's row | c is p's work consumer of this attempt, done, result ok |
-| `Broken{c}` (its work consumer reported fail) | working | ready | state, reason=c's reason, bounces+1, head=c's head when c pushed one | c is p's work consumer of this attempt, done, result fail |
+| `Broken{c}` (its work consumer reported fail) | working | ready, or **waiting** (held, reason `held: ` and c's reason) when c's reason's first word is `refuted` or `brief-defect` | state, reason=c's reason (`held: ` and c's reason when it waits), bounces+1, head=c's head when c pushed one | c is p's work consumer of this attempt, done, result fail; a fail that refutes its brief (`card.Refuted`) is never dealt again by itself (live 2026-11-09) |
 | `Faulted{c}` (its work consumer reported fault) | working | ready, or **waiting** (held, reason kept) when c's reason starts `missing-route:` | state, reason=c's reason, head=c's head when c pushed one; **bounces unchanged** | c is p's work consumer of this attempt, done, result fault: a harness, environment or bench fault (exit 134 or 137, a run that never started, a staging failure, a provider's rate limit or credit refusal), which spends no attempt toward the bounce hold (LESSONS 2.24, 4.14, 4.24); a fault naming a missing route or device is never dealt again by itself (defect 48) |
 | `AskRead{row}` | review | review | **cuts** a read consumer: kind read, of p, holder row, head=p.head, author=p.author, state **working** | row up and not held; stream not held; row != p.author; width as `Start`'s, the dealer's |
 | `ReadYes` | review | merging | state | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy, which reads all of them (LESSONS 3.7) |
@@ -437,7 +437,9 @@ with a design change, never a special case):
   plan, plus no two writes to one field), so no plan the machine emits is
   ever invalid at the store.
 - `HoldStream` refuses a producer listed twice; its ready set is fenced with
-  the snapshot's `AtSeq`.
+  the snapshot's `AtSeq` (since 2026-11-09 `UnchangedSince` the snapshot's
+  seq on streams and cards: a beat, which writes only its row, no longer
+  refuses it, and any card or stream write still does).
 - `Relink{InThisOp}` as `Waive`, so a drop and its relink are one op.
 - `Broken` and `Faulted` write the consumer's reason into the producer's
   `finding`; `Start` copies `finding` to the new work consumer, so a fix
@@ -478,8 +480,9 @@ with a design change, never a special case):
   working; choosing the youngest on the blocker's row is the step's (layer 3
   has the list).
 - `HoldStream` parks exactly the ready set the caller lists; passing the full
-  ready set of the snapshot is layer 3's duty, and the `AtSeq` fence makes a
-  stale list refuse rather than fill it in.
+  ready set of the snapshot is layer 3's duty, and the fence (no card or
+  stream written since the snapshot) makes a stale list refuse rather than
+  fill it in.
 - `Landed` has no `after` check in the machine; "a landing never holds on a
   soft after whose target is not queued" is the landing step's rule (layer 3).
 - A hold merged after a start parks what the start readied; a start merged
@@ -564,6 +567,15 @@ that missed the push left it there.
   (2026-11-07: a card with a problem waits). Layer 3 opens the held
   judgement; the producer waits held until the coordinator answers (`unhold`, which lifts
   the hold, or `drop`). Any other fault is as before.
+- Refuted (live 2026-11-09: one card refuted at w24, w25 and w26 and dealt on
+  to w27): a work consumer's `fail` whose reason's first word is `refuted`
+  (the brief's red test cannot be made to fail at the base) or `brief-defect`
+  (the brief cannot be met as written), in any case (`card.Refuted`), moves
+  the producer to `waiting` with reason `held: ` and the consumer's reason,
+  one bounce spent and the head kept, never back to `ready`, under a held
+  stream too. Layer 3 opens the held judgement; the coordinator drops it,
+  replaces it with a corrected brief, or unholds it. The model's result is
+  `refuted` and its why `held` (`RefutedNeverRedealt`).
 - Defect 47: `HoldCard` is allowed from `waiting` too (a card held before it
   resolves) and refused for a sentinel, so the coordinator's
   `hold <card> --reason <why>` is a `HoldCard` with reason `held: <why>`

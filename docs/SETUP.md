@@ -10,6 +10,10 @@ start, and sets up the fleet first with nova-tools: Tailscale, Redis,
 PostgreSQL, Ansible, the tools on every machine (`nova-fleet check`, the
 human's one paste of the Tailscale API token, `nova-fleet up`). Nothing in
 nova-sprint works without that fleet, and nothing in nova-sprint repeats it.
+The two nova-fleet plays every bench needs and `nova-fleet up` does not run,
+`runner-packages` then `netwatch`, are `nova-sprint up`'s steps 2 and 3: each
+is verified when the play in check mode would change nothing on any bench, and
+otherwise run, nova-fleet's play with its defaults, never a copy of it.
 
 The store is PostgreSQL 16 or newer (`up` refuses an older server by its
 version), and `pg_dump` on PATH is at least the server's major version.
@@ -69,20 +73,20 @@ nova-tools version it needs; `nova-sprint check` reads the installed release
 from the build info of `nova-config` on PATH (without running it), is red below
 the pin, naming `nova-fleet install --tag <pin> <machine>`, and warns above it.
 
-## 5. What `nova-sprint up` does past the store (steps 6 to 8)
+## 5. What `nova-sprint up` does past the store (steps 8 to 10)
 
 Nothing in this section is typed by the human.
 
-- **Services (6).** `--services none` is a valid answer. A chosen service's key is
+- **Services (8).** `--services none` is a valid answer. A chosen service's key is
   pasted once at a hidden prompt and proven by one model-list request.
-- **Workers (7).** Every machine with the bench role, the one the sprint runs on included
+- **Workers (9).** Every machine with the bench role, the one the sprint runs on included
   when it has that role, gets a worker: its seat is granted the sprint's database credential, and nova-config
   gets one service record `sprint-worker-<machine>` running `nova-sprint worker --as
   <machine>` under that seat (the sprint and bus credentials and the provider keys the
   bench's seat holds). nova-fleet applies them all in one play. The step verifies when
   every worker is on the bus and up in the sprint; otherwise it names each machine that
   is not and the last line of its worker's log.
-- **First deal (8).** A new sprint is stopped until the coordinator runs `nova-sprint
+- **First deal (10).** A new sprint is stopped until the coordinator runs `nova-sprint
   start`, so up deals nothing. It checks every worker can be dealt to: on the bus, up,
   and with its core count in nova-config (a bench without one is held at width 0, named
   with the `nova-config machine set <machine> --cores <n>` that fixes it).

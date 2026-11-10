@@ -11,10 +11,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
-// tla/Setup.tla's world[7] and world[8], bound to the workload adapter
+// tla/Setup.tla's world[9] and world[10], bound to the workload adapter
 // over every state of a two-bench fleet (each bench on the bus or not, up
-// in the store or not, with cores or not): world[7] is every worker bench
-// on the bus and up in the store; world[8] is world[7] and every worker
+// in the store or not, with cores or not): world[9] is every worker bench
+// on the bus and up in the store; world[10] is world[9] and every worker
 // bench with cores. WorkersReady and SmokeReady are exactly those, and a
 // step that is not ready is always a *verbs.WorkloadNotReady (the model's
 // repair phase), never another error.
@@ -25,7 +25,7 @@ func TestWorkloadStepsMatchTheSetupModel(t *testing.T) {
 		bit := func(i int) bool { return mask&(1<<i) != 0 }
 		machines := []string{`{"kind":"machine","fields":{"name":"studio","roles":"services","cores":8}}`}
 		rows, present := map[string]store.Row{}, map[string]bool{}
-		world7, world8 := true, true
+		world9, world10 := true, true
 		for i, b := range benches {
 			hooked, up, cores := bit(3*i), bit(3*i+1), bit(3*i+2)
 			present[b] = hooked
@@ -37,14 +37,14 @@ func TestWorkloadStepsMatchTheSetupModel(t *testing.T) {
 				fields += `,"cores":4`
 			}
 			machines = append(machines, `{"kind":"machine","fields":{`+fields+`}}`)
-			world7 = world7 && hooked && up
-			world8 = world8 && hooked && up && cores
+			world9 = world9 && hooked && up
+			world10 = world10 && hooked && up && cores
 		}
 		f := &fleetFake{machines: strings.Join(machines, ","), rows: len(machines)}
 		w := testWorkload(f, rows, present)
-		for step, want := range map[int]bool{7: world7, 8: world8} {
+		for step, want := range map[int]bool{verbs.StepWorkers: world9, verbs.StepSmoke: world10} {
 			ready := w.WorkersReady
-			if step == 8 {
+			if step == verbs.StepSmoke {
 				ready = w.SmokeReady
 			}
 			ok, err := ready(context.Background())

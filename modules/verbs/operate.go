@@ -27,7 +27,7 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		return alreadyStopped(snap, in.actor), nil
 	}
 	op := e.newOp(in.verb, in.actor, snap, reason)
-	op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}}
+	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Stop: true, Hooks: true}} // no other stop or start, and the caller still the coordinator it was read as
 	op.Writes, op.Note = []store.Write{store.SetStopped{Stopped: stop, Reason: reason}}, reason
 	r, err := e.commit(ctx, op, "nova-sprint show run")
 	if err != nil {
@@ -218,36 +218,11 @@ func (e *Engine) restoreHook(ctx context.Context, actor string) (string, error) 
 
 // runClear is `clear`: after a verified backup, the epoch ends and every
 // card goes. Live consumers refuse: release them first. The clear is fenced
-// at the store's last seq once every event since the snapshot is known to
-// write rows only (rowsOnlySince): workers beat every few seconds, and a row
-// is carried into the new epoch, so the backup still holds everything the
-// clear discards. A beat landing between that read and the clear is read
-// again, up to clearTries times.
-// clearTries is how many fences clear tries while rows keep writing: each
-// window is one events read, milliseconds against beats seconds apart.
-const clearTries = 5
-
-// rowsOnlySince is the store's last seq and whether every accepted event
-// after seq wrote rows only (its after-image holds no card, stream,
-// judgement, policy, cursor, stop or identity): what a clear carries.
-func (e *Engine) rowsOnlySince(ctx context.Context, seq int64) (int64, bool, error) {
-	for {
-		batch, err := e.Store.Events(ctx, seq, store.MaxEvents)
-		if err != nil {
-			return 0, false, fmt.Errorf("reading the events after seq %d: %w", seq, err)
-		}
-		if len(batch) == 0 {
-			return seq, true, nil
-		}
-		for _, ev := range batch {
-			if a := ev.After; ev.Accepted && (a == nil || a.Epoch != 0 || a.Streams != nil || a.Cards != nil || a.Policies != nil || a.Judgements != nil || a.Cursors != nil || a.Stop != nil || a.Identity != nil) {
-				return 0, false, nil
-			}
-			seq = ev.Seq
-		}
-	}
-}
-
+// on every event since its snapshot writing rows only (RowsOnlySince, inside
+// the clear's own transaction), never on the store's seq: workers beat
+// faster than a read and a commit (2026-11-09: refused "the store is at seq
+// N+1, expected seq N" on every try), and a row is carried into the new
+// epoch, so the backup still holds everything the clear discards.
 func runClear(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	n, f := in.num("confirm")
 	if f != nil || n != snap.Epoch {
@@ -278,26 +253,14 @@ func runClear(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 	if info.Epoch != snap.Epoch || info.Seq < snap.Seq {
 		return "", refuse("the store changed while the backup was made", again)
 	}
-	var r store.Receipt
-	for try := 1; ; try++ {
-		at, ok, err := e.rowsOnlySince(ctx, snap.Seq)
-		if err != nil {
-			return "", err
-		}
-		if !ok {
-			return "", refuse("the store changed while the backup was made", again)
-		}
-		op := e.newOp("clear", in.actor, snap, at)
-		op.Expect = []store.Expect{store.AtSeq{Seq: at}}
-		if r, err = applyOnce(ctx, e.Store, op, e.Store.Clear); err != nil {
-			return "", err
-		}
-		if r.Accepted {
-			break
-		}
-		if try == clearTries {
-			return "", refuse(r.Reason, again)
-		}
+	op := e.newOp("clear", in.actor, snap)
+	op.Expect = []store.Expect{store.RowsOnlySince{Seq: snap.Seq}}
+	r, err := applyOnce(ctx, e.Store, op, e.Store.Clear)
+	if err != nil {
+		return "", err
+	}
+	if !r.Accepted {
+		return "", refuse(r.Reason, again)
 	}
 	return done("nova-sprint stream add <name> --repo <org/repo>", what, fmt.Sprintf("CLEARED epoch=%d opened; backup %s", r.NewEpoch, info.Path)), nil
 }

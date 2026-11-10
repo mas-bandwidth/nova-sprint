@@ -34,7 +34,7 @@ print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answe
    not do any of that by hand: a second writer skips the checks the verb runs and leaves no
    record in the log.
 4. You are told by push. From the moment you hook in to the sprint, every judgement, landing,
-   stall, hold and orphan, and every deal and read ask for your own row, reaches you as one bus
+   stall, hold and returned card, and every deal and read ask for your own row, reaches you as one bus
    message carrying the command that answers it. Before you hook in, nothing reaches you.
 5. Push, not pull. `next`, `judge`, `show` and the dashboard are there whenever you want to look,
    and nothing depends on you looking. You never poll, never sleep and check, and never keep a
@@ -55,7 +55,9 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    `next:` line. It refuses until
    the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role to
    any name but the one `up` recorded. Both refusals are the tool enforcing the order. Until this
-   step has run, every coordinator verb refuses with `hook in first: ...`.
+   step has run, every coordinator verb refuses with `hook in first: ...`. If the recorded
+   coordinator is gone (not in `nova-bus who`, so unable to run `unhook`), take the seat:
+   `nova-sprint up --as <you> --take-over --reason "<why>"` (section 7, item 8).
 3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per
    thing it checked (the fleet, nova-tools against the pin, the store, the bus, each stream's
    repository and base, the open judgements, run, the width, why each stream's producers wait,
@@ -70,7 +72,8 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    sprint, `start`. A fresh sprint is stopped, its reason `never started`, and moves nothing
    (no deal, read or landing) until you run `nova-sprint start --as <you> --reason "<why>"`;
    the board shows `STOPPED never started` until then. `stop`, `start`, `hook`, `show` and
-   `next` work as soon as `up` has made the store (its step 2), whatever step `up` is at.
+   `next` work as soon as `up` has made the store (its step 4, after the fleet check and
+   nova-fleet's `runner-packages` and `netwatch` plays, steps 2 and 3), whatever step `up` is at.
 5. List the judgements owed: `nova-sprint judge --as <you>`. Each is one line,
    `JUDGEMENT <j> kind=<kind> about=<id> group=<g> choices=<c|c>`, and the last line is `next:` with the
    command for the first. `no open judgements` means nothing waits on you.
@@ -119,7 +122,15 @@ What each judgement kind asks of you, and where to look before you choose:
   `unhold`; or `drop` it. A `held` whose reason reads `reads faulted <n> times running at review
   <r>` is a review whose reads all faulted policy's `faults` limit in a row (the reason ends with
   the newest fault): fix that cause (a route, a tool on the reading rows), then `unhold`; the card
-  is dealt again as work and its next review counts afresh.
+  is dealt again as work and its next review counts afresh. A `held` that says an attempt
+  `refuted its brief` carries the worker's evidence (`held: refuted: ...` or
+  `held: brief-defect: ...`, from `finish --failed`): the same brief dealt again is refuted
+  again. Read the evidence; `drop` it when the defect is not real, replace it with a corrected
+  brief (`nova-sprint replace <id> --by <card> --reason "<why>"`), or `unhold` to deal it again
+  when the refutation was wrong. A `held` that reads `failed <n> top-rank attempts running with no
+  new head on the same brief` is policy's `same_finding` applied to fails, once escalation is spent
+  (`frontier_after` bounces before them): attempts that pushed nothing; read the reasons with
+  `show <id>.w<n>` and choose the same way (an unhold is a fresh count).
 - `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
   than a tick. The message names the row, the card and the cause: the tick's budget spent before
   it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the
@@ -147,8 +158,6 @@ What each judgement kind asks of you, and where to look before you choose:
 - `stall`: nothing landed within the bound while producers wait; the message names the cause
   per stream. `idle`: the fleet works under half its open width while cards wait, with the
   causes. `land-rate`: a stream or model lands under target on the first try (section 6).
-- `orphan`: a working card's holder is gone from the bus past the silence; choose `release` or
-  `wait` after you have tried to reach the row (section 7).
 - `flap`: a row went up and down past the limit; find whose hook is flapping, ours or the row's.
 - `brief`: the same finding came back twice; the brief is wrong (section 4).
 - `policy` or `engine`: a policy version failed (its fallback is already in force), or a planned
@@ -201,7 +210,8 @@ named it:
 3. Run `nova-sprint show <producer>` and read what it waits on:
    - `waiting`: each need's own state, the stream's hold, or the card's hold; follow the chain to the card or hold at its end.
    - `working`: the work card's holder. Ask it on the bus, as in section 3, step 1; if it is
-     absent from `nova-bus who`, the `orphan` judgement comes at the silence bound.
+     absent from `nova-bus who`, the run marks it down at the silence bound and its hand goes
+     back to the queue (section 7, item 4).
    - `review` with read cards live: their holders, as for working. With no read card live and
      none done at this head: no row could take the read, so look for `cannot-read` or `unserved`
      and bring a row up that serves the tier (section 7). With every read done, the verdict is
@@ -250,7 +260,7 @@ Before any worker hooks, the sprint needs its commit identity: the one forge acc
 repositories' contributor-agreement allowlist that every commit is authored and committed as
 (ask the human which; its git user.name and its noreply address). Set it with
 `nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason "<why>"`;
-`up` step 7 asks for it, a worker's hook and take refuse until it is set, and finish refuses a
+`up` step 9 asks for it, a worker's hook and take refuse until it is set, and finish refuses a
 head with a commit made as anyone else. `nova-sprint identity` with no flags prints it.
 
 A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base main]
@@ -367,21 +377,25 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `hook`, `unhook`, `hold` and `unhold`. Change a width or a tier in nova-config; the sprint sees it
    on the next tick.
 2. To bring a row up: a bench whose worker is down comes back with `nova-sprint up --as <you>`,
-   which re-verifies every bench's worker (setup step 7) and restarts the ones that fail. A friend row
+   which re-verifies every bench's worker (setup step 9) and restarts the ones that fail. Its steps
+   2 and 3 run nova-fleet's plays on every bench first, so a bench nova-fleet cannot reach stops
+   `up` there, naming it: bring it back, or take the bench role off it, then `up` again. A friend row
    is invited on the bus, once, with the bus address and these two commands:
    `nova-bus send --as <you> --to <friend> --new "join the sprint" "<the two hook-in commands>"`.
 3. Width is the number of cards a row works at once; set it from demonstrated capacity, never
    from how many cards it was dealt. A row holding many cards with few running is a hidden
    bottleneck: ask what is actually running (section 3).
-4. A row going down does not take its cards back. Its cards stay until the silence policy states,
-   then an `orphan` judgement asks you. Before you answer, reach the row on the bus; release only
-   when it is gone. A row that has left for good:
-   for each card the `orphan` judgement names, `nova-sprint release <card>@<gen> --reason "<why>"`
-   prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
+4. A held or down row holds no card. Whatever makes a row held or down (`hold`, `unhook`, a
+   worker's restart, the run marking a silent row down) returns its whole hand to the queue in
+   the same op: taken and untaken cards, each released with no blame, its branch and pushed
+   head kept, and dealt again to another row. You get one `RETURNED card=<id> from=<row>: ...`
+   line per card. A hand still on such a row (left by an older release) goes back on the run's
+   next tick. To give back one card of a row that is up, `nova-sprint release <card>@<gen>
+   --reason "<why>"` prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
-   prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and takes back only the cards it
-   has not acknowledged; work the row has acknowledged stays, and a hold never stops landing.
+   prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and returns its whole
+   hand to the queue (item 4); a hold never stops landing.
    `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
    To hold one card (a wrong brief, a question for the human), name the producer:
    `nova-sprint hold <card> --reason "<why>"`. The card goes to `waiting` with the reason
@@ -396,6 +410,13 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 7. Keep the fleet healthy with `nova-sprint check`; it is the one doctor. Never kill a process
    blindly: read it first. Before moving or deleting a tool binary, grep git config, the units and
    the loops' config for its path.
+8. A coordinator who is gone. The seat is the row hooked in as coordinator, and only `unhook` by
+   that row frees it, so a coordinator whose host or session is gone leaves the judgements with
+   no one to answer them. Check `nova-bus who` for the name; when it is not listed, run
+   `nova-sprint up --as <you> --take-over --reason "<why>"`. It refuses while that coordinator is
+   on the bus (ask them to `unhook`). Otherwise, in one logged op, it clears their hook as
+   `unhook` does, hooks you in as coordinator, and goes on with `up`'s steps; then run section
+   1's session start from step 3. Their hand goes back to the queue in the same op (item 4).
 
 ## 8. Policy
 

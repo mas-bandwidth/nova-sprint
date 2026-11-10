@@ -35,10 +35,11 @@ import (
 //   - finding: text in the code, "-" or "fix" in the model (whether a read
 //     asked for a fix): any non-empty finding is "fix".
 //   - A fault whose reason names a missing route (RouteFault) is the
-//     model's result "route". A waiting producer's reason that holds it
-//     (HeldReason) is the model's why: "route" for a missing route, "held"
-//     for a hold, "-" for any other reason and in any other state; the
-//     reason is otherwise left out.
+//     model's result "route", and a fail whose reason refutes the brief
+//     (Refuted) its result "refuted". A waiting producer's reason that holds
+//     it (HeldReason) is the model's why: "route" for a missing route, "held"
+//     for a hold (a refuted fail's "held: <reason>" included), "-" for any
+//     other reason and in any other state; the reason is otherwise left out.
 //   - Score and priority are carried as they are (any number, any level);
 //     the model's bounds on them (0..1; normal or blocker) are on its
 //     environment's choices, not on its moves.
@@ -144,11 +145,15 @@ func TraceWhy(state, reason string) string {
 }
 
 // TraceResult is a consumer's result as the model names it: a work fault
-// whose reason names a missing route (RouteFault) is "route" (defect 48),
-// every other result itself.
+// whose reason names a missing route (RouteFault) is "route" (defect 48), a
+// work fail whose reason refutes the brief (Refuted) is "refuted", every
+// other result itself.
 func TraceResult(kind, result, reason string) string {
 	if _, route := RouteFault(reason); route && result == "fault" && kind == "work" {
 		return "route"
+	}
+	if Refuted(reason) && result == "fail" && kind == "work" {
+		return "refuted"
 	}
 	return result
 }

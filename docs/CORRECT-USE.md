@@ -217,7 +217,7 @@ So:
   tip is red by the landing's rule, admitting the cards (2026-11-08); `hook` proves
   the store credential (the snapshot read) and that every stream's base is
   readable from this process (finish and read need it), and asks no forge
-  token of a worker; `up` step 7 says VERIFIED only when every worker bench
+  token of a worker; `up` step 9 says VERIFIED only when every worker bench
   runs this version and its worker has probed its harness for the policy's
   model ids and its seat's provider keys (the worker probes before its
   sprint hook, so a hooked row is a probed row); `restore` prints an `ADMIT`
@@ -266,7 +266,7 @@ The identity is the sprint's own state, never a literal in the code: the coordin
 with `nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason
 "<why>"`, and the store holds it (round 24, beside the stop). The tool enforces it in order:
 
-- `up` step 7 asks the human for it before it looks at any bench (`ASK the human which forge
+- `up` step 9 asks the human for it before it looks at any bench (`ASK the human which forge
   account ...`, next: the identity command); no act can make it true.
 - `hook --role worker` refuses until it is set; every hook prints `COMMIT AS <name> <email>`,
   the two `git config` lines and the By:/Co-Authored-By: rule.

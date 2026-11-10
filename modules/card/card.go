@@ -216,8 +216,9 @@ func StreamFromStore(s store.Stream) Stream { return Stream{Name: s.Name, Held: 
 // Stream events. HoldStream holds the stream and parks, in the same op,
 // the ready producers named (the caller passes every ready producer of the
 // stream, each once; one it misses is parked later by Park). Seq is the
-// snapshot's seq: the plan fences AtSeq, so a card that became ready after
-// the snapshot refuses the op. UnholdStream clears the hold and parks
+// snapshot's seq: the plan fences UnchangedSince its streams and cards, so a
+// card that became ready after the snapshot refuses the op (a worker's beat,
+// which writes neither, does not). UnholdStream clears the hold and parks
 // nothing (Resolve does that). A stream has no reason column; UnholdStream's
 // reason is for the caller, and a park into the hold names the stream.
 type HoldStream struct {
@@ -317,6 +318,23 @@ func RouteName(reason string) string {
 	return ""
 }
 
+// Refuted says whether a work consumer's fail reason refutes its brief: its
+// first word is "refuted" (the brief's premise does not hold: the red test
+// cannot be made to fail at the base) or "brief-defect" (the brief cannot be
+// met as written; "brief defect" too), in any case, as `finish --failed
+// --reason "refuted: <the evidence>"` writes it. Broken leaves such a
+// producer waiting held ("held: <reason>") for the coordinator: the same
+// brief dealt again is refuted again (live 2026-11-09: one card refuted at
+// w24, w25 and w26).
+func Refuted(reason string) bool {
+	low := strings.ToLower(strings.TrimSpace(reason))
+	if rest, ok := strings.CutPrefix(low, "brief defect"); ok {
+		low = "brief-defect" + rest
+	}
+	word := low[:len(low)-len(strings.TrimLeft(low, "abcdefghijklmnopqrstuvwxyz-"))]
+	return word == "refuted" || word == "brief-defect"
+}
+
 // HeldPrefix starts the reason of a producer the coordinator holds with
 // `hold <card>` (defect 47), or policy holds at the bounce limit: a HoldCard
 // whose reason is "held: <why>". The board lists it with the waiting
@@ -347,6 +365,18 @@ func Held(c Card) bool { return c.State == Waiting && HeldReason(c.Reason) }
 // ReleasedPrefix starts a released consumer's reason: the record that it was
 // given back (by its row, or by a drop of its producer), not failed.
 const ReleasedPrefix = "released: "
+
+// ReturnedPrefix starts the reason of a consumer returned to the queue
+// because its row went held or down (Glenn, 2026-11-10: "The cards should be
+// redistributed when anybody goes to held or down automatically"): released,
+// so no blame and no result, its branch and head kept.
+const ReturnedPrefix = ReleasedPrefix + "returned from row "
+
+// Returned is the reason, after ReleasedPrefix, of a consumer returned from
+// row because the row is why (held, down, unhooked).
+func Returned(row, why string) string {
+	return strings.TrimPrefix(ReturnedPrefix, ReleasedPrefix) + row + " (" + why + "); dealt again, branch and head kept"
+}
 
 // The levels a producer's priority may take, lowest first; read consumers
 // occupy a rung between high and critical in the deal order (policy's).

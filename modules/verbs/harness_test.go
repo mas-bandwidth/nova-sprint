@@ -44,7 +44,7 @@ func applyTest(t *testing.T, f *store.Fake, op store.Op) {
 }
 
 // setIdentity gives f the fixtures' commit identity (the coordinator's
-// nova-sprint identity), as up's step 7 needs.
+// nova-sprint identity), as up's workers step needs.
 func setIdentity(t *testing.T, f *store.Fake) {
 	t.Helper()
 	applyTest(t, f, store.Op{ID: "identity", Epoch: 1, Actor: "alice", Kind: "identity", At: t0, Writes: []store.Write{store.SetIdentity(testIdentity)}})
@@ -149,9 +149,13 @@ func want(t *testing.T, r Result, exit int, parts ...string) {
 type fakeBus struct {
 	present map[string]bool
 	err     error
+	during  func() // runs inside Who: writes that land while the bus is asked
 }
 
 func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
+	if b.during != nil {
+		b.during()
+	}
 	out := map[string]bus.Presence{}
 	for n, ok := range b.present {
 		if ok {

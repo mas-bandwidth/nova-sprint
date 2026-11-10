@@ -99,7 +99,8 @@ func all[K comparable, T any](ctx context.Context, tx pgx.Tx, scan func(pgx.Row)
 // Snapshot reads the current epoch in one REPEATABLE READ transaction.
 func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) { return p.Read(ctx, Scope{All: true}) }
 
-// Read is Snapshot with only the cards scope names, in the same transaction.
+// Read is Snapshot with only the cards and judgements scope names, in the
+// same transaction.
 func (p *PG) Read(ctx context.Context, scope Scope) (Snapshot, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -151,7 +152,11 @@ func snapshotTx(ctx context.Context, tx pgx.Tx, scope Scope) (Snapshot, error) {
 	if s.Rows, err = all(ctx, tx, scanRow, func(v Row) string { return v.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", s.Epoch); err != nil {
 		return s, err
 	}
-	if s.Judgements, err = all(ctx, tx, scanJudgement, func(v Judgement) string { return v.ID }, "SELECT "+judgeCols+" FROM sprint.judgements WHERE epoch = $1", s.Epoch); err != nil {
+	judgements := "SELECT " + judgeCols + " FROM sprint.judgements WHERE epoch = $1"
+	if scope.OpenJudgements {
+		judgements += " AND state = 'open'"
+	}
+	if s.Judgements, err = all(ctx, tx, scanJudgement, func(v Judgement) string { return v.ID }, judgements, s.Epoch); err != nil {
 		return s, err
 	}
 	cursors, err := all(ctx, tx, scanCursor, func(v cursorRow) string { return v.name }, "SELECT name, seq FROM sprint.cursors")
@@ -270,6 +275,30 @@ func (t *pgTx) lastSeq() (int64, error) {
 	var n int64
 	err := t.tx.QueryRow(t.ctx, "SELECT coalesce(max(seq), 0) FROM sprint.events").Scan(&n)
 	return n, err
+}
+
+func (t *pgTx) acceptedSince(seq int64) ([]Event, error) {
+	rows, err := t.tx.Query(t.ctx, "SELECT seq, before, after FROM sprint.events WHERE seq > $1 AND accepted ORDER BY seq", seq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var before, after []byte
+		if err := rows.Scan(&e.Seq, &before, &after); err != nil {
+			return nil, err
+		}
+		if e.Before, err = readState(before); err != nil {
+			return nil, fmt.Errorf("store: before-image of seq %d: %w", e.Seq, err)
+		}
+		if e.After, err = readState(after); err != nil {
+			return nil, fmt.Errorf("store: after-image of seq %d: %w", e.Seq, err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 func (t *pgTx) rows() ([]Row, error) {

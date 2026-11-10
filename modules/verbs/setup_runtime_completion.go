@@ -23,7 +23,7 @@ func (r RuntimeSetup) Completion(ctx context.Context) (string, error) {
 	if !hostSaved || !dashSaved || !actorSaved || !fleetName.MatchString(host) || !setupActor.MatchString(actor) {
 		return "", fmt.Errorf("setup answers unavailable: run-on saved %t valid %t, dashboard saved %t, coordinator saved %t valid %t", hostSaved, fleetName.MatchString(host), dashSaved, actorSaved, setupActor.MatchString(actor))
 	}
-	for _, step := range []int{3, 4, 5, 7} {
+	for _, step := range []int{StepCoordinator, StepRun, StepDashboard, StepWorkers} {
 		check, err := r.Verify(ctx, step, SetupInput{})
 		if err != nil {
 			return "", err

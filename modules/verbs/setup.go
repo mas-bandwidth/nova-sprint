@@ -10,7 +10,12 @@ import (
 
 // SetupInput is up's non-secret choices. A service key is read by the setup
 // adapter at a hidden terminal prompt and sent straight to nova-secrets.
-type SetupInput struct{ Actor, Dash, Services, Key, RunOn, Version, Continuation string }
+// TakeOver with Reason is --take-over --reason: the coordinator's seat moved
+// from a coordinator who is gone from the bus (takeOver).
+type SetupInput struct {
+	Actor, Dash, Services, Key, RunOn, Version, Continuation, Reason string
+	TakeOver                                                         bool
+}
 
 // SetupCheck is one step's probe. Action is true only when the choices make
 // the step's next idempotent action possible without another question.
@@ -66,13 +71,32 @@ type SetupObservation struct {
 	Verified, Action, Failed bool
 }
 
-// setupSteps is how many steps the walk has.
-const setupSteps = 8
+// The walk's steps, in order (docs/SETUP.md, LAYER-6 section 5): the fleet
+// first (nova-tools green, then the two nova-fleet plays every bench needs,
+// runner-packages before netwatch so a bench can run gates as soon as it
+// is dealt to), then the sprint's own setup from the store up. A step's
+// number is its place in this list; "UP k/10" lines and tla/Setup.tla's
+// Steps use the same numbering.
+const (
+	StepTools = 1 + iota
+	StepPackages
+	StepNetwatch
+	StepStore
+	StepCoordinator
+	StepRun
+	StepDashboard
+	StepServices
+	StepWorkers
+	StepSmoke
+	// SetupSteps is how many steps the walk has.
+	SetupSteps = StepSmoke
+)
 
 // setupInput is up's flags as the walk's input.
 func setupInput(in *input) (SetupInput, error) {
 	s := SetupInput{Actor: in.actor, Dash: in.str("dash"), Services: in.str("services"), Key: in.str("key"),
-		RunOn: in.str("run-on"), Version: in.str("version"), Continuation: in.str("continuation")}
+		RunOn: in.str("run-on"), Version: in.str("version"), Continuation: in.str("continuation"),
+		TakeOver: in.has("take-over"), Reason: in.str("reason")}
 	switch {
 	case !validName(s.Actor):
 		return s, refuse("up names its coordinator", "nova-sprint up --as <you>")
@@ -80,8 +104,12 @@ func setupInput(in *input) (SetupInput, error) {
 		return s, misuse("up", "--continuation is the 64-hex id up printed")
 	case s.Dash != "" && s.Dash != "tailnet" && !strings.HasPrefix(s.Dash, "public="):
 		return s, misuse("up", "--dash is tailnet or public=<machine>[:<port>]")
+	case s.TakeOver && s.Reason == "":
+		return s, refuse("--take-over needs --reason", takeOverCommand(s.Actor))
+	case s.Reason != "" && !s.TakeOver:
+		return s, misuse("up", "--reason goes with --take-over")
 	}
-	for _, v := range []string{s.Services, s.Key, s.RunOn, s.Version, s.Dash} {
+	for _, v := range []string{s.Services, s.Key, s.RunOn, s.Version, s.Dash, s.Reason} {
 		if len(v) > 512 {
 			return s, misuse("up", "a value is at most 512 bytes")
 		}
@@ -106,7 +134,7 @@ func validContinuationID(id string) bool {
 
 // runUp is `up`: the walk, every step re-verified from step 1, under the
 // setup lock; the caller on the bus first; hooked in as coordinator once
-// the store exists (after step 2).
+// the store exists (after StepStore).
 func runUp(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	s, err := setupInput(in)
 	if err != nil {
@@ -164,8 +192,9 @@ func firstErr(errs ...error) error {
 	return nil
 }
 
-// walk is steps 1 to 8 with the lease checked around each, the handoff
-// prepared after step 2, and the coordinator hooked in after it.
+// walk is steps 1 to SetupSteps with the lease checked around each, the
+// handoff prepared after the store step, and the coordinator hooked in
+// after it.
 func (e *Engine) walk(ctx context.Context, lease SetupLease, s SetupInput) (out string, continuation string, err error) {
 	e.observe(SetupObservation{Kind: "begin", Scope: "walk"})
 	step := 0
@@ -175,7 +204,7 @@ func (e *Engine) walk(ctx context.Context, lease SetupLease, s SetupInput) (out 
 	}
 	handoff, hasHandoff := e.Setup.(SetupHandoff)
 	var b strings.Builder
-	for step = 1; step <= setupSteps; step++ {
+	for step = 1; step <= SetupSteps; step++ {
 		if err = e.leased(ctx, lease, step, s); err != nil {
 			return "", "", err
 		}
@@ -185,12 +214,12 @@ func (e *Engine) walk(ctx context.Context, lease SetupLease, s SetupInput) (out 
 		if err = e.leased(ctx, lease, 0, s); err != nil {
 			return "", "", err
 		}
-		if step == 2 && s.Continuation == "" && hasHandoff {
+		if step == StepStore && s.Continuation == "" && hasHandoff {
 			if id, err := e.prepareHandoff(ctx, lease, s, handoff); err != nil || id != "" {
 				return "", id, err
 			}
 		}
-		if step == 2 {
+		if step == StepStore {
 			if err = e.upHook(ctx, lease, s, &b); err != nil {
 				return "", "", err
 			}
@@ -209,10 +238,10 @@ func (e *Engine) observeEnd(step int, continuation string, err error) {
 	e.observe(SetupObservation{Kind: kind, Scope: "walk", Step: step, Failed: err != nil})
 }
 
-// leased is the lease still held and the context live; from step 3 the
-// caller must be the hooked coordinator.
+// leased is the lease still held and the context live; from the
+// coordinator step the caller must be the hooked coordinator.
 func (e *Engine) leased(ctx context.Context, lease SetupLease, step int, s SetupInput) error {
-	if step >= 3 {
+	if step >= StepCoordinator {
 		if _, err := e.hooked(ctx, &input{verb: "up", actor: s.Actor}, roleCoordinator, store.Scope{}); err != nil {
 			return err
 		}
@@ -239,7 +268,7 @@ func (e *Engine) handoffValid(ctx context.Context, s SetupInput, scope string) e
 
 func (e *Engine) prepareHandoff(ctx context.Context, lease SetupLease, s SetupInput, handoff SetupHandoff) (string, error) {
 	id, needed, err := handoff.PrepareHandoff(ctx, s)
-	e.observe(SetupObservation{Kind: "prepare-handoff", Scope: "walk", Step: 2, Action: needed, Failed: err != nil})
+	e.observe(SetupObservation{Kind: "prepare-handoff", Scope: "walk", Step: StepStore, Action: needed, Failed: err != nil})
 	if err != nil || !needed {
 		return "", err
 	}
@@ -250,7 +279,7 @@ func (e *Engine) prepareHandoff(ctx context.Context, lease SetupLease, s SetupIn
 }
 
 // upHook hooks the caller in as coordinator once the store exists, unless
-// it already is.
+// it already is; with --take-over, from a coordinator who is gone.
 func (e *Engine) upHook(ctx context.Context, lease SetupLease, s SetupInput, out *strings.Builder) error {
 	snap, err := e.snapshot(ctx)
 	if err != nil {
@@ -259,7 +288,13 @@ func (e *Engine) upHook(ctx context.Context, lease SetupLease, s SetupInput, out
 	if row := snap.Rows[s.Actor]; row.Session != "" && row.Role == "coordinator" {
 		return nil
 	}
-	text, err := e.hookAs(ctx, snap, s.Actor, "coordinator")
+	hook := e.hookAs
+	if s.TakeOver {
+		hook = func(ctx context.Context, snap store.Snapshot, name, _ string) (string, error) {
+			return e.takeOver(ctx, snap, name, s.Reason)
+		}
+	}
+	text, err := hook(ctx, snap, s.Actor, "coordinator")
 	if err != nil {
 		return err
 	}

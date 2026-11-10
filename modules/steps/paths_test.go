@@ -141,37 +141,96 @@ func TestTickHolds(t *testing.T) {
 	s.requireState("p1", "landed")
 }
 
-// TestTickRowHoldAndDown: a held row's unacknowledged consumers are
-// withdrawn at once, a down row's after the grace; acknowledged ones stay.
+// TestTickRowHoldAndDown: a hand left on a row that is held, down or not
+// hooked in (an op of an older release closed the row and left its cards,
+// live 2026-11-10: aurora unhooked and held with 15 cards) goes back to the
+// queue on the next tick, taken and untaken alike, each released with the
+// row's reason, no grace (Glenn, 2026-11-10: "Aurora is down, but she still
+// has cards. This is forbidden.").
 func TestTickRowHoldAndDown(t *testing.T) {
 	t.Parallel()
-	s := newSim(t)
-	s.stream("s1")
-	s.row("r1", 2, "pro")
-	s.producer("p1", "s1", "pro", "a/x")
-	s.producer("p2", "s1", "pro", "a/y")
-	s.run(2)
-	s.take("p1.w1")
-	s.requireState("p2.w1", "working")
-	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Hold{Reason: "rest"}))
-	s.tick()
-	require.Empty(t, s.rejected)
-	s.requireState("p1.w1", "working")
-	s.requireState("p2.w1", "fail")
-	s.requireState("p2", "ready")
-	assert.Equal(t, "row r1 is held; redealt", s.card("p2.w1").Reason)
-	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Unhold{Reason: "back"}))
-	s.run(1)
-	s.requireState("p2.w2", "working")
-	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Gone{}))
-	s.tick()
-	s.requireState("p2.w2", "working")
-	s.now = s.now.Add(seconds(Engine.Timeouts.RowSilentGone))
-	s.tick()
-	require.Empty(t, s.rejected)
-	s.requireState("p2.w2", "fail")
-	s.requireState("p1.w1", "working")
-	assert.Equal(t, "row r1 is down; redealt", s.card("p2.w2").Reason)
+	for _, tc := range []struct {
+		name, why string
+		close     func(s *sim)
+	}{
+		{"held", "held", func(s *sim) { s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Hold{Reason: "rest"})) }},
+		{"down", "down", func(s *sim) { s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Gone{})) }},
+		{"unhooked", "not hooked in", func(s *sim) { s.must("unhook", store.PutRow{Name: "r1"}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newSim(t)
+			s.stream("s1")
+			s.row("r1", 2, "pro")
+			s.producer("p1", "s1", "pro", "a/x")
+			s.producer("p2", "s1", "pro", "a/y")
+			s.run(2)
+			s.take("p1.w1")
+			s.requireState("p2.w1", "working")
+			tc.close(s)
+			s.requireState("p1.w1", "working") // the hand the old op left
+			s.tick()
+			require.Empty(t, s.rejected)
+			for _, id := range []string{"p1.w1", "p2.w1"} {
+				s.requireState(id, "fail")
+				assert.Equal(t, card.ReleasedPrefix+card.Returned("r1", tc.why), s.card(id).Reason, id)
+				assert.Empty(t, s.card(id).Result, "released, no blame: %s", id)
+			}
+			s.requireState("p1", "ready")
+			s.requireState("p2", "ready")
+		})
+	}
+}
+
+// TestRowHoldAndGoneReturnTheHandInTheirOp: the coordinator's hold of a row
+// and the tick's Gone of a silent one return its whole hand as they read it,
+// taken and untaken, in the same op that closes the row (a card dealt after
+// that read goes back on the next tick: TestTickRowHoldAndDown).
+func TestRowHoldAndGoneReturnTheHandInTheirOp(t *testing.T) {
+	t.Parallel()
+	setup := func(t *testing.T) *sim {
+		s := newSim(t)
+		s.stream("s1")
+		s.row("r1", 2, "pro")
+		s.producer("p1", "s1", "pro", "a/x")
+		s.producer("p2", "s1", "pro", "a/y")
+		s.run(2)
+		s.take("p1.w1")
+		s.requireState("p2.w1", "working")
+		return s
+	}
+	t.Run("hold", func(t *testing.T) {
+		t.Parallel()
+		s := setup(t)
+		rc, ref := s.verb(Request{Actor: "rowan", Coordinators: []string{"rowan"}, Row: "r1", Event: card.Hold{Reason: "rest"}})
+		require.Nil(t, ref)
+		require.True(t, rc.Accepted, rc.Reason)
+		assert.True(t, s.snap().Rows["r1"].Held)
+		for _, id := range []string{"p1.w1", "p2.w1"} {
+			s.requireState(id, "fail")
+			assert.Equal(t, card.ReleasedPrefix+card.Returned("r1", "held"), s.card(id).Reason, id)
+		}
+		s.requireState("p1", "ready")
+		s.requireState("p2", "ready")
+	})
+	t.Run("gone", func(t *testing.T) {
+		t.Parallel()
+		s := setup(t)
+		s.fold()
+		in := s.inputs()
+		in.Seen["r1"] = in.Now.Add(-seconds(Engine.Timeouts.RowSilentGone))
+		plan := Tick(s.v, in, benchAsk{})
+		plan.Ops = tickOnly(plan.Ops)
+		require.Len(t, plan.Ops, 1)
+		rc, err := s.f.Apply(t.Context(), plan.Ops[0])
+		require.NoError(t, err)
+		require.True(t, rc.Accepted, rc.Reason)
+		assert.Equal(t, "down", s.snap().Rows["r1"].State)
+		for _, id := range []string{"p1.w1", "p2.w1"} {
+			s.requireState(id, "fail")
+			assert.Equal(t, card.ReleasedPrefix+card.Returned("r1", "down"), s.card(id).Reason, id)
+		}
+	})
 }
 
 // TestTickHoldAtLimit: a producer at the bounce limit is held (waiting with
@@ -224,7 +283,7 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 		n++
 		s.requireState("p1", "working")
 		s.take(fmt.Sprintf("p1.w%d", n))
-		s.report(fmt.Sprintf("p1.w%d", n), "fail", "", "broke")
+		s.report(fmt.Sprintf("p1.w%d", n), "fail", sha(n), "broke") // each pushes a head: progress, so only the bounce limit holds it
 		s.tick()
 	}
 	for range limit {
@@ -248,6 +307,114 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("held: bounced %d times since its last unhold, the limit is %d", limit, limit), s.snap().Cards["p1"].Reason)
 	assert.Equal(t, 2*limit, s.snap().Cards["p1"].Bounces)
 	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
+}
+
+// TestTickNoProgressHolds: once escalation is spent (frontier_after
+// bounces before the run), same_finding work attempts running that fail
+// with no new head on the same brief hold the producer with a held
+// judgement, whatever the reasons say: the same brief dealt again at the top
+// rank fails again (live 2026-11-09). Below the top rank the card escalates
+// as before. A fault or a withdraw with no head neither counts nor breaks
+// the run; a fail that pushes a head breaks it; an unhold is a fresh run.
+func TestTickNoProgressHolds(t *testing.T) {
+	t.Parallel()
+	s := noProgressSim(t)
+	n, top := Engine.Limits.SameFinding, Engine.Limits.FrontierAfter
+	require.Equal(t, [2]int{2, 4}, [2]int{n, top}, "the default policy's same_finding and frontier_after")
+	end := func(c, result, head, reason string) {
+		s.requireState("p1", "working")
+		s.take(c)
+		s.report(c, result, head, reason)
+		s.tick()
+	}
+	end("p1.w1", "fail", "", "make failed")
+	end("p1.w2", "fail", "", "make failed") // two running, below the top rank: escalated, not held
+	end("p1.w3", "fail", sha(7), "pushed a partial fix")
+	end("p1.w4", "fail", sha(8), "pushed more") // progress; 4 bounces: the top rank from here
+	end("p1.w5", "fail", "", "tests still red")
+	end("p1.w6", "fault", "", "exit 137") // a fault spends nothing and breaks nothing
+	s.requireState("p1", "working")
+	assert.Empty(t, s.openJudgements("held"))
+	end("p1.w7", "fail", "", "tests still red")
+	s.requireState("p1", "waiting")
+	assert.Equal(t, fmt.Sprintf("held: failed %d top-rank attempts running with no new head on the same brief, the limit is %d", n, n), s.snap().Cards["p1"].Reason)
+	js := s.openJudgements("held")
+	require.Equal(t, []string{"held.p1.1"}, js)
+	s.run(3)
+	s.requireState("p1", "waiting")
+	rc, ref := s.verb(Request{Actor: "rowan", Judgement: js[0], Answer: "unhold", Card: "p1", Event: card.UnholdCard{Reason: "one more try"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.run(3)
+	assert.Empty(t, s.openJudgements("held"), "an unhold is a fresh run: the same fails do not hold it again")
+	end("p1.w8", "fail", "", "still red")
+	assert.Empty(t, s.openJudgements("held"), "one fail since the unhold")
+	end("p1.w9", "fail", "", "still red")
+	s.requireState("p1", "waiting")
+	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
+}
+
+// noProgressSim is p1 dealt on r1 under the engine's limits with the default
+// policy's bounce limit, 12, so the bounce limit is not reached first.
+func noProgressSim(t *testing.T) *sim {
+	s := newSim(t)
+	l := Engine.Limits
+	l.Bounces = 12
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &l}}
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	return s
+}
+
+// TestTickNoProgressFromTheStart: a producer that pushes nothing from its
+// first attempt is held once same_finding of its no-head fails were dealt at
+// the top rank, at frontier_after + same_finding bounces, not at the bounce
+// limit: the attempts below the top rank were escalation's, and do not count.
+func TestTickNoProgressFromTheStart(t *testing.T) {
+	t.Parallel()
+	s := noProgressSim(t)
+	at := Engine.Limits.FrontierAfter + Engine.Limits.SameFinding
+	for i := 1; i < at; i++ {
+		s.requireState("p1", "working")
+		s.take(fmt.Sprintf("p1.w%d", i))
+		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", "red")
+		s.tick()
+		assert.Empty(t, s.openJudgements("held"), "w%d: one top-rank fail at most", i)
+	}
+	s.take(fmt.Sprintf("p1.w%d", at))
+	s.report(fmt.Sprintf("p1.w%d", at), "fail", "", "red")
+	s.tick()
+	s.requireState("p1", "waiting")
+	assert.Equal(t, at, s.snap().Cards["p1"].Bounces)
+	assert.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
+}
+
+// TestTickNoProgressEditedBrief: an edit of the brief's paths between two
+// no-head fails ends the run: the brief is no longer the same.
+func TestTickNoProgressEditedBrief(t *testing.T) {
+	t.Parallel()
+	s := noProgressSim(t)
+	end := func(c, head string) {
+		s.requireState("p1", "working")
+		s.take(c)
+		s.report(c, "fail", head, "red")
+		s.tick()
+	}
+	for i := 1; i <= Engine.Limits.FrontierAfter; i++ {
+		end(fmt.Sprintf("p1.w%d", i), sha(i)) // progress up to the top rank
+	}
+	s.take("p1.w5")
+	s.report("p1.w5", "fail", "", "PATHS too narrow")
+	rc, ref := s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Edit{Paths: []string{"a/x", "a/y"}, Reason: "widened"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.tick()
+	end("p1.w6", "")
+	assert.Empty(t, s.openJudgements("held"), "the edit ended the run")
+	end("p1.w7", "")
+	assert.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
 }
 
 // TestTickBudgetAndCarry: results over the budget are carried in arrival
@@ -379,7 +546,11 @@ func TestTickSilentRow(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, rc.Accepted, rc.Reason)
 	assert.Equal(t, "down", s.snap().Rows["r1"].State)
-	s.requireState("p1.w1", "working")
+	s.requireState("p1.w1", "fail") // its hand goes back with the Gone
+	s.requireState("p1", "ready")
+	s.must("seen", store.SetRowState{Row: "r1", State: "up"})
+	s.run(1)
+	s.take("p1.w2")
 	s.fold()
 	in = s.inputs()
 	in.Seen["r1"] = in.Now.Add(-seconds(Engine.Timeouts.RowSilentWithdraw))
@@ -388,9 +559,9 @@ func TestTickSilentRow(t *testing.T) {
 	rc, err = s.f.Apply(t.Context(), plan.Ops[0])
 	require.NoError(t, err)
 	require.True(t, rc.Accepted, rc.Reason)
-	s.requireState("p1.w1", "fail")
+	s.requireState("p1.w2", "fail")
 	s.requireState("p1", "ready")
-	assert.Contains(t, s.card("p1.w1").Reason, "branch sprint/s1/p1 is kept")
+	assert.Contains(t, s.card("p1.w2").Reason, "branch sprint/s1/p1 is kept")
 	s.must("flaps", store.SetRowFlaps{Row: "r1", Flaps: 3})
 	s.tick()
 	assert.Equal(t, []string{"flap.r1.3"}, s.openJudgements("flap"))

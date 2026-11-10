@@ -118,6 +118,28 @@ Finish that walkthrough with a green check:
 nova-fleet check
 ```
 
+`nova-fleet up` sets each machine up: its inventory record, its login,
+Tailscale, its seat in the secrets store, its health guards, the tools and the
+services, and with `--runners '<repository-url>'` its GitHub Actions runners
+(every step is idempotent, so `up` can be run again with `--runners`). Two
+plays every bench needs are not in `nova-fleet up`: `nova-sprint up` runs them
+as its steps 2 and 3, `runner-packages` first so a bench can run gates as soon
+as it is dealt to, then `netwatch`. Each step runs the play in check mode on
+every bench (`nova-fleet <play> --check -- -l <benches>`) and is verified when
+the play would change nothing; otherwise it runs the play and checks again. A
+play that fails stops `up` with the play's own error and its fix.
+
+`runner-packages` installs the packages a card's gates and a CI job's tests
+need (`up` runs the play with its defaults, a CI toolchain; the nova-fleet
+guide says how to install your own list). `netwatch` lets a Linux bench that loses its network or the
+tailnet recover by itself; a Mac is skipped. A stream with `--forge github` lands only
+when CI is green, so every repository it lands in needs runners: `up --runners`
+registers them for one repository, and
+`nova-fleet github-runners -- -e github_runner_url='<repository-url>' -e github_runner_scope=repo`
+for each further one, both with a `gh auth login` on the control machine that
+has admin on the repository. The plays and their variables are in the
+[nova-fleet guide](https://github.com/mas-bandwidth/nova-tools/blob/main/cmd/nova-fleet/README.md).
+
 Choose the machine that will run the sprint. Run setup on that machine, which
 must be in the inventory with the `services` role. `up` runs only on the
 machine you run it on; `--run-on` must name that machine. Machines with
@@ -335,14 +357,17 @@ The receipt starts with:
 TAKEN <card> repo=<repository> base=<sha> branch=<branch> deadline=<n>s forge=<forge>
 ```
 
-It includes the full brief, any previous head and finding, the commit identity
-and the exact finish command. Repeating the same `take` prints the brief again
-without changing the generation.
+It includes the full brief, the head to continue from when the dealt branch
+holds earlier work (its tip at origin, which `take` reads, so work an earlier
+attempt pushed is never lost), any finding, the commit identity and the exact
+finish command. Repeating the same `take` prints the brief again without
+changing the generation; it names a newer tip only if the branch moved.
 
-1. Clone the repository into a directory used only by this attempt. Inspect the
-   dealt branch at origin. If it exists, fetch it and continue from its tip;
-   a prior attempt may already have pushed work. Otherwise create the dealt
-   branch at the supplied base SHA. Do not discard earlier work.
+1. Clone the repository into a directory used only by this attempt. When the
+   receipt names a head to continue from, fetch that head and create the dealt
+   branch at it, never at the base. Otherwise create the dealt branch at the
+   supplied base SHA. Take in a newer base by merging it, never by rebasing.
+   Do not discard earlier work.
 2. Read the repository instructions and the brief. Work only within `PATHS`.
    Run the brief's gates at the starting head to identify existing failures;
    cite documented base failures rather than expanding the task to fix them.
@@ -419,6 +444,12 @@ origin back with the card, so the next attempt continues from it:
 sprint_env nova-sprint release '<card>@<gen>' --head '<pushed-sha>' --reason '<why>' --epoch '<epoch>'
 sprint_env nova-sprint finish '<card>@<gen>' --failed --reason '<why>' --epoch '<epoch>'
 ```
+
+When the brief itself is wrong, start the reason with `refuted:` (its red test
+cannot be made to fail at the base) or `brief-defect:` (it cannot be met as
+written), then the evidence. Such a card is not dealt again: it waits, held,
+with your reason and pushed head, until the coordinator drops it, replaces it
+with a corrected brief, or deals it again.
 
 Ask the coordinator about scope or missing prerequisites rather than repeatedly
 retrying a failing command. Messages from the name `sprint` are receipts:
@@ -507,6 +538,10 @@ matches are checked at the stream's base. A new file may be named explicitly whe
 directory, declare it as a separate `PATHS` entry ending in `/`; its parent
 must exist. Keep the allowed paths as narrow as the task permits. Each
 `DONE-WHEN` is one program and its arguments, not an unquoted shell pipeline; repeat the field for multiple gates.
+The worker runs each gate inside the sandbox with `TMPDIR` in the job's
+directory, `CARGO_MAKEFLAGS` naming a FIFO jobserver it holds (`-j4`, or
+fewer cores) and, on Linux, the host target's linker set to the absolute `cc`
+on its `PATH`, so `cargo build` and `cargo test` gates run under the strict wall.
 
 `NEEDS` lists producer ids whose landed output this task actually consumes.
 Independent work should have no needs. `AFTER` is an optional soft landing
@@ -672,6 +707,7 @@ Common situations and the next step:
 | This process has no sprint credential | Run it through `sprint_env`; confirm your seat has the sprint grant. Do not rerun setup just because your shell lacks a credential. |
 | Not on the bus | Start the harness's bus hook, then retry the sprint hook. |
 | Already hooked | Recover your own session with `unhook`, then hook again. Resolve another live owner first. |
+| The sprint's coordinator is another row | Ask that row to `unhook`. If it is gone from `nova-bus who` and cannot, take the seat with `up --as <you> --take-over --reason "<why>"`; it refuses while that row is on the bus, and it returns the row's cards to the queue. |
 | No commit identity | The coordinator sets it with `identity`; the worker then hooks or takes again. |
 | Not dealt at this generation, withdrawn or already reported | Run `next` as your row and use its current command. Do not invent a new generation. |
 | Head is absent at origin | Push the dealt branch and verify its full remote SHA before finishing. |

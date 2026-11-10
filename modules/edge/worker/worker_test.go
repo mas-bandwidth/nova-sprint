@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -330,13 +331,13 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 	j.Needs = oh.Needs()
 	wallArgv := BuildWallArgv(WallConfig{
 		ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox",
-		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true, GOOS: "linux",
+		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true,
 	}, j, oEnv, cArgv)
 	if runtime.GOOS != "windows" && (len(wallArgv) < 3 || wallArgv[0] != "nice" || wallArgv[1] != "-n" || wallArgv[2] != "15") {
 		t.Fatalf("wall argv must run the work at nice 15, below CI: %v", wallArgv)
 	}
 	joined := strings.Join(wallArgv, " ")
-	if !strings.Contains(joined, "nova-reserve run --slots 1") || !strings.Contains(joined, "nova-sandbox --write "+dir) || !strings.Contains(joined, "--unix --net-deny --net-allow 127.0.0.1:19999") {
+	if !strings.Contains(joined, "nova-reserve run --slots 1") || !strings.Contains(joined, "nova-sandbox --write "+dir) || !strings.Contains(joined, "--net-deny --net-allow 127.0.0.1:19999") || strings.Contains(joined, "--unix") {
 		t.Fatalf("unexpected wall argv: %s", joined)
 	}
 }
@@ -364,6 +365,21 @@ func TestClassifyOutcomesAndFaultRules(t *testing.T) {
 	}
 	if out := ClassifyJob(h, j, 0, 4*time.Second, 15*time.Second, []byte("done")); out.Result != "fail" {
 		t.Fatalf("missing result.json must be fail, got %+v", out)
+	}
+}
+
+// A harness's fail that refutes its brief stays a fail, so the card waits
+// held for the coordinator: one that names a path outside the card's paths
+// is a brief defect, never the fault that is dealt again with no bounce.
+func TestRefutedFailStaysFail(t *testing.T) {
+	t.Parallel()
+	for _, why := range []string{"brief-defect: the fix needs x.go, outside card paths", "refuted: outside allowed paths nothing fails at the base"} {
+		if out := normalizeFileOutcome_internal("fail", why, "", 0, ""); out.Result != "fail" || out.Reason != why {
+			t.Fatalf("%q must stay a fail, got %+v", why, out)
+		}
+	}
+	if out := normalizeFileOutcome_internal("fail", "edit outside card paths refused", "", 0, ""); out.Result != "fault" {
+		t.Fatalf("a blocked edit with no refutation stays a fault, got %+v", out)
 	}
 }
 
@@ -662,6 +678,20 @@ func TestWallEnvExactAllowlistPerName(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The wall closes AF_UNIX, so MSBuild's out-of-process nodes (named pipes)
+// die and a multi-target build fails with no error: under the bench's dotnet
+// the wall env builds in one node, and the caller cannot turn it back on.
+func TestWallEnvDotnetBuildsInOneNode(t *testing.T) {
+	t.Parallel()
+	env := SanitizeWallEnv([]string{"PATH=/usr/bin", "DOTNET_CLI_TELEMETRY_OPTOUT=1", "BuildInParallel=true"}, t.TempDir())
+	if !slices.Contains(env, "BuildInParallel=false") || slices.Contains(env, "BuildInParallel=true") {
+		t.Fatalf("SanitizeWallEnv with the bench's dotnet = %q, want BuildInParallel=false and no other", env)
+	}
+	if env := SanitizeWallEnv([]string{"PATH=/usr/bin"}, t.TempDir()); slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "BuildInParallel=") }) {
+		t.Fatalf("SanitizeWallEnv without the bench's dotnet = %q, want no BuildInParallel", env)
 	}
 }
 

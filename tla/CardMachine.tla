@@ -79,7 +79,13 @@
 (* withdraw. A work consumer's fault that names a missing route or device *)
 (* (the code's reason prefix "missing-route:", the model's result "route") *)
 (* leaves its producer waiting with why "route" on the first fault instead *)
-(* of a re-deal (defect 48; RouteFaultWaits).                              *)
+(* of a re-deal (defect 48; RouteFaultWaits). A work consumer's fail that  *)
+(* refutes its brief (the code's reason's first word "refuted" or          *)
+(* "brief-defect", card.Refuted; the model's result "refuted") leaves its  *)
+(* producer waiting with why "held" (the code's reason "held: <reason>"), *)
+(* one bounce spent, never re-dealt until the coordinator's UnholdCard    *)
+(* (live 2026-11-09: one card refuted at w24, w25 and w26;               *)
+(* RefutedNeverRedealt).                                                  *)
 (*                                                                         *)
 (* A card with a problem has no state of its own (Glenn, 2026-11-07:       *)
 (* "waiting is where stuff goes where it's having problems"): it is        *)
@@ -158,7 +164,7 @@ PFinal  == {"landed", "fail"}
 CStates == {"none", "ready", "working", "done", "fail"}
 CFinal  == {"done", "fail"}
 LiveSt  == {"ready", "working"}
-Results == {"-", "ok", "fix", "fail", "fault", "route"}   \* route: a fault naming a missing route
+Results == {"-", "ok", "fix", "fail", "fault", "route", "refuted"}   \* route: a fault naming a missing route; refuted: a fail refuting the brief
 Prios   == {"normal", "blocker"}
 None    == "none"
 NoP     == "-"
@@ -433,12 +439,16 @@ Finished(p, c) ==
 \* A pushed head is kept on the producer; a report with no head keeps p's.
 KeptHead(p, c) == IF cs[c].head # 0 THEN cs[c].head ELSE ps[p].head
 
+\* A fail that refutes the brief leaves the producer waiting held: the same
+\* brief dealt again is refuted again, so it waits for the coordinator.
 Broken(p, c) ==
   /\ ps[p].st = "working"
   /\ IsCur(p, c)
   /\ cs[c].st = "done"
-  /\ cs[c].res = "fail"
-  /\ PStep("Broken", p, c, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
+  /\ cs[c].res \in {"fail", "refuted"}
+  /\ PStep("Broken", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = "refuted" THEN "waiting" ELSE Back,
+                                         !.why = IF cs[c].res = "refuted" THEN "held" ELSE "-",
+                                         !.bounces = @ + 1,
                                          !.head = KeptHead(p, c)])
 
 \* A fault naming a missing route leaves the producer waiting with why
@@ -721,13 +731,14 @@ Add(p, ns, as) ==
 ReportHeads(c, res) ==
   IF cs[c].kind = "read" THEN {ps[c[1]].head}
   ELSE IF res = "ok" THEN Heads \ ({cs[c].prior} \cap FinishedHeads(c[1])) ELSE {0} \cup (Heads \ {cs[c].prior})
-\* A work consumer reports ok, fail or fault; a read ok, fix or fault. The
-\* model's bound on bounces sits here, on the report that would raise them
-\* (fail, fix), so Broken and ReadFix are always enabled once reported.
+\* A work consumer reports ok, fail, refuted or fault; a read ok, fix or
+\* fault. The model's bound on bounces sits here, on the report that would
+\* raise them (fail, refuted, fix), so Broken and ReadFix are always enabled
+\* once reported.
 ReportResults(c) ==
   LET ok == ps[c[1]].bounces < MaxBounce IN
   IF cs[c].kind = "read" THEN {"ok", "fault"} \cup (IF ok THEN {"fix"} ELSE {})
-  ELSE {"ok", "fault", "route"} \cup (IF ok THEN {"fail"} ELSE {})
+  ELSE {"ok", "fault", "route"} \cup (IF ok THEN {"fail", "refuted"} ELSE {})
 
 Report(c, r, res, h) ==
   /\ cs[c].st = "working"
@@ -1026,6 +1037,15 @@ NeverStranded ==
 (* neither the deal's Resolve nor a Start nor WaiveRed has taken it.       *)
 HeldNeverDealt == \A p \in P : ps[p].why # "-" => ps[p].st = "waiting"
 
+(* A refuted card is never dealt again until the coordinator acts (live   *)
+(* 2026-11-09): a producer whose current work consumer reported refuted   *)
+(* is ready (dealable) only after an UnholdCard since, which set its      *)
+(* bounce base to its bounces; the refuted Broken spent one, so without   *)
+(* the unhold base < bounces. Drop and replace leave it fail.             *)
+RefutedNeverRedealt ==
+  \A p \in Prods : \A c \in ConsOf(p) :
+    (IsCur(p, c) /\ cs[c].res = "refuted" /\ ps[p].st = "ready") => ps[p].base = ps[p].bounces
+
 (* A live read consumer only in review, of the producer's current head    *)
 (* and review count.                                                      *)
 ReadOnlyInReview ==
@@ -1038,10 +1058,11 @@ ReaderNeverAuthor ==
 
 WidthKept == \A r \in Rows : Cardinality(WorkingOn(r)) <= rs[r].width
 
-(* A work consumer reports ok, fail or fault; a read ok, fix or fault.   *)
+(* A work consumer reports ok, fail, refuted or fault; a read ok, fix or *)
+(* fault.                                                                *)
 ResultsByKind ==
   \A c \in CIds :
-    /\ cs[c].kind = "work" => cs[c].res \in {"-", "ok", "fail", "fault", "route"}
+    /\ cs[c].kind = "work" => cs[c].res \in {"-", "ok", "fail", "fault", "route", "refuted"}
     /\ cs[c].kind = "read" => cs[c].res \in {"-", "ok", "fix", "fault"}
 
 (* AskRead and AskReads refuse a row already holding a live read of this  *)
@@ -1176,6 +1197,10 @@ NeverFaultRedealt ==
 (* with why "route" for the coordinator (defect 48).                      *)
 NeverRouteHeld ==
   ~\E p \in Prods : ps[p].st = "waiting" /\ ps[p].why = "route" /\ \E c \in ConsOf(p) : IsCur(p, c) /\ cs[c].res = "route"
+(* A work consumer's fail refuted its brief and its producer waits held   *)
+(* for the coordinator.                                                   *)
+NeverRefutedHeld ==
+  ~\E p \in Prods : ps[p].st = "waiting" /\ ps[p].why = "held" /\ \E c \in ConsOf(p) : IsCur(p, c) /\ cs[c].res = "refuted"
 (* A red goes to fix with the finding (intent rule 30): only Red sets red, *)
 (* and only Red and ReadFix write a finding.                              *)
 NeverRedToFix ==

@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -156,6 +158,127 @@ func TestCardTestsRunInsideTheSandbox(t *testing.T) {
 	argv = unniced(argv)
 	if argv[0] != "/fixture/nova-reserve" || !slices.Contains(argv, "/fixture/nova-sandbox") || !slices.Equal(argv[len(argv)-3:], []string{"--", "make", "test"}) {
 		t.Errorf("card test command ran as %q: want nova-reserve, then nova-sandbox, then make test", argv)
+	}
+}
+
+// fifoExec is a wallExec that also looks, while the command "runs", at the
+// FIFO jobserver its CARGO_MAKEFLAGS names: whether it is a named pipe and the
+// tokens the worker holds in it.
+type fifoExec struct {
+	env    []string
+	fifo   string
+	isPipe bool
+	tokens int
+}
+
+func (e *fifoExec) Run(_ context.Context, c edge.Cmd) (edge.Result, error) {
+	e.env = slices.Clone(c.Env)
+	for _, kv := range c.Env {
+		if v, ok := strings.CutPrefix(kv, "CARGO_MAKEFLAGS="); ok {
+			_, e.fifo, _ = strings.Cut(v, "--jobserver-auth=fifo:")
+		}
+	}
+	if st, err := os.Lstat(e.fifo); err == nil && st.Mode()&os.ModeNamedPipe != 0 {
+		e.isPipe = true
+		if f, err := os.OpenFile(e.fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0); err == nil {
+			buf := make([]byte, 64)
+			e.tokens, _ = f.Read(buf)
+			_ = f.Close()
+		}
+	}
+	return edge.Result{}, nil
+}
+
+// A done-when gate under the strict wall gets a FIFO jobserver: cargo's
+// default pipe jobserver makes std fork through socketpair(SOCK_SEQPACKET),
+// which the wall's seccomp refuses, so rustc never runs. The FIFO is in the
+// job's --write directory, held open by the worker with gateJobs-1 tokens,
+// named by CARGO_MAKEFLAGS passed with --env, with TMPDIR in the job's tree
+// passed too; the wall gains no flag (never --unix), and the FIFO is gone
+// after the gate.
+func TestGateGetsFIFOJobserverAndWritableTmpdir(t *testing.T) {
+	t.Parallel()
+	ex := &fifoExec{}
+	cc := func(name string) (string, error) { return "/fixture/bin/" + name, nil }
+	w := &OSReserveWall{UseSandbox: true, Exec: ex, LookPath: cc, Config: WallConfig{ReserveBin: "/fixture/nova-reserve", SandboxBin: "/fixture/nova-sandbox", NetDeny: true}}
+	dir := t.TempDir()
+	res, err := w.RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := strings.Join(res.Argv, " ")
+	if !strings.Contains(argv, "--write "+dir+" ") || !strings.Contains(argv, "--env CARGO_MAKEFLAGS") || !strings.Contains(argv, "--env TMPDIR") || strings.Contains(argv, "--unix") {
+		t.Errorf("wall argv %q: want --write %s, --env CARGO_MAKEFLAGS, --env TMPDIR and no --unix", argv, dir)
+	}
+	want := fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", gateJobs_internal(), ex.fifo)
+	if !slices.Contains(ex.env, want) || !pathUnder_internal(ex.fifo, dir) || !ex.isPipe || ex.tokens != gateJobs_internal()-1 {
+		t.Errorf("gate env %q: want %q, a named pipe under %s holding %d tokens (pipe %v, %d tokens)", ex.env, want, dir, gateJobs_internal()-1, ex.isPipe, ex.tokens)
+	}
+	if !slices.Contains(ex.env, "TMPDIR="+filepath.Join(dir, "tmp")) {
+		t.Errorf("gate env %q: want TMPDIR in the job's --write tree", ex.env)
+	}
+	if kv := cargoLinkerEnv_internal(runtime.GOOS, runtime.GOARCH, cc); kv != "" && (!slices.Contains(ex.env, kv) || !strings.Contains(argv, "--env "+strings.Split(kv, "=")[0])) {
+		t.Errorf("gate env %q: want %s passed with --env", ex.env, kv)
+	}
+	if _, err := os.Lstat(ex.fifo); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the gate's FIFO %s outlived the gate: %v", ex.fifo, err)
+	}
+}
+
+// Whatever a job left at the FIFO's name (a stale FIFO, a link out of its
+// tree, a full directory) is cleared, never followed: the gate still gets
+// a fresh seeded FIFO and nothing outside the job directory changes.
+func TestGateFIFOReplacesWhatTheJobPlanted(t *testing.T) {
+	t.Parallel()
+	outside := filepath.Join(t.TempDir(), "keep")
+	if err := os.WriteFile(outside, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, plant := range map[string]func(string) error{
+		"stale fifo": func(p string) error { return syscall.Mkfifo(p, 0o600) },
+		"link out":   func(p string) error { return os.Symlink(outside, p) },
+		"directory": func(p string) error {
+			return errors.Join(os.Mkdir(p, 0o755), os.WriteFile(filepath.Join(p, "f"), nil, 0o600))
+		},
+	} {
+		dir := t.TempDir()
+		if err := plant(filepath.Join(dir, "jobserver.fifo")); err != nil {
+			t.Fatal(err)
+		}
+		ex := &fifoExec{}
+		w := &OSReserveWall{Exec: ex, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+		if _, err := w.RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute); err != nil || !ex.isPipe || ex.tokens != gateJobs_internal()-1 {
+			t.Errorf("%s: err %v, pipe %v, %d tokens", name, err, ex.isPipe, ex.tokens)
+		}
+	}
+	if b, err := os.ReadFile(outside); err != nil || string(b) != "x" {
+		t.Errorf("a planted link was followed: %q %v", b, err)
+	}
+}
+
+// rustc runs its linker by name under its own PATH, which std spawns by
+// fork (refused in the wall), so a Linux gate names cc by its absolute path
+// for the host's target; elsewhere, or with no absolute cc, nothing is set.
+func TestGateNamesCargoLinkerByAbsolutePath(t *testing.T) {
+	t.Parallel()
+	abs := func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	rel := func(name string) (string, error) { return name, nil }
+	none := func(name string) (string, error) { return "", errors.New("not found") }
+	for _, tc := range []struct {
+		goos, goarch string
+		look         func(string) (string, error)
+		want         string
+	}{
+		{"linux", "amd64", abs, "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/cc"},
+		{"linux", "arm64", abs, "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/cc"},
+		{"linux", "riscv64", abs, ""},
+		{"darwin", "arm64", abs, ""},
+		{"linux", "amd64", rel, ""},
+		{"linux", "amd64", none, ""},
+	} {
+		if got := cargoLinkerEnv_internal(tc.goos, tc.goarch, tc.look); got != tc.want {
+			t.Errorf("%s/%s: %q, want %q", tc.goos, tc.goarch, got, tc.want)
+		}
 	}
 }
 

@@ -103,7 +103,7 @@ func serviceLogPath(service string) string {
 	return filepath.Join(".local", "state", "nova", "services", service+".log")
 }
 
-// productionWorkload is up's steps 6 to 8 on a real fleet
+// productionWorkload is up's steps 8 to 10 on a real fleet
 // (verbs.SetupWorkload): services writes as up's actor; run is the
 // sprint-run record the workers share the store and bus with; store and
 // present observe the rows; lastLine reads a unit's last log line.
@@ -116,9 +116,9 @@ type productionWorkload struct {
 	version  func(ctx context.Context, machine string) error // nil: this bench runs this binary's version
 }
 
-// ServicesReady is true: step 6's keys are proven by their model probe
+// ServicesReady is true: the services step's keys are proven by their model probe
 // (verbs.ServiceKey) and "none" needs nothing; the worker records that
-// open the provider keys are step 7's, proven by the workers coming up.
+// open the provider keys are the workers step's, proven by the workers coming up.
 func (productionWorkload) ServicesReady(context.Context, []string) (bool, error) { return true, nil }
 
 // InstallServices has nothing past the keys to install (ServicesReady).
@@ -163,7 +163,7 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	return nil
 }
 
-// benchState is one worker bench as steps 7 and 8 see it.
+// benchState is one worker bench as steps 9 and 10 see it.
 type benchState struct {
 	name, row string // row: the store row's state, "no row" when absent
 	hooked    bool   // its name is on the bus
@@ -226,7 +226,7 @@ func (w productionWorkload) WorkersReady(ctx context.Context) (bool, error) {
 }
 
 // versionsReady is every bench's nova-sprint at this binary's version, the
-// benches read at once (step 5's check, over ssh).
+// benches read at once (check's per-bench read, over ssh).
 func (w productionWorkload) versionsReady(ctx context.Context, states []benchState) (bool, error) {
 	if w.version == nil {
 		return false, fmt.Errorf("worker setup unavailable: no version check is wired")
@@ -306,7 +306,7 @@ func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 }
 
 // RunSmoke has nothing to act: what SmokeReady needs is a worker coming up
-// (step 7) or a core count in nova-config, which its refusal names.
+// (step 9) or a core count in nova-config, which its refusal names.
 func (productionWorkload) RunSmoke(context.Context) error { return nil }
 
 // workerUnit is machine's worker service as check and show read it

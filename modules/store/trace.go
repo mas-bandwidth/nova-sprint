@@ -30,8 +30,9 @@ import (
 //     from a projected op (it is never refused for a value it carries); an
 //     op with another stream write or StreamHeld is not projected (TraceOp
 //     refuses it), since each can be refused as unchanged.
-//   - The AtSeq condition, SetActivePolicy, the policy's active flag, kind
-//     and name: not in the model; TraceOp refuses the first two.
+//   - The AtSeq, RowsOnlySince and UnchangedSince conditions,
+//     SetActivePolicy, the policy's active flag, kind and name: not in the
+//     model; TraceOp refuses the first four.
 //   - Every card column no rule of the model reads (attempt, score, branch,
 //     head, pr, brief, prose, paths, done_when, reason, author, base_sha,
 //     prior_head, result, bounces, bounce_base, finding, review, cost, priced, usage,

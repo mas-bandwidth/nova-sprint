@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/usage"
 )
@@ -35,10 +36,6 @@ type Harness interface {
 // Needs is what a harness's wall needs, declared by its adapter (intent rule
 // 31): BuildWallArgv honours it, and nothing else widens a wall.
 type Needs struct {
-	// Unix leaves AF_UNIX sockets open (nova-sandbox --unix), which reopens
-	// the sandbox's same-uid escape (any local socket reachable by path). An
-	// adapter that sets it says why in its own comment.
-	Unix bool
 	// Proxy: the harness reaches its provider only through the worker's key
 	// proxy: --net-deny with one --net-allow for the proxy's loopback port.
 	// NetOpen: it reaches its own provider with its own login (no
@@ -213,17 +210,15 @@ func (h *CodexHarness) Needs() Needs {
 	return Needs{NetOpen: true, Writes: []string{h.ConfigDir}, Provider: "openai", Model: true}
 }
 
-// Needs: opencode's own in-process server listens on an AF_UNIX socket;
-// without --unix the wall kills it at startup ("Unexpected server error")
-// before it writes its log (measured on a bench, 2026-11-07). --unix reopens
-// nova-sandbox's same-uid escape (any local socket reachable by path): that
-// trade is accepted for this adapter only. It reaches providers through the
+// Needs: opencode 1.18.20 runs strict on Linux with no --unix (measured on
+// amd-3, 2026-11-10): its only AF_UNIX socket() attempt is the name lookup,
+// which fails harmlessly under --net-deny. It reaches providers through the
 // key proxy (one loopback --net-allow, OpenCodeConfig), logs under its data
 // home, and lists its models with `opencode models`.
 func (h *OpenCodeHarness) Needs() Needs {
-	return Needs{Unix: true, Proxy: true, ListModels: []string{"opencode", "models"}, LogDir: filepath.Join("data", "opencode", "log"), Model: true,
+	return Needs{Proxy: true, ListModels: []string{"opencode", "models"}, LogDir: filepath.Join("data", "opencode", "log"), Model: true,
 		Limits: "opencode 2.x starts a background service on a fixed port unless given --standalone, which 1.x refuses and this adapter does not pass: " +
-			"run opencode 1.x (1.18.20 measured); its write tool's death inside the wall (defect 33) was seen before --unix and not since on macOS (2026-11-08) or Linux (hetzner2, 104 of 104 probe runs, 2026-11-09)"}
+			"run opencode 1.x (1.18.20 measured); its write tool works inside the strict wall (amd-3, 2026-11-10)"}
 }
 
 // modelFlag_internal passes the model the take receipt (or the probe) named,
@@ -484,7 +479,7 @@ func normalizeFileOutcome_internal(res, reason, finding string, exit int, tail s
 		return Outcome{Result: "fix", Reason: cmp.Or(reason, finding), Finding: cmp.Or(finding, reason)}
 	case "broken", "fail":
 		r := cmp.Or(reason, tail, "harness reported broken")
-		if isBlockedWorkReason_internal(r) {
+		if isBlockedWorkReason_internal(r) && !card.Refuted(r) { // a refutation is the brief's, waiting held, never a fault dealt again
 			return Outcome{Result: "fault", Reason: r}
 		}
 		return Outcome{Result: "fail", Reason: r}
@@ -570,8 +565,6 @@ type WallConfig struct {
 	// CargoRegistry is the bench's ~/.cargo/registry, granted at start;
 	// CargoWallEnv links it into the job's own cargo home, offline.
 	CargoRegistry string
-	// GOOS is the OS the wall is built for; "" is runtime.GOOS.
-	GOOS string
 }
 
 // wallKeeps are the names nova-sandbox passes into the wall without --env;
@@ -581,8 +574,7 @@ var wallKeeps_internal = []string{"PATH", "HOME", "LANG", "TERM"}
 
 // BuildWallArgv is nova-reserve around nova-sandbox around the harness: the
 // job directory and the adapter's Needs (j.Needs) written, cfg's paths
-// read, --unix (Linux only: nova-sandbox refuses it on macOS, where a socket
-// under a --write is reachable) and the network as the adapter declares
+// read, and the network as the adapter declares
 // (under cfg.NetDeny: open, denied with the proxy's port reopened, or
 // denied), and every name of env passed with --env.
 func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
@@ -616,9 +608,6 @@ func sandboxFlags_internal(cfg WallConfig, j Job, env []string) []string {
 	}
 	add("--write", append([]string{j.JobDir}, append(slices.Clone(cfg.WritePaths), j.Needs.Writes...)...))
 	add("--read", cfg.ReadPaths)
-	if j.Needs.Unix && cmp.Or(cfg.GOOS, runtime.GOOS) != "darwin" {
-		flags = append(flags, "--unix")
-	}
 	if cfg.NetDeny && !j.Needs.NetOpen {
 		flags = append(flags, "--net-deny")
 		if j.Needs.Proxy && j.ProxyAddr != "" {
@@ -707,6 +696,9 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 	}
 	if !hasPath {
 		clean = append(clean, "PATH="+cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"))
+	}
+	if hasDotnetOptout { // the wall closes AF_UNIX: MSBuild's out-of-process nodes die, and a multi-target build fails with no error
+		clean = append(clean, "BuildInParallel=false")
 	}
 	if jobDir != "" {
 		clean = append(clean, "HOME="+filepath.Join(jobDir, "home"), "TMPDIR="+filepath.Join(jobDir, "tmp"), "XDG_DATA_HOME="+filepath.Join(jobDir, "data"))

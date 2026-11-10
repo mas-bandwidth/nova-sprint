@@ -530,6 +530,17 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 		m.head(m.p.ID, m.p.Head, c.Head)
 		return nil
 	}
+	if bounce && Refuted(c.Reason) {
+		// A fail that refutes the brief leaves the producer waiting held,
+		// "held: <the worker's evidence>", one bounce spent: the same brief
+		// dealt again is refuted again (Refuted). Layer 3 opens the held
+		// judgement; the coordinator drops it, replaces it, or unholds it.
+		m.state(m.p.ID, Waiting)
+		m.reason(m.p.ID, m.p.Reason, HeldPrefix+strings.TrimSpace(c.Reason))
+		m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
+		m.head(m.p.ID, m.p.Head, c.Head)
+		return nil
+	}
 	if r := m.back(); r != nil {
 		return r
 	}
@@ -1278,8 +1289,9 @@ func (m *mover) withdrawHead(e Withdraw, c Card) *Refusal {
 }
 
 // MoveStream is a stream's move on event e. HoldStream holds s and parks
-// every ready producer it names, once, in the same op, fenced at the
-// snapshot's seq (Stella's read of a822dfc7, and the second cold read).
+// every ready producer it names, once, in the same op, fenced on no stream
+// or card written since the snapshot's seq (Stella's read of a822dfc7, and
+// the second cold read; a beat moves the seq and no card).
 // UnholdStream clears the hold and parks nothing.
 func MoveStream(s Stream, e Event) (Plan, *Refusal) {
 	switch v := e.(type) {
@@ -1315,7 +1327,7 @@ func holdStream(s Stream, v HoldStream) (Plan, *Refusal) {
 		}
 	}
 	m := &mover{}
-	m.expect(store.StreamHeld{Stream: s.Name, Held: false}, store.AtSeq{Seq: v.Seq})
+	m.expect(store.StreamHeld{Stream: s.Name, Held: false}, store.UnchangedSince{Seq: v.Seq, Streams: true, Cards: true})
 	m.write(store.SetStreamHeld{Stream: s.Name, Held: true})
 	why := cmp.Or(v.Reason, holdPhrase(s))
 	for _, p := range v.Ready {

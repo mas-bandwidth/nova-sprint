@@ -6,6 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -34,6 +35,31 @@ func TestEventNoticesUseCommittedImagesAndRecipients(t *testing.T) {
 		t.Fatal("refused event emitted notice")
 	}
 }
+
+// TestReturnedHandTellsTheCoordinator: a card returned from a row that went
+// held or down is one RETURNED line to the coordinator per card; a card a
+// row released itself is not.
+func TestReturnedHandTellsTheCoordinator(t *testing.T) {
+	t.Parallel()
+	n := EventNotices{Coordinator: "rowan"}
+	working := store.Card{ID: "p.w1", Kind: "work", State: "working", Holder: "aurora"}
+	reading := store.Card{ID: "q.r1", Kind: "read", State: "working", Holder: "aurora"}
+	e := store.Event{Accepted: true, Before: &store.State{Cards: map[string]store.Card{"p.w1": working, "q.r1": reading}}, After: &store.State{Cards: map[string]store.Card{
+		"p.w1": {ID: "p.w1", Kind: "work", State: "fail", Holder: "aurora", Reason: card.ReleasedPrefix + card.Returned("aurora", "held")},
+		"q.r1": {ID: "q.r1", Kind: "read", State: "fail", Holder: "aurora", Reason: card.ReleasedPrefix + card.Returned("aurora", "held")},
+	}}}
+	got, err := n.ForEvent(e, store.Snapshot{}, "rowan")
+	if err != nil || len(got) != 2 || got[0].Subject != "RETURNED" || !strings.HasPrefix(got[0].Line, "RETURNED card=p.w1 from=aurora: released: returned from row aurora (held)") ||
+		!strings.HasPrefix(got[1].Line, "RETURNED card=q.r1 from=aurora: ") {
+		t.Fatalf("rowan=%+v err=%v", got, err)
+	}
+	e.After.Cards["p.w1"] = store.Card{ID: "p.w1", Kind: "work", State: "fail", Holder: "aurora", Reason: card.ReleasedPrefix + "my harness died"}
+	delete(e.After.Cards, "q.r1")
+	if got, _ := n.ForEvent(e, store.Snapshot{}, "rowan"); len(got) != 0 {
+		t.Fatalf("a row's own release told the coordinator: %+v", got)
+	}
+}
+
 func TestJudgementCloseAndBoundedText(t *testing.T) {
 	t.Parallel()
 	n := EventNotices{Coordinator: "rowan"}

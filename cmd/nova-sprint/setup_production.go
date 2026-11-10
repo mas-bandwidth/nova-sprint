@@ -82,7 +82,7 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 		bad := verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN cannot be used (" + err.Error() + ")", Fix: "export NOVA_PG_DSN=postgres://<host>:<port>/<database> with no password in it, then nova-sprint up again", Exit: 1})
 		return failedProductionSetup{bad}, productionSetupLock{err: bad}
 	}
-	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
+	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Plays: verbs.FleetPlays{Command: command}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 
@@ -134,29 +134,29 @@ func (p productionSetup) forInput(in verbs.SetupInput) verbs.RuntimeSetup {
 	return r
 }
 func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInput) (verbs.SetupCheck, error) {
-	if step == 1 && !handoffActor.MatchString(in.Actor) {
+	if step == verbs.StepTools && !handoffActor.MatchString(in.Actor) {
 		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "setup coordinator is missing or invalid", Fix: "nova-sprint up --as <name>", Exit: 1}
 	}
-	if step == 1 && in.RunOn != "" && in.RunOn != p.cfg.Host {
+	if step == verbs.StepTools && in.RunOn != "" && in.RunOn != p.cfg.Host {
 		return verbs.SetupCheck{}, p.remoteRunRefusal()
 	}
 	if p.cfg.AdminPassword != "" && p.cfg.SprintPassword != "" {
 		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "setup process has both admin and sprint credentials", Fix: "run nova-sprint up through the two-phase secrets wrapper", Exit: 1}
 	}
-	if step == 2 {
+	if step == verbs.StepStore {
 		if err := p.configError(); err != nil {
 			return verbs.SetupCheck{}, err
 		}
 	}
-	if step >= 3 && p.cfg.SprintPassword == "" {
+	if step >= verbs.StepCoordinator && p.cfg.SprintPassword == "" {
 		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "the sprint is not set up (no sprint credential in this process)", Fix: "nova-sprint up --as " + in.Actor, Exit: 1}
 	}
-	if step >= 4 {
-		r, err := p.configuredRuntime(ctx, in, step >= 5)
+	if step >= verbs.StepRun {
+		r, err := p.configuredRuntime(ctx, in, step >= verbs.StepDashboard)
 		if err != nil {
 			return verbs.SetupCheck{}, err
 		}
-		if step == 4 {
+		if step == verbs.StepRun {
 			ready, err := p.ensureServiceVersion(ctx, r.RunService.Machine, false)
 			if err != nil {
 				return verbs.SetupCheck{}, err
@@ -165,13 +165,13 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 				return verbs.SetupCheck{Action: true}, nil
 			}
 		}
-		if step == 5 {
+		if step == verbs.StepDashboard {
 			value, found, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
 			if err != nil {
 				return verbs.SetupCheck{}, err
 			}
 			if !found && in.Dash == "" && value == "" {
-				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
+				return verbs.SetupCheck{Line: "UP 7/10 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
 			}
 			ready, err := p.ensurePublicVersion(ctx, r, in, false)
 			if err != nil {
@@ -186,7 +186,7 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 	return p.forInput(in).Verify(ctx, step, in)
 }
 func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput) error {
-	if step == 2 {
+	if step == verbs.StepStore {
 		if err := p.configError(); err != nil {
 			return err
 		}
@@ -194,17 +194,17 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 			return err
 		}
 	}
-	if step >= 4 {
-		r, err := p.configuredRuntime(ctx, in, step >= 5)
+	if step >= verbs.StepRun {
+		r, err := p.configuredRuntime(ctx, in, step >= verbs.StepDashboard)
 		if err != nil {
 			return err
 		}
-		if step == 4 {
+		if step == verbs.StepRun {
 			if _, err = p.ensureServiceVersion(ctx, r.RunService.Machine, true); err != nil {
 				return err
 			}
 		}
-		if step == 5 {
+		if step == verbs.StepDashboard {
 			if _, err = p.ensurePublicVersion(ctx, r, in, true); err != nil {
 				return err
 			}
@@ -303,7 +303,7 @@ var handoffID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var handoffActor = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
 func handoffDigest(in verbs.SetupInput) (string, error) {
-	values := []string{in.Actor, in.Dash, in.Services, in.Key, in.RunOn, in.Version}
+	values := []string{in.Actor, in.Dash, in.Services, in.Key, in.RunOn, in.Version, strconv.FormatBool(in.TakeOver), in.Reason}
 	if !handoffActor.MatchString(in.Actor) {
 		return "", fmt.Errorf("invalid setup actor %q: want 1-128 of A-Z a-z 0-9 . _ -", edge.Redact(in.Actor))
 	}
@@ -469,10 +469,11 @@ func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader
 	if err := dec.Decode(&extra); err != io.EOF {
 		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("more than one request", int(dec.InputOffset()), data))
 	}
-	// The write is fenced on the seq it read; a live run's tick between the
-	// read and the write moves the seq, so a refusal logged past an op of
-	// someone else's reads again (each try its own op id: a refused op
-	// replays as refused). A refusal logged right after the read is final.
+	// The write is fenced on the policies it read (no version stored since
+	// its seq; a beat or a tick does not refuse it); a version stored
+	// between the read and the write refuses it, so a refusal logged past
+	// an op of someone else's reads again (each try its own op id: a refused
+	// op replays as refused). A refusal logged right after the read is final.
 	var refused *handoffRefused
 	for try := range handoffTries {
 		snap, err := st.Snapshot(ctx)
@@ -498,7 +499,7 @@ func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader
 		if try > 0 {
 			opID += fmt.Sprintf("-%d", try)
 		}
-		op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: request.Actor, Kind: "setup continuation", At: at, Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: "setup:continuation:" + request.ID, Body: string(body)}}}
+		op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: request.Actor, Kind: "setup continuation", At: at, Expect: []store.Expect{store.UnchangedSince{Seq: snap.Seq, Policies: true}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: "setup:continuation:" + request.ID, Body: string(body)}}}
 		err = applyHandoff(ctx, st, op)
 		if !errors.As(err, &refused) {
 			if err != nil {
@@ -714,7 +715,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	r.RunService = run
 	r.DefaultRunHost = host
 	r.Services = verbs.FleetServices{Command: p.command}
-	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 7/8 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion}
+	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 9/10 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion}
 	if !needDashboard {
 		return r, nil
 	}

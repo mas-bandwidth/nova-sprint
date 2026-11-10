@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -429,6 +430,59 @@ func TestCollectRefusesAForeignHeadOrAGitlink(t *testing.T) {
 				t.Fatalf("%s: the refused head was checked out", name)
 			}
 		}
+	}
+}
+
+// A gitlink added in the middle of a tree too large for edge's 64 KiB default
+// cap is still refused: collect reads the whole `ls-tree -r` (the cap used to
+// cut the middle out of a listing, head and tail kept, and the scan passed
+// what it never saw), and a listing that still overran its cap is named as
+// truncated, never scanned.
+func TestCollectReadsTheWholeTree(t *testing.T) {
+	t.Parallel()
+	tree := func(gitlinkAt int) string {
+		var b strings.Builder
+		for i := range 1500 {
+			if i == gitlinkAt {
+				fmt.Fprintf(&b, "160000 commit %s\tvendor/sub\x00", strings.Repeat("d", 40))
+			}
+			fmt.Fprintf(&b, "100644 blob %s\tsrc/pkg/file-%04d.go\x00", strings.Repeat("e", 40), i)
+		}
+		return b.String()
+	}
+	if len(tree(-1)) <= edge.DefaultMaxBytes {
+		t.Fatalf("the tree is %d bytes, not past the %d-byte default cap", len(tree(-1)), edge.DefaultMaxBytes)
+	}
+	collect := func(ex edge.Exec) error {
+		jobDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(jobDir, SealBundle), []byte("bundle"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		g := &OSGitOps{WorkRoot: t.TempDir(), Exec: ex}
+		_, err := g.Collect(context.Background(), Sealed{JobDir: jobDir, Clone: filepath.Join(t.TempDir(), "c"), Remote: testCloneURL, Base: strings.Repeat("b", 40)})
+		return err
+	}
+	fx := edge.NewFakeExec()
+	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
+		args := c.Cmd.Argv[gitArg0_internal:]
+		switch {
+		case args[0] == "clone":
+			_ = os.MkdirAll(filepath.Join(args[len(args)-1], ".git"), 0o755)
+		case args[0] == "rev-list":
+			return edge.FakeOutcome{Stdout: "c1\n"}
+		case args[0] == "ls-tree" && args[3] == "c1":
+			return edge.FakeOutcome{Stdout: tree(750)}
+		case args[0] == "ls-tree":
+			return edge.FakeOutcome{Stdout: tree(-1)}
+		}
+		return edge.FakeOutcome{Stdout: strings.Repeat("a", 40) + "\n"}
+	})
+	if err := collect(fx); err == nil || !strings.Contains(err.Error(), "collect refused") || !strings.Contains(err.Error(), "vendor/sub") {
+		t.Fatalf("a gitlink in the middle of a large tree: %v", err)
+	}
+	err := collect(truncatingExec_internal{out: strings.Repeat("a", 40) + "\n"})
+	if err == nil || !strings.Contains(err.Error(), "truncated at") || strings.Contains(err.Error(), "collect refused") {
+		t.Fatalf("a truncated listing is named, never scanned: %v", err)
 	}
 }
 

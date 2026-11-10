@@ -211,8 +211,14 @@ Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
 `X` has holder `R` (or none); card `X` is red or not red (`CardRed`); every need of card `X` is `landed` (read from the
 card's own `needs` inside the transaction, never from a caller's list); row
 `R` is in state `S`; row `R` is at gen `G` (`RowGen`); row `R` is held or not held (`RowHeld`); stream `S` is held or not held; card `X` does not exist;
-the store is at seq `N` (a fence
-for a plan that needs nothing at all to have changed since its snapshot). The
+the store is at seq `N` (`AtSeq`: a fence
+for a plan that needs nothing at all to have changed since its snapshot; no
+verb uses it, since every worker's beat moves the seq); no accepted event
+after seq `N` wrote any of the named parts: streams, cards, policies,
+judgements, the stop, the identity, or a row's hook, its session or role
+(`UnchangedSince`: the fence of a verb that read only those parts on a
+snapshot at `N`, so a beat, which writes only its row's telemetry, never
+refuses it). The
 op's epoch must equal the store's epoch; a mismatch is a refusal. Every
 condition is checked inside the same transaction as the writes, against the
 rows as they are at that moment.
@@ -322,8 +328,9 @@ actor, epoch and at, so a caller can see what it is crediting. Two concurrent
 applies with one id are serialized by the lock; the second sees the event row
 and returns the first's receipt.
 
-`Clear` is an `Op` with kind `clear`, no writes, and at most the seq fence as
-a condition. It is idempotent by id, logged with the epoch it closed, and its
+`Clear` is an `Op` with kind `clear`, no writes, and only the seq fences as
+conditions (`AtSeq`, and `RowsOnlySince`: every accepted event after a seq
+wrote rows only, which `nova-sprint clear` fences on). It is idempotent by id, logged with the epoch it closed, and its
 receipt carries the new epoch. Streams and cards of the old epoch stay readable
 through `Events` and are not in the next `Snapshot`; policy is kept; rows are
 carried forward into the new epoch in the same transaction (copied: same name,

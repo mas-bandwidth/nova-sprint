@@ -55,8 +55,8 @@ func (v *verb) scope(in *input) store.Scope {
 	return v.cards(in)
 }
 
-// noCards is a verb that reads no card (beat).
-func noCards(*input) store.Scope { return store.Scope{} }
+// noCards is a verb that reads no card and no closed judgement (beat).
+func noCards(*input) store.Scope { return store.Scope{OpenJudgements: true} }
 
 // ownCards is a worker verb on its card (take, finish, read, report,
 // release): the card with its producer and that producer's consumers (the
@@ -122,16 +122,17 @@ func startVerbs() []*verb {
 		{name: "check", group: "start", usage: "[--integrity]", flags: "integrity", max: 0, run: runCheck,
 			about: "the one doctor, one line each: nova-fleet check green, nova-tools against the pin (above it a WARN), the store at this build's schema, the bus answering; then the sprint's health, admission re-proved: each stream's repository reachable, its base at origin, its card branches creatable and its forge able to act; the policy active and answering; each waiting or ready card admitted as add would today; each working card on a live row; each worker bench's unit serving (its last log line no refusal, its row hooked, up and on the bus); the open judgements by kind with their command, who runs the sprint, the width and why nothing deals, each landing's wait; any CHECK RED line exits non-zero; --integrity also rebuilds the history",
 			needs: []string{"the fleet is not up: the nova-fleet command", "nova-tools below the pin: nova-fleet install --tag <pin> <machine>", "the store not set up: nova-sprint up --as <you>", "a red sprint line: the fix printed beside it"}},
-		{name: "up", group: "start", usage: "--as <coordinator> [--dash tailnet|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]", flags: "dash= services= key= run-on= version= continuation=", max: 0, run: runUp,
-			about: "sets the sprint up, step by step, re-verifying from step 1 each time; hooks you in as coordinator once the store exists",
-			needs: []string{"no --as: nova-sprint up --as <you>", "you are not on the bus: nova-bus hook --as <you> under your session's Monitor tool", "the first step that does not verify: its own fix"}},
+		{name: "up", group: "start", usage: "--as <coordinator> [--dash tailnet|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>] [--take-over --reason \"<why>\"]", flags: "dash= services= key= run-on= version= continuation= take-over reason=", max: 0, run: runUp,
+			about: "sets the sprint up in ten steps, re-verifying from step 1 each time: 1 nova-tools (nova-fleet check green, nova-tools at the pin), 2 runner-packages and 3 netwatch (nova-fleet's two plays on every bench, verified in check mode, run when a bench lacks them), 4 store, 5 coordinator, 6 run, 7 dashboard, 8 services, 9 workers, 10 first deal; hooks you in as coordinator once the store exists",
+			more:  []string{"--take-over --reason \"<why>\": take the coordinator's seat from a coordinator who is gone from the bus (unhooked as unhook does it, their hand returned to the queue, the reason logged); refused while that coordinator is on the bus"},
+			needs: []string{"no --as: nova-sprint up --as <you>", "you are not on the bus: nova-bus hook --as <you> under your session's Monitor tool", "another coordinator is recorded: ask them to unhook; one who is gone: nova-sprint up --as <you> --take-over --reason \"<why>\"", "--take-over and the coordinator is on the bus: ask them to unhook", "the first step that does not verify: its own fix"}},
 		{name: "hook", group: "start", usage: "--as <name> --role worker|coordinator", flags: "role=", max: 0, run: runHook,
 			about: "records your name and role in the sprint (a fresh session), subscribes you to its pushes, and prints the sprint's commit identity (its two git config lines) and the command that prints your playbook",
-			needs: []string{"not on the bus: nova-bus hook --as <name> under your session's Monitor tool", "already hooked: nova-sprint unhook --as <name>", "a second coordinator: the recorded one unhooks first", "a worker on a sprint with no commit identity: the coordinator runs nova-sprint identity"}},
+			needs: []string{"not on the bus: nova-bus hook --as <name> under your session's Monitor tool", "already hooked: nova-sprint unhook --as <name>", "a second coordinator: the recorded one unhooks first; one who is gone: nova-sprint up --as <name> --take-over --reason \"<why>\"", "a worker on a sprint with no commit identity: the coordinator runs nova-sprint identity"}},
 		{name: "wake", group: "start", usage: "--as <you> (nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>' runs it per message)", max: 0, run: runWake,
-			about: "takes every card a DEAL on stdin deals you, then prints the message with each deal line replaced by its TAKEN receipt or its refusal; any other message unchanged"},
+			about: "takes every card a DEAL on stdin deals you, then prints the message with each deal line replaced by its TAKEN receipt or its refusal; any other message unchanged. It answers within 5 s, inside the hook's 8 s limit: a deal it had no time to take stays as the sprint wrote it, for you to run"},
 		{name: "unhook", group: "start", usage: "[<row>] --as <you>", max: 1, run: runUnhook,
-			about: "clears a hook; your own without one, another row's as the coordinator",
+			about: "clears a hook and returns that row's whole hand to the queue in the same op (branches and heads kept); your own without one, another row's as the coordinator",
 			needs: []string{"not hooked: nothing to unhook", "another row, and you are not the coordinator: ask the coordinator"}},
 		{name: "help", group: "start", usage: "[<verb> | playbook worker|coordinator]", max: 2, run: runHelp,
 			about: "this index, one verb's table, or a role's playbook"},
@@ -145,7 +146,7 @@ func workVerbs() []*verb {
 			about: "acknowledges a card dealt to you (it is in your hand from the deal; this stops the nudges) and prints the brief, the repository and the finish or read command; a repeat prints the same and writes nothing",
 			needs: []string{"not dealt to this row at this generation: nova-sprint next --as <row>", "withdrawn or reported already: nova-sprint next --as <row>", "the row not in nova-config, or not serving the tier: nova-config", "no commit identity: the coordinator runs nova-sprint identity"}},
 		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport, cards: ownCards,
-			about: "reports a work card done at a head pushed to its branch, or failed with the reason", more: usageHelp,
+			about: "reports a work card done at a head pushed to its branch, or failed with the reason; a reason whose first word is refuted (the red test cannot fail at the base) or brief-defect (the brief cannot be met as written) holds the card for the coordinator instead of dealing it again: --failed --reason \"refuted: <what was tried, and what it showed>\"", more: usageHelp,
 			needs: []string{"not the holder: nova-sprint show <card>", "not a full sha", "not on the dealt branch at origin: git push origin <branch>", "the head is the base: do the work", "a commit since the base by another author or committer email: the two git config lines hook prints, then rewrite those commits"}},
 		{name: "read", group: "work", role: roleWorker, usage: "<card>@<gen> yes|fix [--finding <text>] --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>]", flags: reportFlags, min: 2, max: 2, run: runReport, cards: ownCards,
 			about: "answers a read of someone else's head; --cost is what the read cost, in dollars, as finish takes it", more: usageHelp,
