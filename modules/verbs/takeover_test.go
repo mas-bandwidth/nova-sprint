@@ -80,6 +80,20 @@ func TestUpTakeOverRefusals(t *testing.T) {
 		{name: "the taker is hooked already", prep: func(t *testing.T, w *world) { w.ok(t, "dave", "hook", "--role", "worker") },
 			args: []string{"up", "--take-over", "--reason", "carol is gone"}, exit: 1,
 			want: []string{"dave is already hooked in as worker", "nova-sprint unhook --as dave"}},
+		{name: "the seat moved while the bus was asked", prep: func(t *testing.T, w *world) {
+			calls := 0
+			w.bus.during = func() { // on the take-over's own who (up's second: the first is dave's), carol comes back and hands the seat to erin
+				if calls++; calls != 2 {
+					return
+				}
+				w.bus.during = nil
+				w.bus.present["carol"], w.bus.present["erin"] = true, true
+				w.ok(t, "carol", "unhook")
+				w.ok(t, "erin", "hook", "--role", "coordinator")
+				w.bus.present["carol"] = false
+			}
+		}, args: []string{"up", "--take-over", "--reason", "carol is gone"}, exit: 1,
+			want: []string{"the sprint's coordinator changed to erin meanwhile", hint + " again"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -88,8 +102,8 @@ func TestUpTakeOverRefusals(t *testing.T) {
 				c.prep(t, w)
 			}
 			want(t, w.do("dave", c.args...), c.exit, c.want...)
-			if r := w.snap(t).Rows["carol"]; r.Role != "coordinator" {
-				t.Fatalf("carol's seat moved: %+v", r)
+			if r := w.snap(t).Rows["dave"]; r.Role == "coordinator" {
+				t.Fatalf("dave took the seat: %+v", r)
 			}
 		})
 	}

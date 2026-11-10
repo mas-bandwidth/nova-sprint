@@ -403,8 +403,8 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    no one to answer them. Check `nova-bus who` for the name; when it is not listed, run
    `nova-sprint up --as <you> --take-over --reason "<why>"`. It refuses while that coordinator is
    on the bus (ask them to `unhook`). Otherwise, in one logged op, it clears their hook as
-   `unhook` does, hooks you in as coordinator, and goes on with `up`'s steps; then run this
-   section's session start from step 3. Their cards stay where they are (item 4): the `orphan`
+   `unhook` does, hooks you in as coordinator, and goes on with `up`'s steps; then run section
+   1's session start from step 3. Their cards stay where they are (item 4): the `orphan`
    judgement brings them to you.
 
 ## 8. Policy

@@ -116,6 +116,12 @@ func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason
 	if present {
 		return "", refuse(old+" is on the bus", "ask "+old+" to run nova-sprint unhook --as "+old)
 	}
+	if snap, err = e.snapshot(ctx); err != nil { // who took time: fence the op on a fresh read
+		return "", err
+	}
+	if c := coordinatorOf(snap); c != old {
+		return "", refuse("the sprint's coordinator changed to "+orWord(c, "nobody")+" meanwhile", takeOverCommand(name)+" again")
+	}
 	session, err := e.newSession()
 	if err != nil {
 		return "", err
