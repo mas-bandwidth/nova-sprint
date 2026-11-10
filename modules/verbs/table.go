@@ -55,8 +55,8 @@ func (v *verb) scope(in *input) store.Scope {
 	return v.cards(in)
 }
 
-// noCards is a verb that reads no card (beat).
-func noCards(*input) store.Scope { return store.Scope{} }
+// noCards is a verb that reads no card and no closed judgement (beat).
+func noCards(*input) store.Scope { return store.Scope{OpenJudgements: true} }
 
 // ownCards is a worker verb on its card (take, finish, read, report,
 // release): the card with its producer and that producer's consumers (the

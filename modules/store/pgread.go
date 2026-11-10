@@ -99,7 +99,8 @@ func all[K comparable, T any](ctx context.Context, tx pgx.Tx, scan func(pgx.Row)
 // Snapshot reads the current epoch in one REPEATABLE READ transaction.
 func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) { return p.Read(ctx, Scope{All: true}) }
 
-// Read is Snapshot with only the cards scope names, in the same transaction.
+// Read is Snapshot with only the cards and judgements scope names, in the
+// same transaction.
 func (p *PG) Read(ctx context.Context, scope Scope) (Snapshot, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -151,7 +152,11 @@ func snapshotTx(ctx context.Context, tx pgx.Tx, scope Scope) (Snapshot, error) {
 	if s.Rows, err = all(ctx, tx, scanRow, func(v Row) string { return v.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", s.Epoch); err != nil {
 		return s, err
 	}
-	if s.Judgements, err = all(ctx, tx, scanJudgement, func(v Judgement) string { return v.ID }, "SELECT "+judgeCols+" FROM sprint.judgements WHERE epoch = $1", s.Epoch); err != nil {
+	judgements := "SELECT " + judgeCols + " FROM sprint.judgements WHERE epoch = $1"
+	if scope.OpenJudgements {
+		judgements += " AND state = 'open'"
+	}
+	if s.Judgements, err = all(ctx, tx, scanJudgement, func(v Judgement) string { return v.ID }, judgements, s.Epoch); err != nil {
 		return s, err
 	}
 	cursors, err := all(ctx, tx, scanCursor, func(v cursorRow) string { return v.name }, "SELECT name, seq FROM sprint.cursors")
