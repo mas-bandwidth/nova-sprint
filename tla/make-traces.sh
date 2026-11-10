@@ -27,20 +27,26 @@ cd "$ROOT" || exit 1
 
 find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./modules/store/ || exit 1
-go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ || exit 1
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ || exit 1
-go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ || exit 1
-go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./modules/edge/git || exit 1
-go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./modules/edge/worker || exit 1
+# The walks write disjoint trace dirs, so they run in parallel; each one's
+# exit code is kept and any failure fails the script after all have ended.
+pids=()
+go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./modules/store/ & pids+=($!)
+go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ & pids+=($!)
+go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ & pids+=($!)
+go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ & pids+=($!)
+go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./modules/edge/git & pids+=($!)
+go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./modules/edge/worker & pids+=($!)
 if command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || ls /opt/homebrew/opt/postgresql@18/bin/initdb >/dev/null 2>&1; then
-    go test -count=1 -run 'TestFunctionalTraceWalk$' ./modules/store/ || exit 1
+    go test -count=1 -run 'TestFunctionalTraceWalk$' ./modules/store/ & pids+=($!)
 elif [ "${NOVA_TRACE_PG:-0}" = 1 ]; then
     echo "make-traces: NOVA_TRACE_PG=1 and no initdb: the PostgreSQL walk cannot run" >&2
     exit 1
 else
     echo "make-traces: no initdb, the PostgreSQL walk (store-pg-*) is not run"
 fi
+walks=0
+for p in "${pids[@]}"; do wait "$p" || walks=1; done
+[ "$walks" = 0 ] || { echo "make-traces: a walk failed (its go test output is above)" >&2; exit 1; }
 ls "$OUT"
 [ "${1:-}" = check ] || exit 0
 
