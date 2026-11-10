@@ -123,8 +123,10 @@ func Rank(tiers []string) string {
 func rung(tier string) int { return slices.Index(store.Tiers, tier) }
 
 // candidateSet is rows' third argument for producer c and kind: the rows
-// that may take its next consumer (up, not held, serving the card's tier,
-// and for a read not its author), by rank, lowest first, then by name.
+// that may take its next consumer (up, not held, hooked in as worker or
+// coordinator as layer 3's deal needs, serving the card's tier, and for a
+// read not its author), by rank, lowest first, then by name. A row that
+// left (a coordinator whose seat moved) is no candidate, read live.
 func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 	key := c.Tier + " " + kind
 	if kind == KindRead {
@@ -135,7 +137,8 @@ func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 	}
 	s := &candidateSet{}
 	for _, r := range ix.rows {
-		if r.State == "up" && !r.Held && slices.Contains(r.tiers, c.Tier) && (kind != KindRead || r.Name != c.Author) {
+		hooked := r.Session != "" && (r.Role == "worker" || r.Role == "coordinator") // steps.Hooked
+		if r.State == "up" && !r.Held && hooked && slices.Contains(r.tiers, c.Tier) && (kind != KindRead || r.Name != c.Author) {
 			s.rows = append(s.rows, r)
 		}
 	}

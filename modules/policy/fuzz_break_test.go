@@ -42,7 +42,7 @@ func fuzzSeedWrites() []store.Write {
 	writes := []store.Write{
 		store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1},
 		store.PutStream{Name: "s2", Repo: "git@example.com:r.git", Base: "main", Pos: 2},
-		store.PutRow{Name: "r1"}, store.PutRow{Name: "r2"}, store.PutRow{Name: "r3"}, store.PutRow{Name: "r4"}, // configured by seedRoster
+		hooked("r1"), hooked("r2"), hooked("r3"), hooked("r4"), // configured by seedRoster
 	}
 	for _, p := range [][2]string{{"p1", "pro"}, {"p2", "heavy"}, {"p3", "flash"}, {"p4", "pro"}, {"p5", "pro"}} {
 		stream := map[bool]string{true: "s2", false: "s1"}[p[0] == "p3" || p[0] == "p4"]
@@ -95,7 +95,7 @@ func fuzzBigSnapshot() (store.Snapshot, roster.Roster) {
 	}
 	for i := range 50 {
 		name := fmt.Sprintf("r%02d", i)
-		snap.Rows[name] = store.Row{Name: name, State: "up"}
+		snap.Rows[name] = store.Row{Name: name, State: "up", Session: "s-" + name, Role: "worker"}
 		ro.Workers[name] = roster.Worker{Name: name, Width: 2, Tiers: store.Tiers[i%4:], Harness: roster.WorkerHarness}
 	}
 	for i := range 5000 {

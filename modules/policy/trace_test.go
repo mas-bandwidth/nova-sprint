@@ -74,7 +74,7 @@ func newPolicyTrace(t testing.TB) *policyTrace {
 	writes := []store.Write{store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1},
 		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Score: 1, Brief: "do p1", Prose: "do p1"}}
 	for i := range traceMax + 1 {
-		writes = append(writes, store.PutRow{Name: fmt.Sprintf("x%d", i)})
+		writes = append(writes, hooked(fmt.Sprintf("x%d", i)))
 		w.configure(rc{fmt.Sprintf("x%d", i), "worker", 1, []string{"pro"}, ""})
 	}
 	w.apply(writes...)
