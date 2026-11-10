@@ -150,9 +150,12 @@ func TestFunctionalStreamStepKeepsAResolvedConflict(t *testing.T) {
 	runGitCmd_internal(t, seed, "checkout", "-q", "main")
 	commit("f.txt", "main\n")
 	runGitCmd_internal(t, seed, "checkout", "-q", "card")
-	cmd := exec.Command("git", "merge", "-q", "main") // conflicts on f.txt
+	cmd := exec.Command("git", "merge", "main") // conflicts on f.txt
 	cmd.Dir = seed
-	require.Error(t, cmd.Run())
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Nova Test", "GIT_AUTHOR_EMAIL=test@nova.local", "GIT_COMMITTER_NAME=Nova Test", "GIT_COMMITTER_EMAIL=test@nova.local")
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err)
+	require.Contains(t, string(out), "CONFLICT", "the merge stops on the conflict, not on a missing identity")
 	commit("f.txt", "resolved\n") // the merge commit, with the resolution
 	head := runGitCmd_internal(t, seed, "rev-parse", "HEAD")
 	runGitCmd_internal(t, seed, "checkout", "-q", "main")
