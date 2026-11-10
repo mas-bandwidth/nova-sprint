@@ -267,6 +267,16 @@ func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 
 func (t *fakeTx) lastSeq() (int64, error) { return t.base.seq0 + int64(len(t.events)), nil }
 
+func (t *fakeTx) acceptedSince(seq int64) ([]Event, error) {
+	var out []Event
+	for _, fe := range t.events {
+		if fe.Seq > seq && fe.Accepted {
+			out = append(out, Event{Seq: fe.Seq, After: decodeState(fe.after)})
+		}
+	}
+	return out, nil
+}
+
 func (t *fakeTx) rows() ([]Row, error) {
 	var out []Row
 	for k, r := range t.st.rows {
