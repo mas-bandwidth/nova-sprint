@@ -50,7 +50,7 @@ func (e *Engine) gatesAtBase(ctx context.Context, sb *streamAtBase, f cardFacts)
 // or "": an absolute or outside path is not the repository's to check.
 func programProblem(tree map[string]bool, paths []string, prog string) string {
 	p := path.Clean(prog)
-	if path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") || strings.HasPrefix(prog, "~") || tree[p] || inPaths(paths, p) {
+	if path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") || strings.HasPrefix(prog, "~") || tree[p] || inPaths(paths, p) || underGitlink(tree, p) {
 		return ""
 	}
 	return p + " is not there"
@@ -72,7 +72,7 @@ func inPaths(paths []string, p string) bool {
 // targets at the base, or "": the Makefile it reads (-C, -f, else
 // GNUmakefile, makefile, Makefile) is not there, or has no rule for a target.
 func (e *Engine) makeProblem(ctx context.Context, sb *streamAtBase, paths, args []string) (string, error) {
-	dir, files, targets, ok := makeArgs(args)
+	dir, files, targets, over, ok := makeArgs(args)
 	if dir = path.Clean(dir); dir == "." {
 		dir = ""
 	}
@@ -98,7 +98,8 @@ func (e *Engine) makeProblem(ctx context.Context, sb *streamAtBase, paths, args 
 			}
 		}
 		if mk == nil {
-			if inPaths(paths, path.Join(dir, "Makefile")) {
+			unbuilt := func(t string) bool { return !makes(nil, sb.tree, dir, t) } // make's built-in rules need no Makefile
+			if inPaths(paths, path.Join(dir, "Makefile")) || underGitlink(sb.tree, path.Join(dir, "Makefile")) || !slices.ContainsFunc(targets, unbuilt) {
 				return "", nil
 			}
 			where := "the repository root"
@@ -111,7 +112,7 @@ func (e *Engine) makeProblem(ctx context.Context, sb *streamAtBase, paths, args 
 	if slices.ContainsFunc(mk, func(m string) bool { return inPaths(paths, m) }) {
 		return "", nil
 	}
-	rules, known, err := e.makeRules(ctx, sb, dir, mk)
+	rules, known, err := e.makeRules(ctx, sb, dir, mk, over)
 	if err != nil || !known {
 		return "", err
 	}
@@ -125,7 +126,8 @@ func (e *Engine) makeProblem(ctx context.Context, sb *streamAtBase, paths, args 
 
 // makeArgs is make's arguments read: the -C directory, the -f makefiles and
 // the targets; ok is false when a flag's argument cannot be told.
-func makeArgs(args []string) (dir string, files, targets []string, ok bool) {
+func makeArgs(args []string) (dir string, files, targets []string, vars map[string]string, ok bool) {
+	vars = map[string]string{}
 	takesArg := map[string]bool{"-C": true, "--directory": true, "-f": true, "--file": true, "--makefile": true,
 		"-I": true, "--include-dir": true, "-o": true, "--old-file": true, "--assume-old": true, "-W": true, "--what-if": true, "--new-file": true, "--assume-new": true}
 	numeric := regexp.MustCompile(`^-[jl][0-9.]*$`)
@@ -134,10 +136,10 @@ func makeArgs(args []string) (dir string, files, targets []string, ok bool) {
 		long, value, joined := strings.Cut(a, "=")
 		switch {
 		case a == "--":
-			return dir, files, append(targets, args[i+1:]...), true
+			return dir, files, append(targets, args[i+1:]...), vars, true
 		case takesArg[a]:
 			if i++; i == len(args) {
-				return "", nil, nil, false
+				return "", nil, nil, nil, false
 			}
 			long, value, joined = a, args[i], true
 		case numeric.MatchString(a) || a == "--jobs" || a == "--load-average":
@@ -145,16 +147,19 @@ func makeArgs(args []string) (dir string, files, targets []string, ok bool) {
 				i++ // its count
 			}
 			continue
+		case a == "-E" || long == "--eval":
+			return "", nil, nil, nil, false // a rule from the command line
 		case strings.HasPrefix(a, "--"):
 		case len(a) > 2 && a[0] == '-' && strings.ContainsAny(a[1:2], "CfIoW"):
 			long, value, joined = a[:2], a[2:], true
 		case strings.HasPrefix(a, "-"):
 			if strings.ContainsAny(a[1:], "CfIoWjl") {
-				return "", nil, nil, false // a cluster with a flag that takes an argument
+				return "", nil, nil, nil, false // a cluster with a flag that takes an argument
 			}
 			continue
 		case joined:
-			continue // a variable
+			vars[long] = value // a variable, over the makefile's
+			continue
 		default:
 			targets = append(targets, a)
 			continue
@@ -164,12 +169,15 @@ func makeArgs(args []string) (dir string, files, targets []string, ok bool) {
 		}
 		switch long {
 		case "-C", "--directory":
+			if path.IsAbs(value) {
+				return "", nil, nil, nil, false
+			}
 			dir = path.Join(dir, value)
 		case "-f", "--file", "--makefile":
 			files = append(files, value)
 		}
 	}
-	return dir, files, targets, true
+	return dir, files, targets, vars, true
 }
 
 // makeVar is $(NAME) or ${NAME} in a makefile.
@@ -178,7 +186,7 @@ var makeVar = regexp.MustCompile(`\$[({]([A-Za-z0-9_.-]+)[)}]`)
 // makeRules is every target the makefiles mk and those they include name,
 // a $(VAR) in a target expanded by the assignments read; known is false
 // when a target or an include cannot be resolved from the base.
-func (e *Engine) makeRules(ctx context.Context, sb *streamAtBase, dir string, mk []string) (map[string]bool, bool, error) {
+func (e *Engine) makeRules(ctx context.Context, sb *streamAtBase, dir string, mk []string, over map[string]string) (map[string]bool, bool, error) {
 	raw, vars, seen := map[string]bool{}, map[string]string{}, map[string]bool{}
 	for queue := slices.Clone(mk); len(queue) > 0; queue = queue[1:] {
 		p := queue[0]
@@ -192,7 +200,11 @@ func (e *Engine) makeRules(ctx context.Context, sb *streamAtBase, dir string, mk
 		if err != nil {
 			return nil, false, err
 		}
-		for _, inc := range parseMakefile(text, raw, vars) {
+		incs, ok := parseMakefile(text, raw, vars)
+		if !ok {
+			return nil, false, nil
+		}
+		for _, inc := range incs {
 			inc = expandMake(inc, vars)
 			q := path.Join(dir, inc)
 			if strings.ContainsAny(inc, "$*?[") || path.IsAbs(inc) || !sb.tree[q] {
@@ -201,6 +213,7 @@ func (e *Engine) makeRules(ctx context.Context, sb *streamAtBase, dir string, mk
 			queue = append(queue, q)
 		}
 	}
+	maps.Copy(vars, over)
 	rules := map[string]bool{}
 	for t := range raw {
 		x := expandMake(t, vars)
@@ -211,13 +224,16 @@ func (e *Engine) makeRules(ctx context.Context, sb *streamAtBase, dir string, mk
 			rules[w] = true
 		}
 	}
-	return rules, true, nil
+	// No rule read (a symlinked Makefile reads as its target's path), or
+	// .DEFAULT, which makes any target: nothing is known to be missing.
+	return rules, len(rules) > 0 && !rules[".DEFAULT"], nil
 }
 
 // parseMakefile adds the target lists of text's rules to raw (a .PHONY's
-// names too) and its assignments to vars, and is the files it includes.
-func parseMakefile(text string, raw map[string]bool, vars map[string]string) []string {
-	var includes []string
+// names too) and its assignments to vars, and is the files it includes; ok
+// is false when a top-level expression ($(eval ...), $(foreach ...)) may
+// make rules a read cannot see.
+func parseMakefile(text string, raw map[string]bool, vars map[string]string) (includes []string, ok bool) {
 	inDefine := false
 	for _, line := range strings.Split(strings.ReplaceAll(text, "\\\n", " "), "\n") {
 		if strings.HasPrefix(line, "\t") {
@@ -236,6 +252,8 @@ func parseMakefile(text string, raw map[string]bool, vars map[string]string) []s
 		case word == "include" || word == "-include" || word == "sinclude":
 			includes = append(includes, strings.Fields(rest)...)
 			continue
+		case strings.Contains(line, "$(eval") || strings.Contains(line, "${eval") || (strings.HasPrefix(line, "$") && !strings.ContainsAny(line, ":=")):
+			return nil, false
 		}
 		colon, eq := strings.Index(line, ":"), strings.Index(line, "=")
 		switch {
@@ -258,7 +276,7 @@ func parseMakefile(text string, raw map[string]bool, vars map[string]string) []s
 			}
 		}
 	}
-	return includes
+	return includes, true
 }
 
 // expandMake is s with each $(NAME) a makefile set replaced, a few levels.
@@ -287,9 +305,21 @@ func makes(rules, tree map[string]bool, dir, t string) bool {
 			return true
 		}
 	}
+	stem := strings.TrimSuffix(p, path.Ext(p))
 	for k := range tree {
-		if strings.HasPrefix(k, p+".") && !strings.Contains(k[len(p):], "/") {
+		if strings.HasPrefix(k, stem+".") && k != p && !strings.Contains(k[len(stem):], "/") {
 			return true
+		}
+	}
+	return underGitlink(tree, p)
+}
+
+// underGitlink is whether p is below an entry of tree with nothing under it
+// (a submodule: git ls-tree -r lists it, never its files).
+func underGitlink(tree map[string]bool, p string) bool {
+	for d := parentDir(p); d != ""; d = parentDir(d) {
+		if tree[d] {
+			return !isDir(tree, d)
 		}
 	}
 	return false

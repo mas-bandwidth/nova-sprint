@@ -105,12 +105,14 @@ func TestCardAdmissionAtBase(t *testing.T) {
 		return []string{"add", "--stream", "s", "--brief-file", briefFile(t, dir, id, text+"\nDo it.\n")}
 	}
 	repo := func(_ *testing.T, w *world) {
-		w.origin.tree = []string{"Makefile", "tests/a_test.c", "sub/Makefile", "mk/rules.mk", "tools/run.sh", "b/x.go", "Docs/x.md", "dyn/Makefile"}
+		w.origin.tree = []string{"Makefile", "tests/a_test.c", "sub/Makefile", "mk/rules.mk", "tools/run.sh", "b/x.go", "Docs/x.md", "dyn/Makefile", "ev/Makefile", "def/Makefile", "vendor/lib", "c/foo.c"}
 		w.origin.files = map[string]string{
 			"Makefile":     ".DEFAULT_GOAL := build\n# test: not a rule\n.PHONY: build happy-path\nbuild:\n\tcc -o bin/check x.c\nhappy-path: build\n\t./x \\\n\t  y\ninclude mk/rules.mk\nBIN := out\n$(BIN): build\n%.o: %.c\n",
 			"mk/rules.mk":  "lint:\n\ttrue\n",
 			"sub/Makefile": "test:\n\ttrue\n",
 			"dyn/Makefile": "include $(X).mk\n",
+			"ev/Makefile":  "define R\n$(1):\n\ttrue\nendef\n$(eval $(call R,test))\n",
+			"def/Makefile": ".DEFAULT:\n\ttrue\n",
 		}
 	}
 	runCases(t, []tcase{
@@ -127,6 +129,12 @@ func TestCardAdmissionAtBase(t *testing.T) {
 		{name: "make -C a directory without the target", as: "carol", args: card("m4", "README.md", "make -C sub build"), exit: 1, prep: repo, want: []string{"sub/Makefile has no rule for build"}},
 		{name: "make -C a directory with no Makefile", as: "carol", args: card("m5", "README.md", "make -C tools all"), exit: 1, prep: repo, want: []string{"there is no Makefile in tools/"}},
 		{name: "make with an unreadable include", as: "carol", args: card("m6", "README.md", "make -C dyn anything"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make with eval rules", as: "carol", args: card("m8", "README.md", "make -C ev test"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make with a command-line variable", as: "carol", args: card("m9", "README.md", "make BIN=foo foo"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make with .DEFAULT", as: "carol", args: card("m10", "README.md", "make -C def anything"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make by a built-in rule", as: "carol", args: card("m11", "README.md", "make -C c foo.o"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make in a submodule", as: "carol", args: card("m12", "README.md", "make -C vendor/lib test", "./vendor/lib/run.sh"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make --eval", as: "carol", args: card("m13", "README.md", "make --eval=t: t"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
 		{name: "make when the card writes the Makefile", as: "carol", args: card("m7", "Makefile", "make test"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
 		{name: "a script that is not there", as: "carol", args: card("r1", "README.md", "./bin/check --all"), exit: 1, prep: repo,
 			want: []string{"card r1: DONE-WHEN ./bin/check --all: bin/check is not there", "add it to PATHS"}},
