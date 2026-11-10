@@ -747,7 +747,9 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 	seen := map[string]int{}
 	for seed := int64(1); seed <= 32; seed++ {
 		steps := walkRunnerTrace_internal(t, seed)
+		fresh := false // a walk of an action no earlier seed walked
 		for _, s := range steps {
+			fresh = fresh || seen[s.action] == 0
 			seen[s.action]++
 		}
 		last := steps[len(steps)-1]
@@ -755,7 +757,9 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 			t.Fatalf("seed %d: did not reach Done: %+v", seed, last)
 		}
 		tlaText := formatRunnerTraceTLA_internal(steps)
-		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
+		// Per commit (-short) TLC checks the first 8 walks and each later one
+		// that walks an action they did not; the nightly checks every walk.
+		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" && (!testing.Short() || seed <= 8 || fresh) {
 			sub := filepath.Join(traceDir, fmt.Sprintf("runner-walk-%d", seed))
 			if err := os.MkdirAll(sub, 0o755); err != nil {
 				t.Fatal(err)
