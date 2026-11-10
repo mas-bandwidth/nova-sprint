@@ -235,7 +235,10 @@ high, normal, low; within a rung, policy's order.
 
 - Plans: `HoldCard` (reason `held: ...`) with a `held` judgement when bounces since the
   producer's last unhold (`bounces - bounce_base`) reach the limit (a fault never counts;
-  LESSONS 2.24; an unhold is a fresh budget); `Withdraw` of a working consumer whose
+  LESSONS 2.24; an unhold is a fresh budget), or when the reads of a producer's
+  review and head have faulted policy's `faults` limit running (3, a guess), the
+  reason naming the newest fault (live 2026-11-09: one read faulted 378 times
+  on the same missing route); `Withdraw` of a working consumer whose
   row is silent past the bound (a row not seen on the bus since the run started counts
   from the view's start), or that is past its tier's deadline (timeouts `consumer`,
   after the deal and `ready_take`) with no report, branch kept and the reason
