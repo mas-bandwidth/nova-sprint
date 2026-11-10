@@ -440,7 +440,12 @@ func (w *world) coldStepConsumer(rng *rand.Rand, ids []string, all map[string]Ca
 	if c.Kind == "read" && rng.Intn(4) > 0 {
 		head = p.Head
 	}
-	evs := []Event{Report{Row: at, Result: result, Head: head, Reason: "r", Cost: int64(rng.Intn(3)), Priced: rng.Intn(2) == 0},
+	cost, priced := int64(rng.Intn(3)), rng.Intn(2) == 0
+	reason := "r"
+	if cost == 2 { // a third of the reasoned reports refute the brief (Refuted), off the same draws
+		reason = "refuted: r"
+	}
+	evs := []Event{Report{Row: at, Result: result, Head: head, Reason: reason, Cost: cost, Priced: priced},
 		Report{Row: at, Result: result, Head: head}, Report{Row: at, Result: result, Head: head, Reason: MissingRoute + " adb no device on this row"}, Withdraw{Reason: "silent"}}
 	if rng.Intn(3) > 0 {
 		evs = evs[:3]

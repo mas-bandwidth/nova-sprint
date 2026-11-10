@@ -530,6 +530,17 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 		m.head(m.p.ID, m.p.Head, c.Head)
 		return nil
 	}
+	if bounce && Refuted(c.Reason) {
+		// A fail that refutes the brief leaves the producer waiting held,
+		// "held: <the worker's evidence>", one bounce spent: the same brief
+		// dealt again is refuted again (Refuted). Layer 3 opens the held
+		// judgement; the coordinator drops it, replaces it, or unholds it.
+		m.state(m.p.ID, Waiting)
+		m.reason(m.p.ID, m.p.Reason, HeldPrefix+strings.TrimSpace(c.Reason))
+		m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
+		m.head(m.p.ID, m.p.Head, c.Head)
+		return nil
+	}
 	if r := m.back(); r != nil {
 		return r
 	}

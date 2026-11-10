@@ -248,6 +248,37 @@ func TestHandRouteFaultWaits(t *testing.T) {
 	s.requireState("p1.w2", "working")
 }
 
+// TestHandRefutedWaits: a work fail that refutes its brief ("refuted: ...")
+// leaves the producer waiting held, opens a held judgement carrying the
+// worker's evidence and the coordinator's choices, and the producer is never
+// dealt again by itself (live 2026-11-09: refuted at w24, w25 and w26); the
+// coordinator's unhold deals it again.
+func TestHandRefutedWaits(t *testing.T) {
+	t.Parallel()
+	s := dealOne(t)
+	s.report("p1.w1", "fail", "", "refuted: premise false on Windows, the red test passes at the base")
+	s.requireState("p1", "waiting")
+	s.tick()
+	js := s.openJudgements("held")
+	require.Len(t, js, 1)
+	q := s.snap().Judgements[js[0]].Question
+	assert.Contains(t, q, "row r1")
+	assert.Contains(t, q, "refuted: premise false on Windows, the red test passes at the base")
+	assert.Contains(t, q, "nova-sprint replace p1 --by <card>", "replace with a corrected brief is a choice")
+	s.run(4)
+	s.requireState("p1", "waiting")
+	_, redealt := s.snap().Cards["p1.w2"]
+	assert.False(t, redealt, "never dealt again by itself")
+	assert.Len(t, s.openJudgements("held"), 1)
+	rc, ref := s.verb(Request{Actor: "rowan", Judgement: js[0], Answer: "unhold", Card: "p1", Event: card.UnholdCard{Reason: "retry on a Windows row"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.tick()
+	assert.Empty(t, s.openJudgements("held"), "the judgement clears once the card is no longer held")
+	s.run(2)
+	s.requireState("p1.w2", "working")
+}
+
 // TestHandPlainFaultRedeals: a fault that names no route goes back to
 // ready and is dealt again, as before.
 func TestHandPlainFaultRedeals(t *testing.T) {

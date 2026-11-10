@@ -21,7 +21,7 @@ INVARIANTS = [
     "ReaderNeverAuthor", "WidthKept", "DealIsTake", "NeedFailedTakesDependants",
     "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "PreemptOnBlockerRow",
     "ResultsByKind", "OneLiveReadPerRow", "IdsDistinct", "PlainWithdrawUnguarded",
-    "MergeParksResolved", "HeldNeverDealt",
+    "MergeParksResolved", "HeldNeverDealt", "RefutedNeverRedealt",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
@@ -69,6 +69,7 @@ REACH = {
     "NeverSentinelReached": ("life", "the sentinel lands by Reached"),
     "NeverFaultRedealt": ("life", "a faulted work consumer's producer is started again"),
     "NeverRouteHeld": ("life", "a fault naming a missing route leaves its producer waiting on it"),
+    "NeverRefutedHeld": ("life", "a fail refuting its brief leaves its producer waiting held on it"),
     "NeverRedToFix": ("life", "a red sends a merging producer to fix with the finding"),
     "NeverNeedFailed": ("deps", "NeedFailed takes a dependant"),
     "NeverRelinked": ("deps", "a failed need is relinked"),
@@ -157,6 +158,13 @@ WITNESSES = [
        "                                          !.head = KeptHead(p, c)])",
        "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back,   \\* FAULT: was waiting on a route\n"
        "                                          !.head = KeptHead(p, c)])", 1)]),
+    ("CardRefutedRedealt", "RefutedNeverRedealt", "life",
+     "A fail that refutes its brief goes back to ready like any fail: the\n"
+     "same brief is dealt again and refuted again, every attempt (live\n"
+     "2026-11-09: one card refuted at w24, w25 and w26, dealt on to w27).",
+     [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"refuted\" THEN \"waiting\" ELSE Back,\n"
+       "                                         !.why = IF cs[c].res = \"refuted\" THEN \"held\" ELSE \"-\",\n",
+       "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = Back,   \\* FAULT: was waiting held on a refutation\n", 1)]),
     ("CardHeldDealt", "HeldNeverDealt", "life",
      "Resolve does not refuse a held producer: the deal takes a card the\n"
      "coordinator holds, or one waiting on a missing route, as soon as its\n"
@@ -230,8 +238,8 @@ WITNESSES = [
     ("CardHeldStreamReady", "ParkedUnderHold", "life",
      "Broken returns the producer to ready even when its stream is held,\n"
      "instead of writing it parked in the same plan.",
-     [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = Back,",
-       "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = \"ready\",   \\* FAULT: was Back\n"
+     [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"refuted\" THEN \"waiting\" ELSE Back,",
+       "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"refuted\" THEN \"waiting\" ELSE \"ready\",   \\* FAULT: was ELSE Back\n"
        "                                        ", 1)]),
     ("CardWaiveRedWithoutRead", "WaiveRedNeedsPriorRead", "life",
      "WaiveRed does not require a done ok read of the previous review at\n"

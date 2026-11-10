@@ -213,6 +213,12 @@ so honestly with one of these, never with a finish of a head that does not meet 
 - The work failed, or the brief cannot be met as written:
   `nova-sprint finish <id>@<gen> --failed --reason "<what failed, with the command and exit>" --as <you> --epoch <e>`.
   It prints `FAILED <id> ...`; the card goes back to the queue with your pushed head and reason.
+- The brief is refuted (its red test cannot be made to fail at the base: "finish the card as
+  refuted") or cannot be met as written (a brief defect): the same `finish --failed`, with a
+  reason whose first word is `refuted` or `brief-defect`, then the evidence:
+  `--reason "refuted: <what you tried, where, and what it showed>"`. The card is not dealt again
+  by itself; it waits, held, with your reason and pushed head, until the coordinator drops it,
+  replaces it with a corrected brief, or deals it again.
 - The harness, the bench or the model route failed, not the work (exit 134 or 137, a run that
   never started, a staging failure, a rate limit or credit refusal):
   `nova-sprint report <id>@<gen> --result fault --reason "<what failed>" --as <you> --epoch <e>`.
@@ -322,8 +328,8 @@ answer, never a thing to route round.
    failing command with its exit code; the gates you ran and where; and the one thing you need.
 4. A brief that cannot be met as written (a gate red at the base that a correct fix would leave
    red, a PATHS too narrow, two DONE-WHEN lines that contradict) is a brief defect: finish
-   `--failed` with that reason, so the coordinator fixes the brief rather than another worker
-   retrying it.
+   `--failed --reason "brief-defect: <what>"`, so the card waits for the coordinator to fix the
+   brief rather than another worker retrying it.
 5. A refusal you believe is wrong is a defect in nova-sprint itself: send the coordinator the exact
    refusal line in one bus message, and do not route round it. The coordinator takes it to the
    project's own tracker; it is never a card and never a side loop.

@@ -192,6 +192,20 @@ high, normal, low; within a rung, policy's order.
   (LAYER-2, defect 48) gets one `held` judgement naming the row, the card
   and what is missing; it waits, never dealt again by itself, until
   the coordinator answers (`unhold` or `drop`).
+- `held` for a refutation (`refutedHeld`, live 2026-11-09): a producer a
+  `fail` refuting its brief held waiting (LAYER-2, `card.Refuted`) gets one
+  `held` judgement naming the row and carrying the worker's reason; it
+  waits until the coordinator drops it, replaces it with a corrected brief
+  (`replace <id> --by <card>`) or unholds it.
+- `held` for no progress (`limits`): a ready producer whose latest work
+  attempts, running, failed with no head pushed on the brief as it is now
+  (a fault or a withdraw that pushed nothing passed over; an ok, a pushed
+  head or an edited brief ends the run), at least policy's `same_finding`
+  of them since its last unhold, is held (`HoldCard`, "held: failed <n>
+  attempts running with no new head on the same brief, the limit is <n>")
+  with a riding `held` judgement, as at the bounce limit. `same_finding` is
+  LESSONS 5.9's "the same finding twice means the brief is wrong", applied
+  to fails.
 
 ### Fix
 

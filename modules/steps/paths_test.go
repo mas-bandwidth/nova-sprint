@@ -186,7 +186,7 @@ func TestTickHoldAtLimit(t *testing.T) {
 	s.run(2)
 	for i := 1; i < Engine.Limits.Bounces; i++ {
 		s.take(fmt.Sprintf("p1.w%d", i))
-		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", "broke")
+		s.report(fmt.Sprintf("p1.w%d", i), "fail", sha(i), "broke") // a pushed head: no run of fails with no progress
 		s.tick()
 		s.requireState("p1", "working")
 	}
@@ -195,7 +195,7 @@ func TestTickHoldAtLimit(t *testing.T) {
 	s.tick()
 	s.requireState("p1", "working")
 	s.take(fmt.Sprintf("p1.w%d", Engine.Limits.Bounces+1))
-	s.report(fmt.Sprintf("p1.w%d", Engine.Limits.Bounces+1), "fail", "", "broke again")
+	s.report(fmt.Sprintf("p1.w%d", Engine.Limits.Bounces+1), "fail", sha(Engine.Limits.Bounces+1), "broke again")
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1", "waiting")
@@ -224,7 +224,7 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 		n++
 		s.requireState("p1", "working")
 		s.take(fmt.Sprintf("p1.w%d", n))
-		s.report(fmt.Sprintf("p1.w%d", n), "fail", "", "broke")
+		s.report(fmt.Sprintf("p1.w%d", n), "fail", sha(n), "broke") // a pushed head: the bounce limit, not the no-progress one
 		s.tick()
 	}
 	for range limit {
@@ -247,6 +247,51 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 	s.requireState("p1", "waiting")
 	assert.Equal(t, fmt.Sprintf("held: bounced %d times since its last unhold, the limit is %d", limit, limit), s.snap().Cards["p1"].Reason)
 	assert.Equal(t, 2*limit, s.snap().Cards["p1"].Bounces)
+	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
+}
+
+// TestTickNoProgressHolds: same_finding work attempts running that fail with
+// no new head on the same brief hold the producer with a held judgement,
+// whatever the reasons say: the same brief dealt again fails again (live
+// 2026-11-09). A fault or a withdraw with no head neither counts nor breaks
+// the run; a fail that pushes a head breaks it; an unhold is a fresh run.
+func TestTickNoProgressHolds(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	n := Engine.Limits.SameFinding
+	require.Equal(t, 2, n, "the default policy's same_finding")
+	end := func(c, result, head, reason string) {
+		s.requireState("p1", "working")
+		s.take(c)
+		s.report(c, result, head, reason)
+		s.tick()
+	}
+	end("p1.w1", "fail", "", "make failed")
+	end("p1.w2", "fail", sha(7), "pushed a partial fix") // progress: the run starts again after it
+	end("p1.w3", "fail", "", "tests still red")
+	end("p1.w4", "fault", "", "exit 137") // a fault spends nothing and breaks nothing
+	s.requireState("p1", "working")
+	assert.Empty(t, s.openJudgements("held"))
+	end("p1.w5", "fail", "", "tests still red")
+	s.requireState("p1", "waiting")
+	assert.Equal(t, fmt.Sprintf("held: failed %d attempts running with no new head on the same brief, the limit is %d", n, n), s.snap().Cards["p1"].Reason)
+	js := s.openJudgements("held")
+	require.Equal(t, []string{"held.p1.1"}, js)
+	s.run(3)
+	s.requireState("p1", "waiting")
+	rc, ref := s.verb(Request{Actor: "rowan", Judgement: js[0], Answer: "unhold", Card: "p1", Event: card.UnholdCard{Reason: "escalate"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.run(3)
+	assert.Empty(t, s.openJudgements("held"), "an unhold is a fresh run: the same fails do not hold it again")
+	end("p1.w6", "fail", "", "still red")
+	assert.Empty(t, s.openJudgements("held"), "one fail since the unhold")
+	end("p1.w7", "fail", "", "still red")
+	s.requireState("p1", "waiting")
 	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
 }
 

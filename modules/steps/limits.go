@@ -24,13 +24,16 @@ func (t *tick) limits() {
 			c := t.v.Cards[p]
 			spent := c.Bounces - c.BounceBase // since its last unhold
 			faults, last := t.readFaults(c)
-			if c.Kind != "producer" || spent < t.lim.Bounces && faults < t.lim.Faults || !t.free(p) || t.hasLive(p) {
+			stuck := min(t.noProgress(c), spent)
+			if c.Kind != "producer" || spent < t.lim.Bounces && faults < t.lim.Faults && stuck < t.lim.SameFinding || !t.free(p) || t.hasLive(p) {
 				continue
 			}
 			why := fmt.Sprintf("bounced %d times, the limit is %d", spent, t.lim.Bounces)
 			switch {
-			case spent < t.lim.Bounces:
+			case spent < t.lim.Bounces && faults >= t.lim.Faults:
 				why = fmt.Sprintf("reads faulted %d times running at review %d, the limit is %d: %s", faults, c.Review, t.lim.Faults, last)
+			case spent < t.lim.Bounces:
+				why = fmt.Sprintf("failed %d attempts running with no new head on the same brief, the limit is %d", stuck, t.lim.SameFinding)
 			case c.BounceBase > 0:
 				why = fmt.Sprintf("bounced %d times since its last unhold, the limit is %d", spent, t.lim.Bounces)
 			}
@@ -40,8 +43,47 @@ func (t *tick) limits() {
 		}
 	}
 	t.routeHeld()
+	t.refutedHeld()
 	for _, n := range t.rowNames {
 		t.rowLimits(n)
+	}
+}
+
+// noProgress is how many of c's latest work attempts, running, failed with
+// no head pushed on the brief as it is now: the same brief dealt again
+// fails again (LESSONS 5.9's "the same finding twice means the brief is
+// wrong", policy's same_finding, applied to fails; live 2026-11-09). A fault
+// or a withdraw that pushed nothing is no attempt and is passed over; an ok,
+// a pushed head or an edited brief ends the run. Every fail spent a bounce,
+// so the caller caps the run at the bounces since the last unhold.
+func (t *tick) noProgress(c store.Card) int {
+	if c.State != "ready" {
+		return 0
+	}
+	n := 0
+	for a := c.Attempt; a >= 1; a-- {
+		w, ok := t.v.Cards[c.ID+".w"+itoa(a)]
+		switch {
+		case !ok || w.Head != "" || w.Prose != c.Prose || w.State == "done" && w.Result == "ok":
+			return n
+		case w.State == "done" && w.Result == "fail":
+			n++
+		}
+	}
+	return n
+}
+
+// refutedHeld opens the held judgement of a producer whose attempt refuted
+// its brief (card.Refuted): Broken left it waiting held with the worker's
+// evidence, never dealt again by itself.
+func (t *tick) refutedHeld() {
+	for _, p := range t.v.Producers("waiting") {
+		c := t.v.Cards[p]
+		w, ok := t.v.Cards[workID(c)]
+		if !card.HeldReason(c.Reason) || !ok || w.State != "done" || w.Result != "fail" || !card.Refuted(w.Reason) {
+			continue
+		}
+		t.judge("held", p, fmt.Sprintf("producer %s's attempt on row %s refuted its brief: %s; it waits, never dealt again by itself: drop it, replace it with a corrected brief (nova-sprint replace %s --by <card>), or unhold to deal it again", p, w.Holder, w.Reason, p))
 	}
 }
 

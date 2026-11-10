@@ -317,6 +317,19 @@ func RouteName(reason string) string {
 	return ""
 }
 
+// Refuted says whether a work consumer's fail reason refutes its brief: its
+// first word is "refuted" (the brief's premise does not hold: the red test
+// cannot be made to fail at the base) or "brief-defect" (the brief cannot be
+// met as written), in any case, as `finish --failed --reason "refuted: <the
+// evidence>"` writes it. Broken leaves such a producer waiting held
+// ("held: <reason>") for the coordinator: the same brief dealt again is
+// refuted again (live 2026-11-09: one card refuted at w24, w25 and w26).
+func Refuted(reason string) bool {
+	low := strings.ToLower(strings.TrimSpace(reason))
+	word := low[:len(low)-len(strings.TrimLeft(low, "abcdefghijklmnopqrstuvwxyz-"))]
+	return word == "refuted" || word == "brief-defect"
+}
+
 // HeldPrefix starts the reason of a producer the coordinator holds with
 // `hold <card>` (defect 47), or policy holds at the bounce limit: a HoldCard
 // whose reason is "held: <why>". The board lists it with the waiting
