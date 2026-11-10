@@ -3,6 +3,7 @@ package verbs
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -38,6 +39,31 @@ func TestWakeTakesEveryDealtCard(t *testing.T) {
 	}
 	if again := wakeOf(w, "bob", "7-0\tsprint\t-\tDEAL\t"+body); again != r {
 		t.Fatalf("a redelivered deal is the same wake:\n%s\n%s", again.Output, r.Output)
+	}
+}
+
+// TestWakeAnswersWithinTheHooksLimit is the live sprint of 2026-11-09
+// 21:38: one NUDGE carried five takes, wake ran them past nova-bus hook's
+// 8 s --exec limit, and the hook ended on that message every time it was
+// started, taking the row off the bus. A take that would start after
+// wakeBudget is left as the sprint wrote it, its card unacknowledged, for
+// the session to run; the wake answers, so the hook acks and goes on.
+func TestWakeAnswersWithinTheHooksLimit(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	setCard("p1.w1", func(c *store.Card) { c.Holder = "bob" })(&s)
+	w := worldFrom(t, s)
+	now := t0
+	w.e.Now = func() time.Time { now = now.Add(2 * time.Second); return now } // every read of the clock is 2 s on
+	second := nudgeLine("p2.r1", "p2.r1@1", "bob")
+	r := wakeOf(w, "bob", "11-0\tsprint\t-\tNUDGE\t"+nudgeLine("p1.w1", "p1.w1@1", "bob")+`\n`+second)
+	has(t, r, "11-0\tsprint\t-\tNUDGE\tTAKEN p1.w1 repo=o/r", `\n`+second+"\n")
+	snap := w.snap(t)
+	if _, acked := snap.Cursors[steps.AckCursor(1, "p1.w1")]; !acked {
+		t.Fatalf("the take inside the budget did not acknowledge p1.w1")
+	}
+	if _, acked := snap.Cursors[steps.AckCursor(1, "p2.r1")]; acked {
+		t.Fatalf("p2.r1 was taken after the budget; its line says it was not")
 	}
 }
 
