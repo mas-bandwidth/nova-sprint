@@ -268,7 +268,7 @@ func TestFunctionalLateWriterCannotReachThePush(t *testing.T) {
 	jobDir := filepath.Join(root, "jobs", "p1.w1")
 	wt := filepath.Join(jobDir, "repo")
 	j := Job{Repo: gb.originDir, Kind: "work", Branch: "sprint/s1/p1", BaseSHA: gb.baseSHA, Consumer: "p1.w1", Row: "b1.script",
-		JobDir: jobDir, WorktreeDir: wt, CommitName: testCommitName, CommitEmail: testCommitEmail}
+		JobDir: jobDir, WorktreeDir: wt, CommitName: testCommitName, CommitEmail: testCommitEmail, Paths: []string{"work.txt", "left.txt"}}
 	require.NoError(t, g.Fetch(ctx, j))
 	_, err = g.StageWorktree(ctx, j)
 	require.NoError(t, err)

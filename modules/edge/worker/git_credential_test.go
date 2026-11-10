@@ -154,7 +154,7 @@ func TestWorkerGitTokenNeverReachesTheHarness(t *testing.T) { // unitlint: seria
 		results = append(results, res)
 	}
 	if err == nil {
-		res, err = w.RunStep(context.Background(), j, sealArgv_internal(dir, strings.Repeat("b", 40), "n", "e", "m"), time.Minute)
+		res, err = w.RunStep(context.Background(), j, sealArgv_internal(dir, strings.Repeat("b", 40), "n", "e", "m", nil), time.Minute)
 		results = append(results, res)
 	}
 	if err != nil {

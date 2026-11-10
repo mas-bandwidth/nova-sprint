@@ -93,7 +93,7 @@ func TestFunctionalShallowStage(t *testing.T) {
 			require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work\n"), 0o644))
 			runGitCmd_internal(t, wt, "add", "work.txt")
 			runGitCmd_internal(t, wt, "commit", "-q", "-m", "work")
-			seal := sealArgv_internal(jobDir, prior, testCommitName, testCommitEmail, "seal\n")
+			seal := sealArgv_internal(jobDir, prior, testCommitName, testCommitEmail, "seal\n", []string{"work.txt"})
 			cmd := exec.Command(seal[0], seal[1:]...)
 			cmd.Dir = wt
 			out, err := cmd.CombinedOutput()
@@ -172,4 +172,59 @@ func TestFunctionalStreamStepKeepsAResolvedConflict(t *testing.T) {
 	runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", head, got)
 	runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", runGitCmd_internal(t, seed, "rev-parse", "main"), got)
 	require.Equal(t, "resolved", runGitCmd_internal(t, clone, "show", got+":f.txt"))
+}
+
+// TestFunctionalSealCommitsOnlyPaths (functional tier: real git) is the
+// seal step on a tree the harness left dirty inside and outside the card's
+// PATHS: rel-rs-ffi-aliasing's head was a seal commit of 259 build files
+// under wire-compat/target/, untracked and not ignored. The seal commits
+// only what PATHS names (a glob, a declared new directory, a deletion) and
+// prints what it left out; a tree dirty only outside PATHS commits nothing.
+func TestFunctionalSealCommitsOnlyPaths(t *testing.T) {
+	t.Parallel()
+	for _, kase := range []string{"mixed", "outside-only"} {
+		t.Run(kase, func(t *testing.T) {
+			t.Parallel()
+			wt, jobDir := t.TempDir(), t.TempDir()
+			write := func(file, body string) {
+				require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(wt, file)), 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(wt, file), []byte(body), 0o644))
+			}
+			runGitCmd_internal(t, wt, "init", "-q", "-b", "main")
+			write(".gitignore", "/target\n")
+			write("README.md", "readme\n")
+			write("wire-compat/src/lib.rs", "lib\n")
+			write("wire-compat/src/old.rs", "old\n")
+			runGitCmd_internal(t, wt, "add", "-A")
+			runGitCmd_internal(t, wt, "commit", "-q", "-m", "base")
+			base := runGitCmd_internal(t, wt, "rev-parse", "HEAD")
+
+			write("wire-compat/target/debug/libwire.rlib", "build output\n")
+			write("target/debug/ignored.o", "ignored\n")
+			write("README.md", "readme, edited outside PATHS\n")
+			if kase == "mixed" {
+				write("wire-compat/src/lib.rs", "lib, fixed\n")
+				runGitCmd_internal(t, wt, "add", "README.md") // staged outside PATHS: still left out
+				write("wire-compat/tests/alias.rs", "test\n")
+				write("crates/ffi/src/glue.rs", "glue\n") // under a directory a glob matches
+				require.NoError(t, os.Remove(filepath.Join(wt, "wire-compat/src/old.rs")))
+			}
+			seal := sealArgv_internal(jobDir, base, testCommitName, testCommitEmail, "seal\n", []string{"wire-compat/src/*.rs", "wire-compat/tests/", "crates/*"})
+			cmd := exec.Command(seal[0], seal[1:]...)
+			cmd.Dir = wt
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, "%s", out)
+			if kase == "outside-only" {
+				require.Equal(t, base, runGitCmd_internal(t, wt, "rev-parse", "HEAD"), "nothing inside PATHS: no commit")
+				require.FileExists(t, filepath.Join(jobDir, SealNone))
+				require.NoFileExists(t, filepath.Join(jobDir, SealBundle))
+			} else {
+				require.Equal(t, "A\tcrates/ffi/src/glue.rs\nM\twire-compat/src/lib.rs\nD\twire-compat/src/old.rs\nA\twire-compat/tests/alias.rs",
+					runGitCmd_internal(t, wt, "diff", "--name-status", base, "HEAD"), "the seal commit holds PATHS only")
+				require.FileExists(t, filepath.Join(jobDir, SealBundle))
+			}
+			require.Contains(t, string(out), "wire-compat/target/", "the seal names what it left out")
+			require.Contains(t, string(out), "README.md")
+		})
+	}
 }
