@@ -244,6 +244,9 @@ func (t *tick) cleared(j store.Judgement) string {
 			return "working at or above three quarters of the open width"
 		}
 	case "land-rate":
+		if !t.leftToLand(j.About) {
+			return "stream " + j.About + " has no card left to land"
+		}
 		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= t.lim.LandTarget {
 			return "land rate back at target"
 		}
@@ -289,7 +292,7 @@ func contains(xs []string, x string) bool {
 // alarms are stall (nothing landed in the bound while producers wait in
 // review or merging, per stream), idle (working under the floor of the open
 // width while producers wait) and land-rate (a stream's first-time land
-// rate under target over the sample).
+// rate under target over the sample, while a producer is left to land).
 func (t *tick) alarms() {
 	for _, s := range sortedKeys(t.v.Streams) {
 		if f := t.streamFacts(s); f.Merging+f.Review > 0 {
@@ -301,7 +304,7 @@ func (t *tick) alarms() {
 				t.judge("stall", s, fmt.Sprintf("stream %s: nothing landed since %s while %d review and %d merging wait", s, since.UTC().Format("15:04:05"), f.Review, f.Merging))
 			}
 		}
-		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < t.lim.LandTarget {
+		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < t.lim.LandTarget && t.leftToLand(s) {
 			t.judge("land-rate", s, fmt.Sprintf("stream %s lands first time at %.0f%% over %d; the target is %.0f%%", s, rate*100, n, t.lim.LandTarget*100))
 		}
 	}
@@ -353,6 +356,22 @@ func (t *tick) idleCauses() string {
 		return "nothing dealable: " + causes
 	}
 	return "nothing dealable: " + what + "; ready: " + causes + "; " + fix
+}
+
+// leftToLand is whether stream s has a producer that may still land: once
+// none has, its land rate can never move.
+func (t *tick) leftToLand(s string) bool {
+	for state, ids := range t.v.byState {
+		if state == "landed" || state == "fail" {
+			continue
+		}
+		for id := range ids {
+			if c := t.v.Cards[id]; c.Kind == "producer" && c.Stream == s {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // landRate is a stream's landed with no bounce over landed, and the count.

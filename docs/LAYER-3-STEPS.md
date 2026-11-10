@@ -309,7 +309,8 @@ for each candidate, and the engine refuses one below the card's tier.
   review or merging, cause per stream; `idle`, working under half the open
   width while producers wait, causes by count, closed back over three
   quarters (LESSONS 3.18); `land-rate`, a stream's or model's landed with no
-  bounce over landed, under target over a sample (LESSONS 3.21).
+  bounce over landed, under target over a sample (LESSONS 3.21), while the
+  stream has a producer left to land (cleared once it has none).
 - Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 
