@@ -149,19 +149,24 @@ Each message is a wake. Handle it, then wait for the bus again.
 1. Acknowledge it: `nova-sprint take <id>@<gen> --as <you> --epoch <e>`, as the deal printed
    it. The card is already in your hand; `take` tells the sprint you have it (the nudges stop)
    and prints the whole brief. The first line is
-   `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch> deadline=<n>s forge=<f>`. On a
-   fix, the next line is the prior head and the finding it came back with. The brief follows:
+   `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch> deadline=<n>s forge=<f>`. When
+   the dealt branch holds earlier work (a fix, a withdraw, a release or a fault), the next
+   line is `continue from <40 hex>, never from the base: ...`: the branch's tip at origin,
+   which `take` reads, and the finding when there is one. The brief follows:
    its tier, PATHS, NEEDS, TEST and DONE-WHEN lines and its prose. Then `How this card finishes:`,
    the commit identity and the exact finish lines for this card. The last line is
    `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. `take` does not
-   change the generation, and a repeat prints the same and changes nothing.
+   change the generation, and a repeat changes nothing; it prints the same unless the branch
+   moved at origin, when it names the new tip.
 2. Make a fresh clone of `https://github.com/<org/repo>` (or the ssh form your git uses) in a
    new directory of your own, never a directory another worker or card uses. The dealt branch
-   is the same for every attempt of a card. Run `git ls-remote origin <branch>`. If it prints
-   nothing, no attempt pushed yet: create the branch at the base commit,
-   `git checkout -b <branch> <base>`. If it prints a sha, an earlier attempt pushed work (a fix,
-   a withdraw, a release or a fault): `git fetch origin <branch>`, then
-   `git checkout -b <branch> origin/<branch>`, and continue from that work with the brief's
+   is the same for every attempt of a card. If take printed `continue from <sha>`, an earlier
+   attempt pushed work (a fix, a withdraw, a release or a fault): `git fetch origin <sha>`,
+   then `git checkout -b <branch> <sha>`, never `<base>`: a head built on the base is not a
+   descendant of the branch, and its plain push is rejected. Otherwise no attempt pushed yet:
+   create the branch at the base commit, `git checkout -b <branch> <base>`. Before your first
+   push, `git ls-remote origin <branch>` must print nothing or a sha your head descends from.
+   Continue from the earlier work with the brief's
    finding in hand; never restart from the base and never throw the earlier work away. If the
    finding is a merge conflict, fetch the base, merge it into your branch and resolve the
    conflicts; never rebase: keep the prior head's history, so your next head descends from it.

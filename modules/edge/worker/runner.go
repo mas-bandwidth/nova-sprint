@@ -1364,13 +1364,20 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, clone, remote, streamRe
 	if _, err := g.runRemoteGit_internal(ctx, to, worktree, "fetch", "--quiet", "--no-recurse-submodules", remote, streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
+	if err := g.deepenForMerge_internal(ctx, to, worktree, remote, streamRef); err != nil {
+		return "", &FetchError{StreamRef: streamRef, Cause: err}
+	}
 	// Merged in, never rebased: a rebase drops a merge commit that resolved
 	// a conflict and replays the card's commits into it again, and its head
 	// no longer descends from the job's.
 	if _, err := g.runGit_internal(ctx, to, worktree, "merge", "-m", "Merge "+streamRef+" into the card", "FETCH_HEAD"); err != nil {
 		out, diffErr := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
-		if _, abortErr := g.runGit_internal(ctx, to, worktree, "merge", "--abort"); abortErr != nil {
-			err = fmt.Errorf("%w; cleanup: %w", err, abortErr)
+		// Only a merge in progress is aborted: one refused before it began
+		// (unrelated histories, a dirty tree) left nothing to abort.
+		if _, inMerge := g.runGit_internal(ctx, to, worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD"); inMerge == nil {
+			if _, abortErr := g.runGit_internal(ctx, to, worktree, "merge", "--abort"); abortErr != nil {
+				err = fmt.Errorf("%w; cleanup: %w", err, abortErr)
+			}
 		}
 		if files := strings.Fields(out); diffErr == nil && len(files) > 0 {
 			return "", &ConflictError{Files: files}
@@ -1381,6 +1388,32 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, clone, remote, streamRe
 		return "", err
 	}
 	return g.headSHA_internal(ctx, worktree, "HEAD")
+}
+
+// deepenForMerge_internal deepens the worker's clone while it is shallow
+// and HEAD shares no commit with FETCH_HEAD: by each of shallowDeepens, then
+// --unshallow, as staging does. The clone carries the work clone's shallow
+// boundary, where a stream tip a later staging fetched at depth 1 is a root
+// with no parents, so the merge would find no base ("refusing to merge
+// unrelated histories"). A deep clone, or one that shares a commit, is left
+// as it is; one that shares none once unshallowed is the merge's to name.
+func (g *OSGitOps) deepenForMerge_internal(ctx context.Context, to time.Duration, clone, remote, streamRef string) error {
+	steps := make([]string, 0, len(shallowDeepens)+1)
+	for _, n := range shallowDeepens {
+		steps = append(steps, "--deepen="+strconv.Itoa(n))
+	}
+	for _, step := range append(steps, "--unshallow") {
+		if !fileExists_internal(filepath.Join(clone, ".git", "shallow")) {
+			return nil
+		}
+		if _, err := g.runGit_internal(ctx, to, clone, "merge-base", "HEAD", "FETCH_HEAD"); err == nil {
+			return nil
+		}
+		if _, err := g.runRemoteGit_internal(ctx, to, clone, "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", step, remote, streamRef); err != nil {
+			return fmt.Errorf("deepen for a merge base with %s (%s): %w", streamRef, step, err)
+		}
+	}
+	return nil
 }
 
 // OriginHasHead: the branch at remote, the job's clone URL, is at sha;

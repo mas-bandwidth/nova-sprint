@@ -44,6 +44,17 @@
 (* Rebase keeps it. PushKeepsPrior; witness RunnerRebaseDropsPrior. The    *)
 (* trace walk reads keepsPrior from the git commands the step runs; the    *)
 (* ancestry itself is TestFunctionalStreamStepKeepsAResolvedConflict's.    *)
+(*                                                                         *)
+(* The next holder starts from the branch's tip (2026-11-09, johnny's four *)
+(* cards): Harvest pushes the job's head (harvestWorkHead_internal), and a *)
+(* Withdraw after it tells the store nothing (the sprint reads no origin), *)
+(* so branch[c].known, the head a re-deal's store prior carries (a Release *)
+(* reports its own; a Report ends the card done, never re-dealt), can lag  *)
+(* the tip; "none" is also a tip at the base, nothing past it. HolderTake  *)
+(* is the next holder's take; its prior                                    *)
+(* head, branch[c].from, is TakePrior (worker.StartHead): the tip at       *)
+(* origin when there is one, else the store's. HolderStartsFromTip;       *)
+(* witness RunnerTakeFromStorePrior, the take that read only the store.    *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -75,7 +86,7 @@ Init ==
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, released |-> FALSE]
   /\ pass = "idle"
-  /\ branch = [c \in Consumers |-> [tip |-> "none", holderWrote |-> FALSE, finalPushes |-> 0]]
+  /\ branch = [c \in Consumers |-> [tip |-> "none", holderWrote |-> FALSE, finalPushes |-> 0, known |-> "none", from |-> "unset"]]
 
 \* A job's push moves its branch only while its consumer is working (it
 \* holds the card) and by lease: the tip is still none or this job's, never
@@ -148,7 +159,8 @@ Harvest(c) ==
   /\ slotsInUse' = slotsInUse - 1   \* slot freed only when harness ends
   /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "ok", ![c].sealed = TRUE]   \* the seal step, in the wall
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
-  /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
+  /\ branch' = JobPushes(c)   \* the harvest pushes the sealed head; the store learns it only from a report
+  /\ UNCHANGED <<storeState, width, appliedOps, env, pass>>
 
 Rebase(c) ==
   /\ ~env.crashed
@@ -240,9 +252,21 @@ Retire(c) ==
   /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
 
+\* The head the card's next holder starts from (worker.StartHead): the
+\* branch's tip at origin, read by take, when there is one; else the store's.
+TakePrior(c) == IF branch[c].tip # "none" THEN branch[c].tip ELSE branch[c].known
+
+\* The card's next holder, on another row, takes it: its receipt's prior head.
+HolderTake(c) ==
+  /\ storeState[c] = "fail"
+  /\ branch[c].from = "unset"
+  /\ branch' = [branch EXCEPT ![c].from = TakePrior(c)]
+  /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass>>
+
 \* The card's next holder, on another row, pushes its branch.
 HolderPush(c) ==
   /\ storeState[c] = "fail"
+  /\ branch[c].from # "unset"
   /\ ~branch[c].holderWrote
   /\ branch' = [branch EXCEPT ![c].tip = "holder", ![c].holderWrote = TRUE]
   /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass>>
@@ -302,7 +326,7 @@ Release(c) ==
   /\ jobDir' = [jobDir EXCEPT ![c].pushed = TRUE, ![c].exists = FALSE, ![c].sealed = TRUE]   \* sealed, then pushed
   /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
   /\ env' = [env EXCEPT !.released = TRUE]
-  /\ branch' = JobPushes(c)
+  /\ branch' = [JobPushes(c) EXCEPT ![c].known = "job"]   \* the release reports the head it pushed
   /\ UNCHANGED <<slotsInUse, width, harnessAlive, appliedOps, pass>>
 
 Restart ==
@@ -347,6 +371,7 @@ Next ==
        \/ Withdraw(c)
        \/ Retire(c)
        \/ HolderPush(c)
+       \/ HolderTake(c)
        \/ Release(c)
   \/ Crash
   \/ Restart
@@ -378,7 +403,8 @@ TypeOK ==
   /\ slotsInUse \in 0..2
   /\ width = Width
   /\ pass \in {"idle", "planning"}
-  /\ branch \in [Consumers -> [tip : {"none", "job", "holder"}, holderWrote : BOOLEAN, finalPushes : 0..2]]
+  /\ branch \in [Consumers -> [tip : {"none", "job", "holder"}, holderWrote : BOOLEAN, finalPushes : 0..2,
+                               known : {"none", "job"}, from : {"unset", "none", "job"}]]
 
 OneLiveHarnessPerJobDir ==
   \A c \in Consumers : harnessAlive[c] <= 1 /\ (harnessAlive[c] > 0 => jobDir[c].exists)
@@ -443,6 +469,12 @@ PushOnlySealed ==
 \* that resolved a conflict, and the conflict comes back every attempt).
 PushKeepsPrior ==
   \A c \in Consumers : jobDir[c].pushed => jobDir[c].keepsPrior
+
+\* The next holder starts from the head its branch holds at origin, so its
+\* push descends from every head an earlier job pushed: none is rewound by a
+\* lease from a stale tip, and no plain push is rejected as not a descendant.
+HolderStartsFromTip ==
+  \A c \in Consumers : (branch[c].from # "unset" /\ ~branch[c].holderWrote) => branch[c].from = branch[c].tip
 
 \* Reach checks (each must be violated: the state is reachable).
 NeverTakesWhileAJobRuns ==
