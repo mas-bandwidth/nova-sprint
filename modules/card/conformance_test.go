@@ -615,7 +615,7 @@ func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
 	rc, err := w.apply("stale-hold", stale)
 	require.NoError(t, err)
 	assert.False(t, rc.Accepted)
-	assert.Contains(t, rc.Reason, "expected seq")
+	assert.Contains(t, rc.Reason, "wrote cards")
 	assert.False(t, w.snap().Streams["s1"].Held)
 	w.is("p1", Ready)
 	w.is("p2", Ready)
@@ -630,6 +630,24 @@ func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
 	assert.True(t, w.snap().Streams["s1"].Held)
 	w.is("p1", Waiting)
 	w.is("p2", Waiting)
+}
+
+// A worker's beat between the snapshot and the hold writes neither a card
+// nor a stream, so the hold still lands (it was fenced on the seq, and a
+// beat every few ms refused it: "the store is at seq N+1, expected seq N").
+func TestConformanceHoldStreamLandsOverABeat(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, producer("p1"))
+	w.move("p1", Resolve{})
+	snap := w.snap()
+	plan, r := MoveStream(StreamFromStore(snap.Streams["s1"]), HoldStream{
+		Reason: "release freeze", Ready: []Card{FromStore(snap.Cards["p1"])}, Seq: snap.Seq,
+	})
+	require.Nil(t, r)
+	w.raw("beat", store.SetRowLoad{Row: "r1", Load1Centi: 7, Cores: 8})
+	w.op("hold", plan)
+	assert.True(t, w.snap().Streams["s1"].Held)
+	w.is("p1", Waiting)
 }
 
 // The card model's ruling: a return to ready while the stream is held parks

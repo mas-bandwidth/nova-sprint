@@ -279,20 +279,75 @@ func condOf(e Expect) cond {
 		}}
 	case RowsOnlySince:
 		return cond{func(c *checker) { c.num64("seq", v.Seq) }, func(w *work) (string, error) {
-			last, err := w.tx.lastSeq()
-			if err != nil || last < v.Seq {
-				return when(err == nil, "the store is at seq %d, before seq %d", last, v.Seq), err
-			}
-			events, err := w.tx.acceptedSince(v.Seq)
-			for _, e := range events {
-				if a := e.After; a == nil || a.Epoch != 0 || a.Streams != nil || a.Cards != nil || a.Policies != nil || a.Judgements != nil || a.Cursors != nil || a.Stop != nil || a.Identity != nil {
-					return fmt.Sprintf("the store changed since seq %d: seq %d wrote more than rows", v.Seq, e.Seq), err
-				}
-			}
-			return "", err
+			return w.since(v.Seq, func(e Event) string {
+				a := e.After
+				return when(a == nil || a.Epoch != 0 || a.Streams != nil || a.Cards != nil || a.Policies != nil || a.Judgements != nil || a.Cursors != nil || a.Stop != nil || a.Identity != nil, "more than rows")
+			})
 		}}
+	case UnchangedSince:
+		return cond{func(c *checker) {
+			if c.num64("seq", v.Seq); v == (UnchangedSince{Seq: v.Seq}) {
+				c.fail("UnchangedSince names no part of the state")
+			}
+		}, func(w *work) (string, error) { return w.since(v.Seq, v.changed) }}
 	}
 	return cond{}
+}
+
+// since is "" when the store has reached seq and changed names no accepted
+// event after it, else the reason naming the first event it names.
+func (w *work) since(seq int64, changed func(Event) string) (string, error) {
+	last, err := w.tx.lastSeq()
+	if err != nil || last < seq {
+		return when(err == nil, "the store is at seq %d, before seq %d", last, seq), err
+	}
+	events, err := w.tx.acceptedSince(seq)
+	for _, e := range events {
+		if what := changed(e); what != "" {
+			return fmt.Sprintf("the store changed since seq %d: seq %d wrote %s", seq, e.Seq, what), err
+		}
+	}
+	return "", err
+}
+
+// changed is the first part of the state u names that event e wrote, or "".
+// A row's hook changed when its session or role differs from its
+// before-image, or it had none (a row is inserted only by PutRow).
+func (u UnchangedSince) changed(e Event) string {
+	a, b := e.After, e.Before
+	if a == nil {
+		return ""
+	}
+	for _, p := range []struct {
+		named, wrote bool
+		what         string
+	}{
+		{u.Streams, a.Streams != nil, "streams"}, {u.Cards, a.Cards != nil, "cards"},
+		{u.Policies, a.Policies != nil, "policies"}, {u.Judgements, a.Judgements != nil, "judgements"},
+		{u.Stop, a.Stop != nil, "the stop"}, {u.Identity, a.Identity != nil, "the identity"},
+	} {
+		if p.named && p.wrote {
+			return p.what
+		}
+	}
+	for name, r := range a.Rows {
+		if !u.Hooks {
+			break
+		}
+		if old, ok := b.rowOf(name); !ok || old.Session != r.Session || old.Role != r.Role {
+			return "row " + name + "'s hook"
+		}
+	}
+	return ""
+}
+
+// rowOf is row name of the image s, which may be nil.
+func (s *State) rowOf(name string) (Row, bool) {
+	if s == nil {
+		return Row{}, false
+	}
+	r, ok := s.Rows[name]
+	return r, ok
 }
 
 // cardCond is a condition on card id: its key and check, then test on the

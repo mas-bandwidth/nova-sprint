@@ -113,7 +113,7 @@ func (c Choices) Save(ctx context.Context, question, value string) error {
 		return nil
 	}
 	id := consumerOpID("choice:"+c.Actor, snap.Epoch, name+"\x00"+value, int(snap.Seq))
-	op := store.Op{ID: id, Epoch: snap.Epoch, Actor: c.Actor, Kind: "setup answer", At: c.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: name, Body: value}}}
+	op := store.Op{ID: id, Epoch: snap.Epoch, Actor: c.Actor, Kind: "setup answer", At: c.Now(), Expect: []store.Expect{store.UnchangedSince{Seq: snap.Seq, Policies: true}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: name, Body: value}}}
 	r, err := applyOnce(ctx, c.Store, op, c.Store.Apply)
 	if err != nil {
 		return err

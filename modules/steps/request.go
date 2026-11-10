@@ -194,7 +194,8 @@ func (t *tick) holdMoves(p string, e card.HoldCard) ([]move, *card.Refusal) {
 }
 
 // streamMoves is a stream's hold with every ready producer of it parked in
-// the same op, fenced at the view's seq, or its lifting.
+// the same op, fenced on no stream or card written since the view's seq,
+// or its lifting.
 func (t *tick) streamMoves(r Request, e card.Event) ([]move, *card.Refusal) {
 	if _, ok := t.v.Streams[r.Stream]; !ok {
 		return nil, &card.Refusal{Reason: "stream " + r.Stream + " does not exist"}

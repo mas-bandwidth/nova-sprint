@@ -578,7 +578,7 @@ func TestHoldStream(t *testing.T) {
 	b.ID, b.Gen, b.Reason = "p2", 8, "held: stream s1 is held"
 	plan, r := MoveStream(Stream{Name: "s1"}, HoldStream{Ready: []Card{a, b}})
 	require.Nil(t, r)
-	assert.Equal(t, []store.Expect{store.StreamHeld{Stream: "s1"}, store.AtSeq{}, p1, gen("p2", 8)}, plan.Expect)
+	assert.Equal(t, []store.Expect{store.StreamHeld{Stream: "s1"}, store.UnchangedSince{Streams: true, Cards: true}, p1, gen("p2", 8)}, plan.Expect)
 	assert.Equal(t, []store.Write{store.SetStreamHeld{Stream: "s1", Held: true}, store.SetCardState{Card: "p1", State: Waiting},
 		store.SetCardReason{Card: "p1", Reason: "held: stream s1 is held"}, store.SetCardState{Card: "p2", State: Waiting}}, plan.Writes)
 	_, r = MoveStream(Stream{Name: "s1"}, HoldStream{Ready: []Card{a, a}})

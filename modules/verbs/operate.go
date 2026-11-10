@@ -27,7 +27,7 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		return alreadyStopped(snap, in.actor), nil
 	}
 	op := e.newOp(in.verb, in.actor, snap, reason)
-	op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}}
+	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Stop: true}} // no other stop or start since the read
 	op.Writes, op.Note = []store.Write{store.SetStopped{Stopped: stop, Reason: reason}}, reason
 	r, err := e.commit(ctx, op, "nova-sprint show run")
 	if err != nil {
