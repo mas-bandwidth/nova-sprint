@@ -3,6 +3,8 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +75,45 @@ func TestAdmissionProvesOnBaseMove(t *testing.T) {
 type proof struct {
 	refused map[string]string
 	err     error
+}
+
+// TestAdmissionStartsOverAtAClear: a clear's new epoch may reuse the old
+// card ids at the same head, so a new epoch proves its streams again and
+// the old epoch's refusals are dropped, those of a proof of the old epoch
+// that answers late too.
+func TestAdmissionStartsOverAtAClear(t *testing.T) {
+	t.Parallel()
+	late := make(chan struct{})
+	a := &Admission{Admit: func(_ context.Context, snap store.Snapshot, _ string) (map[string]string, error) {
+		switch snap.Epoch {
+		case 2:
+			return nil, nil
+		case 3:
+			<-late
+		}
+		return map[string]string{"p1": fmt.Sprintf("epoch %d's refusal", snap.Epoch)}, nil
+	}}
+	ctx, heads := context.Background(), map[string]string{"s1": "h1"}
+	a.Prove(ctx, store.Snapshot{Epoch: 1}, heads)
+	a.Wait()
+	if got := a.Unadmitted(); got["p1"] != "epoch 1's refusal" {
+		t.Fatalf("epoch 1: unadmitted %v", got)
+	}
+	a.Prove(ctx, store.Snapshot{Epoch: 2}, heads) // cleared: the same head, the same card id
+	a.Wait()
+	if got := a.Unadmitted(); len(got) != 0 {
+		t.Fatalf("epoch 2 kept epoch 1's refusals: %v", got)
+	}
+	a.Prove(ctx, store.Snapshot{Epoch: 3}, heads) // its proof answers after epoch 4's
+	a.Prove(ctx, store.Snapshot{Epoch: 4}, heads)
+	for a.Unadmitted()["p1"] != "epoch 4's refusal" {
+		runtime.Gosched()
+	}
+	close(late)
+	a.Wait()
+	if got := a.Unadmitted(); got["p1"] != "epoch 4's refusal" {
+		t.Fatalf("epoch 3's late proof replaced epoch 4's: %v", got)
+	}
 }
 
 // TestTickDealsNoUnadmittedCard: the tick passes the latest proof's
