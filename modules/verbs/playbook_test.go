@@ -160,7 +160,7 @@ func TestPlaybooksMergeNeverRebase(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("%s lacks %q", name, want)
 		}
-		for _, old := range []string{"you may rebase it", "Rebase onto the base", "rebase onto the group branch"} {
+		for _, old := range []string{"you may rebase it", "Rebase onto the base", "rebase onto the group branch", "--force-with-lease", "git rebase"} {
 			if strings.Contains(text, old) {
 				t.Errorf("%s still teaches a rebase: %q", name, old)
 			}

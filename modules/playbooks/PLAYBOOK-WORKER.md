@@ -186,11 +186,10 @@ Each message is a wake. Handle it, then wait for the bus again.
    `Co-Authored-By: <your name> <your email>` trailer. `finish` refuses a head with any commit
    since the base by another author or committer email.
    Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
-   withdraw never costs work. Your card branch is yours alone: nobody else writes it, so you may
-   rewrite your own commits on it (a newer base is merged in, never rebased, step 2) and push it with
-   `git push --force-with-lease origin <branch>`. Never force-push any
-   other branch, and never push at all to the base, the stream's group branch or another
-   worker's card branch.
+   withdraw never costs work. Your card branch is yours alone: nobody else writes it. Never
+   rewrite it (a newer base is merged in, never rebased, step 2); push it with plain
+   `git push origin <branch>`. Never force-push any branch, and never push at all to the base,
+   the stream's group branch or another worker's card branch.
 8. Open no PR. The landing opens the PR itself (from your card's branch, or from the stream's
    group branch when several heads land together); `finish` needs only your pushed head.
 9. Before you finish, check that the remote tip is your head: `git ls-remote origin <branch>`
@@ -293,9 +292,9 @@ answer, never a thing to route round.
 - `head <x> is not a full commit sha`: report the full 40-hex sha.
 - `push first: git push origin <branch>`: the head is not on the dealt branch at origin.
 - `<n> of the <m> commits on <branch> since the base are not made as <name> <email>: <sha>
-  (author <a>, committer <c>), ...`: run the two git config lines it prints in your clone, rewrite
-  those commits as it (`git rebase --rebase-merges <base> --exec 'git commit --amend --no-edit --reset-author'`),
-  push with `--force-with-lease`, and finish with the new head.
+  (author <a>, committer <c>), ...`: run the two git config lines it prints in your clone so
+  your next commits are made as it. Never rewrite the pushed commits to fix it: the next head
+  must descend from them. Report a `finish --failed` naming it; the coordinator decides.
 - `the sprint has no commit identity`: nothing may commit yet; tell the coordinator.
 - `head <x> is the base; nothing was done`: an empty head is never a finish.
 - `bring <branch> up to the stream head`: merge the group branch in (step 9), never rebase,
