@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -135,7 +136,12 @@ func snapshotTx(ctx context.Context, tx pgx.Tx, scope Scope) (Snapshot, error) {
 	case scope.All:
 		s.Cards, err = all(ctx, tx, scanCard, cardID, "SELECT "+cardCols+" FROM sprint.cards WHERE epoch = $1", s.Epoch)
 	case len(scope.IDs) > 0 || scope.Holder != "" || scope.Producers:
-		s.Cards, err = all(ctx, tx, scanCard, cardID, scopedCards, s.Epoch, list0(scope.IDs), scope.Holder, scope.Producers, scope.Final)
+		q := scopedCards
+		if scope.Unworded {
+			q = strings.Replace(q, "brief, reason,", "'', '',", 1)
+			q = strings.Replace(q, "prose, review, finding,", "'', review, '',", 1)
+		}
+		s.Cards, err = all(ctx, tx, scanCard, cardID, q, s.Epoch, list0(scope.IDs), scope.Holder, scope.Producers, scope.Final)
 	default:
 		s.Cards = map[string]Card{}
 	}

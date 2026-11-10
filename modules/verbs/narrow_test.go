@@ -18,6 +18,13 @@ func (s *wholeReads) Snapshot(ctx context.Context) (store.Snapshot, error) {
 	return s.Fake.Snapshot(ctx)
 }
 
+func (s *wholeReads) Read(ctx context.Context, scope store.Scope) (store.Snapshot, error) {
+	if scope.All {
+		s.n++
+	}
+	return s.Fake.Read(ctx, scope)
+}
+
 // The worker's verbs read only the cards they touch, never every card: a
 // far bench pays for every byte (2026-11-09: 36 MB, 20-44 s a read from
 // hetzner1, hetzner2 and space; beats timed out and deals expired untaken).

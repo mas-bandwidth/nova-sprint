@@ -381,6 +381,7 @@ type Scope struct {
 	Holder    string   // every consumer this row holds in hand (not done or fail), with each one's producer
 	Final     bool     // with Holder: its done and failed consumers too
 	Producers bool     // every producer and sentinel
+	Unworded  bool     // the cards with brief, reason, prose and finding empty: for a verb that reads none of them (next)
 }
 
 // of is the cards of all that s takes: the one meaning of a Scope, which
@@ -403,6 +404,12 @@ func (s Scope) of(all map[string]Card) map[string]Card {
 		}
 		if p, ok := all[c.Of]; ok && held {
 			out[p.ID] = p
+		}
+	}
+	for id, c := range out {
+		if s.Unworded {
+			c.Brief, c.Reason, c.Prose, c.Finding = "", "", "", ""
+			out[id] = c
 		}
 	}
 	return out
