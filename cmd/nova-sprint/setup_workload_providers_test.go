@@ -10,6 +10,7 @@ import (
 // The worker's key-proxy routes include OpenCode Zen and OpenRouter, each
 // upstream given without /v1 and each key opened from the bench's seat.
 func TestWorkerProvidersRouteOpenCodeAndOpenRouter(t *testing.T) {
+	t.Parallel()
 	ps, err := worker.ParseProviders(workerProviders)
 	if err != nil {
 		t.Fatal(err)
