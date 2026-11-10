@@ -187,6 +187,24 @@ func TestProbeRefusalRunsNoJudgementVerb(t *testing.T) {
 	}
 }
 
+// A probe whose harness exits 0 with chatter on stderr and no verdict says
+// the verdict, not only the chatter: the live refusal read "exit 0: Wrote
+// file successfully." (hetzner2, 2026-11-09) and never why it failed.
+func TestProbeFailureSaysTheVerdict(t *testing.T) {
+	t.Parallel()
+	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
+	wall := &fakeWall{runFn: func(int, Job, []string, []string) (WallRunResult, error) {
+		return WallRunResult{Stderr: []byte("> build · mercury-3\n← Write result.json\nWrote file successfully.\n"), Elapsed: 2 * time.Second}, nil
+	}}
+	r := probeRunner_internal(t, sp, wall, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, allKeys_internal))
+	err := r.ProbeRow(context.Background(), "b1", "opencode")
+	for _, want := range []string{"exit 0: Wrote file successfully.", "no verdict: the harness exited 0 without writing result.json"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("want %q in %v", want, err)
+		}
+	}
+}
+
 // 25, 28, 30, 31, 32: a failed probe says the harness's error line (not a
 // bare reset), keeps stdout.log, stderr.log and command.txt, names a death
 // inside the wall before the harness's log with the command that shows the
@@ -199,7 +217,7 @@ func TestProbeFailureIsReadable(t *testing.T) {
 		return edge.FakeOutcome{ExitCode: 1, Stdout: "", Stderr: "WALL grants=/job net=denied\n\x1b[91mError: \x1b[0mUnexpected server error\n\x1b[0m\n", Duration: 300 * time.Millisecond}
 	})
 	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return "/opt/oc/bin/opencode", nil },
-		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
 	r := probeRunner_internal(t, sp, wall, fx, threeProviders_internal(t, allKeys_internal))
 	err := r.ProbeRow(context.Background(), "b1", "opencode")
 	if err == nil {
@@ -252,7 +270,7 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 	}
 	fx := edge.NewFakeExec()
 	fx.On("nova-reserve", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{} })
-	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
 	cases := []struct {
 		h          Harness
 		want, lack []string
@@ -278,6 +296,20 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 			if strings.Contains(got, l) {
 				t.Errorf("%s: %q must not be in %s", c.h.Name(), l, got)
 			}
+		}
+	}
+}
+
+// nova-sandbox refuses --unix on macOS (bad_unix, exit 2), where a socket
+// inside a --write grant is reachable without it: an adapter's Unix need is
+// passed on Linux only, or every macOS row's probe fails and the row is held.
+func TestWallPassesUnixOnLinuxOnly(t *testing.T) {
+	t.Parallel()
+	j := Job{Consumer: "c1", JobDir: "/job", ProxyAddr: "127.0.0.1:7000", Needs: (&OpenCodeHarness{}).Needs()}
+	for goos, want := range map[string]bool{"linux": true, "darwin": false} {
+		got := strings.Join(sandboxFlags_internal(WallConfig{NetDeny: true, GOOS: goos}, j, nil), " ")
+		if strings.Contains(got, "--unix") != want || !strings.Contains(got, "--net-deny --net-allow 127.0.0.1:7000") {
+			t.Errorf("%s: want --unix %t and the proxy's --net-allow: %s", goos, want, got)
 		}
 	}
 }
