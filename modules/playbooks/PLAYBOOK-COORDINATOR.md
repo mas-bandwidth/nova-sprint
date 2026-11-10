@@ -53,11 +53,11 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    `HOOKED <you> role=coordinator`; then the commit identity; then
    `playbook: nova-sprint help playbook coordinator` (read it once, not on every hook); then a
    `next:` line. It refuses until
-   the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role to
-   any name but the one `up` recorded. Both refusals are the tool enforcing the order. Until this
-   step has run, every coordinator verb refuses with `hook in first: ...`. When the seat is
-   yours to take (the recorded coordinator is gone, or the seat was handed to you), take it:
-   `nova-sprint up --as <you> --take-over --reason "<why>"` (section 7, item 8).
+   the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role
+   while another row holds the seat, naming that row. Both refusals are the tool enforcing the
+   order. Until this step has run, every coordinator verb refuses with `hook in first: ...`.
+   Take the seat only when the operator says so (its holder is gone, or the seat was handed to
+   you): `nova-sprint up --as <you> --take-over --reason "<why>"` (section 7, item 8).
 3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per
    thing it checked (the fleet, nova-tools against the pin, the store, the bus, each stream's
    repository and base, the open judgements, run, the width, why each stream's producers wait,
@@ -414,9 +414,9 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    blindly: read it first. Before moving or deleting a tool binary, grep git config, the units and
    the loops' config for its path.
 8. Taking the seat. The seat is the row hooked in as coordinator; its own `unhook` frees it, and
-   so does a take-over, which needs nothing from that row: use it when the coordinator's host or
-   session is gone and the judgements have no one to answer them, or when the seat was handed to
-   you. Run `nova-sprint up --as <you> --take-over --reason "<why>"`. In one logged op it clears
+   so does a take-over, which needs nothing from that row: use it only when the operator says so,
+   when the coordinator's host or session is gone and the judgements have no one to answer them,
+   or when the seat was handed to you. Run `nova-sprint up --as <you> --take-over --reason "<why>"`. In one logged op it clears
    their hook as `unhook` does, hooks you in as coordinator, and goes on with `up`'s steps; then
    run section 1's session start from step 3. Their hand goes back to the queue in the same op
    (item 4), and the run sends them `TAKEN OVER by=<you>: ...` with your reason.

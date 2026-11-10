@@ -78,7 +78,7 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then hook again")
 	}
 	if c := coordinatorOf(snap); r == "coordinator" && c != "" {
-		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first, or take the seat: "+takeOverCommand(name))
+		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first; only when the operator says so, take the seat: "+takeOverCommand(name))
 	}
 	session, err := e.newSession()
 	if err != nil {
