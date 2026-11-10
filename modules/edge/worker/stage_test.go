@@ -232,6 +232,16 @@ func TestFetchDeepensUntilTheMergeBaseIsFetched(t *testing.T) {
 	}
 }
 
+// A read job carries no base sha: its head is paired with its stream's tip,
+// so the reader's diff finds the merge base in the work clone.
+func TestMergePairsOfAReadJob(t *testing.T) {
+	t.Parallel()
+	got := mergePairs_internal([]Job{{Kind: "read", Base: "main", Head: shaPrior}}, map[string]string{"main": shaTip})
+	if want := [][2]string{{shaTip, shaPrior}}; !slices.Equal(got, want) {
+		t.Fatalf("pairs %q, want %q", got, want)
+	}
+}
+
 // With no mirror the work clone is the one repo staging fetches into, from
 // the clone URL, with the credential.
 func TestFetchWithoutAMirror(t *testing.T) {
