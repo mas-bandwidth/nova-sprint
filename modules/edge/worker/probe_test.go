@@ -199,7 +199,7 @@ func TestProbeFailureIsReadable(t *testing.T) {
 		return edge.FakeOutcome{ExitCode: 1, Stdout: "", Stderr: "WALL grants=/job net=denied\n\x1b[91mError: \x1b[0mUnexpected server error\n\x1b[0m\n", Duration: 300 * time.Millisecond}
 	})
 	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return "/opt/oc/bin/opencode", nil },
-		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
 	r := probeRunner_internal(t, sp, wall, fx, threeProviders_internal(t, allKeys_internal))
 	err := r.ProbeRow(context.Background(), "b1", "opencode")
 	if err == nil {
@@ -252,7 +252,7 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 	}
 	fx := edge.NewFakeExec()
 	fx.On("nova-reserve", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{} })
-	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
 	cases := []struct {
 		h          Harness
 		want, lack []string
