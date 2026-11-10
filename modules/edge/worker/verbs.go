@@ -121,7 +121,7 @@ func (c *CLISprintClient) run_internal(ctx context.Context, argv []string) ([]by
 		return out, res.ExitCode, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	}
 	if res.Truncated {
-		return out, res.ExitCode, fmt.Errorf("%w: output truncated at %d bytes: %s", ErrTruncated, outputMaxBytes_internal, edge.CommandLine(argv, nil))
+		return out, res.ExitCode, fmt.Errorf("%w at %d bytes: %s", ErrTruncated, outputMaxBytes_internal, edge.CommandLine(argv, nil))
 	}
 	return out, res.ExitCode, nil
 }
