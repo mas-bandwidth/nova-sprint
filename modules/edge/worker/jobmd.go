@@ -84,6 +84,8 @@ func finishRules(j Job, k *KinFinish) string {
 		}
 		return "1. Commit your work in " + j.WorktreeDir + " on branch " + j.Branch + " (git add, then git commit -F <message file>). Run no git push and no gh: the worker pushes the branch after you exit, and the landing opens the pull request.\n" +
 			"   Never rebase or reset the branch: the head must descend from where this attempt started, or the worker refuses it; the worker brings it onto the base after you exit.\n" +
+			"   Commit only the files the card's paths name: what you leave uncommitted outside them (build output) is never committed for you.\n" +
+			"   The wall has no network: cargo builds offline from the bench's registry, so a crate the bench lacks fails at once; report that as fail, naming the crate.\n" +
 			commitIdentity_internal(j) +
 			"2. Run every done-when command in the checkout; each must exit 0.\n" +
 			"3. Write " + res + ", then exit 0. Its forms:\n" +

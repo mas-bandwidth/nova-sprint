@@ -116,7 +116,10 @@ What each judgement kind asks of you, and where to look before you choose:
   the route's name as a brief declares it with `NEEDS-ROUTE: <route>`): the card is never dealt
   again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
   that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
-  `unhold`; or `drop` it.
+  `unhold`; or `drop` it. A `held` whose reason reads `reads faulted <n> times running at review
+  <r>` is a review whose reads all faulted policy's `faults` limit in a row (the reason ends with
+  the newest fault): fix that cause (a route, a tool on the reading rows), then `unhold`; the card
+  is dealt again as work and its next review counts afresh.
 - `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
   than a tick. The message names the row, the card and the cause: the tick's budget spent before
   it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the
@@ -137,6 +140,9 @@ What each judgement kind asks of you, and where to look before you choose:
   the conflicts; never rebase (a bench refuses a head that does not descend from the prior
   head). Section 5.
 - `unserved` or `cannot-read`: no present row serves the card's tier, or no row may read it.
+  An `unserved` that names rows `resting after faults` has serving rows that faulted
+  policy's `route_rest_after` times lately: they are dealt to again when the rest ends; mend
+  the fault on them (their finishes name it) rather than bring another row up.
   Bring a row up that serves the tier (section 7); never lower the card's tier.
 - `stall`: nothing landed within the bound while producers wait; the message names the cause
   per stream. `idle`: the fleet works under half its open width while cards wait, with the

@@ -22,6 +22,7 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | A stop holds a landing or promotion already in flight: it merges nothing until start (PR #741, parked) | ❌ |
 | add adopts a card's existing branch as its head, so a continuing card starts from it (PR #726, parked) | ❌ |
 | Steps.tla gains the rest after faults: a resting row is offered to policy but not dealt to (the model gap under #740) | ❌ |
+| Functional flakes fixed: TestFunctionalClearWhileWorkersBeat (clear's seq fence refused: store at seq N+1, expected N, a beat landing between read and clear), TestFunctionalEvaluatorMemoryCap (failed once on main), a postgres start failure in a functional run; and the trace job near the 2-minute runner limit (55-130 s, cancelled on 7 of the 2026-11-09 landing runs) | ❌ |
 | complete | 0% |
 
 [Source data](roadmap.sexp)
