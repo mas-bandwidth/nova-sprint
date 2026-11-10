@@ -40,7 +40,7 @@ func validateHistory(ctx context.Context, tx pgx.Tx) error {
 		}
 		events, after = append(events, page...), page[len(page)-1].Seq
 	}
-	snap, err := snapshotTx(ctx, tx)
+	snap, err := snapshotTx(ctx, tx, Scope{All: true})
 	if err != nil {
 		return err
 	}

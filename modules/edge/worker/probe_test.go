@@ -199,7 +199,7 @@ func TestProbeFailureIsReadable(t *testing.T) {
 		return edge.FakeOutcome{ExitCode: 1, Stdout: "", Stderr: "WALL grants=/job net=denied\n\x1b[91mError: \x1b[0mUnexpected server error\n\x1b[0m\n", Duration: 300 * time.Millisecond}
 	})
 	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return "/opt/oc/bin/opencode", nil },
-		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+		Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
 	r := probeRunner_internal(t, sp, wall, fx, threeProviders_internal(t, allKeys_internal))
 	err := r.ProbeRow(context.Background(), "b1", "opencode")
 	if err == nil {
@@ -252,7 +252,7 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 	}
 	fx := edge.NewFakeExec()
 	fx.On("nova-reserve", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{} })
-	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+	wall := &OSReserveWall{Exec: fx, LookPath: func(string) (string, error) { return link, nil }, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true, GOOS: "linux"}}
 	cases := []struct {
 		h          Harness
 		want, lack []string
@@ -278,6 +278,20 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 			if strings.Contains(got, l) {
 				t.Errorf("%s: %q must not be in %s", c.h.Name(), l, got)
 			}
+		}
+	}
+}
+
+// nova-sandbox refuses --unix on macOS (bad_unix, exit 2), where a socket
+// inside a --write grant is reachable without it: an adapter's Unix need is
+// passed on Linux only, or every macOS row's probe fails and the row is held.
+func TestWallPassesUnixOnLinuxOnly(t *testing.T) {
+	t.Parallel()
+	j := Job{Consumer: "c1", JobDir: "/job", ProxyAddr: "127.0.0.1:7000", Needs: (&OpenCodeHarness{}).Needs()}
+	for goos, want := range map[string]bool{"linux": true, "darwin": false} {
+		got := strings.Join(sandboxFlags_internal(WallConfig{NetDeny: true, GOOS: goos}, j, nil), " ")
+		if strings.Contains(got, "--unix") != want || !strings.Contains(got, "--net-deny --net-allow 127.0.0.1:7000") {
+			t.Errorf("%s: want --unix %t and the proxy's --net-allow: %s", goos, want, got)
 		}
 	}
 }

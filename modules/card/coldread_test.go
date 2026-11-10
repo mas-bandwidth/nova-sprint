@@ -87,7 +87,7 @@ func TestColdFinalNeverMoves(t *testing.T) {
 	for _, s := range []string{Done, Fail} {
 		for _, e := range []Event{Report{Row: "r1", Result: "ok", Head: h2}, Withdraw{}} {
 			for _, c := range []Card{wk(s, "ok", h2), rd(s, "ok")} {
-				_, r := MoveConsumer(c, pr(Review), rows()["r1"], e)
+				_, r := MoveConsumer(c, pr(Review), nil, rows()["r1"], e)
 				assert.NotNil(t, r, "%s %s %s", c.Kind, s, name(e))
 			}
 		}
@@ -175,7 +175,7 @@ func TestColdReportRefusals(t *testing.T) {
 		{read, Report{Row: "r1", Result: "fix", Head: coldH3}},
 		{read, Report{Row: "r2", Result: "ok", Head: h1}},
 	} {
-		_, r := MoveConsumer(c.k, pr(Review), rows()["r1"], c.e)
+		_, r := MoveConsumer(c.k, pr(Review), nil, rows()["r1"], c.e)
 		assert.NotNil(t, r, "%s %+v", c.k.Kind, c.e)
 	}
 }
@@ -450,7 +450,8 @@ func (w *world) coldStepConsumer(rng *rand.Rand, ids []string, all map[string]Ca
 		v.Stream = StreamFromStore(w.snap().Streams[p.Stream])
 		e = v
 	}
-	plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
+	_, cons := w.all()
+	plan, r := MoveConsumer(c, p, cons[p.ID], w.rows()[c.Holder], e)
 	w.ev = e
 	return plan, name(e) + " " + c.ID, c.ID, r == nil
 }
@@ -578,7 +579,7 @@ func coldCycle(cards map[string]store.Card) []string {
 // legal forward move (LESSONS 2.21, nothing stalls).
 func TestColdDefectWorkReportFixStallsProducer(t *testing.T) {
 	t.Parallel()
-	_, refused := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Report{Row: "r1", Result: "fix", Head: h2})
+	_, refused := MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r1"], Report{Row: "r1", Result: "fix", Head: h2})
 	moved := false
 	for _, e := range []Event{Finished{Consumer: "p1.w1"}, Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, Released{}} {
 		if mv(Working, []Card{wk(Done, "fix", h2)}, e) == nil {
@@ -720,7 +721,7 @@ func TestColdDefectPlansTheStoreFindsInvalid(t *testing.T) {
 		{"cost -1", func(w *world) (Plan, *Refusal) {
 			w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
 			c := w.card("p1.w1")
-			return MoveConsumer(c, w.card("p1"), w.rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
+			return MoveConsumer(c, w.card("p1"), nil, w.rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
 		}},
 		{"score past int32", func(w *world) (Plan, *Refusal) { return w.plan("p1", Rescore{Score: math.MaxInt32 + 1}) }},
 		{"NUL in branch", func(w *world) (Plan, *Refusal) { return w.plan("p1", Start{Row: "r1", Branch: "b\x00", Base: base}) }},
@@ -768,8 +769,28 @@ func TestColdSuspectOkHeadEqualsPriorHead(t *testing.T) {
 	w.move("p1", ReadFix{Finding: "rename x"})
 	w.move("p1", Start{Row: "r3", Branch: "b", Base: base})
 	c := w.card("p1.w2")
-	_, r := MoveConsumer(c, w.card("p1"), w.rows()["r3"], Report{Row: "r3", Result: "ok", Head: h1})
+	_, cons := w.all()
+	_, r := MoveConsumer(c, w.card("p1"), cons["p1"], w.rows()["r3"], Report{Row: "r3", Result: "ok", Head: h1})
 	refusal{r, "head " + h1 + " is the prior head; nothing new was pushed"}.check(t)
+}
+
+// A prior head no attempt finished is work the next attempt continues from,
+// and it may finish there (nc-go-sockbuf-fallback.w3, nc-rs-reuse-test-real.w3):
+// the fix attempt pushed h2 and was withdrawn before it finished.
+func TestColdOkHeadEqualsUnfinishedPriorHead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, producer("p1"))
+	w.move("p1", Resolve{})
+	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
+	w.read("p1", "r2", "fix", "rename x")
+	w.move("p1", ReadFix{Finding: "rename x"})
+	w.move("p1", Start{Row: "r3", Branch: "b", Base: base})
+	w.consume("p1.w2", Withdraw{Reason: "deadline", Head: h2})
+	w.move("p1", Start{Row: "r3", Branch: "b", Base: base})
+	require.Equal(t, h2, w.card("p1.w3").PriorHead)
+	w.consume("p1.w3", Report{Row: "r3", Result: "ok", Head: h2})
+	w.move("p1", Finished{Consumer: "p1.w3"})
+	assert.Equal(t, []any{Review, h2}, []any{w.card("p1").State, w.card("p1").Head})
 }
 
 // S2. ReadYes counts reads by review number only; it never compares the

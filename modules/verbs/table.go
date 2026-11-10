@@ -44,6 +44,30 @@ type verb struct {
 	needs                            []string
 	more                             []string // help lines after about: what a flag's words are
 	run                              func(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error)
+	cards                            func(in *input) store.Scope // the cards snap holds; nil is every card
+}
+
+// scope is the cards v's snapshot reads for in.
+func (v *verb) scope(in *input) store.Scope {
+	if v.cards == nil {
+		return store.Scope{All: true}
+	}
+	return v.cards(in)
+}
+
+// noCards is a verb that reads no card (beat).
+func noCards(*input) store.Scope { return store.Scope{} }
+
+// ownCards is a worker verb on its card (take, finish, read, report,
+// release): the card with its producer and that producer's consumers (the
+// report plan's), and the actor's cards in hand (report's next line counts
+// them). A ref that does not parse reads none: the verb refuses it first.
+func ownCards(in *input) store.Scope {
+	id, _, f := cardRef(in.verb, in.arg(0))
+	if f != nil {
+		return store.Scope{}
+	}
+	return store.Scope{IDs: []string{id}, Holder: in.actor}
 }
 
 // groups is the help index's order.
@@ -117,22 +141,22 @@ func startVerbs() []*verb {
 
 func workVerbs() []*verb {
 	return []*verb{
-		{name: "take", group: "work", role: roleWorker, usage: "<card>@<gen> --as <row> [--epoch <e>] [--json]", flags: "json", min: 1, max: 1, run: runTake,
+		{name: "take", group: "work", role: roleWorker, usage: "<card>@<gen> --as <row> [--epoch <e>] [--json]", flags: "json", min: 1, max: 1, run: runTake, cards: ownCards,
 			about: "acknowledges a card dealt to you (it is in your hand from the deal; this stops the nudges) and prints the brief, the repository and the finish or read command; a repeat prints the same and writes nothing",
 			needs: []string{"not dealt to this row at this generation: nova-sprint next --as <row>", "withdrawn or reported already: nova-sprint next --as <row>", "the row not in nova-config, or not serving the tier: nova-config", "no commit identity: the coordinator runs nova-sprint identity"}},
-		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport,
+		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport, cards: ownCards,
 			about: "reports a work card done at a head pushed to its branch, or failed with the reason", more: usageHelp,
 			needs: []string{"not the holder: nova-sprint show <card>", "not a full sha", "not on the dealt branch at origin: git push origin <branch>", "the head is the base: do the work", "a commit since the base by another author or committer email: the two git config lines hook prints, then rewrite those commits"}},
-		{name: "read", group: "work", role: roleWorker, usage: "<card>@<gen> yes|fix [--finding <text>] --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>]", flags: reportFlags, min: 2, max: 2, run: runReport,
+		{name: "read", group: "work", role: roleWorker, usage: "<card>@<gen> yes|fix [--finding <text>] --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>]", flags: reportFlags, min: 2, max: 2, run: runReport, cards: ownCards,
 			about: "answers a read of someone else's head; --cost is what the read cost, in dollars, as finish takes it", more: usageHelp,
 			needs: []string{"you wrote the head: wait for the bus", "fix with no finding: --finding \"<path>:<line>: <defect and repair>\""}},
-		{name: "report", group: "work", role: roleWorker, usage: "<card>@<gen> --result ok|fix|fail|fault [--head <sha>] [--reason <why>] [--finding <text>] [--usage '<words>'] [--cost <usd>] --as <row> [--epoch <e>] [--json]", flags: reportFlags + " result=", min: 1, max: 1, run: runReport,
+		{name: "report", group: "work", role: roleWorker, usage: "<card>@<gen> --result ok|fix|fail|fault [--head <sha>] [--reason <why>] [--finding <text>] [--usage '<words>'] [--cost <usd>] --as <row> [--epoch <e>] [--json]", flags: reportFlags + " result=", min: 1, max: 1, run: runReport, cards: ownCards,
 			about: "the worker's form of finish and read; fault is for a harness, bench or route failure", more: usageHelp,
 			needs: []string{"as finish and read"}},
-		{name: "release", group: "work", role: roleWorker, usage: "<card>@<gen> --reason <why> --as <you> [--epoch <e>] [--head <sha>] [--dry-run]", flags: "reason= head= dry-run", min: 1, max: 1, run: runRelease,
+		{name: "release", group: "work", role: roleWorker, usage: "<card>@<gen> --reason <why> --as <you> [--epoch <e>] [--head <sha>] [--dry-run]", flags: "reason= head= dry-run", min: 1, max: 1, run: runRelease, cards: ownCards,
 			about: "gives a card back to the queue, its pushed branch kept; another row's card is the coordinator's",
 			needs: []string{"no reason: --reason <why>", "another holder's card, and you are not the coordinator: ask the coordinator"}},
-		{name: "beat", group: "work", role: roleWorker, usage: "--load1 <loadavg> [--cpu-peak <percent>] --cores <n> --slots-used <n> --slots-total <n> [--tiers <t,t>] --as <row>", flags: "load1= cpu-peak= cores= slots-used= slots-total= tiers=", max: 0, run: runBeat,
+		{name: "beat", group: "work", role: roleWorker, usage: "--load1 <loadavg> [--cpu-peak <percent>] --cores <n> --slots-used <n> --slots-total <n> [--tiers <t,t>] --as <row>", flags: "load1= cpu-peak= cores= slots-used= slots-total= tiers=", max: 0, run: runBeat, cards: noCards,
 			about: "the worker's heartbeat: the bench's 1-minute load average, its cores, its nova-reserve slots and the tiers its harness serves, for the board's load cell and the roster's width and tiers; writes nothing when it repeats the last beat",
 			needs: []string{"not hooked in: nova-sprint hook --as <row> --role worker", "a flag missing or not a number: nova-sprint help beat"}},
 		{name: "show", group: "work", role: roleWorker, usage: "[<card>|<stream>|<row>|run] [--stitch]", flags: "stitch", max: 1, run: runShow,

@@ -145,6 +145,13 @@ func (s *snapshotGone) Snapshot(ctx context.Context) (store.Snapshot, error) {
 	return s.Fake.Snapshot(ctx)
 }
 
+func (s *snapshotGone) Read(ctx context.Context, scope store.Scope) (store.Snapshot, error) {
+	if s.gone {
+		return s.Snapshot(ctx)
+	}
+	return s.Fake.Read(ctx, scope)
+}
+
 // goneAfterWalk is the setup walk that loses the store at its completion.
 type goneAfterWalk struct {
 	*setupFake
