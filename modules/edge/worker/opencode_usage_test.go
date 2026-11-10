@@ -27,7 +27,7 @@ func TestOpenCodeUsageFromItsOwnRecord(t *testing.T) {
 	if !ok || c.MicroUSD != 23500 || !c.Priced {
 		t.Fatalf("opencode's own cost is the charged evidence: %+v %v", c, ok)
 	}
-	if want := "input=1850 cache_read=11000 cache_write=40 output=310 reasoning=30 model=deepseek/deepseek-flash models=2"; c.Usage != want {
+	if want := "input=1850 cache_read=11000 cache_write=40 output=310 reasoning=30 model=deepseek/deepseek-flash models=2 requests=3"; c.Usage != want {
 		t.Fatalf("usage %q, want %q", c.Usage, want)
 	}
 	if asked != filepath.Join(dir, "data", "opencode", "opencode.db") {
@@ -37,7 +37,7 @@ func TestOpenCodeUsageFromItsOwnRecord(t *testing.T) {
 		return []string{`{"providerID":"deepseek","modelID":"deepseek-flash","cost":0,"tokens":{"input":7,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}}`}, nil
 	}
 	c, ok = h.Usage(Job{JobDir: t.TempDir()})
-	if !ok || c.Priced || c.MicroUSD != 0 || c.Usage != "input=7 cache_read=0 cache_write=0 output=1 reasoning=0 model=deepseek/deepseek-flash" {
+	if !ok || c.Priced || c.MicroUSD != 0 || c.Usage != "input=7 cache_read=0 cache_write=0 output=1 reasoning=0 model=deepseek/deepseek-flash requests=1" {
 		t.Fatalf("tokens with no opencode price: the tokens go, no charged figure: %+v %v", c, ok)
 	}
 	h.messages = func(string) ([]string, error) { return nil, nil }

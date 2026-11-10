@@ -32,7 +32,7 @@ func (e *Engine) priceReport(ctx context.Context, snap store.Snapshot, row strin
 	}
 	p, err := usage.Price(o.usage, billing, charged, sheet)
 	if err != nil {
-		return p, RefusalOr(err, misuse(o.verb, "--usage: "+err.Error()+" (the words are input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model> wall=<seconds>)"))
+		return p, RefusalOr(err, misuse(o.verb, "--usage: "+err.Error()+" (the words are input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model> wall=<seconds> requests=<n>)"))
 	}
 	if why != "" && p.Record.Billing == usage.BillingAPI {
 		p.Record.Unpriced, p.Cost, p.Priced = why, 0, false

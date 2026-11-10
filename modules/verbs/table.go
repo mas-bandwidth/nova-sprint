@@ -174,7 +174,7 @@ const reportFlags = "head= reason= finding= cost= usage= json"
 // usageHelp is what --usage and --cost are, for finish, read and report.
 var usageHelp = []string{
 	"--usage is the run's tokens as its harness counted them, one quoted string of words:",
-	"  input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model> wall=<seconds>",
+	"  input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model> wall=<seconds> requests=<n>",
 	"  (leave out a class the harness did not count; never write a guess as 0)",
 	"the engine prices it, never the row: your row's harness decides the billing.",
 	"  a bench (nova-worker, API keys): the tokens at the policy's prices(), else the built-in table (each price with its source), exactly; no tokens, or a model in neither, is recorded unpriced, never $0",

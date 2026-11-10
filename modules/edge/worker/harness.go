@@ -141,7 +141,8 @@ type opencodeMessage struct {
 // Usage is usage.json when the run wrote one, else what opencode recorded for
 // the run: its exact tokens by class summed over every assistant message
 // (the words of package usage, which the engine prices), the model with the
-// most tokens (models=<n> when the run used more than one), and opencode's
+// most tokens (models=<n> when the run used more than one), its model calls
+// (requests=<n>, one per assistant message), and opencode's
 // own cost summed as the charged evidence. A run that recorded no token and
 // no cost reports nothing: unpriced, never a priced zero.
 func (h *OpenCodeHarness) Usage(j Job) (Cost, bool) {
@@ -167,11 +168,13 @@ func opencodeUsage_internal(rows []string) (Cost, bool) {
 	t := usage.None()
 	byModel := map[string]int64{}
 	usd := 0.0
+	var requests int64
 	for _, row := range rows {
 		var m opencodeMessage
 		if json.Unmarshal([]byte(row), &m) != nil {
 			continue
 		}
+		requests++ // one assistant message is one model call
 		mt := usage.Tokens{Input: m.Tokens.Input, CacheRead: m.Tokens.Cache.Read, CacheWrite: m.Tokens.Cache.Write, Output: m.Tokens.Output, Reasoning: m.Tokens.Reasoning}
 		t = t.Add(mt)
 		if model := strings.Trim(m.ProviderID+"/"+m.ModelID, "/"); model != "" {
@@ -180,7 +183,7 @@ func opencodeUsage_internal(rows []string) (Cost, bool) {
 		usd += max(m.Cost, 0)
 	}
 	r := usage.Empty()
-	r.Tokens = t
+	r.Tokens, r.Requests = t, requests
 	for _, model := range slices.Sorted(maps.Keys(byModel)) {
 		if r.Model == "" || byModel[model] > byModel[r.Model] {
 			r.Model = model

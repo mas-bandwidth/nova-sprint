@@ -10,13 +10,14 @@ import (
 
 func TestParseStringRoundTrip(t *testing.T) {
 	t.Parallel()
-	line := "input=19541 cache_read=36336 cache_write=0 output=692 reasoning=70 model=deepseek/deepseek-flash models=2 wall=49 harness=nova-worker at=2026-11-09T22:50:06Z billing=api charged=0.042196 unpriced=no-price route=r1"
+	line := "input=19541 cache_read=36336 cache_write=0 output=692 reasoning=70 model=deepseek/deepseek-flash models=2 wall=49 requests=12 harness=nova-worker at=2026-11-09T22:50:06Z billing=api charged=0.042196 unpriced=no-price route=r1"
 	r, err := Parse(line)
 	require.NoError(t, err)
 	assert.Equal(t, Tokens{19541, 36336, 0, 692, 70}, r.Tokens)
 	assert.Equal(t, "deepseek/deepseek-flash", r.Model)
 	assert.Equal(t, 2, r.Models)
 	assert.Equal(t, int64(49), r.Wall)
+	assert.Equal(t, int64(12), r.Requests)
 	assert.Equal(t, "nova-worker", r.Harness)
 	assert.Equal(t, "2026-11-09T22:50:06Z", r.At)
 	assert.Equal(t, "0.042196", r.Charged)
@@ -31,6 +32,7 @@ func TestUnreportedIsNeverZero(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Unreported, r.Tokens.Input)
 	assert.Equal(t, Unreported, r.Wall, "a wall the row did not measure is absent, never 0")
+	assert.Equal(t, Unreported, r.Requests, "requests the harness did not count are absent, never 0")
 	assert.True(t, r.Tokens.Reported())
 	assert.Equal(t, "output=5", r.String())
 	e, err := Parse("")

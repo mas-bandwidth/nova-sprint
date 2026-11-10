@@ -5,12 +5,12 @@
 // in the card's usage column beside cost and priced (store round 25).
 //
 //	input=19541 cache_read=36336 cache_write=0 output=692 reasoning=70
-//	model=deepseek/deepseek-flash wall=612 harness=nova-worker
+//	model=deepseek/deepseek-flash wall=612 requests=31 harness=nova-worker
 //	at=2026-11-09T22:50:06Z billing=api charged=0.042196
 //
 // A token class the harness did not report is left out, never written as 0;
-// wall is the run's seconds as the row measured them (left out when it did
-// not); harness and at are the engine's stamps at the report (the holder
+// wall is the run's seconds as the row measured them, and requests the model
+// calls the harness counted (each left out when not measured); harness and at are the engine's stamps at the report (the holder
 // row's harness from the roster, and the report's time, UTC), so the record
 // says who ran it, with what, and when it ended, for every harness and every
 // card kind; charged is "-" when the harness reported no dollars;
@@ -89,6 +89,7 @@ type Record struct {
 	Model    string // provider/model, as the harness reported the run
 	Models   int    // how many models the run used, when more than one (the model is the one with the most tokens)
 	Wall     int64  // the run's seconds, as the row measured them; Unreported when it did not
+	Requests int64  // the model calls the harness counted; Unreported when it did not
 	Harness  string // the holder row's harness (the roster's), stamped by the engine; "" before it priced the run
 	At       string // when the run was reported, RFC 3339 UTC, stamped by the engine; "" before
 	Billing  string // api or subscription; "" before the engine priced it
@@ -98,7 +99,7 @@ type Record struct {
 }
 
 // Empty is a record with nothing in it.
-func Empty() Record { return Record{Tokens: None(), Wall: Unreported} }
+func Empty() Record { return Record{Tokens: None(), Wall: Unreported, Requests: Unreported} }
 
 // Parse reads a usage line. An empty line is Empty. A token count that is
 // not a whole number at or above 0, a charged figure that is not a decimal,
@@ -107,7 +108,7 @@ func Empty() Record { return Record{Tokens: None(), Wall: Unreported} }
 func Parse(line string) (Record, error) {
 	r := Empty()
 	counts := map[string]*int64{"input": &r.Tokens.Input, "cache_read": &r.Tokens.CacheRead, "cache_write": &r.Tokens.CacheWrite,
-		"output": &r.Tokens.Output, "reasoning": &r.Tokens.Reasoning, "wall": &r.Wall}
+		"output": &r.Tokens.Output, "reasoning": &r.Tokens.Reasoning, "wall": &r.Wall, "requests": &r.Requests}
 	for _, w := range strings.Fields(line) {
 		k, v, ok := strings.Cut(w, "=")
 		switch {
@@ -167,7 +168,7 @@ func MustParse(line string) Record {
 }
 
 // String is the record's one line: the token classes reported, model,
-// models, wall, harness, at, billing, charged (once billed: "-" for none)
+// models, wall, requests, harness, at, billing, charged (once billed: "-" for none)
 // and unpriced, then the words it does not know. Empty is "".
 func (r Record) String() string {
 	var ws []string
@@ -188,6 +189,7 @@ func (r Record) String() string {
 		ws = append(ws, "models="+strconv.Itoa(r.Models))
 	}
 	count("wall", r.Wall)
+	count("requests", r.Requests)
 	if r.Harness != "" {
 		ws = append(ws, "harness="+word(r.Harness))
 	}
