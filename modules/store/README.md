@@ -223,12 +223,13 @@ Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `CardRed`, `Nee
 landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`,
 `JudgementOpen`, `AtSeq` (the last event's seq is N: nothing at all entered
 the store since a snapshot at N, a refused op included, since a refusal is an
-event and moves seq too). One rule for a value outside its closed set
+event and moves seq too), `RowsOnlySince` (every accepted event after seq N
+wrote rows only: what a clear carries, so a beat does not refuse it). One rule for a value outside its closed set
 (card kind, state, result, priority and tier; row kind, state and tiers,
 none twice; policy kind), for an empty key (a card, judgement id; a
 stream, row, cursor name) and for every name an op points at (a card's
 stream, each of its needs and after), and for an integer outside its range
-(a `CardGen` or `RowGen` gen, an `AtSeq` seq below 0), in a condition
+(a `CardGen` or `RowGen` gen, an `AtSeq` or `RowsOnlySince` seq below 0), in a condition
 exactly as in a write: it is `ErrInvalid` ("card state \"flying\" is not one
 of ...", "a card needs an id"), never a refusal, and nothing is logged, so
 no reason has a gap where a name should be. `CardHolder`'s holder `""`, a
@@ -425,8 +426,8 @@ version at 2147483647 cannot rise: the op fails with a plain error naming it
 ("store: card c1 gen is 2147483647, the most its column holds; it cannot
 rise"), nothing lands, in both stores.
 
-`Clear` takes an op of kind `clear` with no writes and at most an `AtSeq`
-condition. It opens epoch n + 1 and carries every row into it (same name,
+`Clear` takes an op of kind `clear` with no writes and only `AtSeq` and
+`RowsOnlySince` conditions. It opens epoch n + 1 and carries every row into it (same name,
 kind, width, session, held, tiers, model and harness; state down, no flaps,
 gen raised by one);
 streams, cards and judgements stay behind in the old epoch, policy and

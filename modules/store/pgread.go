@@ -272,6 +272,27 @@ func (t *pgTx) lastSeq() (int64, error) {
 	return n, err
 }
 
+func (t *pgTx) acceptedSince(seq int64) ([]Event, error) {
+	rows, err := t.tx.Query(t.ctx, "SELECT seq, after FROM sprint.events WHERE seq > $1 AND accepted ORDER BY seq", seq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var after []byte
+		if err := rows.Scan(&e.Seq, &after); err != nil {
+			return nil, err
+		}
+		if e.After, err = readState(after); err != nil {
+			return nil, fmt.Errorf("store: after-image of seq %d: %w", e.Seq, err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (t *pgTx) rows() ([]Row, error) {
 	m, err := all(t.ctx, t.tx, scanRow, func(r Row) string { return r.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", t.epoch)
 	var out []Row

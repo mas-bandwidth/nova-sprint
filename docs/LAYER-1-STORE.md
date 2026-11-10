@@ -322,8 +322,9 @@ actor, epoch and at, so a caller can see what it is crediting. Two concurrent
 applies with one id are serialized by the lock; the second sees the event row
 and returns the first's receipt.
 
-`Clear` is an `Op` with kind `clear`, no writes, and at most the seq fence as
-a condition. It is idempotent by id, logged with the epoch it closed, and its
+`Clear` is an `Op` with kind `clear`, no writes, and only the seq fences as
+conditions (`AtSeq`, and `RowsOnlySince`: every accepted event after a seq
+wrote rows only, which `nova-sprint clear` fences on). It is idempotent by id, logged with the epoch it closed, and its
 receipt carries the new epoch. Streams and cards of the old epoch stay readable
 through `Events` and are not in the next `Snapshot`; policy is kept; rows are
 carried forward into the new epoch in the same transaction (copied: same name,
