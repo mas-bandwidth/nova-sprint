@@ -6,7 +6,9 @@
 #                                    tla/traces/ with check-trace.sh, all in
 #                                    parallel; exit 1 if any is not as expected
 #   bash tla/make-traces.sh check <group>   the same for one group only:
-#                                    store, card, policy, steps or edge
+#                                    store, card, policy, edge, steps, or one
+#                                    part of steps: steps-pre, steps-deal,
+#                                    steps-land, steps-burst, steps-fixtures
 #
 # The walks and their seeds (the seeds are in the tests):
 #   store-fake-<seed>   modules/store/trace_test.go TestTraceWalk, the Fake, with transport faults
@@ -26,11 +28,18 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
 OUT="$HERE/traces"
 cd "$ROOT" || exit 1
-# The second argument names one group (store, card, policy, steps, edge);
-# without it every group runs. CI runs one job per group, on its own runner.
+# The second argument names one group; without it every group runs. CI runs
+# one job per group, on its own runner. The steps traces are split five ways
+# (one per Steps.tla walk scenario, and the model's own fixtures), since
+# together they took 101-132 s on one runner; steps names all five.
+GROUPS="store card policy steps steps-pre steps-deal steps-land steps-burst steps-fixtures edge"
 GROUP="${2:-all}"
-case "$GROUP" in all|store|card|policy|steps|edge) ;; *) echo "make-traces: no group $GROUP (store, card, policy, steps, edge)" >&2; exit 2 ;; esac
-on() { [ "$GROUP" = all ] || [ "$GROUP" = "$1" ]; }
+case " all $GROUPS " in *" $GROUP "*) ;; *) echo "make-traces: no group $GROUP ($GROUPS)" >&2; exit 2 ;; esac
+on() {
+    [ "$GROUP" = all ] || [ "$GROUP" = "$1" ] ||
+        { [ "$GROUP" = steps ] && [ "${1#steps-}" != "$1" ]; } ||
+        { [ "$1" = steps ] && [ "${GROUP#steps-}" != "$GROUP" ]; }
+}
 
 find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
@@ -63,7 +72,9 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 for d in "$OUT"/*/; do
     name="$(basename "$d")"
-    case "$name" in store-*) model=Store g=store ;; card-*) model=CardMachine g=card ;; policy-*) model=Policy g=policy ;; steps-*) model=Steps g=steps ;; landedge-*) model=LandEdge g=edge ;; runner-*) model=Runner g=edge ;; *) continue ;; esac
+    case "$name" in store-*) model=Store g=store ;; card-*) model=CardMachine g=card ;; policy-*) model=Policy g=policy ;; steps-walk-pre-*) model=Steps g=steps-pre ;; steps-walk-deal-*) model=Steps g=steps-deal ;;
+        steps-walk-land-*) model=Steps g=steps-land ;; steps-walk-burst-*) model=Steps g=steps-burst ;; steps-*) model=Steps g=steps-fixtures ;;
+        landedge-*) model=LandEdge g=edge ;; runner-*) model=Runner g=edge ;; *) continue ;; esac
     on "$g" || continue
     ( bash "$HERE/check-trace.sh" "$model" "$d" > "$WORK/$name.out" 2>&1; echo $? > "$WORK/$name.code" ) &
 done
