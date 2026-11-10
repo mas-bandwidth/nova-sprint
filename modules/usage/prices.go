@@ -17,8 +17,9 @@ var Table = Sheet{
 	// 2026-11-09: deepseek-flash (DeepSeek-V4.1-Flash-1017) input cache
 	// miss $0.30, cache hit $0.006, output $1.20 per million at the standard
 	// (peak) rate. Off-peak (all but 01:00-04:00 and 06:00-10:00 UTC on
-	// weekdays) is half; a record carries no time of day, so the standard
-	// rate is taken and an off-peak run is counted at up to twice its charge.
+	// weekdays) is half; a record says when it was reported, not when each
+	// call was made, so the standard rate is taken and an off-peak run is
+	// counted at up to twice its charge.
 	// DeepSeek has no separate cache-write price: a write is a cache miss.
 	"deepseek/deepseek-flash": {In: 300_000, CacheRead: 6_000, CacheWrite: 300_000, Out: 1_200_000},
 	// The same page: deepseek-v4-pro (DeepSeek-V4-Pro-0813) input cache
