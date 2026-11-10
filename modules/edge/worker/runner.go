@@ -1546,7 +1546,28 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 		return WallRunResult{}, err
 	}
 	defer release()
+	lookPath := w.LookPath
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	if kv := cargoLinkerEnv_internal(runtime.GOOS, runtime.GOARCH, lookPath); kv != "" {
+		env = append(env, kv)
+	}
 	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, env, timeout)
+}
+
+// cargoLinkerEnv_internal is CARGO_TARGET_<host>_LINKER=<absolute cc> on
+// Linux, "" elsewhere or without a cc: rustc runs its linker by name with
+// its own PATH, and std spawns a name under a changed PATH by fork, never
+// posix_spawn, which the wall refuses as for the pipe jobserver; an
+// absolute path keeps posix_spawn.
+func cargoLinkerEnv_internal(goos, goarch string, lookPath func(string) (string, error)) string {
+	triple := map[string]string{"amd64": "X86_64", "arm64": "AARCH64"}[goarch]
+	cc, err := lookPath("cc")
+	if goos != "linux" || triple == "" || err != nil || !filepath.IsAbs(cc) {
+		return ""
+	}
+	return "CARGO_TARGET_" + triple + "_UNKNOWN_LINUX_GNU_LINKER=" + cc
 }
 
 // gateJobs_internal is a gate's build parallelism: one nova-reserve slot,

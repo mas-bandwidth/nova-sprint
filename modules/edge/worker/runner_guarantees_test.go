@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -198,7 +199,8 @@ func (e *fifoExec) Run(_ context.Context, c edge.Cmd) (edge.Result, error) {
 func TestGateGetsFIFOJobserverAndWritableTmpdir(t *testing.T) {
 	t.Parallel()
 	ex := &fifoExec{}
-	w := &OSReserveWall{UseSandbox: true, Exec: ex, Config: WallConfig{ReserveBin: "/fixture/nova-reserve", SandboxBin: "/fixture/nova-sandbox", NetDeny: true}}
+	cc := func(name string) (string, error) { return "/fixture/bin/" + name, nil }
+	w := &OSReserveWall{UseSandbox: true, Exec: ex, LookPath: cc, Config: WallConfig{ReserveBin: "/fixture/nova-reserve", SandboxBin: "/fixture/nova-sandbox", NetDeny: true}}
 	dir := t.TempDir()
 	res, err := w.RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute)
 	if err != nil {
@@ -215,8 +217,37 @@ func TestGateGetsFIFOJobserverAndWritableTmpdir(t *testing.T) {
 	if !slices.Contains(ex.env, "TMPDIR="+filepath.Join(dir, "tmp")) {
 		t.Errorf("gate env %q: want TMPDIR in the job's --write tree", ex.env)
 	}
+	if kv := cargoLinkerEnv_internal(runtime.GOOS, runtime.GOARCH, cc); kv != "" && (!slices.Contains(ex.env, kv) || !strings.Contains(argv, "--env "+strings.Split(kv, "=")[0])) {
+		t.Errorf("gate env %q: want %s passed with --env", ex.env, kv)
+	}
 	if _, err := os.Lstat(ex.fifo); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the gate's FIFO %s outlived the gate: %v", ex.fifo, err)
+	}
+}
+
+// rustc runs its linker by name under its own PATH, which std spawns by
+// fork (refused in the wall), so a Linux gate names cc by its absolute path
+// for the host's target; elsewhere, or with no absolute cc, nothing is set.
+func TestGateNamesCargoLinkerByAbsolutePath(t *testing.T) {
+	t.Parallel()
+	abs := func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	rel := func(name string) (string, error) { return name, nil }
+	none := func(name string) (string, error) { return "", errors.New("not found") }
+	for _, tc := range []struct {
+		goos, goarch string
+		look         func(string) (string, error)
+		want         string
+	}{
+		{"linux", "amd64", abs, "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/cc"},
+		{"linux", "arm64", abs, "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/cc"},
+		{"linux", "riscv64", abs, ""},
+		{"darwin", "arm64", abs, ""},
+		{"linux", "amd64", rel, ""},
+		{"linux", "amd64", none, ""},
+	} {
+		if got := cargoLinkerEnv_internal(tc.goos, tc.goarch, tc.look); got != tc.want {
+			t.Errorf("%s/%s: %q, want %q", tc.goos, tc.goarch, got, tc.want)
+		}
 	}
 }
 
