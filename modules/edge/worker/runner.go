@@ -8,6 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/usage"
 	"io"
 	"maps"
 	"math"
@@ -856,6 +857,23 @@ func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord
 	}
 	return false, nil
 }
+
+// withWall adds the run's wall to its usage words: the seconds from the
+// job's take (JobRecord.StartedAt) to its report, on the worker's clock, for
+// every harness and every result. A run that reported no token still records
+// how long it ran; words that do not read are kept as they are.
+func withWall(words string, startedAt, now int64) string {
+	if startedAt <= 0 || now < startedAt {
+		return words
+	}
+	r, err := usage.Parse(words)
+	if err != nil {
+		return words
+	}
+	r.Wall = now - startedAt
+	return r.String()
+}
+
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	rec.State = JobReporting
 	rec.ResultID = cmp.Or(rec.ResultID, resultID_internal(rec.Epoch, rec.Consumer, rec.Gen))
@@ -866,7 +884,7 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	req := ReportRequest{
 		Epoch: rec.Epoch, Row: rec.Row, Consumer: rec.Consumer, Gen: rec.Gen,
 		ResultID: rec.ResultID, Result: out.Result, Head: out.Head,
-		Reason: out.Reason, Finding: out.Finding, Cost: rec.Cost.MicroUSD, Priced: rec.Cost.Priced, Usage: rec.Cost.Usage,
+		Reason: out.Reason, Finding: out.Finding, Cost: rec.Cost.MicroUSD, Priced: rec.Cost.Priced, Usage: withWall(rec.Cost.Usage, rec.StartedAt, r.Now().Unix()),
 	}
 	var receipt store.Receipt
 	var err error

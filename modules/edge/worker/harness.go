@@ -179,7 +179,8 @@ func opencodeUsage_internal(rows []string) (Cost, bool) {
 		}
 		usd += max(m.Cost, 0)
 	}
-	r := usage.Record{Tokens: t}
+	r := usage.Empty()
+	r.Tokens = t
 	for _, model := range slices.Sorted(maps.Keys(byModel)) {
 		if r.Model == "" || byModel[model] > byModel[r.Model] {
 			r.Model = model

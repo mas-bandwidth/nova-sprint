@@ -59,6 +59,7 @@ func TestCheckAllGreen(t *testing.T) {
 		"CHECK stream s: o/r reachable, base main at bbbbbbbbbbbb",
 		"CHECK identity: every commit is made as Sprint Bot <1+sprint-bot@users.noreply.example.test> (hook prints the two git config lines; finish refuses a commit by another email)",
 		"CHECK policy v1 active (answered by v0; 0 ready producers asked)", "CHECK cards: none waiting or ready",
+		"CHECK cost: $0 API over 0 priced runs (0 priced at the report, 0 from the built-in table at read; 0 tokens); 0 unpriced: 0 no tokens, 0 no price, 0 sheet unreadable; 0 seat runs, 0 tokens",
 		"CHECK working: 2 cards, each on a hooked row that is up and on the bus (a job dead on its bench is not visible here: no per-job heartbeat reaches the store)",
 		"CHECK workers: no bench in nova-config's inventory", "CHECK judgements: none open", "CHECK run on studio (pid 41)",
 		"CHECK width: working 2 (2 dealt) of 4 open on 3 rows; 0 ready", "CHECK landings: none waiting", "next: nova-sprint next --as <you>"}

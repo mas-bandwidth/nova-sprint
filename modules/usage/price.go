@@ -56,10 +56,11 @@ type Priced struct {
 //
 //   - subscription: cost 0, priced, the tokens kept;
 //   - api with no token reported: unpriced=no-tokens;
-//   - api whose model has no rate in sheet: unpriced=no-price, never a
-//     silent $0;
-//   - api: each class's tokens times its rate per million, reasoning at the
-//     output rate, summed exactly and rounded half up to a micro-dollar.
+//   - api whose model has no rate in sheet or in Table: unpriced=no-price,
+//     never a silent $0;
+//   - api: each class's tokens times its rate per million (the sheet's,
+//     else Table's), reasoning at the output rate, summed exactly and
+//     rounded half up to a micro-dollar.
 //
 // The words' own billing word is replaced: the row decides, not the run.
 func Price(words, billing, charged string, sheet Sheet) (Priced, error) {
@@ -82,6 +83,9 @@ func Price(words, billing, charged string, sheet Sheet) (Priced, error) {
 		return Priced{Record: r}, nil
 	}
 	rate, ok := sheet.Lookup(r.Model)
+	if !ok {
+		rate, ok = Table.Lookup(r.Model)
+	}
 	if !ok {
 		r.Unpriced = WhyNoPrice
 		return Priced{Record: r}, nil

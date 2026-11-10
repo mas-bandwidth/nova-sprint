@@ -312,7 +312,8 @@ func countResult(c store.Card, fleet, friends map[string]*fleetRow) {
 	}
 }
 func countCost(w *workRow, c store.Card, costs *streamCost) {
-	if !c.Priced {
+	cost, priced := usage.Repriced(c.Usage, c.Cost, c.Priced) // as summarizeCost counts it
+	if !priced {
 		// summarizeCost's count, per stream: a finished API run with no
 		// price (a seat run is free; one not yet run has nothing to price).
 		if (c.State == "done" || c.State == "fail") && usage.MustParse(c.Usage).Billing != usage.BillingSubscription {
@@ -326,12 +327,12 @@ func countCost(w *workRow, c store.Card, costs *streamCost) {
 	if w.tierMicros[c.Tier] == nil {
 		w.tierMicros[c.Tier] = new(big.Int)
 	}
-	w.tierMicros[c.Tier].Add(w.tierMicros[c.Tier], big.NewInt(c.Cost))
-	costs.add("total_cost", c.Cost)
+	w.tierMicros[c.Tier].Add(w.tierMicros[c.Tier], big.NewInt(cost))
+	costs.add("total_cost", cost)
 	if c.Kind == "read" {
-		costs.add("read_cost", c.Cost)
+		costs.add("read_cost", cost)
 	} else {
-		costs.add("work_cost", c.Cost)
+		costs.add("work_cost", cost)
 	}
 }
 func countTrack(f *fleetRow, c, p store.Card) {

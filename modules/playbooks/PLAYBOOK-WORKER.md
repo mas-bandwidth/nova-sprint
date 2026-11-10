@@ -204,7 +204,7 @@ Each message is a wake. Handle it, then wait for the bus again.
 10. Do not wait for CI. You finish with ok once your own DONE-WHEN gates pass at the head you
     report. CI runs on the landing's PR, which is the coordinator's business; a red there comes
     back to you, or to another row, as a fix deal by push, with the head and the finding.
-11. Finish: `nova-sprint finish <id>@<gen> --head <40 hex> --as <you> --epoch <e> [--cost <usd>]`. Add `--cost` with what the run cost you in dollars when you know it (0.04); leave it off when you do not, and the board counts the run as unpriced, never as $0. It prints
+11. Finish: `nova-sprint finish <id>@<gen> --head <40 hex> --as <you> --epoch <e> [--usage '<words>'] [--cost <usd>]`. Add `--usage 'input=<n> cache_read=<n> output=<n> model=<provider/model> wall=<seconds>'` with the tokens your harness reports for the run (leave out a class it did not count; never a guess as 0), so the card's record carries them; the engine adds your harness and the report time, and prices a bench's tokens itself. Add `--cost` with what the run cost you in dollars when you know it (0.04); leave it off when you do not, and the board counts the run as unpriced, never as $0. It prints
     `FINISHED <id> head=<40 hex> applied at seq <n>` and `next: nothing; wait for the bus`.
     Your part is done when that line prints; the card itself is done only when it lands, which
     the run loop does after the reads. A push, a commit or a message is not a finish. A refused
@@ -256,7 +256,7 @@ your own head.
 5. Say fix only for a real defect: an unmet DONE-WHEN item, a regression, a broken ruling, a
    build break, or a test that cannot fail. Anything else (style, a better name, a follow-up)
    is a note on a yes.
-6. Answer: `nova-sprint read <id>@<gen> yes --as <you> --epoch <e> [--cost <usd>]` (same `--cost` rule as finish) with
+6. Answer: `nova-sprint read <id>@<gen> yes --as <you> --epoch <e> [--usage '<words>'] [--cost <usd>]` (same `--usage` and `--cost` rules as finish) with
    `--finding "<notes>"` when you have notes, or
    `nova-sprint read <id>@<gen> fix --finding "<path>:<line>: <the defect and the repair>" --as <you> --epoch <e>`.
    A fix finding names the file and line and what to change. Add `--cost <usd>` as finish
