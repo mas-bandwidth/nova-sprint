@@ -72,7 +72,7 @@ func (e *Engine) madeAsIdentity(ctx context.Context, snap store.Snapshot, s stor
 	since := orWord(c.BaseSHA, "origin/"+s.Base)
 	return refuse(fmt.Sprintf("%d of the %d commits on %s since the base are not made as %s: %s", n, len(commits), c.Branch, commitIdentity(snap), strings.Join(bad, ", ")),
 		"in the clone run "+strings.ReplaceAll(worker.CommitConfig(snap.Identity.Name, snap.Identity.Email), "\n", " and ")+
-			", then rewrite those commits as it (git rebase "+since+" --exec 'git commit --amend --no-edit --reset-author'), git push --force-with-lease origin "+c.Branch+", and finish with the new head")
+			", then rewrite those commits as it (git rebase --rebase-merges "+since+" --exec 'git commit --amend --no-edit --reset-author'), git push --force-with-lease origin "+c.Branch+", and finish with the new head")
 }
 
 // short is a sha's first twelve characters.

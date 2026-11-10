@@ -757,7 +757,7 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return fe
 			default: // not a conflict: the worker's git, never the card's work
-				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "rebase fault: " + err.Error()}
+				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "stream merge fault: " + err.Error()}
 			}
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
@@ -791,7 +791,7 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		if err := r.pushBranch_internal(ctx, rec, rec.Outcome.Head); err != nil {
 			// The head that did land is reported, so the next attempt's
 			// prior head (and its lease) is the branch as it stands.
-			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "post-rebase push fault: " + err.Error()}
+			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "post-merge push fault: " + err.Error()}
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
@@ -1335,7 +1335,7 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, clone, remote, streamRe
 	// Merged in, never rebased: a rebase drops a merge commit that resolved
 	// a conflict and replays the card's commits into it again, and its head
 	// no longer descends from the job's.
-	if _, err := g.runGit_internal(ctx, to, worktree, "merge", "--no-edit", "FETCH_HEAD"); err != nil {
+	if _, err := g.runGit_internal(ctx, to, worktree, "merge", "-m", "Merge "+streamRef+" into the card", "FETCH_HEAD"); err != nil {
 		out, diffErr := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
 		if _, abortErr := g.runGit_internal(ctx, to, worktree, "merge", "--abort"); abortErr != nil {
 			err = fmt.Errorf("%w; cleanup: %w", err, abortErr)

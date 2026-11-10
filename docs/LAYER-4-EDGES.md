@@ -157,8 +157,8 @@ blames no head.
 
 The stream rule: a work consumer has the stream head as it is then merged
 into it once, by the runner, at report; merged, never rebased, so a
-conflict the card resolved stays resolved and the head keeps its history. After the report the stream moving is
-the landing's to absorb, never the card's to chase (Glenn, LANDING step 3:
+conflict the card resolved stays resolved and the head keeps its history.
+After the report the stream moving is the landing's to absorb, never the card's to chase (Glenn, LANDING step 3:
 "this has always been the rule. you guys just forget it over and over"). A
 merge conflict with the stream is a `fail` report naming the files.
 
@@ -276,8 +276,8 @@ Deal to report:
    last pushed or the tip it found at stage), never a plain force, and none
    once the consumer is final or a newer generation holds it: a withdrawn
    job pushes nothing (defect 78).
-6. **Rebase** (merge the stream head as it is now in, never rebase) and re-run the card's test
-   command, inside a slot, bounded by the two-minute rule; push. A conflict
+6. **Merge the stream** head as it is now in (never rebase) and re-run the
+   card's test command, inside a slot, bounded by the two-minute rule; push. A conflict
    is a `fail` naming the files.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
    CI is read by the landing on the group sha, not by the worker.

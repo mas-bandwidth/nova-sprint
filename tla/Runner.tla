@@ -41,7 +41,9 @@
 (*                                                                         *)
 (* The stream step merges the stream in (2026-11-09): jobDir[c].keepsPrior *)
 (* is that the job's head still descends from the head it started from;    *)
-(* Rebase keeps it. PushKeepsPrior; witness RunnerRebaseDropsPrior.        *)
+(* Rebase keeps it. PushKeepsPrior; witness RunnerRebaseDropsPrior. The    *)
+(* trace walk reads keepsPrior from the git commands the step runs; the    *)
+(* ancestry itself is TestFunctionalStreamStepKeepsAResolvedConflict's.    *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 

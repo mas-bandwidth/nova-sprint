@@ -81,7 +81,7 @@ func TestFinishRefusesAnotherIdentity(t *testing.T) {
 				"222222222222 (author aurora@example.test, committer 1+sprint-bot@users.noreply.example.test)",
 				"333333333333 (author 1+sprint-bot@users.noreply.example.test, committer alice@nova-sprint.local)",
 				`in the clone run git config user.name "Sprint Bot" and git config user.email "1+sprint-bot@users.noreply.example.test"`,
-				"git rebase " + base + " --exec 'git commit --amend --no-edit --reset-author'", "git push --force-with-lease origin sprint/s/p1"}},
+				"git rebase --rebase-merges " + base + " --exec 'git commit --amend --no-edit --reset-author'", "git push --force-with-lease origin sprint/s/p1"}},
 		{name: "the log unreadable", as: "alice", args: finish, exit: 2,
 			prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.commitsE = errBroken }, want: []string{"the commits of " + head + " could not be read in a clone of o/r"}},
 	})
