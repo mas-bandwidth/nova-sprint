@@ -38,6 +38,10 @@
 (* pushes only a sealed job's commits, from its own clone outside the job  *)
 (* directory, and runs no git in the job directory after the harness.      *)
 (* A run again (Run) starts unsealed. PushOnlySealed.                      *)
+(*                                                                         *)
+(* The stream step merges the stream in (2026-11-09): jobDir[c].keepsPrior *)
+(* is that the job's head still descends from the head it started from;    *)
+(* Rebase keeps it. PushKeepsPrior; witness RunnerRebaseDropsPrior.        *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -64,7 +68,7 @@ Init ==
   /\ jobState = [c \in Consumers |-> "none"]
   /\ slotsInUse = 0
   /\ width = Width
-  /\ jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE]]
+  /\ jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE, keepsPrior |-> TRUE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, released |-> FALSE]
@@ -150,10 +154,10 @@ Rebase(c) ==
   /\ jobState[c] = "harvested"
   /\ jobDir[c].outcome = "ok"
   /\ jobState' = [jobState EXCEPT ![c] = "rebased"]
-  /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass, branch>>
+  /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass, branch>>   \* the stream merged in: keepsPrior
 
-\* A rebase conflict, or an ok at the prior head (nothing new to rebase or
-\* report): a fail that bounces (runner.go rebaseAndTestStep_internal).
+\* A merge conflict with the stream, or an ok at the prior head (nothing new to
+\* merge or report): a fail that bounces (runner.go rebaseAndTestStep_internal).
 Conflict(c) ==
   /\ ~env.crashed
   /\ storeState[c] = "working"   \* a withdrawn job moves only to Retire
@@ -431,6 +435,12 @@ BranchOnlyByHolder ==
 \* the wall; the push is from the worker's clone, never the job directory.
 PushOnlySealed ==
   \A c \in Consumers : branch[c].tip = "job" => jobDir[c].sealed
+
+\* The head a job pushes keeps the history of the head it started from:
+\* the stream is merged in, never rebased (a rebase drops a merge commit
+\* that resolved a conflict, and the conflict comes back every attempt).
+PushKeepsPrior ==
+  \A c \in Consumers : jobDir[c].pushed => jobDir[c].keepsPrior
 
 \* Reach checks (each must be violated: the state is reachable).
 NeverTakesWhileAJobRuns ==

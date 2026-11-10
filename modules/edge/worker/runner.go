@@ -107,7 +107,7 @@ type (
 	OSProcessTable struct{}
 )
 
-func (e *ConflictError) Error() string { return "rebase conflict: " + strings.Join(e.Files, ", ") }
+func (e *ConflictError) Error() string { return "merge conflict: " + strings.Join(e.Files, ", ") }
 func (e *FetchError) Error() string    { return fmt.Sprintf("fetch %s failed: %v", e.StreamRef, e.Cause) }
 func (e *FetchError) Unwrap() error    { return e.Cause }
 func (OSProcessTable) Alive(pid int, nonce string) bool {
@@ -1332,9 +1332,12 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, clone, remote, streamRe
 	if _, err := g.runRemoteGit_internal(ctx, to, worktree, "fetch", "--quiet", "--no-recurse-submodules", remote, streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
-	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
+	// Merged in, never rebased: a rebase drops a merge commit that resolved
+	// a conflict and replays the card's commits into it again, and its head
+	// no longer descends from the job's.
+	if _, err := g.runGit_internal(ctx, to, worktree, "merge", "--no-edit", "FETCH_HEAD"); err != nil {
 		out, diffErr := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
-		if _, abortErr := g.runGit_internal(ctx, to, worktree, "rebase", "--abort"); abortErr != nil {
+		if _, abortErr := g.runGit_internal(ctx, to, worktree, "merge", "--abort"); abortErr != nil {
 			err = fmt.Errorf("%w; cleanup: %w", err, abortErr)
 		}
 		if files := strings.Fields(out); diffErr == nil && len(files) > 0 {

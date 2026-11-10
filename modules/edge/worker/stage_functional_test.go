@@ -113,7 +113,8 @@ func TestFunctionalShallowStage(t *testing.T) {
 			newMain := runGitCmd_internal(t, seed, "rev-parse", "main")
 			runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", newMain, rebased)
 			require.Equal(t, "card.txt\nlate.txt\nmain.txt\nwork.txt", runGitCmd_internal(t, clone, "ls-tree", "--name-only", rebased))
-			require.Equal(t, "2", runGitCmd_internal(t, clone, "rev-list", "--count", newMain+".."+rebased), "only the card's commits are replayed")
+			runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", collected, rebased)
+			require.Equal(t, "3", runGitCmd_internal(t, clone, "rev-list", "--count", newMain+".."+rebased), "the card's commits and the merge of main")
 
 			// The done-when apply: the rebased head, back in the job's tree.
 			bundle := filepath.Join(t.TempDir(), "rebased.bundle")
