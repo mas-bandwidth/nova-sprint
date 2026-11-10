@@ -140,12 +140,12 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 
 // Defaults are the engine's own answers (LAYER-5's default policy; every
 // number marked there; Limits' steering numbers are guesses: escalate_after
-// 2, frontier_after 4, flap_limit 3, idle_floor 0.5, land_target 0.9). IdleCeiling
+// 2, frontier_after 4, flap_limit 3, idle_floor 0.5, land_target 0.3). IdleCeiling
 // is the working share at which idle closes, LandSample the landings
 // land-rate needs. The seconds after a
 // deal at which an unacknowledged card is nudged each tick and withdrawn are
 // policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"; the human's
-// numbers, 2026-11-07), default.star's 1 and 180; Engine's are those a
+// numbers, 2026-11-07), default.star's 30 and 180; Engine's are those a
 // tick with no usable timeouts() answer runs on, as for every timeout.
 // UndealtAfter is the seconds a
 // producer may stay ready with a serving row with room before it is judged
@@ -167,15 +167,16 @@ type Defaults struct {
 // Engine is the defaults as the designs give them. Budget 250 and Pack 50
 // are measured (the load test, vision 2026-11-07: a tick of 250 cards at
 // 5,000 producers is about 265 ms p50 as 5 ops of 50; see the Built
-// section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
-// guesses, marked there.
+// section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults
+// (default.star's limits, timeouts and landing; a policy test pins them
+// equal) or guesses, marked there.
 var Engine = Defaults{
 	UndealtAfter: 2, PresentGrace: 30, Reads: 1, IdleCeiling: 0.75, LandSample: 20,
-	Limits: Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
-		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 250, Pack: 50},
-	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300},
-		Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}},
-	Landing: LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
+	Limits: Limits{Bounces: 12, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
+		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.3, Budget: 250, Pack: 50},
+	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 1200, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 30, ReadyTake: 180, BaseRegate: []int{120, 300},
+		Consumer: map[string]int{"flash": 3600, "pro": 7200, "heavy": 7200, "frontier": 7200}},
+	Landing: LandingAnswer{BackedUp: 4, Flowing: 1, CIWait: 600},
 }
 
 // oracle is one tick's answers: the version's where usable, the defaults

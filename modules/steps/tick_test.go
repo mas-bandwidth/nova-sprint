@@ -232,7 +232,7 @@ func TestTickLandAnswers(t *testing.T) {
 }
 
 // TestTickLadderRungs: one head waiting is a request of its own (rung 1);
-// at policy's backed_up (2 by default) every waiting head is one request
+// at policy's backed_up (4 by default) every waiting head is one request
 // (rung 2), and the request names each head's branch and the CI wait.
 func TestTickLadderRungs(t *testing.T) {
 	t.Parallel()
@@ -240,22 +240,24 @@ func TestTickLadderRungs(t *testing.T) {
 	s.stream("s1")
 	s.row("r1", 4, "pro")
 	s.row("r2", 4, "pro", "heavy")
-	s.producer("p1", "s1", "pro", "a/x")
-	s.producer("p2", "s1", "pro", "a/y")
+	ps := []string{"p1", "p2", "p3", "p4"}
+	for _, p := range ps {
+		s.producer(p, "s1", "pro", "a/"+p)
+	}
 	s.run(2)
-	for i, p := range []string{"p1", "p2"} {
+	for i, p := range ps {
 		s.take(p + ".w1")
 		s.report(p+".w1", "ok", sha(i+1), "done")
 	}
 	s.tick()
-	for _, p := range []string{"p1", "p2"} {
+	for _, p := range ps {
 		s.take(p + ".r1.1")
 		s.report(p+".r1.1", "ok", s.card(p).Head, "fine")
 	}
 	s.run(2)
 	req := s.request("land", "s1")
-	assert.Equal(t, []string{"p1", "p2"}, req.Cards, "backed up: one request for both")
-	assert.Equal(t, []string{"sprint/s1/p1", "sprint/s1/p2"}, req.Branches)
+	assert.Equal(t, ps, req.Cards, "backed up: one request for all four")
+	assert.Equal(t, []string{"sprint/s1/p1", "sprint/s1/p2", "sprint/s1/p3", "sprint/s1/p4"}, req.Branches)
 	assert.Equal(t, Engine.Landing.CIWait, req.Wait)
 }
 

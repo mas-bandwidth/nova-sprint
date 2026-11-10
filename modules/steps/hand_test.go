@@ -34,7 +34,8 @@ func dealOne(t *testing.T) *sim {
 func TestHandNudgesThenReturnsUntaken(t *testing.T) {
 	t.Parallel()
 	s := dealOne(t)
-	p := s.tick() // the first one-second tick after the deal: ready_nag is 1 s
+	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyNag))
+	p := s.tick() // the first tick ready_nag after the deal
 	require.Len(t, p.Nudges, 1)
 	n := p.Nudges[0]
 	assert.Equal(t, Nudge{Row: "r1", Card: "p1.w1"}, Nudge{Row: n.Row, Card: n.Card})
@@ -47,7 +48,7 @@ func TestHandNudgesThenReturnsUntaken(t *testing.T) {
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1.w1", "fail")
-	assert.Equal(t, "in r1's hand 182 s, not taken; back to the queue, branch sprint/s1/p1 kept", s.card("p1.w1").Reason)
+	assert.Equal(t, "in r1's hand 212 s, not taken; back to the queue, branch sprint/s1/p1 kept", s.card("p1.w1").Reason)
 	s.requireState("p1", "ready")
 	assert.Empty(t, s.openJudgements("unacked"))
 	s.tick()
@@ -91,6 +92,7 @@ func TestHandNudgeQuotesTheRef(t *testing.T) {
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("a;b.w1", "working")
+	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyNag))
 	p := s.tick()
 	require.Len(t, p.Nudges, 1)
 	assert.Contains(t, p.Nudges[0].Line, "run: nova-sprint take 'a;b.w1@0' --as r1 ")
@@ -438,7 +440,7 @@ func TestLimitsReleaseLostCards(t *testing.T) {
 		s.tick()
 		require.Empty(t, s.rejected)
 		s.requireState("p1.w1", "fail")
-		assert.Equal(t, "working 2881 s with no report, past tier pro's deadline of 2700 s after the take window; branch sprint/s1/p1 is kept", s.card("p1.w1").Reason)
+		assert.Equal(t, "working 7381 s with no report, past tier pro's deadline of 7200 s after the take window; branch sprint/s1/p1 is kept", s.card("p1.w1").Reason)
 		s.requireState("p1", "ready")
 	})
 }

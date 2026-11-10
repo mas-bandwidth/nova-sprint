@@ -530,8 +530,8 @@ validates is read from policy's `limits` answer, the steering numbers
 `land_target`) included; `Engine.Limits` is the built-in default for a
 failed or absent answer: `escalate_after` 2 and `frontier_after` 4
 (guesses), `flap_limit` 3 (unmeasured), `idle_floor` 0.5 (idle closes at
-the engine's 0.75), `land_target` 0.9 (over the engine's sample of 20),
-and layer 5's defaults for the rest of `limits` (bounces 6,
+the engine's 0.75), `land_target` 0.3 (over the engine's sample of 20),
+and layer 5's defaults for the rest of `limits` (bounces 12,
 not the 3 this text guessed: layer 5 is the later word), `timeouts`,
 `landing` (backed up at 4, flowing at 1) and `width` (ahead = width, where
 the model's instance uses 2 x width; the trace walk's asker answers the

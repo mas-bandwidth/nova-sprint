@@ -243,9 +243,9 @@ func TestTickHoldAtLimit(t *testing.T) {
 	s.row("r1", 1, "pro")
 	s.producer("p1", "s1", "pro", "a/x")
 	s.run(2)
-	for i := 1; i < Engine.Limits.Bounces; i++ {
+	for i := 1; i < Engine.Limits.Bounces; i++ { // each fail pushes a new head: progress, so same_finding's hold never comes first
 		s.take(fmt.Sprintf("p1.w%d", i))
-		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", "broke")
+		s.report(fmt.Sprintf("p1.w%d", i), "fail", sha(i), "broke")
 		s.tick()
 		s.requireState("p1", "working")
 	}
