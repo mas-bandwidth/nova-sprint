@@ -65,8 +65,9 @@ func (e *Engine) branchTip(ctx context.Context, snap store.Snapshot, c store.Car
 }
 
 // madeAsIdentity is finish's admission of the head's commits (round 24):
-// every commit on head that is neither in the attempt's base nor on the
-// stream's base at origin is authored and committed as the sprint's
+// there is at least one commit on head that is neither in the attempt's
+// base nor on the stream's base at origin (none is nothing done), and every
+// such commit is authored and committed as the sprint's
 // identity, by email (case folded), read in a clone through the git edge.
 // The refusal names each commit made as anyone else and its emails; the fix
 // is the two git config lines and a rewrite of those commits.
@@ -77,6 +78,9 @@ func (e *Engine) madeAsIdentity(ctx context.Context, snap store.Snapshot, s stor
 	commits, err := e.Origin.Commits(ctx, url, head, s.Base, c.BaseSHA)
 	if err != nil {
 		return RefusalOr(err, broken("the commits of "+head+" could not be read in a clone of "+s.Repo+" ("+errText(err)+")", "check the repository is readable, then finish again"))
+	}
+	if len(commits) == 0 {
+		return refuse("head "+head+" has no commit beyond "+orWord(c.BaseSHA, "the base")+" and origin/"+s.Base+"; nothing was done", "commit the work on "+c.Branch+", push it, and finish with its head")
 	}
 	want := snap.Identity.Email
 	var bad []string
