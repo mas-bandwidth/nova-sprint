@@ -187,6 +187,24 @@ func TestProbeRefusalRunsNoJudgementVerb(t *testing.T) {
 	}
 }
 
+// A probe whose harness exits 0 with chatter on stderr and no verdict says
+// the verdict, not only the chatter: the live refusal read "exit 0: Wrote
+// file successfully." (hetzner2, 2026-11-09) and never why it failed.
+func TestProbeFailureSaysTheVerdict(t *testing.T) {
+	t.Parallel()
+	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
+	wall := &fakeWall{runFn: func(int, Job, []string, []string) (WallRunResult, error) {
+		return WallRunResult{Stderr: []byte("> build · mercury-3\n← Write result.json\nWrote file successfully.\n"), Elapsed: 2 * time.Second}, nil
+	}}
+	r := probeRunner_internal(t, sp, wall, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, allKeys_internal))
+	err := r.ProbeRow(context.Background(), "b1", "opencode")
+	for _, want := range []string{"exit 0: Wrote file successfully.", "no verdict: the harness exited 0 without writing result.json"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("want %q in %v", want, err)
+		}
+	}
+}
+
 // 25, 28, 30, 31, 32: a failed probe says the harness's error line (not a
 // bare reset), keeps stdout.log, stderr.log and command.txt, names a death
 // inside the wall before the harness's log with the command that shows the

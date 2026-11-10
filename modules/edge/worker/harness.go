@@ -222,7 +222,7 @@ func (h *CodexHarness) Needs() Needs {
 func (h *OpenCodeHarness) Needs() Needs {
 	return Needs{Unix: true, Proxy: true, ListModels: []string{"opencode", "models"}, LogDir: filepath.Join("data", "opencode", "log"), Model: true,
 		Limits: "opencode 2.x starts a background service on a fixed port unless given --standalone, which 1.x refuses and this adapter does not pass: " +
-			"run opencode 1.x (1.18.20 measured); its write tool's death inside the wall (defect 33) was seen before --unix and not since on macOS (2026-11-08), unmeasured on Linux"}
+			"run opencode 1.x (1.18.20 measured); its write tool's death inside the wall (defect 33) was seen before --unix and not since on macOS (2026-11-08) or Linux (hetzner2, 104 of 104 probe runs, 2026-11-09)"}
 }
 
 // modelFlag_internal passes the model the take receipt (or the probe) named,
