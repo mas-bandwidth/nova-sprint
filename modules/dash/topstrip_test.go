@@ -20,7 +20,8 @@ func TestEtaFollowsV1(t *testing.T) {
 		{90, 60, 5, "1h30m"},  // 90 min
 		{1, 7, 3, "9m"},       // rounded up
 		{1000, 20, 9, "2d2h"}, // 3000 min = 50h, rounded up: 2d2h
-		{10, 30, 2, "-"},      // under the landing floor
+		{10, 30, 1, "20m"},    // one landing is enough
+		{10, 30, 0, "-"},      // under the landing floor
 		{10, 0, 9, "-"},       // no rate
 		{0, 30, 9, "-"},       // nothing left
 	}
@@ -68,11 +69,17 @@ func TestEtaFallsBackToTheSprintAverage(t *testing.T) {
 	if d.Eta != "12h0m" || d.EtaBasis != "sprint average" {
 		t.Fatalf("eta=%q basis=%q", d.Eta, d.EtaBasis)
 	}
-	// before the third landing of the sprint: no ETA
-	c.landings = at(base, -30, -10)
-	c.view = envelope{Left: 12, All: 14, At: base}
+	// the sprint's first landing gives an estimate at once
+	c.landings = at(base, -30)
+	c.view = envelope{Left: 12, All: 13, Landed: 1, At: base}
+	if d := c.pageSnapshot().Data; d.Eta == "-" {
+		t.Fatalf("one landing gives no ETA")
+	}
+	// before any landing: no ETA
+	c.landings = nil
+	c.view = envelope{Left: 12, All: 12, At: base}
 	if d := c.pageSnapshot().Data; d.Eta != "-" {
-		t.Fatalf("two landings give %q", d.Eta)
+		t.Fatalf("no landings give %q", d.Eta)
 	}
 	// a store that cannot give landings: no ETA, never a guess
 	c = &Cache{now: func() time.Time { return base }}
