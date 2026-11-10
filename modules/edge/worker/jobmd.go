@@ -102,7 +102,7 @@ func finishRules(j Job, k *KinFinish) string {
 			fault
 	}
 	return "1. In a fresh clone of your own, commit your work on branch " + j.Branch + " (from the prior head when there is one, else the base), then git push origin " + j.Branch + ". Open no pull request: the landing opens it.\n" +
-		"   To take in a newer base (a merge conflict), merge it into the branch, never rebase: the head must descend from the prior head.\n" +
+		"   To take in a newer base (a merge conflict), merge it into the branch, never rebase, so the earlier attempts' work and history stay.\n" +
 		kinIdentity(j) +
 		"2. Run every done-when command at the head you pushed; each must exit 0.\n" +
 		"3. Report with one of:\n" +

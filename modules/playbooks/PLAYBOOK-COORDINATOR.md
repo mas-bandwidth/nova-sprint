@@ -134,7 +134,8 @@ What each judgement kind asks of you, and where to look before you choose:
   deadline. Choose `land` (you looked, it is right: merged by hand at once), `fix` (back to its
   producer with your reason as the finding), or `retry` (a flake, a fixed trigger: a new
   landing). A `fix` for a conflict says: merge current <base> into the card branch and resolve
-  the conflicts; never rebase (the next head must descend from the prior head). Section 5.
+  the conflicts; never rebase (a bench refuses a head that does not descend from the prior
+  head). Section 5.
 - `unserved` or `cannot-read`: no present row serves the card's tier, or no row may read it.
   Bring a row up that serves the tier (section 7); never lower the card's tier.
 - `stall`: nothing landed within the bound while producers wait; the message names the cause

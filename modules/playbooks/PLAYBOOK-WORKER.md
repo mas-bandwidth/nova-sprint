@@ -164,7 +164,7 @@ Each message is a wake. Handle it, then wait for the bus again.
    `git checkout -b <branch> origin/<branch>`, and continue from that work with the brief's
    finding in hand; never restart from the base and never throw the earlier work away. If the
    finding is a merge conflict, fetch the base, merge it into your branch and resolve the
-   conflicts; never rebase: your next head must descend from the prior head.
+   conflicts; never rebase: keep the prior head's history, so your next head descends from it.
 3. Before you change anything, run the brief's DONE-WHEN gates once at the commit you start
    from (the base, or the earlier attempt's head), so you know what was already red. A red the
    brief's base-reds table already lists is cited, never fixed on this card and never re-run
@@ -187,7 +187,7 @@ Each message is a wake. Handle it, then wait for the bus again.
    since the base by another author or committer email.
    Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
    withdraw never costs work. Your card branch is yours alone: nobody else writes it, so you may
-   rewrite your own commits on it (never rebase it past a prior head, step 2) and push it with
+   rewrite your own commits on it (a newer base is merged in, never rebased, step 2) and push it with
    `git push --force-with-lease origin <branch>`. Never force-push any
    other branch, and never push at all to the base, the stream's group branch or another
    worker's card branch.
