@@ -25,7 +25,7 @@ const workerHarness = "opencode"
 // workerProviderKeys are the provider keys a worker service opens from
 // its bench's own seat, beside the sprint and bus credentials.
 func workerProviderKeys() []string {
-	return []string{"DEEPSEEK_API_KEY", "INCEPTION_API_KEY"}
+	return []string{"DEEPSEEK_API_KEY", "INCEPTION_API_KEY", "OPENCODE_API_KEY", "OPENROUTER_API_KEY"}
 }
 
 // workerArgv is the one place the worker service's command line is built.
@@ -43,10 +43,10 @@ func workerArgv(machine, _ string) []string {
 
 // workerProviders is the worker's key-proxy routes (edge/worker
 // ParseProviders; an upstream is given without /v1): DeepSeek and
-// Inception (Mercury). Paper Instruments (Ultramarine) is left out until
-// its upstream is known; adding a route is this string and its key in
-// workerProviderKeys.
-const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY"
+// Inception (Mercury), OpenCode Zen (its OpenAI-compatible endpoint) and
+// OpenRouter. Ultramarine is left out (not a fit); adding a route is this
+// string and its key in workerProviderKeys.
+const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY,opencode=https://opencode.ai/inference/openai@OPENCODE_API_KEY,openrouter=https://openrouter.ai/api@OPENROUTER_API_KEY"
 
 // workerService is the nova-config service record of the worker on a
 // bench: its seat is the bench's own, its keys the sprint credential, the

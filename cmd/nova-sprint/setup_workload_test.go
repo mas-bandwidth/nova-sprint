@@ -108,10 +108,10 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		}
 	}
 	want := []string{"nova-config", "service", "add", "sprint-worker-amd-1", "--machine", "amd-1",
-		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--harness","opencode","--providers","deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
+		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--harness","opencode","--providers","deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY,opencode=https://opencode.ai/inference/openai@OPENCODE_API_KEY,openrouter=https://openrouter.ai/api@OPENROUTER_API_KEY","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
-		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,GH_GATE_TOKEN,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
+		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,GH_GATE_TOKEN,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD,OPENCODE_API_KEY,OPENROUTER_API_KEY",
 		"--actor", "rowan", "--reason", "nova-sprint up 9/10 workers"}
 	if len(adds) != 2 || !slices.Equal(adds[0], want) || adds[1][3] != "sprint-worker-amd-2" {
 		t.Fatalf("records:\n%q\nwant\n%q", adds, want)
