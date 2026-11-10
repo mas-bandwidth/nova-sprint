@@ -294,7 +294,7 @@ answer, never a thing to route round.
 - `push first: git push origin <branch>`: the head is not on the dealt branch at origin.
 - `<n> of the <m> commits on <branch> since the base are not made as <name> <email>: <sha>
   (author <a>, committer <c>), ...`: run the two git config lines it prints in your clone, rewrite
-  those commits as it (`git rebase <base> --exec 'git commit --amend --no-edit --reset-author'`),
+  those commits as it (`git rebase --rebase-merges <base> --exec 'git commit --amend --no-edit --reset-author'`),
   push with `--force-with-lease`, and finish with the new head.
 - `the sprint has no commit identity`: nothing may commit yet; tell the coordinator.
 - `head <x> is the base; nothing was done`: an empty head is never a finish.
