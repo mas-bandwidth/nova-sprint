@@ -107,7 +107,15 @@ func (t *tick) dealWork(c store.Card) {
 	answered := t.rowsAnswer(c, "work")
 	serving := t.serving(c)
 	if len(serving) == 0 {
-		t.judge("unserved", unservedAbout(c), "no open row serves tier "+c.Tier+routesClause(c)+"; ready "+c.ID+" waits")
+		q := "no open row serves tier " + c.Tier + routesClause(c) + "; ready " + c.ID + " waits"
+		var resting []string // serving is empty: every candidate rests after faults
+		for _, f := range t.candidates(c, "work") {
+			resting = append(resting, f.Name)
+		}
+		if len(resting) > 0 {
+			q += "; resting after faults, dealt to again when the rest ends: " + strings.Join(resting, ", ")
+		}
+		t.judge("unserved", unservedAbout(c), q)
 		return
 	}
 	named := t.named(c, serving)
