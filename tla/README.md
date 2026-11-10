@@ -614,10 +614,12 @@ ReadFix writes it, Start copies it; in the code it is the reader's text and
 written only when non-empty and changed). These
 are not: reason, brief, cost, priced (written, read by no guard); prose,
 paths and done_when are read only by Edit's own "changes nothing" refusal,
-which moves no other state, so Edit is a stutter here. HoldStream's AtSeq
-fence is the atomic step itself: the model parks exactly the ready set of
-the state it steps from, which is what a plan fenced at the snapshot's seq
-can apply. NeedFailed, Waive and Relink {InThisOp} are one step together
+which moves no other state, so Edit is a stutter here. HoldStream's fence
+is the atomic step itself: the model parks exactly the ready set of the
+state it steps from, which is what a plan fenced on no stream or card
+written since the snapshot's seq (UnchangedSince) can apply; rows, the
+only other part of this model, are neither read nor written by it, so a
+beat or a row move between is a step before it. NeedFailed, Waive and Relink {InThisOp} are one step together
 with the Cancel of the need. Relink names a producer or a sentinel and walks
 needs and after for a cycle, so the two cycle witnesses fault only the
 cycle check.

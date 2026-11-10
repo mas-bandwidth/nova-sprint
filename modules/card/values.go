@@ -101,7 +101,7 @@ func (v *vals) expect(e store.Expect) {
 		v.key("row", x.Row)
 	case store.StreamHeld:
 		v.key("stream", x.Stream)
-	case store.AtSeq:
+	case store.UnchangedSince:
 		if x.Seq < 0 {
 			v.fail("seq %d is below 0", x.Seq)
 		}

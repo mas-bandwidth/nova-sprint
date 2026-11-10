@@ -1,23 +1,25 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// movingStore is a store a running sprint moves: before the first add op
-// reaches it, the op in between lands, as a tick, a take or a landing does
-// while add reads the repository and the store.
+// movingStore is a store a running sprint moves: before the first op of
+// kind ("add" when none is named) reaches it, the op in between lands, as a
+// beat, a tick, a take or a landing does while a verb reads the store.
 type movingStore struct {
 	*store.Fake
 	between store.Op
+	kind    string
 	moved   bool
 }
 
 func (m *movingStore) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
-	if op.Kind == "add" && !m.moved {
+	if op.Kind == cmp.Or(m.kind, "add") && !m.moved {
 		m.moved = true
 		if r, err := m.Fake.Apply(ctx, m.between); err != nil || !r.Accepted {
 			return r, err

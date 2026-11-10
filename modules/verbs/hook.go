@@ -87,7 +87,7 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 	op := e.newOp("hook", name, snap, session, r)
 	op.Writes = []store.Write{store.PutRow{Name: name, Session: session, Role: r}}
 	if r == "coordinator" { // one coordinator: no other hook may land between the read and this op
-		op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}}
+		op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Hooks: true}}
 	}
 	if _, err := e.commit(ctx, op, "nova-sprint unhook --as "+name+", then hook again"); err != nil {
 		return "", err
@@ -131,7 +131,7 @@ func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason
 	hand, line := handBack(snap, old, "unhooked by a take-over")
 	op := e.newOp("take-over", name, snap, old, session, reason)
 	op.Note = "took over from " + old + ": " + oneLine(reason)
-	op.Expect = append([]store.Expect{store.AtSeq{Seq: snap.Seq}}, hand.Expect...) // one coordinator: no other hook may land between the read and this op
+	op.Expect = append([]store.Expect{store.UnchangedSince{Seq: snap.Seq, Hooks: true}}, hand.Expect...) // one coordinator: no other hook may land between the read and this op
 	op.Writes = append([]store.Write{store.PutRow{Name: old}, store.PutRow{Name: name, Session: session, Role: "coordinator"}}, hand.Writes...)
 	if _, err := e.commit(ctx, op, takeOverCommand(name)+" again"); err != nil {
 		return "", err

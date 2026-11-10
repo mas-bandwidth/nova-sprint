@@ -34,6 +34,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"clear refusals":          clearRefusals,
 		"clear releases holds":    clearReleasesHolds,
 		"clear fenced on rows":    clearFencedOnRows,
+		"unchanged since":         unchangedSince,
 		"rebuild":                 rebuild,
 		"events":                  eventsPaging,
 		"policy":                  policy,
@@ -474,6 +475,46 @@ func clearFencedOnRows(h *harness) {
 	got := h.snap()
 	assert.Equal(h.t, 2, got.Epoch)
 	assert.Equal(h.t, 2, got.Rows["w1"].Load1Centi, "the beat after the fence's seq is carried")
+}
+
+// UnchangedSince holds over a beat, a row's state, flaps and hold, and a
+// refused op, and is refused, inside the transaction, by a write to the one
+// part it names, while a fence on every other part still holds.
+func unchangedSince(h *harness) {
+	h.seed()
+	all := UnchangedSince{Seq: 1, Streams: true, Cards: true, Policies: true, Judgements: true, Stop: true, Identity: true, Hooks: true}
+	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", Load1Centi: 1, Cores: 8}))
+	h.ok(h.op("row", nil, SetRowState{"w1", "down"}, SetRowFlaps{"w1", 2}, SetRowHeld{"w1", true, "x"}))
+	h.refused(h.op("nothing", nil, SetCardState{"c9", "ready"}), "card c9 does not exist")
+	h.ok(h.op("fence", []Expect{all}))
+	h.invalid(map[string]Op{
+		"no part":    h.op("fence", []Expect{UnchangedSince{Seq: 1}}),
+		"seq below0": h.op("fence", []Expect{UnchangedSince{Seq: -1, Cards: true}}),
+	})
+	h.refused(h.op("fence", []Expect{UnchangedSince{Seq: 99, Cards: true}}), "the store is at seq 5, before seq 99")
+	for _, c := range []struct {
+		part  string
+		w     Write
+		only  func(*UnchangedSince) *bool
+		wrote string
+	}{
+		{"streams", PutStream{Name: "s2", Repo: "org/r", Base: "main", Pos: 1}, func(u *UnchangedSince) *bool { return &u.Streams }, "streams"},
+		{"cards", SetCardReason{"c1", "r"}, func(u *UnchangedSince) *bool { return &u.Cards }, "cards"},
+		{"policies", PutPolicy{"data", "q", "{}"}, func(u *UnchangedSince) *bool { return &u.Policies }, "policies"},
+		{"judgements", PutJudgement{ID: "j1", Kind: "red"}, func(u *UnchangedSince) *bool { return &u.Judgements }, "judgements"},
+		{"stop", SetStopped{false, "go"}, func(u *UnchangedSince) *bool { return &u.Stop }, "the stop"},
+		{"identity", SetIdentity{"n", "n@example.com"}, func(u *UnchangedSince) *bool { return &u.Identity }, "the identity"},
+		{"a new hook", PutRow{Name: "w2", Session: "sess-b", Role: "worker"}, func(u *UnchangedSince) *bool { return &u.Hooks }, "row w2's hook"},
+		{"an unhook", PutRow{Name: "w1"}, func(u *UnchangedSince) *bool { return &u.Hooks }, "row w1's hook"},
+	} {
+		seq := h.snap().Seq
+		h.ok(h.op(c.part, nil, c.w))
+		one, rest := UnchangedSince{Seq: seq}, all
+		rest.Seq = seq
+		*c.only(&one), *c.only(&rest) = true, false
+		h.refused(h.op("fence", []Expect{one}), fmt.Sprintf("the store changed since seq %d: seq %d wrote %s", seq, seq+1, c.wrote))
+		h.ok(h.op("fence", []Expect{rest}))
+	}
 }
 
 func clearRefusals(h *harness) {

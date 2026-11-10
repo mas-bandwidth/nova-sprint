@@ -1289,8 +1289,9 @@ func (m *mover) withdrawHead(e Withdraw, c Card) *Refusal {
 }
 
 // MoveStream is a stream's move on event e. HoldStream holds s and parks
-// every ready producer it names, once, in the same op, fenced at the
-// snapshot's seq (Stella's read of a822dfc7, and the second cold read).
+// every ready producer it names, once, in the same op, fenced on no stream
+// or card written since the snapshot's seq (Stella's read of a822dfc7, and
+// the second cold read; a beat moves the seq and no card).
 // UnholdStream clears the hold and parks nothing.
 func MoveStream(s Stream, e Event) (Plan, *Refusal) {
 	switch v := e.(type) {
@@ -1326,7 +1327,7 @@ func holdStream(s Stream, v HoldStream) (Plan, *Refusal) {
 		}
 	}
 	m := &mover{}
-	m.expect(store.StreamHeld{Stream: s.Name, Held: false}, store.AtSeq{Seq: v.Seq})
+	m.expect(store.StreamHeld{Stream: s.Name, Held: false}, store.UnchangedSince{Seq: v.Seq, Streams: true, Cards: true})
 	m.write(store.SetStreamHeld{Stream: s.Name, Held: true})
 	why := cmp.Or(v.Reason, holdPhrase(s))
 	for _, p := range v.Ready {

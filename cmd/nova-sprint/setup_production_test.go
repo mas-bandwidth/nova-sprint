@@ -605,16 +605,22 @@ func TestProductionSetupRefusesABadDSN(t *testing.T) {
 }
 
 // tickingStore is a live sprint: the run service writes an op between the
-// continuation's read and each of its first n writes.
+// continuation's read and each of its first n writes (a version stored, or
+// with beat, row alice's heartbeat).
 type tickingStore struct {
 	*store.Fake
-	n int
+	n    int
+	beat bool
 }
 
 func (s *tickingStore) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
 	if s.n > 0 && strings.HasPrefix(op.ID, "up-handoff-") {
 		s.n--
-		tick := store.Op{ID: fmt.Sprintf("tick-%d", s.n), Epoch: op.Epoch, Actor: "sprint", Kind: "tick", At: op.At, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: fmt.Sprintf("tick:%d", s.n), Body: "x"}}}
+		var w store.Write = store.PutPolicy{Kind: "data", Name: fmt.Sprintf("tick:%d", s.n), Body: "x"}
+		if s.beat {
+			w = store.SetRowLoad{Row: "alice", Load1Centi: s.n, Cores: 8}
+		}
+		tick := store.Op{ID: fmt.Sprintf("tick-%d", s.n), Epoch: op.Epoch, Actor: "sprint", Kind: "tick", At: op.At, Writes: []store.Write{w}}
 		if r, err := s.Fake.Apply(ctx, tick); err != nil || !r.Accepted {
 			return r, fmt.Errorf("tick: %+v %v", r, err)
 		}
@@ -646,5 +652,15 @@ func TestContinuationWriteSurvivesALiveRun(t *testing.T) {
 	busy := &tickingStore{Fake: store.NewFake(), n: 100}
 	if _, err := writeSetupContinuation(ctx, busy, bytes.NewReader(request), time.Unix(1000, 0)); err == nil || !strings.Contains(err.Error(), "continuation refused") {
 		t.Fatalf("a store that never settles: %v", err)
+	}
+	// A worker beating before every write moves the seq and stores no
+	// version: the write is fenced on the versions, so it lands at once.
+	beating := &tickingStore{Fake: store.NewFake(), n: 100, beat: true}
+	hook := store.Op{ID: "hook-alice", Epoch: 1, Actor: "alice", Kind: "hook", At: time.Unix(1000, 0), Writes: []store.Write{store.PutRow{Name: "alice", Session: "s-a", Role: "worker"}}}
+	if r, err := beating.Fake.Apply(ctx, hook); err != nil || !r.Accepted {
+		t.Fatal(r, err)
+	}
+	if written, err := writeSetupContinuation(ctx, beating, bytes.NewReader(request), time.Unix(1000, 0)); err != nil || written != id || beating.n != 99 {
+		t.Fatalf("a continuation over beats: %q %v after %d beats", written, err, 100-beating.n)
 	}
 }

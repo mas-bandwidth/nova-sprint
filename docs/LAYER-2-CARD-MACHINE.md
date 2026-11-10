@@ -437,7 +437,9 @@ with a design change, never a special case):
   plan, plus no two writes to one field), so no plan the machine emits is
   ever invalid at the store.
 - `HoldStream` refuses a producer listed twice; its ready set is fenced with
-  the snapshot's `AtSeq`.
+  the snapshot's `AtSeq` (since 2026-11-09 `UnchangedSince` the snapshot's
+  seq on streams and cards: a beat, which writes only its row, no longer
+  refuses it, and any card or stream write still does).
 - `Relink{InThisOp}` as `Waive`, so a drop and its relink are one op.
 - `Broken` and `Faulted` write the consumer's reason into the producer's
   `finding`; `Start` copies `finding` to the new work consumer, so a fix
@@ -478,8 +480,9 @@ with a design change, never a special case):
   working; choosing the youngest on the blocker's row is the step's (layer 3
   has the list).
 - `HoldStream` parks exactly the ready set the caller lists; passing the full
-  ready set of the snapshot is layer 3's duty, and the `AtSeq` fence makes a
-  stale list refuse rather than fill it in.
+  ready set of the snapshot is layer 3's duty, and the fence (no card or
+  stream written since the snapshot) makes a stale list refuse rather than
+  fill it in.
 - `Landed` has no `after` check in the machine; "a landing never holds on a
   soft after whose target is not queued" is the landing step's rule (layer 3).
 - A hold merged after a start parks what the start readied; a start merged

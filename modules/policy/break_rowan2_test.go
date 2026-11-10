@@ -254,8 +254,8 @@ func (s *racingStore) Apply(ctx context.Context, op store.Op) (store.Receipt, er
 
 // Set reads every stored body, checks, then stores with no fence (no
 // Expect): two sets of one file both pass the equal-body check and both
-// store, so two versions hold one body. Up fences its op with AtSeq; Set
-// does not.
+// store, so two versions hold one body. Up and Set fence their ops on no
+// version stored since their snapshot (UnchangedSince).
 // Sequence: up; set f.star, with an identical set landing between Set's
 // read of the versions and its op; list the bodies.
 // Broken: The verbs, set refuses "a body equal to a stored version (\"v4 has

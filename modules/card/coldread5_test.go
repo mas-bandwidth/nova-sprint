@@ -903,8 +903,6 @@ func (r *cold5Run) fences(kind, label string, plan Plan) {
 			k, v = "row held "+x.Row, fmt.Sprint(x.Held)
 		case store.RowGen:
 			k, v = "row gen "+x.Row, fmt.Sprint(x.Gen)
-		case store.AtSeq:
-			k, v = "seq", fmt.Sprint(x.Seq)
 		default:
 			continue
 		}

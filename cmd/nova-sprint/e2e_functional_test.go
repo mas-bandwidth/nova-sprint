@@ -169,7 +169,7 @@ func (x *e2e) up() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	op := store.Op{ID: "e2e-policy-bench", Epoch: snap.Epoch, Actor: "carol", Kind: "policy-set", At: time.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}},
+	op := store.Op{ID: "e2e-policy-bench", Epoch: snap.Epoch, Actor: "carol", Kind: "policy-set", At: time.Now(), Expect: []store.Expect{store.UnchangedSince{Seq: snap.Seq, Policies: true}},
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "bench.star", Body: body}, store.SetActivePolicy{Version: r.Version + 1}}}
 	if rc, err := st.Apply(ctx, op); err != nil || !rc.Accepted {
 		t.Fatalf("bench policy: %v %+v", err, rc)
