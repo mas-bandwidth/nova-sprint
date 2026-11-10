@@ -3,6 +3,7 @@ package worker
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -472,4 +474,52 @@ func TestCLISprintClientHookNamesWhatFailed(t *testing.T) {
 			t.Fatalf("%s: err = %v lacks the sprint's line", name, err)
 		}
 	}
+}
+
+// TestCLISprintClientNextReadsEveryFinishedCard: `next --json` lists every
+// finished card the row held this epoch, and on 2026-11-09 nine of twelve
+// benches' answers passed edge's 64 KiB default cap: the capped bytes went to
+// the parser ("parse failed at byte 32759"), no row took anything, and every
+// dealt card timed out and bounced. The client reads the whole answer (here
+// ~600 finished cards, well past the default cap, through edge's own fake,
+// which caps as OSExec does), and an answer that still overran its cap is
+// named as truncated, never parsed.
+func TestCLISprintClientNextReadsEveryFinishedCard(t *testing.T) {
+	t.Parallel()
+	final := make([]ConsumerSummary, 600)
+	for i := range final {
+		final[i] = ConsumerSummary{ID: fmt.Sprintf("card-nc-conformance-%03d.w1", i), Producer: fmt.Sprintf("card-nc-conformance-%03d", i),
+			Kind: "work", Stream: "netcode", State: "done", Priority: "normal", Head: strings.Repeat("a", 40), Gen: 1, Attempt: 1}
+	}
+	body, err := json.Marshal(NextResponse{Epoch: 7, Width: 16, Seq: 4242, Row: "mini-m5", State: "up", Final: final})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) <= 2*edge.DefaultMaxBytes {
+		t.Fatalf("the answer is %d bytes, not past the %d-byte default cap", len(body), edge.DefaultMaxBytes)
+	}
+	fx := edge.NewFakeExec()
+	fx.On("nova-sprint", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{Stdout: string(body)} })
+	cli := &CLISprintClient{Exec: fx}
+	resp, err := cli.Next(context.Background(), "mini-m5")
+	if err != nil {
+		t.Fatalf("Next: %v", err)
+	}
+	if resp.Epoch != 7 || resp.Seq != 4242 || len(resp.Final) != 600 || resp.Final[599].ID != final[599].ID {
+		t.Fatalf("Next read epoch %d seq %d with %d finished cards, want 7 4242 600", resp.Epoch, resp.Seq, len(resp.Final))
+	}
+	if calls := fx.Calls(); len(calls) != 1 || calls[0].Cmd.MaxBytes <= edge.DefaultMaxBytes {
+		t.Fatalf("next --json ran with MaxBytes %d: the worker asks for more than edge's %d-byte default", calls[0].Cmd.MaxBytes, edge.DefaultMaxBytes)
+	}
+	_, err = (&CLISprintClient{Exec: truncatingExec_internal{out: string(body[:edge.DefaultMaxBytes])}}).Next(context.Background(), "mini-m5")
+	if err == nil || !errors.Is(err, ErrTruncated) || !strings.Contains(err.Error(), "truncated") || !strings.Contains(err.Error(), "nova-sprint next --as mini-m5 --json") || strings.Contains(err.Error(), "parse failed") {
+		t.Fatalf("a truncated answer is named, with its command, never parsed: %v", err)
+	}
+}
+
+// truncatingExec_internal is an exec whose child's output overran its cap.
+type truncatingExec_internal struct{ out string }
+
+func (e truncatingExec_internal) Run(context.Context, edge.Cmd) (edge.Result, error) {
+	return edge.Result{Stdout: e.out, Truncated: true}, nil
 }
