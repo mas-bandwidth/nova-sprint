@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/usage"
 )
@@ -478,7 +479,7 @@ func normalizeFileOutcome_internal(res, reason, finding string, exit int, tail s
 		return Outcome{Result: "fix", Reason: cmp.Or(reason, finding), Finding: cmp.Or(finding, reason)}
 	case "broken", "fail":
 		r := cmp.Or(reason, tail, "harness reported broken")
-		if isBlockedWorkReason_internal(r) {
+		if isBlockedWorkReason_internal(r) && !card.Refuted(r) { // a refutation is the brief's, waiting held, never a fault dealt again
 			return Outcome{Result: "fault", Reason: r}
 		}
 		return Outcome{Result: "fail", Reason: r}

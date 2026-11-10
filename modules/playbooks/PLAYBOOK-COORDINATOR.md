@@ -122,7 +122,15 @@ What each judgement kind asks of you, and where to look before you choose:
   `unhold`; or `drop` it. A `held` whose reason reads `reads faulted <n> times running at review
   <r>` is a review whose reads all faulted policy's `faults` limit in a row (the reason ends with
   the newest fault): fix that cause (a route, a tool on the reading rows), then `unhold`; the card
-  is dealt again as work and its next review counts afresh.
+  is dealt again as work and its next review counts afresh. A `held` that says an attempt
+  `refuted its brief` carries the worker's evidence (`held: refuted: ...` or
+  `held: brief-defect: ...`, from `finish --failed`): the same brief dealt again is refuted
+  again. Read the evidence; `drop` it when the defect is not real, replace it with a corrected
+  brief (`nova-sprint replace <id> --by <card> --reason "<why>"`), or `unhold` to deal it again
+  when the refutation was wrong. A `held` that reads `failed <n> top-rank attempts running with no
+  new head on the same brief` is policy's `same_finding` applied to fails, once escalation is spent
+  (`frontier_after` bounces before them): attempts that pushed nothing; read the reasons with
+  `show <id>.w<n>` and choose the same way (an unhold is a fresh count).
 - `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
   than a tick. The message names the row, the card and the cause: the tick's budget spent before
   it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the

@@ -625,8 +625,8 @@ cycle check.
 ## Files
 
 - `CardMachine.tla` and its seven passing cfgs.
-- `witnesses/Card*.tla`: thirty-six reversed witnesses; `reach/Card*.cfg`:
-  seventeen reachability checks. Generated with every card cfg by
+- `witnesses/Card*.tla`: forty-one reversed witnesses; `reach/Card*.cfg`:
+  twenty reachability checks. Generated with every card cfg by
   `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
   in the script, in the same shape as `make-witnesses.py`: a replacement
   that no longer matches stops the script.
@@ -662,7 +662,14 @@ State invariants:
   or fail (it never has a consumer).
 - **NeedsAcyclic**: the needs graph stays acyclic.
 - **OrderAcyclic**: needs and after together stay acyclic.
-- **ResultsByKind**: a work consumer's result is ok, fail or fault; a read's
+- **RefutedNeverRedealt**: a refuted card is never dealt again until the
+  coordinator acts (live 2026-11-09: one card refuted at w24, w25 and w26).
+  A work consumer's fail whose reason refutes its brief (result `refuted`,
+  `card.Refuted`) leaves its producer waiting with `why` held, a bounce
+  spent; the producer is ready again with that consumer current only after
+  an UnholdCard, which set its bounce base to its bounces.
+- **ResultsByKind**: a work consumer's result is ok, fail (refuted, a fail
+  refuting its brief), fault or route; a read's
   ok, fix or fault.
 - **OneLiveReadPerRow**: at most one live read of a head per row.
 - **IdsDistinct**: no existing card's id is a cut consumer's id (one
@@ -739,6 +746,7 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardCutReady` | life | Start cuts its consumer ready | DealIsTake |
 | `witnesses/CardDealOverWidth` | pre | Start has no room guard | WidthKept |
 | `witnesses/CardRouteRedealt` | life | a route fault goes back to ready | RouteFaultWaits |
+| `witnesses/CardRefutedRedealt` | life | a fail refuting its brief goes back to ready, dealt again | RefutedNeverRedealt |
 | `witnesses/CardHeldDealt` | life | Resolve takes a held producer | HeldNeverDealt |
 | `witnesses/CardUnholdBudgetSpent` | life | UnholdCard leaves the bounce base, so the limit holds it again | UnholdFreshBudget |
 | `witnesses/CardNeedsCycle` | deps | Relink without the cycle check | NeedsAcyclic |
@@ -773,6 +781,7 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverHeld` | life | none | violated: a producer waits on a hold |
 | `reach/CardNeverUnheldBounced` | life | none | violated: a producer held after a bounce is unheld with a fresh budget |
 | `reach/CardNeverRouteHeld` | life | none | violated: a route fault leaves its producer waiting on it |
+| `reach/CardNeverRefutedHeld` | life | none | violated: a fail refuting its brief leaves its producer waiting held on it |
 | `reach/CardNeverSentinelReached` | life | none | violated: the sentinel lands on its landed need |
 | `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |
 | `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |

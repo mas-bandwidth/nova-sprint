@@ -104,6 +104,7 @@ func finishRules(j Job, k *KinFinish) string {
 			"3. Write " + res + ", then exit 0. Its forms:\n" +
 			"   {\"result\":\"ok\"}: the work is committed and every done-when command is green.\n" +
 			"   {\"result\":\"fail\",\"reason\":\"<what is not done, and why>\"}: you could not finish it; say what you found.\n" +
+			refuted_internal("{\"result\":\"fail\",\"reason\":\"refuted: <what you tried, and what it showed>\"}") +
 			"A run that exits without " + res + " is reported \"fail: no verdict\".\n"
 	}
 	tail := fmt.Sprintf(" --as %s --epoch %d", k.Row, k.Epoch)
@@ -123,7 +124,15 @@ func finishRules(j Job, k *KinFinish) string {
 		"3. Report with one of:\n" +
 		"   nova-sprint finish " + k.Ref + " --head <sha>" + tail + ": the work is pushed at <sha> and every done-when command is green.\n" +
 		"   nova-sprint finish " + k.Ref + " --failed --reason \"<what is not done, and why>\"" + tail + ": you could not finish it; say what you found.\n" +
+		refuted_internal("nova-sprint finish "+k.Ref+" --failed --reason \"refuted: <what you tried, and what it showed>\""+tail) +
 		fault
+}
+
+// refuted_internal is the finish rule for a brief the work refutes, in the
+// form form (card.Refuted): the card waits held for the coordinator instead
+// of being dealt again, the same brief being refuted again.
+func refuted_internal(form string) string {
+	return "   " + form + ": the brief is refuted (its red test cannot be made to fail at the base) or cannot be met as written (start the reason brief-defect: instead). The card waits for the coordinator instead of being dealt again.\n"
 }
 
 // commitIdentity_internal is the sprint's commit identity rule for a work

@@ -283,7 +283,7 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 		n++
 		s.requireState("p1", "working")
 		s.take(fmt.Sprintf("p1.w%d", n))
-		s.report(fmt.Sprintf("p1.w%d", n), "fail", "", "broke")
+		s.report(fmt.Sprintf("p1.w%d", n), "fail", sha(n), "broke") // each pushes a head: progress, so only the bounce limit holds it
 		s.tick()
 	}
 	for range limit {
@@ -307,6 +307,114 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("held: bounced %d times since its last unhold, the limit is %d", limit, limit), s.snap().Cards["p1"].Reason)
 	assert.Equal(t, 2*limit, s.snap().Cards["p1"].Bounces)
 	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
+}
+
+// TestTickNoProgressHolds: once escalation is spent (frontier_after
+// bounces before the run), same_finding work attempts running that fail
+// with no new head on the same brief hold the producer with a held
+// judgement, whatever the reasons say: the same brief dealt again at the top
+// rank fails again (live 2026-11-09). Below the top rank the card escalates
+// as before. A fault or a withdraw with no head neither counts nor breaks
+// the run; a fail that pushes a head breaks it; an unhold is a fresh run.
+func TestTickNoProgressHolds(t *testing.T) {
+	t.Parallel()
+	s := noProgressSim(t)
+	n, top := Engine.Limits.SameFinding, Engine.Limits.FrontierAfter
+	require.Equal(t, [2]int{2, 4}, [2]int{n, top}, "the default policy's same_finding and frontier_after")
+	end := func(c, result, head, reason string) {
+		s.requireState("p1", "working")
+		s.take(c)
+		s.report(c, result, head, reason)
+		s.tick()
+	}
+	end("p1.w1", "fail", "", "make failed")
+	end("p1.w2", "fail", "", "make failed") // two running, below the top rank: escalated, not held
+	end("p1.w3", "fail", sha(7), "pushed a partial fix")
+	end("p1.w4", "fail", sha(8), "pushed more") // progress; 4 bounces: the top rank from here
+	end("p1.w5", "fail", "", "tests still red")
+	end("p1.w6", "fault", "", "exit 137") // a fault spends nothing and breaks nothing
+	s.requireState("p1", "working")
+	assert.Empty(t, s.openJudgements("held"))
+	end("p1.w7", "fail", "", "tests still red")
+	s.requireState("p1", "waiting")
+	assert.Equal(t, fmt.Sprintf("held: failed %d top-rank attempts running with no new head on the same brief, the limit is %d", n, n), s.snap().Cards["p1"].Reason)
+	js := s.openJudgements("held")
+	require.Equal(t, []string{"held.p1.1"}, js)
+	s.run(3)
+	s.requireState("p1", "waiting")
+	rc, ref := s.verb(Request{Actor: "rowan", Judgement: js[0], Answer: "unhold", Card: "p1", Event: card.UnholdCard{Reason: "one more try"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.run(3)
+	assert.Empty(t, s.openJudgements("held"), "an unhold is a fresh run: the same fails do not hold it again")
+	end("p1.w8", "fail", "", "still red")
+	assert.Empty(t, s.openJudgements("held"), "one fail since the unhold")
+	end("p1.w9", "fail", "", "still red")
+	s.requireState("p1", "waiting")
+	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
+}
+
+// noProgressSim is p1 dealt on r1 under the engine's limits with the default
+// policy's bounce limit, 12, so the bounce limit is not reached first.
+func noProgressSim(t *testing.T) *sim {
+	s := newSim(t)
+	l := Engine.Limits
+	l.Bounces = 12
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &l}}
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	return s
+}
+
+// TestTickNoProgressFromTheStart: a producer that pushes nothing from its
+// first attempt is held once same_finding of its no-head fails were dealt at
+// the top rank, at frontier_after + same_finding bounces, not at the bounce
+// limit: the attempts below the top rank were escalation's, and do not count.
+func TestTickNoProgressFromTheStart(t *testing.T) {
+	t.Parallel()
+	s := noProgressSim(t)
+	at := Engine.Limits.FrontierAfter + Engine.Limits.SameFinding
+	for i := 1; i < at; i++ {
+		s.requireState("p1", "working")
+		s.take(fmt.Sprintf("p1.w%d", i))
+		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", "red")
+		s.tick()
+		assert.Empty(t, s.openJudgements("held"), "w%d: one top-rank fail at most", i)
+	}
+	s.take(fmt.Sprintf("p1.w%d", at))
+	s.report(fmt.Sprintf("p1.w%d", at), "fail", "", "red")
+	s.tick()
+	s.requireState("p1", "waiting")
+	assert.Equal(t, at, s.snap().Cards["p1"].Bounces)
+	assert.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
+}
+
+// TestTickNoProgressEditedBrief: an edit of the brief's paths between two
+// no-head fails ends the run: the brief is no longer the same.
+func TestTickNoProgressEditedBrief(t *testing.T) {
+	t.Parallel()
+	s := noProgressSim(t)
+	end := func(c, head string) {
+		s.requireState("p1", "working")
+		s.take(c)
+		s.report(c, "fail", head, "red")
+		s.tick()
+	}
+	for i := 1; i <= Engine.Limits.FrontierAfter; i++ {
+		end(fmt.Sprintf("p1.w%d", i), sha(i)) // progress up to the top rank
+	}
+	s.take("p1.w5")
+	s.report("p1.w5", "fail", "", "PATHS too narrow")
+	rc, ref := s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Edit{Paths: []string{"a/x", "a/y"}, Reason: "widened"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.tick()
+	end("p1.w6", "")
+	assert.Empty(t, s.openJudgements("held"), "the edit ended the run")
+	end("p1.w7", "")
+	assert.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
 }
 
 // TestTickBudgetAndCarry: results over the budget are carried in arrival

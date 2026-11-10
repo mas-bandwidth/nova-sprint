@@ -445,6 +445,12 @@ sprint_env nova-sprint release '<card>@<gen>' --head '<pushed-sha>' --reason '<w
 sprint_env nova-sprint finish '<card>@<gen>' --failed --reason '<why>' --epoch '<epoch>'
 ```
 
+When the brief itself is wrong, start the reason with `refuted:` (its red test
+cannot be made to fail at the base) or `brief-defect:` (it cannot be met as
+written), then the evidence. Such a card is not dealt again: it waits, held,
+with your reason and pushed head, until the coordinator drops it, replaces it
+with a corrected brief, or deals it again.
+
 Ask the coordinator about scope or missing prerequisites rather than repeatedly
 retrying a failing command. Messages from the name `sprint` are receipts:
 answer with their CLI verb, or do nothing. Do not reply to them with a bus

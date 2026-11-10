@@ -727,6 +727,43 @@ func TestRouteFaultWaits(t *testing.T) {
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Ready}))
 }
 
+// A fail whose reason refutes the brief ("refuted: ...", or a brief defect)
+// leaves the producer waiting held for the coordinator, head kept and one
+// bounce spent, never back to ready, even under a held stream: the same
+// brief dealt again is refuted again (live 2026-11-09:
+// rn-iocp-oversize-recv-double-post refuted at w24, w25 and w26). Any other
+// fail returns it to ready.
+func TestRefutedWaits(t *testing.T) {
+	t.Parallel()
+	for _, why := range []string{"refuted: premise false on Windows", "Refuted again (third time): no double post", "brief-defect: DONE-WHEN red at base", "Brief defect: PATHS too narrow"} {
+		failed := wk(Done, "fail", h2)
+		failed.Reason = why
+		for _, s := range []Stream{{Name: "s1"}, {Name: "s1", Held: true}} {
+			plan, r := Move(pr(Working), []Card{failed}, rows(), s, nil, Broken{Consumer: "p1.w1"})
+			require.Nil(t, r)
+			assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Waiting}), why)
+			assert.Contains(t, plan.Writes, store.Write(store.SetCardReason{Card: "p1", Reason: HeldPrefix + why}), why)
+			assert.Contains(t, plan.Writes, store.Write(store.SetCardBounces{Card: "p1", Bounces: 1}), "a refutation is a fail: one bounce")
+			assert.Contains(t, plan.Writes, store.Write(store.SetCardHead{Card: "p1", Head: h2}), "the branch's head is kept")
+		}
+		waiting := pr(Waiting)
+		waiting.Reason = HeldPrefix + why
+		assert.True(t, Held(waiting), "a refuted card is held: the deal never takes it")
+		assert.Equal(t, "refuted", TraceResult("work", "fail", why))
+		assert.Equal(t, "held", TraceWhy(Waiting, waiting.Reason))
+	}
+	for _, why := range []string{"make failed", "irrefutable: x", "refutedly", "the premise was refuted", "brief defects: x", "brief: x"} {
+		assert.False(t, Refuted(why), why)
+	}
+	failed := wk(Done, "fail", h2)
+	failed.Reason = "make failed"
+	plan, r := Move(pr(Working), []Card{failed}, rows(), Stream{Name: "s1"}, nil, Broken{Consumer: "p1.w1"})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Ready}))
+	assert.Equal(t, "fail", TraceResult("work", "fail", "make failed"))
+	assert.Equal(t, "fault", TraceResult("work", "fault", "refuted: a fault is not a fail"))
+}
+
 // mv2 is p's move on e with the default records and a free stream s1.
 func mv2(p Card, e Event) *Refusal {
 	_, r := Move(p, nil, rows(), Stream{Name: "s1"}, needs(LandedState), e)
