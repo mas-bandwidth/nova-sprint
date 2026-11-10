@@ -1453,7 +1453,9 @@ On hetzner2 (never the studio), from the repository root:
 the step and record k. Each trace's cfg has an `\* expect:` line (`matched` or
 `forbidden at K`); the script exits 0 when the outcome is the expected one, 1
 when it is not, 2 on any other TLC failure. The CI job `trace` runs
-`make-traces.sh check` on every push, with `NOVA_TRACE_PG=1` so a missing
+`make-traces.sh check <group>` on every push, one job per group (store, card,
+policy, edge, and the steps traces in five parts: steps-pre, steps-deal,
+steps-land, steps-burst, steps-fixtures) on its own runner, with `NOVA_TRACE_PG=1` so a missing
 initdb fails the job instead of skipping the PostgreSQL walk.
 
 The walks write traces only when `NOVA_TRACE_DIR` names a directory
