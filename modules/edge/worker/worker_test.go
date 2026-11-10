@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -677,6 +678,20 @@ func TestWallEnvExactAllowlistPerName(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The wall closes AF_UNIX, so MSBuild's out-of-process nodes (named pipes)
+// die and a multi-target build fails with no error: under the bench's dotnet
+// the wall env builds in one node, and the caller cannot turn it back on.
+func TestWallEnvDotnetBuildsInOneNode(t *testing.T) {
+	t.Parallel()
+	env := SanitizeWallEnv([]string{"PATH=/usr/bin", "DOTNET_CLI_TELEMETRY_OPTOUT=1", "BuildInParallel=true"}, t.TempDir())
+	if !slices.Contains(env, "BuildInParallel=false") || slices.Contains(env, "BuildInParallel=true") {
+		t.Fatalf("SanitizeWallEnv with the bench's dotnet = %q, want BuildInParallel=false and no other", env)
+	}
+	if env := SanitizeWallEnv([]string{"PATH=/usr/bin"}, t.TempDir()); slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "BuildInParallel=") }) {
+		t.Fatalf("SanitizeWallEnv without the bench's dotnet = %q, want no BuildInParallel", env)
 	}
 }
 

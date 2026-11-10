@@ -697,6 +697,9 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 	if !hasPath {
 		clean = append(clean, "PATH="+cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"))
 	}
+	if hasDotnetOptout { // the wall closes AF_UNIX: MSBuild's out-of-process nodes die, and a multi-target build fails with no error
+		clean = append(clean, "BuildInParallel=false")
+	}
 	if jobDir != "" {
 		clean = append(clean, "HOME="+filepath.Join(jobDir, "home"), "TMPDIR="+filepath.Join(jobDir, "tmp"), "XDG_DATA_HOME="+filepath.Join(jobDir, "data"))
 		if hasDotnetOptout {
