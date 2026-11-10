@@ -16,7 +16,7 @@ import (
 // next review starts the count afresh); Withdraw of a working consumer whose
 // row is silent past the bound, or that is past its tier's deadline with no
 // report, branch kept; Gone for a row unseen past its
-// bound, never for one missed challenge (LESSONS 4.7: the bound is policy's
+// bound, with its hand returned in the same op (holds), never for one missed challenge (LESSONS 4.7: the bound is policy's
 // and long); a flap judgement at the flap limit.
 func (t *tick) limits() {
 	for _, state := range []string{"ready", "review"} {
@@ -104,7 +104,7 @@ func (t *tick) rowLimits(n string) {
 		}
 	}
 	if r.State == "up" && silent >= seconds(t.tmo.RowSilentGone) && t.unclaimed(n) {
-		t.group("gone", "", t.rowMove(n, card.Gone{}))
+		t.group("gone", "", t.handMoves(n, "down", card.Gone{})...)
 	}
 }
 
