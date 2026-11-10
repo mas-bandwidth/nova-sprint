@@ -838,8 +838,11 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   and the FIFO is removed after the gate. rustc runs its linker by name
   under its own `PATH`, which std also spawns by fork, so on Linux the gate
   passes `CARGO_TARGET_<host>_LINKER` set to the absolute `cc` on the
-  worker's `PATH` (amd64 and arm64; it overrides a project's own linker
-  setting). `TMPDIR` is already the job's
+  worker's `PATH` (the glibc triple on amd64 and arm64; it overrides a
+  project's own linker setting). Whatever the job left at the FIFO's name is
+  removed, never followed, and the tokens are written without blocking. A
+  cargo too old for `fifo:` still makes its own pipe jobserver and meets the
+  refusal. `TMPDIR` is already the job's
   `tmp` (cc needs it). The wall is unchanged: no `--unix`. Code under test
   that itself spawns with a `pre_exec` (or sets uid/gid) still meets the
   refusal.

@@ -225,6 +225,37 @@ func TestGateGetsFIFOJobserverAndWritableTmpdir(t *testing.T) {
 	}
 }
 
+// Whatever a job left at the FIFO's name (a stale FIFO, a link out of its
+// tree, a full directory) is cleared, never followed: the gate still gets
+// a fresh seeded FIFO and nothing outside the job directory changes.
+func TestGateFIFOReplacesWhatTheJobPlanted(t *testing.T) {
+	t.Parallel()
+	outside := filepath.Join(t.TempDir(), "keep")
+	if err := os.WriteFile(outside, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, plant := range map[string]func(string) error{
+		"stale fifo": func(p string) error { return syscall.Mkfifo(p, 0o600) },
+		"link out":   func(p string) error { return os.Symlink(outside, p) },
+		"directory": func(p string) error {
+			return errors.Join(os.Mkdir(p, 0o755), os.WriteFile(filepath.Join(p, "f"), nil, 0o600))
+		},
+	} {
+		dir := t.TempDir()
+		if err := plant(filepath.Join(dir, "jobserver.fifo")); err != nil {
+			t.Fatal(err)
+		}
+		ex := &fifoExec{}
+		w := &OSReserveWall{Exec: ex, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", NetDeny: true}}
+		if _, err := w.RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute); err != nil || !ex.isPipe || ex.tokens != gateJobs_internal()-1 {
+			t.Errorf("%s: err %v, pipe %v, %d tokens", name, err, ex.isPipe, ex.tokens)
+		}
+	}
+	if b, err := os.ReadFile(outside); err != nil || string(b) != "x" {
+		t.Errorf("a planted link was followed: %q %v", b, err)
+	}
+}
+
 // rustc runs its linker by name under its own PATH, which std spawns by
 // fork (refused in the wall), so a Linux gate names cc by its absolute path
 // for the host's target; elsewhere, or with no absolute cc, nothing is set.

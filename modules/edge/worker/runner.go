@@ -9,7 +9,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"io"
-	"io/fs"
 	"maps"
 	"math"
 	"os"
@@ -1587,22 +1586,39 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 	if jobDir == "" {
 		return env, func() {}, nil
 	}
+	// The job owns its tree between runs, so whatever is at the name goes
+	// (RemoveAll unlinks a link, never its target), and the FIFO is opened
+	// without following a link, checked, and seeded without blocking: a
+	// leftover process that swaps or fills it fails the gate, never hangs it.
 	fifo := filepath.Join(jobDir, "jobserver.fifo")
-	if err := os.Remove(fifo); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := os.RemoveAll(fifo); err != nil {
 		return env, nil, fmt.Errorf("worker: clearing the gate's jobserver FIFO %s: %w", fifo, err)
 	}
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 		return env, nil, fmt.Errorf("worker: making the gate's jobserver FIFO %s: %w", fifo, err)
 	}
-	f, err := os.OpenFile(fifo, os.O_RDWR|syscall.O_NOFOLLOW, 0)
-	if err == nil {
-		_, err = f.Write([]byte(strings.Repeat("+", gateJobs_internal()-1)))
+	fd, err := syscall.Open(fifo, syscall.O_RDWR|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		fd = -1
 	}
 	release := func() {
-		if f != nil {
-			_ = f.Close()
+		if fd >= 0 {
+			_ = syscall.Close(fd)
 		}
 		_ = os.Remove(fifo)
+	}
+	var st syscall.Stat_t
+	if err == nil {
+		err = syscall.Fstat(fd, &st)
+	}
+	if err == nil && st.Mode&syscall.S_IFMT != syscall.S_IFIFO {
+		err = errors.New("not a FIFO")
+	}
+	tokens := []byte(strings.Repeat("+", gateJobs_internal()-1))
+	if n := 0; err == nil && len(tokens) > 0 {
+		if n, err = syscall.Write(fd, tokens); err == nil && n != len(tokens) {
+			err = fmt.Errorf("wrote %d of %d tokens", n, len(tokens))
+		}
 	}
 	if err != nil {
 		release()
