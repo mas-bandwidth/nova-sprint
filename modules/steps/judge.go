@@ -206,6 +206,9 @@ func (t *tick) cleared(j store.Judgement) string {
 	case "unserved":
 		parts := strings.Split(j.About, "+") // the tier, then the routes (unservedAbout)
 		for _, n := range t.rowNames {
+			if _, resting := t.rested[n]; resting { // a resting row serves no deal (serving)
+				continue
+			}
 			if t.v.Open(t.v.Rows[n]) && t.present(n) && contains(t.tiers(n), parts[0]) && t.in.Roster.ServesRoutes(n, parts[1:]) {
 				return "row " + n + " serves " + j.About
 			}
