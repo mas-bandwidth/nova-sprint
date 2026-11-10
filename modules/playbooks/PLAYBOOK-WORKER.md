@@ -210,7 +210,7 @@ Each message is a wake. Handle it, then wait for the bus again.
 Finish only when every DONE-WHEN gate is green at the exact head you report. If it is not, say
 so honestly with one of these, never with a finish of a head that does not meet the brief:
 
-- The work failed, or the brief cannot be met as written:
+- The work failed:
   `nova-sprint finish <id>@<gen> --failed --reason "<what failed, with the command and exit>" --as <you> --epoch <e>`.
   It prints `FAILED <id> ...`; the card goes back to the queue with your pushed head and reason.
 - The brief is refuted (its red test cannot be made to fail at the base: "finish the card as

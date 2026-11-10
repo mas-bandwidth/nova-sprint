@@ -196,16 +196,20 @@ high, normal, low; within a rung, policy's order.
   `fail` refuting its brief held waiting (LAYER-2, `card.Refuted`) gets one
   `held` judgement naming the row and carrying the worker's reason; it
   waits until the coordinator drops it, replaces it with a corrected brief
-  (`replace <id> --by <card>`) or unholds it.
+  (`replace <id> --by <card> --reason <why>`) or unholds it.
 - `held` for no progress (`limits`): a ready producer whose latest work
   attempts, running, failed with no head pushed on the brief as it is now
   (a fault or a withdraw that pushed nothing passed over; an ok, a pushed
-  head or an edited brief ends the run), at least policy's `same_finding`
-  of them since its last unhold, is held (`HoldCard`, "held: failed <n>
+  head or an edited prose, paths or done-when ends the run), at least
+  policy's `same_finding` of them since its last unhold and all dealt once
+  escalation was spent (its bounces before the run at least
+  `frontier_after`), is held (`HoldCard`, "held: failed <n> top-rank
   attempts running with no new head on the same brief, the limit is <n>")
   with a riding `held` judgement, as at the bounce limit. `same_finding` is
   LESSONS 5.9's "the same finding twice means the brief is wrong", applied
-  to fails.
+  to fails; escalation keeps its room (defect 75). With the default policy
+  (bounces 12, frontier_after 4, same_finding 2) a card that pushes nothing
+  is held at 6 bounces instead of 12.
 
 ### Fix
 

@@ -2,6 +2,8 @@ package steps
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -24,7 +26,14 @@ func (t *tick) limits() {
 			c := t.v.Cards[p]
 			spent := c.Bounces - c.BounceBase // since its last unhold
 			faults, last := t.readFaults(c)
+			// The no-progress run, since the last unhold, of attempts dealt
+			// at the top rank: each fail of the run spent the run's last
+			// bounces, so the first was dealt at c.Bounces - stuck, and
+			// escalation (escalate_after, frontier_after) is spent first.
 			stuck := min(t.noProgress(c), spent)
+			if c.Bounces-stuck < t.lim.FrontierAfter {
+				stuck = 0
+			}
 			if c.Kind != "producer" || spent < t.lim.Bounces && faults < t.lim.Faults && stuck < t.lim.SameFinding || !t.free(p) || t.hasLive(p) {
 				continue
 			}
@@ -33,7 +42,7 @@ func (t *tick) limits() {
 			case spent < t.lim.Bounces && faults >= t.lim.Faults:
 				why = fmt.Sprintf("reads faulted %d times running at review %d, the limit is %d: %s", faults, c.Review, t.lim.Faults, last)
 			case spent < t.lim.Bounces:
-				why = fmt.Sprintf("failed %d attempts running with no new head on the same brief, the limit is %d", stuck, t.lim.SameFinding)
+				why = fmt.Sprintf("failed %d top-rank attempts running with no new head on the same brief, the limit is %d", stuck, t.lim.SameFinding)
 			case c.BounceBase > 0:
 				why = fmt.Sprintf("bounced %d times since its last unhold, the limit is %d", spent, t.lim.Bounces)
 			}
@@ -50,12 +59,13 @@ func (t *tick) limits() {
 }
 
 // noProgress is how many of c's latest work attempts, running, failed with
-// no head pushed on the brief as it is now: the same brief dealt again
-// fails again (LESSONS 5.9's "the same finding twice means the brief is
-// wrong", policy's same_finding, applied to fails; live 2026-11-09). A fault
-// or a withdraw that pushed nothing is no attempt and is passed over; an ok,
-// a pushed head or an edited brief ends the run. Every fail spent a bounce,
-// so the caller caps the run at the bounces since the last unhold.
+// no head pushed on the brief as it is now: once the top rank has failed it
+// twice so, the same brief dealt again fails again (policy's same_finding,
+// LESSONS 5.9's "the same thing twice means the brief is wrong"; live
+// 2026-11-09). A fault or a withdraw that pushed nothing is no attempt and
+// is passed over; an ok, a pushed head or an edited brief (prose, paths or
+// done-when) ends the run. Every fail spent a bounce, so the caller caps the
+// run at the bounces since the last unhold.
 func (t *tick) noProgress(c store.Card) int {
 	if c.State != "ready" {
 		return 0
@@ -64,7 +74,7 @@ func (t *tick) noProgress(c store.Card) int {
 	for a := c.Attempt; a >= 1; a-- {
 		w, ok := t.v.Cards[c.ID+".w"+itoa(a)]
 		switch {
-		case !ok || w.Head != "" || w.Prose != c.Prose || w.State == "done" && w.Result == "ok":
+		case !ok || w.Head != "" || w.Prose != c.Prose || !slices.Equal(w.Paths, c.Paths) || !slices.Equal(w.DoneWhen, c.DoneWhen) || w.State == "done" && w.Result == "ok":
 			return n
 		case w.State == "done" && w.Result == "fail":
 			n++
@@ -80,10 +90,10 @@ func (t *tick) refutedHeld() {
 	for _, p := range t.v.Producers("waiting") {
 		c := t.v.Cards[p]
 		w, ok := t.v.Cards[workID(c)]
-		if !card.HeldReason(c.Reason) || !ok || w.State != "done" || w.Result != "fail" || !card.Refuted(w.Reason) {
-			continue
+		if !ok || w.State != "done" || w.Result != "fail" || !card.Refuted(w.Reason) || c.Reason != card.HeldPrefix+strings.TrimSpace(w.Reason) {
+			continue // held by the refutation itself, never by a later hold of the coordinator's
 		}
-		t.judge("held", p, fmt.Sprintf("producer %s's attempt on row %s refuted its brief: %s; it waits, never dealt again by itself: drop it, replace it with a corrected brief (nova-sprint replace %s --by <card>), or unhold to deal it again", p, w.Holder, w.Reason, p))
+		t.judge("held", p, fmt.Sprintf("producer %s's attempt on row %s refuted its brief: %s; it waits, never dealt again by itself: drop it, replace it with a corrected brief (nova-sprint replace %s --by <card> --reason <why>), or unhold to deal it again", p, w.Holder, w.Reason, p))
 	}
 }
 

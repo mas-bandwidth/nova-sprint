@@ -320,12 +320,16 @@ func RouteName(reason string) string {
 // Refuted says whether a work consumer's fail reason refutes its brief: its
 // first word is "refuted" (the brief's premise does not hold: the red test
 // cannot be made to fail at the base) or "brief-defect" (the brief cannot be
-// met as written), in any case, as `finish --failed --reason "refuted: <the
-// evidence>"` writes it. Broken leaves such a producer waiting held
-// ("held: <reason>") for the coordinator: the same brief dealt again is
-// refuted again (live 2026-11-09: one card refuted at w24, w25 and w26).
+// met as written; "brief defect" too), in any case, as `finish --failed
+// --reason "refuted: <the evidence>"` writes it. Broken leaves such a
+// producer waiting held ("held: <reason>") for the coordinator: the same
+// brief dealt again is refuted again (live 2026-11-09: one card refuted at
+// w24, w25 and w26).
 func Refuted(reason string) bool {
 	low := strings.ToLower(strings.TrimSpace(reason))
+	if rest, ok := strings.CutPrefix(low, "brief defect"); ok {
+		low = "brief-defect" + rest
+	}
 	word := low[:len(low)-len(strings.TrimLeft(low, "abcdefghijklmnopqrstuvwxyz-"))]
 	return word == "refuted" || word == "brief-defect"
 }

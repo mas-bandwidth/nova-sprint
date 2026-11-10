@@ -367,6 +367,21 @@ func TestClassifyOutcomesAndFaultRules(t *testing.T) {
 	}
 }
 
+// A harness's fail that refutes its brief stays a fail, so the card waits
+// held for the coordinator: one that names a path outside the card's paths
+// is a brief defect, never the fault that is dealt again with no bounce.
+func TestRefutedFailStaysFail(t *testing.T) {
+	t.Parallel()
+	for _, why := range []string{"brief-defect: the fix needs x.go, outside card paths", "refuted: outside allowed paths nothing fails at the base"} {
+		if out := normalizeFileOutcome_internal("fail", why, "", 0, ""); out.Result != "fail" || out.Reason != why {
+			t.Fatalf("%q must stay a fail, got %+v", why, out)
+		}
+	}
+	if out := normalizeFileOutcome_internal("fail", "edit outside card paths refused", "", 0, ""); out.Result != "fault" {
+		t.Fatalf("a blocked edit with no refutation stays a fault, got %+v", out)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

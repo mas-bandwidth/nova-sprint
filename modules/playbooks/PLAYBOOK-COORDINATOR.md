@@ -126,11 +126,11 @@ What each judgement kind asks of you, and where to look before you choose:
   `refuted its brief` carries the worker's evidence (`held: refuted: ...` or
   `held: brief-defect: ...`, from `finish --failed`): the same brief dealt again is refuted
   again. Read the evidence; `drop` it when the defect is not real, replace it with a corrected
-  brief (`nova-sprint replace <id> --by <card>`), or `unhold` to deal it again when the
-  refutation was wrong. A `held` that reads `failed <n> attempts running with no new head on the
-  same brief` is policy's `same_finding` applied to fails: attempts that pushed nothing; read the
-  reasons with `show <id>.w<n>` and choose the same way (an unhold is a fresh count, and deals it
-  one tier up once its bounces reach `escalate_after`).
+  brief (`nova-sprint replace <id> --by <card> --reason "<why>"`), or `unhold` to deal it again
+  when the refutation was wrong. A `held` that reads `failed <n> top-rank attempts running with no
+  new head on the same brief` is policy's `same_finding` applied to fails, once escalation is spent
+  (`frontier_after` bounces before them): attempts that pushed nothing; read the reasons with
+  `show <id>.w<n>` and choose the same way (an unhold is a fresh count).
 - `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
   than a tick. The message names the row, the card and the cause: the tick's budget spent before
   it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the

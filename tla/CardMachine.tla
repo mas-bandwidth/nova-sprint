@@ -731,9 +731,10 @@ Add(p, ns, as) ==
 ReportHeads(c, res) ==
   IF cs[c].kind = "read" THEN {ps[c[1]].head}
   ELSE IF res = "ok" THEN Heads \ ({cs[c].prior} \cap FinishedHeads(c[1])) ELSE {0} \cup (Heads \ {cs[c].prior})
-\* A work consumer reports ok, fail or fault; a read ok, fix or fault. The
-\* model's bound on bounces sits here, on the report that would raise them
-\* (fail, fix), so Broken and ReadFix are always enabled once reported.
+\* A work consumer reports ok, fail, refuted or fault; a read ok, fix or
+\* fault. The model's bound on bounces sits here, on the report that would
+\* raise them (fail, refuted, fix), so Broken and ReadFix are always enabled
+\* once reported.
 ReportResults(c) ==
   LET ok == ps[c[1]].bounces < MaxBounce IN
   IF cs[c].kind = "read" THEN {"ok", "fault"} \cup (IF ok THEN {"fix"} ELSE {})
@@ -1057,7 +1058,8 @@ ReaderNeverAuthor ==
 
 WidthKept == \A r \in Rows : Cardinality(WorkingOn(r)) <= rs[r].width
 
-(* A work consumer reports ok, fail or fault; a read ok, fix or fault.   *)
+(* A work consumer reports ok, fail, refuted or fault; a read ok, fix or *)
+(* fault.                                                                *)
 ResultsByKind ==
   \A c \in CIds :
     /\ cs[c].kind = "work" => cs[c].res \in {"-", "ok", "fail", "fault", "route", "refuted"}

@@ -735,7 +735,7 @@ func TestRouteFaultWaits(t *testing.T) {
 // fail returns it to ready.
 func TestRefutedWaits(t *testing.T) {
 	t.Parallel()
-	for _, why := range []string{"refuted: premise false on Windows", "Refuted again (third time): no double post", "brief-defect: DONE-WHEN red at base"} {
+	for _, why := range []string{"refuted: premise false on Windows", "Refuted again (third time): no double post", "brief-defect: DONE-WHEN red at base", "Brief defect: PATHS too narrow"} {
 		failed := wk(Done, "fail", h2)
 		failed.Reason = why
 		for _, s := range []Stream{{Name: "s1"}, {Name: "s1", Held: true}} {
@@ -752,7 +752,7 @@ func TestRefutedWaits(t *testing.T) {
 		assert.Equal(t, "refuted", TraceResult("work", "fail", why))
 		assert.Equal(t, "held", TraceWhy(Waiting, waiting.Reason))
 	}
-	for _, why := range []string{"make failed", "irrefutable: x", "refutedly", "the premise was refuted"} {
+	for _, why := range []string{"make failed", "irrefutable: x", "refutedly", "the premise was refuted", "brief defects: x", "brief: x"} {
 		assert.False(t, Refuted(why), why)
 	}
 	failed := wk(Done, "fail", h2)
