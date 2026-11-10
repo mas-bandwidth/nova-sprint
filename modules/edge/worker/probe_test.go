@@ -476,7 +476,7 @@ func TestStagePerStreamRepo(t *testing.T) {
 // The binary's order: the bus hook and the self-unhook, the probe, and
 // only then the sprint hook: a failed probe never hooks the row in to the
 // sprint and stops the bus hook, so no bench is up with no worker able to
-// run (and a hooked row is a probed one: up's step 7, admission); the row
+// run (and a hooked row is a probed one: up's workers step, admission); the row
 // is held and probed again. A passed probe hooks once.
 func TestServeRowProbesBeforeTheSprintHook(t *testing.T) {
 	t.Parallel()

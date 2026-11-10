@@ -31,7 +31,7 @@ func TestFleetServicesCreateOnceAndTargetPlay(t *testing.T) {
 	s := FleetService{Name: "sprint-run", Machine: "bench-a", Seat: "bench-a", Argv: []string{"/opt/nova/bin/nova-sprint", "run"}, Keys: []string{"NOVA_PG_PASSWORD"}}
 	exists := false
 	var calls [][]string
-	f := FleetServices{Actor: "coord-1", Reason: "nova-sprint up 4/8 run", Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+	f := FleetServices{Actor: "coord-1", Reason: "nova-sprint up 6/10 run", Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, append([]string{name}, args...))
 		if name == "nova-fleet" {
 			return nil, nil
@@ -62,7 +62,7 @@ func TestFleetServicesCreateOnceAndTargetPlay(t *testing.T) {
 	if !reflect.DeepEqual(calls[len(calls)-1], want) {
 		t.Fatal(calls)
 	}
-	add := []string{"nova-config", "service", "add", "sprint-run", "--machine", "bench-a", "--argv", `["/opt/nova/bin/nova-sprint","run"]`, "--keepalive", "true", "--enabled", "true", "--env", "{}", "--seat", "bench-a", "--keys", "NOVA_PG_PASSWORD", "--actor", "coord-1", "--reason", "nova-sprint up 4/8 run"}
+	add := []string{"nova-config", "service", "add", "sprint-run", "--machine", "bench-a", "--argv", `["/opt/nova/bin/nova-sprint","run"]`, "--keepalive", "true", "--enabled", "true", "--env", "{}", "--seat", "bench-a", "--keys", "NOVA_PG_PASSWORD", "--actor", "coord-1", "--reason", "nova-sprint up 6/10 run"}
 	if !reflect.DeepEqual(calls[1], add) {
 		t.Fatalf("service add argv:\n got %q\nwant %q", calls[1], add)
 	}
@@ -87,7 +87,7 @@ func TestFleetServicesWriteNeedsActorAndWrapsToolFailure(t *testing.T) {
 		t.Fatal(err, writes)
 	}
 	tool := &ToolError{Command: "nova-config service add", Exit: 2, Stderr: "error: --actor is required"}
-	f = FleetServices{Actor: "coord-1", Reason: "nova-sprint up 4/8 run", Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+	f = FleetServices{Actor: "coord-1", Reason: "nova-sprint up 6/10 run", Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		if args[1] == "add" {
 			return nil, tool
 		}

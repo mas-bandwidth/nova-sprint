@@ -14,7 +14,7 @@ Asked counters and key-sink history start at zero/empty for this execution;
 pre-existing answers do not imply invented earlier prompts. SetupWalk.WalkInit
 is a new, explicitly admitted initial condition. Setup.Init and Setup.Next
 remain unchanged. SetupWalk.cfg checks invariants and model liveness under all
-8-step initial boolean worlds and all subsets of four initial answers, with
+10-step initial boolean worlds and all subsets of four initial answers, with
 one bounded disruption. That is model evidence, distinct from actual traces.
 
 ## Trace schema and projection
@@ -25,11 +25,11 @@ disruptions and keySinks. Ask additionally requires q; Regress requires k.
 
 | Field | Observed refinement |
 | --- | --- |
-| world | Full fake dependency readiness function over steps1..8, sampled from its actual state. |
+| world | Full fake dependency readiness function over steps 1..10 (Setup.LastStep), sampled from its actual state. |
 | answers | Actual durable fixture answers among coordinator/dashboard/services/key. |
 | asked | Per-question prompt/save counts in this observed execution, not historical totals. |
 | verified | Steps whose actual Verify returned true in the current under-lock invocation. |
-| pc, phase | Actual callback step and return: false Verify retains step in repair; true Verify moves to next step/probe (step8 gives9/done); completed Act returns to same-step probe. |
+| pc, phase | Actual callback step and return: false Verify retains step in repair; true Verify moves to next step/probe (step 10 gives 11/done); completed Act returns to same-step probe. |
 | disruptions | Number of actual injected regressions/stops recorded in this trace. |
 | keySinks | Actual observed secret transport destinations within this execution; never secret bytes. |
 
@@ -50,7 +50,7 @@ secret transports, cancellation, or two-child handoff effects.
 
 ## Contract gaps and refusal diagnosis
 
-Setup.Need(6) unconditionally requires services and key. Real services=none
+Setup.Need(StepServices) (step 8) unconditionally requires services and key. Real services=none
 requires no key. The first trace uses service-requires-key only: never fabricate
 Ask(key) to fit none. A separate explicit conditional-obligation model extension
 is required before covering that supported branch. Also, an Act that returns
@@ -66,13 +66,25 @@ implementation liveness. At a temporal refusal with last matched index l, the
 first refused record is l+1. Malformed records/initial conditions fail their own
 invariants or parsing and must not be reported as a behavioral counterexample.
 
-## The workload steps (7 and 8)
+## The play steps (2 and 3)
 
-world[7] and world[8] are bound to the production workload adapter
+world[StepPackages] and world[StepNetwatch] are bound to FleetPlays
+(modules/verbs/setup_runtime_plays.go) by TestFleetPlayStepsMatchTheSetupModel,
+over every state of a two-bench fleet (each bench clean, with a change, or
+unreachable): world[k] is nova-fleet's play in check mode reporting changed=0,
+unreachable=0 and failed=0 for every bench. Any other state is the model's
+repair phase: up runs the play once (Do), and a second check that still is not
+clean, or the play's own failure, is the refusal. The reversed witness
+SetupPlayCheckRan (make-run-witnesses.py) verifies a play step whose check ran
+but still reports a change, and must break OnlyVerified.
+
+## The workload steps (9 and 10)
+
+world[9] and world[10] are bound to the production workload adapter
 (cmd/nova-sprint/setup_workload.go) by TestWorkloadStepsMatchTheSetupModel,
-over every state of a two-bench fleet: world[7] is every worker bench on the
-bus and up in the store; world[8] is world[7] and every worker bench with
+over every state of a two-bench fleet: world[9] is every worker bench on the
+bus and up in the store; world[10] is world[9] and every worker bench with
 cores. A step that is not ready is a `*verbs.WorkloadNotReady`, the model's
-repair phase: up acts once (InstallWorkers at 7, nothing at 8), and the
+repair phase: up acts once (InstallWorkers at 9, nothing at 10), and the
 second not-ready is the refusal naming each bench. That binding checks the
 step conditions, not a trace: the walk's traces still use the fake world.

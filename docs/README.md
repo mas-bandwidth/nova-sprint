@@ -121,21 +121,18 @@ nova-fleet check
 `nova-fleet up` sets each machine up: its inventory record, its login,
 Tailscale, its seat in the secrets store, its health guards, the tools and the
 services, and with `--runners '<repository-url>'` its GitHub Actions runners
-(every step is idempotent, so `up` can be run again with `--runners`). After
-`up` and before the sprint's own setup, run the two plays `up` does not run on
-every bench, `runner-packages` first so a bench can run gates as soon as it is
-dealt to (`bench` is the inventory group `up` gives every machine it joins;
-`-l` after `--` limits a play to it):
-
-```sh
-nova-fleet runner-packages -- -l bench
-nova-fleet netwatch -- -l bench
-```
+(every step is idempotent, so `up` can be run again with `--runners`). Two
+plays every bench needs are not in `nova-fleet up`: `nova-sprint up` runs them
+as its steps 2 and 3, `runner-packages` first so a bench can run gates as soon
+as it is dealt to, then `netwatch`. Each step runs the play in check mode on
+every bench (`nova-fleet <play> --check -- -l <benches>`) and is verified when
+the play would change nothing; otherwise it runs the play and checks again. A
+play that fails stops `up` with the play's own error and its fix.
 
 `runner-packages` installs the packages a card's gates and a CI job's tests
-need (a CI toolchain by default; the nova-fleet guide says how to pass your
-own list). `netwatch` lets a Linux bench that loses its network or the tailnet
-recover by itself; a Mac is skipped. A stream with `--forge github` lands only
+need (`up` runs the play with its defaults, a CI toolchain; the nova-fleet
+guide says how to install your own list). `netwatch` lets a Linux bench that loses its network or the
+tailnet recover by itself; a Mac is skipped. A stream with `--forge github` lands only
 when CI is green, so every repository it lands in needs runners: `up --runners`
 registers them for one repository, and
 `nova-fleet github-runners -- -e github_runner_url='<repository-url>' -e github_runner_scope=repo`

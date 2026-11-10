@@ -96,7 +96,7 @@ The full gate cannot pass at this base, for two reasons outside the traces:
 - `cmd/nova-sprint` does not build (engine.go and handoff_trace_test.go
   import the deleted modules/run/filestore), so the two handoff emitters fail; that
   is the stitch's wiring of the run verb.
-- the choices emitter (`TestSetupChoicesActualTrace`) fails at setup step 6
+- the choices emitter (`TestSetupChoicesActualTrace`) fails at setup step 8 (services)
   for both cases: `setup answer refused: row rowan does not exist` (the
   services answer; its fixture predates e0887b13's role hooks).
 

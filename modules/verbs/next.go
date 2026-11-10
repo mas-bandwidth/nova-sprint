@@ -96,7 +96,7 @@ func (e *Engine) look(ctx context.Context, v *nextView, epoch int, inventory boo
 	}
 	row := snap.Rows[v.Row]
 	v.State, v.Role, v.Held = row.State, row.Role, row.Held
-	if inventory { // before the hook too: a worker probes its models before it hooks (up step 7)
+	if inventory { // before the hook too: a worker probes its models before it hooks (up's workers step)
 		e.fillRoster(ctx, v, snap)
 	}
 	if row.Session == "" {

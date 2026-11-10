@@ -44,7 +44,7 @@ func TestSetupStoreChildUsesOnlyKeyName(t *testing.T) {
 	}
 }
 
-// Defect 37: step 2's verify proves the role's password first, in a child
+// Defect 37: the store step's verify proves the role's password first, in a child
 // given both credentials by name (a store probe as nova_sprint passes on a
 // pg_hba trust host whatever the password is); the role child's false or
 // refusal stops it before the store probe.

@@ -46,7 +46,7 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 	st := &runtimeStore{}
 	w := &runtimeWork{}
 	r := RuntimeSetup{Store: st, Workload: w}
-	for _, step := range []int{2, 8} {
+	for _, step := range []int{StepStore, StepSmoke} {
 		for round := 0; round < 2; round++ {
 			check, err := r.Verify(ctx, step, SetupInput{})
 			if err != nil {
@@ -67,7 +67,7 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 		t.Fatal(st.actions, w.actions)
 	}
 	st.ready = false
-	check, err := r.Verify(ctx, 2, SetupInput{})
+	check, err := r.Verify(ctx, StepStore, SetupInput{})
 	if err != nil || check.Verified || !check.Action {
 		t.Fatal(check, err)
 	}
@@ -98,6 +98,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	exists := false
 	fleetUp := true
 	plays := 0
+	played := map[string]bool{}
 	service := FleetService{Name: "sprint-run", Machine: "bench-a", Seat: "swarm-bench-a", Keys: []string{sprintPasswordName}, Argv: []string{"/bin/nova-sprint", "run"}}
 	cmd := func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
@@ -110,6 +111,18 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 			if args[0] == "services" {
 				plays++
 				run.ready = true
+			}
+			if args[0] == "runner-packages" || args[0] == "netwatch" {
+				// check mode: the first run of each play would change bench-a; the play itself then runs once
+				if args[1] != "--check" {
+					plays++
+					played[args[0]] = true
+				}
+				changed := "1"
+				if played[args[0]] {
+					changed = "0"
+				}
+				return []byte("PLAY RECAP ****\nbench-a : ok=2 changed=" + changed + " unreachable=0 failed=0 skipped=0 rescued=0 ignored=0\n"), nil
 			}
 			return nil, nil
 		case "nova-secrets":
@@ -140,11 +153,11 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
-	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c, Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Store: st, Run: run, Workload: worker, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, Snapshot: db, RunService: service, DefaultRunHost: "bench-a", Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}, Dashboard: DashboardProbe{Transport: transport}}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c, Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Plays: FleetPlays{Command: cmd}, Store: st, Run: run, Workload: worker, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, Snapshot: db, RunService: service, DefaultRunHost: "bench-a", Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}, Dashboard: DashboardProbe{Transport: transport}}
 	in := SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
 	for round := 0; round < 2; round++ {
-		for step := 1; step <= 8; step++ {
-			if step == 7 && round == 0 { // no commit identity yet: up asks the human, and no act makes it true
+		for step := 1; step <= SetupSteps; step++ {
+			if step == StepWorkers && round == 0 { // no commit identity yet: up asks the human, and no act makes it true
 				check, err := r.Verify(ctx, step, in)
 				if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "ASK the human which forge account") {
 					t.Fatal(step, check, err)
@@ -166,7 +179,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 			}
 		}
 	}
-	if st.actions != 1 || worker.actions != 3 || plays != 2 {
+	if st.actions != 1 || worker.actions != 3 || plays != 4 {
 		t.Fatal(st.actions, worker.actions, plays)
 	}
 	fleetUp = false
@@ -180,7 +193,7 @@ func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
 	db := store.NewFake()
 	choices := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
 	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices}}}
-	check, err := r.Verify(context.Background(), 5, SetupInput{})
+	check, err := r.Verify(context.Background(), StepDashboard, SetupInput{})
 	if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "ASK the human") || !strings.Contains(check.Next, "--dash tailnet") {
 		t.Fatal(check, err)
 	}

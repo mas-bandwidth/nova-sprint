@@ -29,7 +29,7 @@ const workerFix = "nova-sprint up --as <coordinator> (it rewrites every bench's 
 // ssh): red when the last line is a refusal (the worker exits on it and its
 // unit restarts it, forever: D14, 2026-11-07, every bench's record carrying
 // flags an earlier worker took, for days, while the rows read as hooked and
-// up), red when the bench is not hooked and up on the bus (up's step 7) or
+// up), red when the bench is not hooked and up on the bus (up's workers step) or
 // the inventory cannot be read (no bench was checked), a WARN for a log that
 // cannot be read from here.
 func (e *Engine) checkWorkers(ctx context.Context, r *checkReport, snap store.Snapshot, who map[string]bus.Presence) {
@@ -91,7 +91,7 @@ func workerFact(u WorkerUnit, snap store.Snapshot, who map[string]bus.Presence) 
 	return nil
 }
 
-// workerLogFix is up's step 7 fix for one bench: its unit's log, or the
+// workerLogFix is up's workers-step fix for one bench: its unit's log, or the
 // bench role off a machine that is gone, then up.
 func workerLogFix(u WorkerUnit) string {
 	return "read ~/.local/state/nova/services/" + u.Service + ".log on " + u.Machine + " and fix what it says, or take the bench role off a machine that is gone; then nova-sprint up --as <coordinator>"

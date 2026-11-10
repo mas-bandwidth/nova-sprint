@@ -50,7 +50,7 @@ func TestProductionSetupRefusesMissingAndUnimplementedConfiguration(t *testing.T
 	cfg := configForSetup()
 	cfg.Secrets.Pins = ""
 	setup, lock := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
-	_, err := setup.Verify(context.Background(), 2, verbs.SetupInput{Actor: "alice"})
+	_, err := setup.Verify(context.Background(), verbs.StepStore, verbs.SetupInput{Actor: "alice"})
 	var op *verbs.OperationError
 	if !errors.As(err, &op) || !strings.Contains(op.Fix, "NOVA_SECRETS_PINS") {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestProductionSetupRefusesMissingAndUnimplementedConfiguration(t *testing.T
 	}
 	cfg = configForSetup()
 	setup, _ = makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
-	_, err = setup.Verify(context.Background(), 3, verbs.SetupInput{Actor: "alice"})
+	_, err = setup.Verify(context.Background(), verbs.StepCoordinator, verbs.SetupInput{Actor: "alice"})
 	if !errors.As(err, &op) || op.Fix != "nova-sprint up --as alice" || !strings.HasPrefix(op.Problem, "the sprint is not set up") {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestProductionSetupRefusesMissingAndUnimplementedConfiguration(t *testing.T
 	p.command = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":0},"items":[]}`), nil
 	}
-	_, err = p.Verify(context.Background(), 4, verbs.SetupInput{Actor: "alice"})
+	_, err = p.Verify(context.Background(), verbs.StepRun, verbs.SetupInput{Actor: "alice"})
 	if !errors.As(err, &op) || !strings.Contains(op.Problem, "run host") {
 		t.Fatal(err)
 	}

@@ -24,7 +24,7 @@ send`; nobody polls (CORRECT-USE, "There is ONE WAY").
 
 ## 2. The run loop
 
-**Start.** `run` is a service on one host, installed by `up` (step 4). It runs its
+**Start.** `run` is a service on one host, installed by `up` (step 6). It runs its
 prerequisite table (section 3), then takes the chooser lock, `pg_try_advisory_lock` on a
 connection held for the process's life. Held, it refuses, naming the holder from
 `pg_stat_activity` (`application_name` is `nova-sprint run <host> <pid>`): `SPRINT REFUSED
@@ -146,7 +146,7 @@ line as `up:`).
 |---|---|---|
 | `help`, `version`, `up` | nothing; they run before `up` | |
 | `check` | nothing; it names the first piece that is missing | |
-| every other verb (`stop`, `start`, `hook`, `show`, `next` included) | the store `up` makes at its step 2 (an epoch), at any later step of `up` | `the sprint is not set up: nova-sprint up --as <coordinator>`; `next` answers it, exit 0 |
+| every other verb (`stop`, `start`, `hook`, `show`, `next` included) | the store `up` makes at its step 4 (an epoch), at any later step of `up` | `the sprint is not set up: nova-sprint up --as <coordinator>`; `next` answers it, exit 0 |
 | every verb that reads the store | the sprint credential in the process | `this process has no sprint credential: run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...` |
 
 A fresh store is stopped, its reason `never started`, until the coordinator runs `start`: the
@@ -200,7 +200,7 @@ policy, `up` and `clear` (reminders deferred, section 12).
 ```
 nova-fleet check green, tools >= pin ......... nova-fleet up
   -> check ................................... nova-sprint check
-    -> up: store, coordinator hooked, run, dashboard, services, workers, first deal
+    -> up: runner-packages, netwatch, store, coordinator hooked, run, dashboard, services, workers, first deal
       -> stream add <s>
         -> add --stream <s> (brief passes the contract, needs known, no cycle)
           -> a row hooked (worker --as <row>  |  nova-bus hook --as <kin>)
@@ -231,23 +231,25 @@ NEXT nova-tools is up; the sprint is not set up
 next: nova-sprint up --as rowan
 
 $ nova-sprint up --as rowan
-UP 1/8 nova-tools: fleet green; nova-bus, nova-fleet, nova-config, nova-secrets at or above the pin: VERIFIED
-UP 2/8 store: schema sprint version 2 on studio: VERIFIED (made now)
-UP 3/8 coordinator rowan: not hooked
+UP 1/10 nova-tools: fleet green; nova-bus, nova-fleet, nova-config, nova-secrets at or above the pin: VERIFIED
+UP 2/10 runner-packages: the packages a card's gates need (nova-fleet runner-packages, nothing to change) on amd-1,amd-2,titan,captain: VERIFIED
+UP 3/10 netwatch: a Linux bench that loses its network or the tailnet recovers by itself (a Mac is skipped) (nova-fleet netwatch, nothing to change) on amd-1,amd-2,titan,captain: VERIFIED
+UP 4/10 store: schema sprint version 2 on studio: VERIFIED (made now)
+UP 5/10 coordinator rowan: not hooked
 SPRINT REFUSED up: rowan is not hooked in: run nova-bus hook --as rowan under your session's Monitor tool
 
-# the AI hooks in and runs up again; steps 1 to 3 verify; up stops where the human chooses
-UP 4/8 run: installed on studio; chooser lock held; sprint hooked: VERIFIED
-UP 5/8 dashboard: not chosen
+# the AI hooks in and runs up again; steps 1 to 5 verify; up stops where the human chooses
+UP 6/10 run: installed on studio; chooser lock held; sprint hooked: VERIFIED
+UP 7/10 dashboard: not chosen
 ASK the human: the dashboard on the tailnet (default), or public on a machine with a public address in nova-config?
 next: nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]
-# the human says tailnet; up --dash tailnet verifies 1 to 5 and stops again
-UP 6/8 services: deepseek chosen; key not set
+# the human says tailnet; up --dash tailnet verifies 1 to 7 and stops again
+UP 8/10 services: deepseek chosen; key not set
 ASK the human to type the deepseek API key at the hidden prompt in a terminal they can see:
 next: nova-sprint up --key deepseek
-# the human types the key; up verifies 1 to 6 and goes on
-UP 7/8 workers: amd-1, amd-2, titan, captain hooked and up: VERIFIED
-UP 8/8 first deal: one work card and its read dealt and released within one tick: VERIFIED
+# the human types the key; up verifies 1 to 8 and goes on
+UP 9/10 workers: amd-1, amd-2, titan, captain hooked and up: VERIFIED
+UP 10/10 first deal: one work card and its read dealt and released within one tick: VERIFIED
 UP DONE run on studio; dashboard http://studio.tail1234.ts.net:8080; 4 workers up; coordinator rowan
 next: nova-sprint stream add <name> --repo <owner/name>
 
@@ -285,20 +287,22 @@ Each step's action is idempotent.
 | step | does | verified when | asked |
 |---|---|---|---|
 | 1 nova-tools | nothing itself; prints the nova-tools walkthrough (`nova-fleet check`, the human's one paste of the Tailscale API token, `nova-fleet up`) | `nova-fleet check` exits 0; every tool's version at or above the pin | no |
-| 2 store | `Migrate`; the role `sprint` through nova-fleet's postgres play | `sprint.meta` at this binary's version and hash; the role owns the schema | no |
-| 3 coordinator | records the name | that name is in `nova-bus who` | the name, once (`--as`) |
-| 4 run | installs the `run` service on the chosen host (default: this one) | the advisory lock is held (`pg_locks`) and `sprint` is in `nova-bus who` | the host, only with `--run-on` |
-| 5 dashboard | installs `run --listen` on the tailnet, or `dash --pull` on the public host | `/healthz` 200 and `/api/sprint` at the store's epoch, fetched from this machine; for public, from the public address, with the cache headers | tailnet or public, once |
-| 6 services | for each chosen service, the key at a hidden prompt, piped into `nova-secrets set <SERVICE>_API_KEY` on stdin, then the grants, seats, worker rows and service rows | one request to the service's model list through `nova-secrets exec`, judged by its exit code only | which services, once; each key, once |
-| 7 workers | the sprint credential granted to each bench seat; one service record `sprint-worker-<machine>` per worker bench (every bench but the run machine) running `nova-sprint worker --as <machine>`, applied in one `nova-fleet services` play limited to those benches | each worker bench present on the bus and `up` in the store; the refusal names each that is not and its unit's last log line | no |
-| 8 first deal | nothing: a fresh sprint is stopped until `start` and moves nothing, so up deals no card | every worker row hooked, `up` and dealable (cores set in nova-config; a bench without is held at width 0) | no |
+| 2 runner-packages | runs nova-fleet's `runner-packages` play on every bench (`-l` the inventory's benches), with the play's defaults | the play in check mode (`--check`) reports `changed=0`, `unreachable=0` and `failed=0` for every bench in its PLAY RECAP; a play that fails is the refusal, in the play's own words, with its fix | no |
+| 3 netwatch | runs nova-fleet's `netwatch` play on every bench the same way (a Mac is skipped by the play) | as step 2, for `netwatch` | no |
+| 4 store | `Migrate`; the role `sprint` through nova-fleet's postgres play | `sprint.meta` at this binary's version and hash; the role owns the schema | no |
+| 5 coordinator | records the name | that name is in `nova-bus who` | the name, once (`--as`) |
+| 6 run | installs the `run` service on the chosen host (default: this one) | the advisory lock is held (`pg_locks`) and `sprint` is in `nova-bus who` | the host, only with `--run-on` |
+| 7 dashboard | installs `run --listen` on the tailnet, or `dash --pull` on the public host | `/healthz` 200 and `/api/sprint` at the store's epoch, fetched from this machine; for public, from the public address, with the cache headers | tailnet or public, once |
+| 8 services | for each chosen service, the key at a hidden prompt, piped into `nova-secrets set <SERVICE>_API_KEY` on stdin, then the grants, seats, worker rows and service rows | one request to the service's model list through `nova-secrets exec`, judged by its exit code only | which services, once; each key, once |
+| 9 workers | the sprint credential granted to each bench seat; one service record `sprint-worker-<machine>` per worker bench (every bench but the run machine) running `nova-sprint worker --as <machine>`, applied in one `nova-fleet services` play limited to those benches | each worker bench present on the bus and `up` in the store; the refusal names each that is not and its unit's last log line | no |
+| 10 first deal | nothing: a fresh sprint is stopped until `start` and moves nothing, so up deals no card | every worker row hooked, `up` and dealable (cores set in nova-config; a bench without is held at width 0) | no |
 
 **Taking the seat** (Glenn, 2026-11-10: "Add takeover to up"). The coordinator's seat is the
 row hooked in with role `coordinator`, and only `unhook` frees it: by that row, or by the
 coordinator, which is that row. A coordinator whose host or session is gone can run neither, so
 `up --as <you> --take-over --reason "<why>"` moves the seat. It refuses without `--reason`, and
 while the recorded coordinator is in `nova-bus who` (the same presence the run loop reads),
-naming their `unhook`. Otherwise, where `up` hooks the caller in (after step 2), one op logged
+naming their `unhook`. Otherwise, where `up` hooks the caller in (after step 4, the store), one op logged
 under kind `take-over` with the reason as its note clears the old coordinator's hook as `unhook`
 clears it and hooks the caller in as coordinator, fenced on the seq it read (one coordinator);
 the walk then goes on. The old coordinator's cards stay where they are: a row going down never
@@ -354,7 +358,7 @@ writes. A thousand viewers cost one fetch a second.
 down if down, else held if held, else up; read consumers are in the working counts;
 sentinels are out of the ETA and the rates (LESSONS 6.15; both as built). The merge strip's
 `stuck` and `ci red` cells, blank in the shim, are filled from layer 3's landing step
-(LANDING step 5). The coordinator chip is filled from step 3's record. Nothing is added or
+(LANDING step 5). The coordinator chip is filled from `up` step 5's record. Nothing is added or
 removed unless Glenn asks (LESSONS 6.14).
 
 **No "needs you" column.** The board stays an exact v1 match, and v1 has none. The

@@ -37,7 +37,7 @@ func (setupLeaseFake) Check(context.Context) error { return nil }
 func (setupLeaseFake) Close() error                { return nil }
 
 type setupFake struct {
-	ready [9]bool
+	ready [SetupSteps + 1]bool
 	trace []string
 	stop  int
 }
@@ -50,7 +50,7 @@ func (f *setupFake) Verify(_ context.Context, n int, _ SetupInput) (SetupCheck, 
 	if n == f.stop && !f.ready[n] {
 		return SetupCheck{Line: "ASK dashboard", Next: "nova-sprint up --dash tailnet"}, nil
 	}
-	return SetupCheck{Verified: f.ready[n], Action: !f.ready[n], Line: fmt.Sprintf("UP %d/8", n)}, nil
+	return SetupCheck{Verified: f.ready[n], Action: !f.ready[n], Line: fmt.Sprintf("UP %d/10", n)}, nil
 }
 func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 	f.trace = append(f.trace, fmt.Sprintf("act%d", n))
@@ -59,24 +59,25 @@ func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 }
 func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	t.Parallel()
-	f := &setupFake{stop: 5}
+	f := &setupFake{stop: StepDashboard}
 	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: f, Lock: setupLeaseFake{}}
 	first := e.Execute(context.Background(), []string{"up"})
-	if first.Exit != 1 || !strings.Contains(first.Output, "ASK dashboard\nSPRINT REFUSED up: step 5 is not verified: nova-sprint up --dash tailnet\n") {
+	if first.Exit != 1 || !strings.Contains(first.Output, "ASK dashboard\nSPRINT REFUSED up: step 7 is not verified: nova-sprint up --dash tailnet\n") {
 		t.Fatal(first)
 	}
-	if strings.Join(f.trace, ",") != "verify1,act1,verify1,verify1,verify2,act2,verify2,verify3,act3,verify3,verify4,act4,verify4,verify5" {
+	// the two fleet plays (2 runner-packages, 3 netwatch) are steps of the walk, verified, acted on and verified again like every other, between the fleet check and the store
+	if strings.Join(f.trace, ",") != "verify1,act1,verify1,verify1,verify2,act2,verify2,verify3,act3,verify3,verify4,act4,verify4,verify5,act5,verify5,verify6,act6,verify6,verify7" {
 		t.Fatal(f.trace)
 	}
 	f.trace = nil
 	f.stop = 0
-	f.ready[2] = false
+	f.ready[StepStore] = false
 	second := e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
-	if second.Exit != 0 || !strings.HasPrefix(strings.Join(f.trace, ","), "verify1,verify1,verify2,act2,verify2") {
+	if second.Exit != 0 || !strings.HasPrefix(strings.Join(f.trace, ","), "verify1,verify1,verify2,verify3,verify4,act4,verify4") {
 		t.Fatal(second, f.trace)
 	}
 	// up names what the walk does not set: here the commit identity (PR 641 F6)
-	if !strings.Contains(second.Output, "UP 8/8\nUP NEEDS the sprint has no commit identity: no worker can hook and nothing can be committed: nova-sprint identity --name ") {
+	if !strings.Contains(second.Output, "UP 10/10\nUP NEEDS the sprint has no commit identity: no worker can hook and nothing can be committed: nova-sprint identity --name ") {
 		t.Fatal(second.Output)
 	}
 	// UP DONE tells a new coordinator to read check's width lines before adding cards
@@ -103,7 +104,7 @@ func TestSetupNamesTheBenchModel(t *testing.T) {
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "old", Body: "script"}, store.SetActivePolicy{Version: 1}, store.SetIdentity{Name: "Bot", Email: "1+bot@users.noreply.example.test"}}})
 	e := Engine{Actor: "rowan", Store: f, Bus: upBus(), Now: upNow, Setup: &setupFake{}, Lock: setupLeaseFake{}, Answers: noBench{"frontier"}, Roster: newRoster()}
 	r := e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
-	if r.Exit != 0 || !strings.Contains(r.Output, "UP 8/8\nUP NEEDS policy v1 names no bench model for tier frontier, so no bench is dealt a card of it: give the policy's catalog() a \"bench\"") ||
+	if r.Exit != 0 || !strings.Contains(r.Output, "UP 10/10\nUP NEEDS policy v1 names no bench model for tier frontier, so no bench is dealt a card of it: give the policy's catalog() a \"bench\"") ||
 		strings.Contains(r.Output, "commit identity") {
 		t.Fatal(r.Output)
 	}
@@ -121,13 +122,13 @@ func TestSetupNeedsNamesWhatItCouldNotCheck(t *testing.T) {
 	ro.err = errors.New("nova-config down")
 	e := Engine{Actor: "rowan", Store: f, Bus: upBus(), Now: upNow, Setup: &setupFake{}, Lock: setupLeaseFake{}, Answers: fakeAnswers{}, Roster: ro}
 	r := e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
-	if r.Exit != 0 || !strings.Contains(r.Output, "UP 8/8\nUP NEEDS nova-config's roster cannot be read (nova-config down): nova-config check, then nova-sprint check\n") {
+	if r.Exit != 0 || !strings.Contains(r.Output, "UP 10/10\nUP NEEDS nova-config's roster cannot be read (nova-config down): nova-config check, then nova-sprint check\n") {
 		t.Fatal(r.Output)
 	}
 	gone := &snapshotGone{Fake: upStore(true)}
 	e = Engine{Actor: "rowan", Store: gone, Bus: upBus(), Now: upNow, Setup: &goneAfterWalk{setupFake: &setupFake{}, gone: gone}, Lock: setupLeaseFake{}}
 	r = e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
-	if r.Exit != 0 || !strings.Contains(r.Output, "UP 8/8\nUP NEEDS identity and bench models unchecked: the store did not answer (connection reset): nova-sprint check\n") {
+	if r.Exit != 0 || !strings.Contains(r.Output, "UP 10/10\nUP NEEDS identity and bench models unchecked: the store did not answer (connection reset): nova-sprint check\n") {
 		t.Fatal(r.Output)
 	}
 }

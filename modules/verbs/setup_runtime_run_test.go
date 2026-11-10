@@ -102,8 +102,8 @@ func TestSetupRunNoLockShowsUnitStateAndLog(t *testing.T) {
 	}
 }
 
-// Step 4 still not ready after its act is a refusal naming the condition,
-// never "step 4 is not verified".
+// The run step still not ready after its act is a refusal naming the condition,
+// never "step 6 is not verified".
 func TestRuntimeRunCheckRefusalNamesTheCondition(t *testing.T) {
 	t.Parallel()
 	r := RuntimeSetup{Run: notReadyRun{}, RunService: FleetService{Name: "sprint-run", Machine: "bench-a"}, DefaultRunHost: "bench-a"}
@@ -123,7 +123,7 @@ func (notReadyRun) Ready(context.Context, string, string) (bool, error) {
 	return false, &RunNotReady{Why: "run service holds no chooser lock", Fix: "read the log"}
 }
 
-// Step 4 stores and activates the built-in default policy before run
+// The run step stores and activates the built-in default policy before run
 // starts, once: a second act changes nothing. Its line names the secrets
 // store the run service opens.
 func TestRuntimeRunStoresDefaultPolicyOnce(t *testing.T) {
