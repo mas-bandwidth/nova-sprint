@@ -89,6 +89,54 @@ func TestCardAdmission(t *testing.T) {
 	})
 }
 
+// TestCardAdmissionAtBase: a brief's facts about the repository are checked
+// at the base: a new directory beside its near namesake (test/ where tests/
+// is), a make target no Makefile rule names, and a repository path a
+// DONE-WHEN runs that is not there; each refusal names what is missing and
+// its fix (2026-11-09: rocketnet cards dealt with test/ and make test).
+func TestCardAdmissionAtBase(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	card := func(id, paths string, gates ...string) []string {
+		text := "tier: pro\nPATHS: " + paths + "\nTEST: t\n"
+		for _, g := range gates {
+			text += "DONE-WHEN: " + g + "\n"
+		}
+		return []string{"add", "--stream", "s", "--brief-file", briefFile(t, dir, id, text+"\nDo it.\n")}
+	}
+	repo := func(_ *testing.T, w *world) {
+		w.origin.tree = []string{"Makefile", "tests/a_test.c", "sub/Makefile", "mk/rules.mk", "tools/run.sh", "b/x.go", "Docs/x.md", "dyn/Makefile"}
+		w.origin.files = map[string]string{
+			"Makefile":     ".DEFAULT_GOAL := build\n# test: not a rule\n.PHONY: build happy-path\nbuild:\n\tcc -o bin/check x.c\nhappy-path: build\n\t./x \\\n\t  y\ninclude mk/rules.mk\nBIN := out\n$(BIN): build\n%.o: %.c\n",
+			"mk/rules.mk":  "lint:\n\ttrue\n",
+			"sub/Makefile": "test:\n\ttrue\n",
+			"dyn/Makefile": "include $(X).mk\n",
+		}
+	}
+	runCases(t, []tcase{
+		{name: "test/ beside tests/", as: "carol", args: card("q1", "test/, test/b_test.c", "true"), exit: 1, prep: repo,
+			want: []string{"card q1: PATHS test/: test/ is not there, and tests/ is", "o/r's main"}},
+		{name: "a file under test/ beside tests/", as: "carol", args: card("q2", "test/b_test.c", "true"), exit: 1, prep: repo,
+			want: []string{"neither it nor its directory test/ is there (tests/ is)"}},
+		{name: "a case namesake", as: "carol", args: card("q3", "docs/, docs/y.md", "true"), exit: 1, prep: repo, want: []string{"docs/ is not there, and Docs/ is"}},
+		{name: "a new directory with no namesake", as: "carol", args: card("q4", "b/d/, b/d/n.go", "true"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make with no such target", as: "carol", args: card("m1", "README.md", "make test"), exit: 1, prep: repo,
+			want: []string{"card m1: DONE-WHEN make test: Makefile has no rule for test", "its targets: build, happy-path, lint, out", "o/r's main", "a target the Makefile has"}},
+		{name: "make with its targets", as: "carol", args: card("m2", "README.md", "make -j 4 build V=1", "make happy-path", "make lint", "make out", "make x.o"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make -C a directory", as: "carol", args: card("m3", "README.md", "make -C sub test"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make -C a directory without the target", as: "carol", args: card("m4", "README.md", "make -C sub build"), exit: 1, prep: repo, want: []string{"sub/Makefile has no rule for build"}},
+		{name: "make -C a directory with no Makefile", as: "carol", args: card("m5", "README.md", "make -C tools all"), exit: 1, prep: repo, want: []string{"there is no Makefile in tools/"}},
+		{name: "make with an unreadable include", as: "carol", args: card("m6", "README.md", "make -C dyn anything"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "make when the card writes the Makefile", as: "carol", args: card("m7", "Makefile", "make test"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "a script that is not there", as: "carol", args: card("r1", "README.md", "./bin/check --all"), exit: 1, prep: repo,
+			want: []string{"card r1: DONE-WHEN ./bin/check --all: bin/check is not there", "add it to PATHS"}},
+		{name: "a script built first", as: "carol", args: card("r2", "README.md", "make build", "./bin/check"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "a script at the base", as: "carol", args: card("r3", "README.md", "tools/run.sh"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "a script the card writes", as: "carol", args: card("r4", "tools/new.sh", "./tools/new.sh"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+		{name: "an absolute program", as: "carol", args: card("r5", "README.md", "/usr/bin/true"), exit: 0, prep: repo, want: []string{"ADDED 1 cards"}},
+	})
+}
+
 // failingTree is origin whose tree cannot be read.
 type failingTree struct{ *fakeOrigin }
 
