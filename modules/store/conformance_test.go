@@ -464,6 +464,9 @@ func clearFencedOnRows(h *harness) {
 	assert.Equal(h.t, 1, h.snap().Epoch)
 	_, err = h.s.Clear(h.ctx, h.op("clear", []Expect{RowsOnlySince{-1}}))
 	require.ErrorIs(h.t, err, ErrInvalid)
+	r, err = h.s.Clear(h.ctx, h.op("clear", []Expect{RowsOnlySince{99}}))
+	require.NoError(h.t, err)
+	assert.Equal(h.t, "the store is at seq 5, before seq 99", r.Reason, "a seq not reached yet holds nothing")
 	seq := h.snap().Seq
 	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", Load1Centi: 2, Cores: 8}))
 	h.refused(h.op("nothing", nil, SetCardState{"c9", "ready"}), "card c9 does not exist")

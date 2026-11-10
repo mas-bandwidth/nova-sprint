@@ -279,6 +279,10 @@ func condOf(e Expect) cond {
 		}}
 	case RowsOnlySince:
 		return cond{func(c *checker) { c.num64("seq", v.Seq) }, func(w *work) (string, error) {
+			last, err := w.tx.lastSeq()
+			if err != nil || last < v.Seq {
+				return when(err == nil, "the store is at seq %d, before seq %d", last, v.Seq), err
+			}
 			events, err := w.tx.acceptedSince(v.Seq)
 			for _, e := range events {
 				if a := e.After; a == nil || a.Epoch != 0 || a.Streams != nil || a.Cards != nil || a.Policies != nil || a.Judgements != nil || a.Cursors != nil || a.Stop != nil || a.Identity != nil {

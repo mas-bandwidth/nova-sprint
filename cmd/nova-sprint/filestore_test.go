@@ -26,7 +26,7 @@ type loggedOp struct {
 }
 
 func init() {
-	for _, v := range []any{store.AtSeq{}, store.RowGen{}, store.PutPolicy{}, store.PutRow{}, store.SetActivePolicy{}} {
+	for _, v := range []any{store.AtSeq{}, store.RowsOnlySince{}, store.RowGen{}, store.PutPolicy{}, store.PutRow{}, store.SetActivePolicy{}} {
 		gob.Register(v)
 	}
 }
