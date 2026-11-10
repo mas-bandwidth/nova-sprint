@@ -132,6 +132,37 @@ func TestFinishFailedAndReportForms(t *testing.T) {
 	}
 }
 
+// A failed finish with no --head records the dealt branch's tip at origin,
+// so the card goes back with the pushed work and the next attempt continues
+// from it; a tip at the base records none; an unreadable origin refuses.
+func TestFinishFailedRecordsPushedHead(t *testing.T) {
+	t.Parallel()
+	failed := []string{"finish", "p1.w1@1", "--failed", "--reason", "gate red: go test exit 1"}
+	w := newWorld(t)
+	takeW1(t, w)
+	want(t, w.do("alice", failed...), 0, "FAILED p1.w1 head="+head+" ")
+	if p := w.snap(t).Cards["p1"]; p.State != "ready" || p.Head != head || p.Reason != "gate red: go test exit 1" {
+		t.Fatalf("the producer goes back with the pushed head and the reason: %+v", p)
+	}
+	w = newWorld(t)
+	takeW1(t, w)
+	w.origin.tips["o/r sprint/s/p1"] = base
+	want(t, w.do("alice", failed...), 0, "FAILED p1.w1 head= ")
+	s := sprint()
+	setCard("p1.w1", func(c *store.Card) { c.Prior = head })(&s)
+	w = worldFrom(t, s)
+	takeW1(t, w)
+	want(t, w.do("alice", failed...), 0, "FAILED p1.w1 head= ") // the prior head: nothing new was pushed
+	w = newWorld(t)
+	takeW1(t, w)
+	delete(w.origin.tips, "o/r sprint/s/p1")
+	want(t, w.do("alice", failed...), 0, "FAILED p1.w1 head= ")
+	w = newWorld(t)
+	takeW1(t, w)
+	w.origin.err = errBroken
+	want(t, w.do("alice", failed...), 2, "git ls-remote of o/r failed", "--head <sha>")
+}
+
 // secondAttempt is p1 at attempt 2: p1.w1 reported result at head, which
 // p1.w2, dealt to alice, continues from as its prior head.
 func secondAttempt(result string) func(*store.Snapshot) {
