@@ -63,12 +63,15 @@ func TestSetupCoordinatorSavedAndRechecked(t *testing.T) {
 	if err = s.SaveCoordinator(ctx, "alice"); err != nil {
 		t.Fatal(err)
 	}
-	c, err = s.Coordinator(ctx, "other")
+	// the recheck with no caller (Completion's) is of the saved answer; a
+	// caller is the hooked coordinator, and TestUpTakeOverMovesTheSavedCoordinator
+	// holds that the answer follows it
+	c, err = s.Coordinator(ctx, "")
 	if err != nil || !c.Verified {
 		t.Fatal(c, err)
 	}
 	present = false
-	c, err = s.Coordinator(ctx, "other")
+	c, err = s.Coordinator(ctx, "")
 	if err != nil || c.Verified || (c.Refusal == nil || c.Refusal.Problem != "alice is not hooked in" || c.Refusal.Fix != "run nova-bus hook --as alice under your session's Monitor tool") {
 		t.Fatal(c, err)
 	}

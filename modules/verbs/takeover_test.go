@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
@@ -57,6 +58,65 @@ func TestUpTakesOverFromACoordinatorWhoIsGone(t *testing.T) {
 	}
 	want(t, w.do("dave", "judge"), 0, "no open judgements")
 	want(t, w.do("dave", "unhook", "alice"), 0, "UNHOOKED alice")
+}
+
+// realCoordinatorStep is up's walk faked except its coordinator step, which
+// is the real one (SetupPrerequisites) on the sprint's store and the
+// world's bus.
+type realCoordinatorStep struct {
+	*setupFake
+	real SetupPrerequisites
+}
+
+func (s realCoordinatorStep) Verify(ctx context.Context, n int, in SetupInput) (SetupCheck, error) {
+	if n == StepCoordinator {
+		return s.real.Coordinator(ctx, in.Actor)
+	}
+	return s.setupFake.Verify(ctx, n, in)
+}
+
+func (s realCoordinatorStep) Act(ctx context.Context, n int, in SetupInput) error {
+	if n == StepCoordinator {
+		r := s.real
+		r.Env.Choices.Actor = in.Actor
+		return r.SaveCoordinator(ctx, in.Actor)
+	}
+	return s.setupFake.Act(ctx, n, in)
+}
+
+// TestUpTakeOverMovesTheSavedCoordinator: after a take-over, up's own
+// coordinator step checks and records the new coordinator, not the one the
+// first up saved: with the old coordinator on the bus, and after it leaves.
+func TestUpTakeOverMovesTheSavedCoordinator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := sprint()
+	s.Seq = 0 // the saved answers are read from the whole log
+	w := worldFrom(t, s)
+	w.e.Lock = setupLeaseFake{}
+	who := func(context.Context, string, ...string) ([]byte, error) {
+		var names []string
+		for _, n := range []string{"carol", "dave"} {
+			if w.bus.present[n] {
+				names = append(names, n+"\t1m\n")
+			}
+		}
+		return []byte("WHO OK present=" + string(rune('0'+len(names))) + "\n" + strings.Join(names, "")), nil
+	}
+	steps := realCoordinatorStep{&setupFake{}, SetupPrerequisites{Env: ExecEnvironment{Getenv: func(string) string { return "" }, Command: who,
+		Choices: Choices{Store: w.f, Now: func() time.Time { return t0 }}}}}
+	w.e.Setup = steps
+	want(t, w.do("carol", "up"), 0, "UP 5/10 coordinator carol: VERIFIED")
+	r := w.do("dave", "up", "--take-over", "--reason", "the seat was handed to dave")
+	want(t, r, 0, "TOOK OVER from carol", "UP 5/10 coordinator dave: VERIFIED")
+	if strings.Contains(r.Output, "coordinator carol") {
+		t.Fatalf("up checked the old coordinator:\n%s", r.Output)
+	}
+	if saved, _, err := steps.real.Env.Choices.Get(ctx, "coordinator"); err != nil || saved != "dave" {
+		t.Fatalf("saved coordinator %q %v, want dave", saved, err)
+	}
+	w.bus.present["carol"] = false
+	want(t, w.do("dave", "up"), 0, "UP 5/10 coordinator dave: VERIFIED")
 }
 
 // inbox is the bus as the run's pusher sends on it: each recipient's
