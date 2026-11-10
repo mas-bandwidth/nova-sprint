@@ -31,9 +31,10 @@ DROPPED = {
     "RunnerForcePushRewinds": ["NoPushAfterFinal"],
     "RunnerWithdrawnPushesRepeatedly": ["NoPushAfterFinal", "BranchOnlyByHolder"],
 }
-# The stale push the three above add is a push with no seal step: PushOnlySealed is not theirs to name.
+# The stale push the three above add is a push with no seal step: PushOnlySealed is not theirs to name;
+# and it moves the tip after the next holder's take: neither is HolderStartsFromTip.
 for _name in DROPPED:
-    DROPPED[_name] = DROPPED[_name] + ["PushOnlySealed"]
+    DROPPED[_name] = DROPPED[_name] + ["PushOnlySealed", "HolderStartsFromTip"]
 
 # name, target invariant, fault, exact replacement pairs
 WITNESSES = [
@@ -67,6 +68,10 @@ WITNESSES = [
      stale_push(False)),
     ("RunnerWithdrawnPushesRepeatedly", "AtMostOneStalePush", "A withdrawn job's stale push happens on more than one pass.",
      stale_push(False, "AtMostOneStalePush ==\n  \\A c \\in Consumers : branch[c].finalPushes <= 1\n\n")),
+    ("RunnerTakeFromStorePrior", "HolderStartsFromTip",
+     "The next holder's take reads only the store's prior head, which a withdraw after a pushed harvest never learned.",
+     [("TakePrior(c) == IF branch[c].tip # \"none\" THEN branch[c].tip ELSE branch[c].known",
+       "TakePrior(c) == branch[c].known")]),
 ]
 
 
