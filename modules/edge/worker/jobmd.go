@@ -105,7 +105,7 @@ func finishRules(j Job, k *KinFinish) string {
 			"   {\"result\":\"ok\"}: the work is committed and every done-when command is green.\n" +
 			"   {\"result\":\"fail\",\"reason\":\"<what is not done, and why>\"}: you could not finish it; say what you found.\n" +
 			refuted_internal("{\"result\":\"fail\",\"reason\":\"refuted: <what you tried, and what it showed>\"}") +
-			"A run that exits without " + res + " is reported \"fail: no verdict\".\n"
+			"The worker pushes your commits and runs every done-when command at that head itself: that decides the result, not " + res + ".\n"
 	}
 	tail := fmt.Sprintf(" --as %s --epoch %d", k.Row, k.Epoch)
 	fault := "   nova-sprint report " + k.Ref + " --result fault --reason \"<why>\"" + tail + ": a tool, the harness or a route failed, not the work; a reason starting " + card.MissingRoute + " <route> leaves the card waiting, with that reason, for the coordinator.\n"

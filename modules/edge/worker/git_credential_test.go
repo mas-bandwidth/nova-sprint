@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
@@ -373,6 +374,51 @@ func TestWorkerGitNeverRunsInTheJobDirAfterTheHarness(t *testing.T) {
 	}
 	if err := g.Push(ctx, root, "", "sprint/s/p1", sha, ""); err == nil || !strings.Contains(err.Error(), "names no clone URL") {
 		t.Fatalf("a job with no clone URL: %v", err)
+	}
+}
+
+// The bench verdict is the head's, as in v1: a harness that left a new head
+// is ok at harvest whatever it wrote (no result.json, a fail of its own, a
+// non-zero exit), and the done-when tests the worker runs at that head
+// decide it. Only a fault or a refutation keeps the harness's word.
+func TestBenchVerdictIsTheNewHeadAndItsDoneWhens(t *testing.T) {
+	t.Parallel()
+	sha := strings.Repeat("a", 40)
+	for _, c := range []struct {
+		name, file string
+		exit       int
+		want       string
+	}{
+		{"no result.json", "", 0, "ok"},
+		{"no result.json, exit 1", "", 1, "ok"},
+		{"the harness's own fail", `{"result":"fail","reason":"I think the tests are flaky"}`, 0, "ok"},
+		{"a refutation", `{"result":"fail","reason":"refuted: the red test passes at the base"}`, 0, "fail"},
+		{"a route fault", `{"result":"fault","reason":"` + card.MissingRoute + ` gpu none here"}`, 0, "fault"},
+	} {
+		root := t.TempDir()
+		fx := edge.NewFakeExec()
+		sealedFake_internal(fx, sha)
+		r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: &OSGitOps{WorkRoot: filepath.Join(root, "work"), Exec: fx}, Wall: &fakeWall{}, Now: testClock_internal(), Sleep: noSleep_internal})
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobDir := filepath.Join(root, "jobs", "p1.w1")
+		rec := JobRecord{Epoch: 1, Consumer: "p1.w1", Kind: "work", Repo: "o/r", Forge: "github", Branch: "sprint/s/p1", BaseSHA: strings.Repeat("b", 40),
+			Gen: 1, StreamRef: "sprint/s/group", DoneWhen: []string{"go test ./..."}}
+		writeStagedRecord_internal(t, jobDir, rec)
+		if err := os.WriteFile(filepath.Join(jobDir, SealBundle), []byte("bundle"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if c.file != "" {
+			if err := os.WriteFile(filepath.Join(jobDir, "result.json"), []byte(c.file), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		job := Job{Consumer: rec.Consumer, Kind: "work", JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), BaseSHA: rec.BaseSHA, CommitName: testCommitName, CommitEmail: testCommitEmail}
+		out := ClassifyJob(&ClaudeHarness{}, job, c.exit, 0, 0, []byte("done"))
+		if out = r.harvestWorkHead_internal(context.Background(), job, &rec, out); out.Result != c.want || (c.want == "ok" && out.Head != sha) {
+			t.Errorf("%s with a new head pushed: want %s, got %+v", c.name, c.want, out)
+		}
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -639,20 +640,25 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 		return Outcome{Result: "fault", Reason: "missing git edge for a work consumer: start the worker through nova-sprint worker, which gives it one"}
 	}
 	sha, herr := r.sealAndCollect_internal(ctx, job, *rec)
+	// The verdict is the head's (v1's path, tla/Runner.tla Harvest): a new
+	// head is ok here and its done-when tests decide it
+	// (rebaseAndTestStep_internal); the harness's own word, or none, never
+	// does. Only its fault and its refutation stand.
+	byHead := out.Result != "fault" && !card.Refuted(out.Reason)
 	switch {
-	case herr != nil && out.Result == "ok":
+	case herr != nil && byHead:
 		return Outcome{Result: "fault", Reason: "seal fault: " + herr.Error()}
 	case herr != nil:
 		r.report("sealing the tree of "+job.Consumer, herr)
 		return out
 	case sha != "" && sha != job.BaseSHA && sha != job.PriorHead:
 		if perr := r.pushBranch_internal(ctx, rec, sha); perr != nil {
-			if out.Result == "ok" || out.NoVerdict {
+			if byHead {
 				return Outcome{Result: "fault", Head: rec.PushedHead, Reason: "push fault: " + perr.Error()}
 			}
 			return out
 		}
-		if out.NoVerdict {
+		if byHead {
 			return Outcome{Result: "ok", Head: sha}
 		}
 		out.Head = sha
