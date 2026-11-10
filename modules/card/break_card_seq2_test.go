@@ -30,7 +30,7 @@ func TestBreakHeldFault(t *testing.T) {
 		b.no(b.P("p1", Broken{Consumer: c}), "reported fault, Broken needs fail")
 		b.ok(b.P("p1", Faulted{Consumer: c}))
 	})
-	t.Run("a fault that pushed a head continues from it, and the head is not ok again", func(t *testing.T) {
+	t.Run("a fault that pushed a head continues from it, and may finish at it", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
 		c := b.run("p1", "r1", "fault", hA)
@@ -39,10 +39,9 @@ func TestBreakHeldFault(t *testing.T) {
 		c2 := b.start("p1", "r2")
 		assert.Equal(t, hA, b.c(c2).PriorHead)
 		b.take(c2)
-		b.no(b.C(c2, Report{Result: "ok", Head: hA}), "prior head")
 		b.no(b.C(c2, Report{Result: "fault", Head: hA}), "prior head")
 		b.no(b.C(c2, Report{Result: "fail", Head: base}), "is the base")
-		b.report(c2, "ok", hB, "")
+		b.report(c2, "ok", hA, "") // hA was pushed, never finished: real work
 		b.ok(b.P("p1", Finished{Consumer: c2}))
 	})
 	t.Run("through ReportPlan and into a held stream", func(t *testing.T) {
@@ -295,11 +294,11 @@ func TestBreakHeldWithdraw(t *testing.T) {
 		b.take(c)
 		stale := b.c("p1")
 		stale.State = Ready
-		_, r := MoveConsumer(b.c(c), stale, b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s1"}})
+		_, r := MoveConsumer(b.c(c), stale, nil, b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s1"}})
 		has(t, r, "withdrawing live work consumer p1.w1 would leave it working; pass the producer in working, so the withdraw releases it")
-		_, r = MoveConsumer(b.c(c), b.c("p1"), b.w.rows()["r1"], Withdraw{Reason: "x"})
+		_, r = MoveConsumer(b.c(c), b.c("p1"), nil, b.w.rows()["r1"], Withdraw{Reason: "x"})
 		has(t, r, `it needs p1's stream s1, not ""`)
-		_, r = MoveConsumer(b.c(c), b.c("p1"), b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s9"}})
+		_, r = MoveConsumer(b.c(c), b.c("p1"), nil, b.w.rows()["r1"], Withdraw{Reason: "x", Stream: Stream{Name: "s9"}})
 		has(t, r, "it needs p1's stream s1")
 	})
 	t.Run("a hold that arrives between the plan and the apply", func(t *testing.T) {

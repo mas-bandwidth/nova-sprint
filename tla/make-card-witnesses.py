@@ -211,10 +211,11 @@ WITNESSES = [
      [("  /\\ ~\\E k \\in LiveOf(p) : cs[k].kind = \"read\" /\\ cs[k].row = r /\\ cs[k].head = ps[p].head\n",
        "  /\\ TRUE   \\* FAULT: a second live read on one row\n", 1)]),
     ("CardPriorRepeated", "HeadNeverRepeats", "life",
-     "An ok work report may repeat the attempt's prior head: a fix that\n"
-     "pushed nothing new reports ok.",
-     [("ELSE IF res = \"ok\" THEN Heads \\ {cs[c].prior} ELSE",
-       "ELSE IF res = \"ok\" THEN Heads   \\* FAULT: was Heads \\ {prior}\n       ELSE", 1)]),
+     "An ok work report may repeat the attempt's prior head when an\n"
+     "earlier attempt finished at it: a fix that pushed nothing new\n"
+     "reports ok.",
+     [("ELSE IF res = \"ok\" THEN Heads \\ ({cs[c].prior} \\cap FinishedHeads(c[1])) ELSE",
+       "ELSE IF res = \"ok\" THEN Heads   \\* FAULT: was Heads \\ finished prior\n       ELSE", 1)]),
     ("CardWithdrawLeavesWorking", "WithdrawReleasesInOneStep", "life",
      "Withdraw of the working producer's work consumer does not release\n"
      "the producer in the same plan: it stays working with no live\n"
@@ -310,8 +311,8 @@ WITNESSES = [
     ("CardFailRepeatsPrior", "HeadNeverRepeats", "life",
      "A fail report may name the attempt's prior head: the head given is\n"
      "checked for ok only, not for every result (ruling 6).",
-     [("ELSE IF res = \"ok\" THEN Heads \\ {cs[c].prior} ELSE {0} \\cup (Heads \\ {cs[c].prior})",
-       "ELSE IF res = \"ok\" THEN Heads \\ {cs[c].prior} ELSE {0} \\cup Heads   \\* FAULT", 1)]),
+     [("ELSE {0} \\cup (Heads \\ {cs[c].prior})",
+       "ELSE {0} \\cup Heads   \\* FAULT", 1)]),
     ("CardMergeReviewTwice", "ReviewOnEntry", "merge",
      "Merge folds an earlier move's writes twice: Report then Finished in\n"
      "one op raises the review counter by two (ruling 7).",
