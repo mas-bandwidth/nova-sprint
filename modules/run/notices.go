@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -34,6 +35,10 @@ func (n EventNotices) ForEvent(event store.Event, afterView store.Snapshot, reci
 			if after.State == "fail" && exists && (before.State == "ready" || before.State == "working") {
 				out = append(out, withdrawNotice(after))
 			}
+		}
+		if recipient == n.Coordinator && (after.Kind == "work" || after.Kind == "read") && after.State == "fail" && exists &&
+			(before.State == "ready" || before.State == "working") && strings.HasPrefix(after.Reason, card.ReturnedPrefix) {
+			out = append(out, Notice{Subject: "RETURNED", Line: fmt.Sprintf("RETURNED card=%s from=%s: %s", after.ID, after.Holder, clipText(after.Reason, after.ID))})
 		}
 		if recipient == n.Coordinator && after.Kind == "producer" {
 			terminal := after.State == "landed" || after.State == "fail"

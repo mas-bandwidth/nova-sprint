@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -26,14 +27,14 @@ func takeoverWorld(t *testing.T) *world {
 // coordinator's seat from a coordinator absent from the bus (Glenn,
 // 2026-11-10, "Add takeover to up"): the old coordinator unhooked as unhook
 // does it, the caller hooked in as coordinator, both in one logged op
-// whose note is the reason; the old coordinator's cards stay (a row going
-// down never takes its cards back); then the walk goes on, and the new
-// coordinator's verbs work.
+// whose note is the reason, with the old coordinator's hand returned to the
+// queue in it (Glenn, 2026-11-10: a held or down row holds no card); then
+// the walk goes on, and the new coordinator's verbs work.
 func TestUpTakesOverFromACoordinatorWhoIsGone(t *testing.T) {
 	t.Parallel()
 	w := takeoverWorld(t)
 	want(t, w.do("dave", "up", "--take-over", "--reason", "carol's host is down"), 0,
-		"TOOK OVER from carol: carol's host is down", "HOOKED dave role=coordinator", "UP DONE", "coordinator rowan")
+		"TOOK OVER from carol: carol's host is down; its hand returned to the queue, branches and heads kept: p1.w1@1", "HOOKED dave role=coordinator", "UP DONE", "coordinator rowan")
 	s := w.snap(t)
 	if r := s.Rows["carol"]; r.Session != "" || r.Role != "" {
 		t.Fatalf("carol still hooked: %+v", r)
@@ -41,8 +42,8 @@ func TestUpTakesOverFromACoordinatorWhoIsGone(t *testing.T) {
 	if r := s.Rows["dave"]; r.Session != "minted-1" || r.Role != "coordinator" {
 		t.Fatalf("dave %+v", r)
 	}
-	if h := s.Cards["p1.w1"].Holder; h != "carol" {
-		t.Fatalf("carol's card moved to %q; the orphan judgement handles it", h)
+	if c := s.Cards["p1.w1"]; c.State != "fail" || c.Reason != card.ReleasedPrefix+card.Returned("carol", "unhooked by a take-over") {
+		t.Fatalf("carol's card %+v, want returned to the queue", c)
 	}
 	events, err := w.f.Events(context.Background(), 10, 0)
 	if err != nil || len(events) == 0 {

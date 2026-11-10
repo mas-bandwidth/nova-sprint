@@ -365,6 +365,18 @@ func Held(c Card) bool { return c.State == Waiting && HeldReason(c.Reason) }
 // given back (by its row, or by a drop of its producer), not failed.
 const ReleasedPrefix = "released: "
 
+// ReturnedPrefix starts the reason of a consumer returned to the queue
+// because its row went held or down (Glenn, 2026-11-10: "The cards should be
+// redistributed when anybody goes to held or down automatically"): released,
+// so no blame and no result, its branch and head kept.
+const ReturnedPrefix = ReleasedPrefix + "returned from row "
+
+// Returned is the reason, after ReleasedPrefix, of a consumer returned from
+// row because the row is why (held, down, unhooked).
+func Returned(row, why string) string {
+	return strings.TrimPrefix(ReturnedPrefix, ReleasedPrefix) + row + " (" + why + "); dealt again, branch and head kept"
+}
+
 // The levels a producer's priority may take, lowest first; read consumers
 // occupy a rung between high and critical in the deal order (policy's).
 var Levels = []string{"low", "normal", "high", "critical", "blocker"}

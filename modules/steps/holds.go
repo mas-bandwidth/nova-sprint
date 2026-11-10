@@ -1,20 +1,22 @@
 package steps
 
 import (
-	"time"
-
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 // holds is the holds step (LAYER-3 "Holds"): Park for a ready producer of a
 // held stream that the hold's op missed; Withdraw of every ready consumer,
 // releasing its producer to be dealt again in hand (a ready consumer is one
 // dealt before the deal became the take, defect 52: nothing cuts one now);
-// and of a held row's unacknowledged consumers at once and a down row's
-// after the grace (the gone bound): the row never acknowledged them, as the
-// untaken ones these rules were for. A consumer the row acknowledged stays
-// (a hold stops new deals, not work in hand; a silent row's are the limits
-// step's). A hold never touches landing (LANDING step 9).
+// and the whole hand of a row that is held, down or not hooked in, taken
+// and not taken, returned to the queue with its branch and head kept
+// (Glenn, 2026-11-10: "The cards should be redistributed when anybody goes
+// to held or down automatically" ... "Aurora is down, but she still has
+// cards. This is forbidden."). The hold, the Gone and the unhook return
+// the hand in their own op; this is what a hand left on such a row by an
+// op of an older release, or by a race, needs: it goes back on the next
+// tick. A hold never touches landing (LANDING step 9).
 func (t *tick) holds() {
 	for _, p := range t.v.Producers("ready") {
 		if c := t.v.Cards[p]; t.v.Streams[c.Stream].Held && t.free(p) {
@@ -22,32 +24,54 @@ func (t *tick) holds() {
 		}
 	}
 	for _, n := range t.rowNames {
-		r, why := t.v.Rows[n], ""
-		switch {
-		case r.Held:
-			why = "row " + n + " is held; redealt"
-		case r.State == "down" && !t.in.Now.Before(t.downAt(n).Add(seconds(t.tmo.RowSilentGone))):
-			why = "row " + n + " is down; redealt"
-		}
+		why := closed(t.v.Rows[n])
 		for _, id := range t.v.Live(n) {
 			c := t.v.Cards[id]
 			if !t.unclaimed(id) || !t.free(c.Of) {
 				continue
 			}
 			switch {
+			case why != "":
+				t.group("withdraw", id, t.withdraw(id, card.ReleasedPrefix+card.Returned(n, why)))
 			case c.State == "ready":
 				t.group("withdraw", id, t.withdraw(id, "dealt to "+n+" before the deal became the take; dealt again, in hand"))
-			case why != "" && !t.v.Acked(id):
-				t.group("withdraw", id, t.withdraw(id, why))
 			}
 		}
 	}
 }
 
-// downAt is when row r went down: the fold's witness, else the view's start.
-func (t *tick) downAt(r string) time.Time {
-	if d, ok := t.v.Down[r]; ok {
-		return d
+// closed is why row r may hold no card (held, down, unhooked), or "".
+func closed(r store.Row) string {
+	switch {
+	case r.Held:
+		return "held"
+	case r.State != "up":
+		return "down"
+	case !Hooked(r):
+		return "not hooked in"
 	}
-	return t.v.Since
+	return ""
+}
+
+// handMoves is the Withdraw of every live consumer of row n that no earlier
+// step of the tick claimed, each released (no blame, no result) with the
+// reason that the row is why, its branch and pushed head kept, then e's
+// move of row n: the row's hold or Gone with its hand returned, in one op.
+// A consumer this op does not return goes back by holds on the next tick:
+// one a step claimed, one the card machine refuses to withdraw (holds'
+// own group names the refusal as an engine judgement; the row still
+// closes), and one dealt between the read this op was planned on and its
+// commit (a deal writes no row, so no fence of the close sees it).
+func (t *tick) handMoves(n, why string, e card.Event) []move {
+	var moves []move
+	for _, id := range t.v.Live(n) {
+		if !t.unclaimed(id) || !t.free(t.v.Cards[id].Of) {
+			continue
+		}
+		m := t.withdraw(id, card.ReleasedPrefix+card.Returned(n, why))
+		if _, r := m.plan(); r == nil {
+			moves = append(moves, m)
+		}
+	}
+	return append(moves, t.rowMove(n, e))
 }

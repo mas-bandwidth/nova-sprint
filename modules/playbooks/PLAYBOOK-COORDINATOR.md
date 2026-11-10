@@ -34,7 +34,7 @@ print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answe
    not do any of that by hand: a second writer skips the checks the verb runs and leaves no
    record in the log.
 4. You are told by push. From the moment you hook in to the sprint, every judgement, landing,
-   stall, hold and orphan, and every deal and read ask for your own row, reaches you as one bus
+   stall, hold and returned card, and every deal and read ask for your own row, reaches you as one bus
    message carrying the command that answers it. Before you hook in, nothing reaches you.
 5. Push, not pull. `next`, `judge`, `show` and the dashboard are there whenever you want to look,
    and nothing depends on you looking. You never poll, never sleep and check, and never keep a
@@ -158,8 +158,6 @@ What each judgement kind asks of you, and where to look before you choose:
 - `stall`: nothing landed within the bound while producers wait; the message names the cause
   per stream. `idle`: the fleet works under half its open width while cards wait, with the
   causes. `land-rate`: a stream or model lands under target on the first try (section 6).
-- `orphan`: a working card's holder is gone from the bus past the silence; choose `release` or
-  `wait` after you have tried to reach the row (section 7).
 - `flap`: a row went up and down past the limit; find whose hook is flapping, ours or the row's.
 - `brief`: the same finding came back twice; the brief is wrong (section 4).
 - `policy` or `engine`: a policy version failed (its fallback is already in force), or a planned
@@ -212,7 +210,8 @@ named it:
 3. Run `nova-sprint show <producer>` and read what it waits on:
    - `waiting`: each need's own state, the stream's hold, or the card's hold; follow the chain to the card or hold at its end.
    - `working`: the work card's holder. Ask it on the bus, as in section 3, step 1; if it is
-     absent from `nova-bus who`, the `orphan` judgement comes at the silence bound.
+     absent from `nova-bus who`, the run marks it down at the silence bound and its hand goes
+     back to the queue (section 7, item 4).
    - `review` with read cards live: their holders, as for working. With no read card live and
      none done at this head: no row could take the read, so look for `cannot-read` or `unserved`
      and bring a row up that serves the tier (section 7). With every read done, the verdict is
@@ -386,15 +385,17 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 3. Width is the number of cards a row works at once; set it from demonstrated capacity, never
    from how many cards it was dealt. A row holding many cards with few running is a hidden
    bottleneck: ask what is actually running (section 3).
-4. A row going down does not take its cards back. Its cards stay until the silence policy states,
-   then an `orphan` judgement asks you. Before you answer, reach the row on the bus; release only
-   when it is gone. A row that has left for good:
-   for each card the `orphan` judgement names, `nova-sprint release <card>@<gen> --reason "<why>"`
-   prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
+4. A held or down row holds no card. Whatever makes a row held or down (`hold`, `unhook`, a
+   worker's restart, the run marking a silent row down) returns its whole hand to the queue in
+   the same op: taken and untaken cards, each released with no blame, its branch and pushed
+   head kept, and dealt again to another row. You get one `RETURNED card=<id> from=<row>: ...`
+   line per card. A hand still on such a row (left by an older release) goes back on the run's
+   next tick. To give back one card of a row that is up, `nova-sprint release <card>@<gen>
+   --reason "<why>"` prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
-   prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and takes back only the cards it
-   has not acknowledged; work the row has acknowledged stays, and a hold never stops landing.
+   prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and returns its whole
+   hand to the queue (item 4); a hold never stops landing.
    `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
    To hold one card (a wrong brief, a question for the human), name the producer:
    `nova-sprint hold <card> --reason "<why>"`. The card goes to `waiting` with the reason
@@ -415,8 +416,7 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `nova-sprint up --as <you> --take-over --reason "<why>"`. It refuses while that coordinator is
    on the bus (ask them to `unhook`). Otherwise, in one logged op, it clears their hook as
    `unhook` does, hooks you in as coordinator, and goes on with `up`'s steps; then run section
-   1's session start from step 3. Their cards stay where they are (item 4): the `orphan`
-   judgement brings them to you.
+   1's session start from step 3. Their hand goes back to the queue in the same op (item 4).
 
 ## 8. Policy
 

@@ -103,13 +103,15 @@ folded after every apply; a snapshot per tick is a defect (LAYER-1).
 ### Holds
 
 - Plans: `Park` for a ready producer of a held stream that the hold's op
-  missed; `Withdraw` of a held row's unacknowledged consumers at once and a
-  down row's after the grace, releasing their producers to be dealt
-  elsewhere; acknowledged consumers stay (a hold stops new deals, not work
-  in hand); `Withdraw` of any consumer still `ready` (dealt before the deal
-  became the take), dealt again in hand. A hold never touches landing
-  (LANDING step 9).
-- Policy: `regrace(row)`: 0 held, 10 minutes down (unmeasured).
+  missed; `Withdraw` of every live consumer of a row that is held, down or
+  not hooked in, acknowledged or not, each released with the row's reason,
+  branch and head kept, its producer dealt elsewhere (Glenn, 2026-11-10: a
+  held or down row holds no card; the hold, the Gone and the unhook return
+  the hand in their own op, and this catches a hand an older op left);
+  `Withdraw` of any consumer still `ready` (dealt before the deal became
+  the take), dealt again in hand. A hold never touches landing (LANDING
+  step 9). Model: Steps.tla `ReturnHand`, `HandEmptyWhenClosed`.
+- Policy: none (no grace: the Gone itself waits row_silent_gone).
 
 ### Preemption
 
