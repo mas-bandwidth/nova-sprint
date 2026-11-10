@@ -531,7 +531,7 @@ An estimate from the interfaces and v1's runner, lines of Go without tests:
   - No host refusal: nova-config's bench role is the only word on where a worker runs, the coordinator's machine included (2026-11-07; `CheckHost` and `--coordinator-hosts` are gone, below). `--as <row>` is the one mandatory flag.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`; `ScriptHarness` in the tests only) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `--harness` defaults to `claude`. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
   - Loopback API key proxy (`KeyProxy` in `modules/edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses per job (`RecordStatus` / `ConsumeStatus`, keyed by the job the request's placeholder names), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only its job's placeholder `nova-proxy-placeholder-<consumer>` (`ProxyKey`; opencode: as each provider's `apiKey` in `OPENCODE_CONFIG_CONTENT`) (`Guarantee 12`).
-  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which runs each `DoneWhen` line as the argv `edge.ParseGate` gives (the one parser admission uses too; a line with shell syntax outside quotes is an error and is never run)) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_CONTENT` only when it is exactly an `OpenCodeConfig` (one `@ai-sdk/openai-compatible` provider per routed provider name, `baseURL` that provider's route on one loopback proxy, `apiKey` a placeholder (`ProxyKey`), models `{}`), plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
+  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which runs each `DoneWhen` line as the argv `edge.ParseGate` gives (the one parser admission uses too; a line with shell syntax outside quotes is an error and is never run)) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_CONTENT` only when it is exactly an `OpenCodeConfig` (one `@ai-sdk/openai-compatible` provider per routed provider name, `baseURL` that provider's route on one loopback proxy, `apiKey` a placeholder (`ProxyKey`), models `{}`), plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
   - 9-step runner lifecycle (`ServeRow`, `StepRow`, `ProbeRow` in `modules/edge/worker/runner.go`, recovery in `recover.go`):
     * `store.ConsumerOpID(kind, epoch, consumer, gen)` is the one op id of a take or report, derived by the verb; a report the store refused is retried under the next link of that id's chain (`store.ConsumerRetryID`), and the worker checks its report's receipt against the id or a link of its chain (`store.IsConsumerOp`).
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
@@ -869,15 +869,14 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   worker <row>: ...` with the unit's last log line). Test:
   `TestProbeRefusalRunsNoJudgementVerb`.
 - **Each adapter's wall (32, intent rule 31).** `Harness.Needs()` declares
-  `Unix`, `Proxy`/`NetOpen`, `Writes`, `ListModels`, `LogDir`, `Provider`,
+  `Proxy`/`NetOpen`, `Writes`, `ListModels`, `LogDir`, `Provider`,
   `Model` and `Limits`; `BuildWallArgv(cfg, job, env, argv)` honours
   `job.Needs` and passes every environment name but PATH, HOME, LANG and TERM
   with `--env` (nova-sandbox drops the rest otherwise; read from its help, not
-  measured). opencode: `--unix` (its server's AF_UNIX socket; measured on a
-  bench) and the proxy's port; the same-uid escape trade is in its comment.
-  claude and codex: network open (each reaches its own provider with its own
-  login), their config directory a `--write`; whether they need `--unix` is
-  not measured. A probe that exits non-zero in its first second with an empty
+  measured). No adapter gets `--unix`. opencode: the proxy's port (1.18.20
+  runs strict on Linux, measured on amd-3, 2026-11-10). claude and codex:
+  network open (each reaches its own provider with its own login), their
+  config directory a `--write`. A probe that exits non-zero in its first second with an empty
   log directory (or, with none declared, no output but the WALL line) says
   "the harness died inside the wall before writing a log; nova-sandbox show
   <flags> -- <harness>".
@@ -888,9 +887,8 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   `OPENCODE_CONFIG_CONTENT` (read by opencode 1.18 and 2.2), the job's model
   for a run and every routed tier candidate for the probe's `opencode models`.
   Still said in `Limits`: opencode 2.x needs `--standalone`, which 1.x refuses
-  and the adapter does not pass (run 1.x); the write tool's death inside the
-  wall (33) was seen before `--unix` and not since on macOS, unmeasured on
-  Linux.
+  and the adapter does not pass (run 1.x); the write tool works inside the
+  strict wall (33; amd-3, 2026-11-10).
 - **Sprint verbs (35).** Run directly (`<sprint-bin> <verb> ...`), inheriting
   the worker's environment, which the seat's exec filled; `--secrets-bin` is
   gone.
