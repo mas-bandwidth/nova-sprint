@@ -17,7 +17,7 @@ import (
 
 // runAdd is `add`: producers from brief files (each card's id its file's
 // name without .md), or one sentinel over --needs, into a stream, in one op
-// fenced at the snapshot's seq.
+// fenced on the cards it puts.
 func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	adds, err := readAdds(in, snap)
 	if err != nil {
@@ -50,8 +50,14 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
 	}
 	// The admission reads the stream's repository for seconds while a running
-	// sprint's ticks move the store: the op is planned and fenced on a
-	// snapshot read after it.
+	// sprint's ticks move the store: the op is planned on a snapshot read
+	// after it and fenced on the cards it puts, as a person's moves are fenced
+	// on their records, never on the store's seq, which a busy sprint moves
+	// every second
+	// (2026-11-10: every add refused "the store is at seq N"). Each new id is
+	// fenced absent; the store refuses a need or after that is not a card of
+	// the epoch, and an op of another epoch; a kind never changes, and no card
+	// can need an id not yet put, so no write between can make a cycle.
 	if snap, err = e.snapshot(ctx); err != nil {
 		return "", err
 	}
@@ -59,7 +65,7 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 		return "", err
 	}
 	op := e.newOp("add", in.actor, snap, adds)
-	op.Expect, op.Writes = append(plan.Expect, store.AtSeq{Seq: snap.Seq}), plan.Writes
+	op.Expect, op.Writes = plan.Expect, plan.Writes
 	r, err := e.commit(ctx, op, "nova-sprint queue --stream "+in.str("stream"))
 	if err != nil {
 		return "", err
