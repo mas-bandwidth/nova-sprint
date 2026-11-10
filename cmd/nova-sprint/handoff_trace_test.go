@@ -23,7 +23,7 @@ type handoffTraceFixture struct {
 	t            *testing.T
 	path         string
 	role         string
-	ready        [9]bool
+	ready        [verbs.SetupSteps + 1]bool
 	held         bool
 	records      []string
 	boot         bool
@@ -55,9 +55,9 @@ func (f *handoffTraceFixture) Verify(_ context.Context, n int, _ verbs.SetupInpu
 }
 func (f *handoffTraceFixture) Act(_ context.Context, n int, _ verbs.SetupInput) error {
 	f.ready[n] = true
-	if n == 2 && f.role == "admin" {
+	if n == verbs.StepStore && f.role == "admin" {
 		if !f.held {
-			return fmt.Errorf("step 2 without lease")
+			return fmt.Errorf("store step without lease")
 		}
 		f.add("PreparedRole", `, credential |-> TRUE, schema |-> TRUE, lease |-> "ours"`)
 	}
@@ -89,7 +89,7 @@ func (f *handoffTraceFixture) Check(context.Context) error {
 }
 func (f *handoffTraceFixture) Close() error { f.held = false; return nil }
 func (f *handoffTraceFixture) PrepareHandoff(ctx context.Context, in verbs.SetupInput) (string, bool, error) {
-	if !f.held || !f.ready[2] {
+	if !f.held || !f.ready[verbs.StepStore] {
 		return "", false, fmt.Errorf("prerequisites absent")
 	}
 	st, err := openFileStore(f.path)
@@ -176,7 +176,7 @@ func TestHandoffTraceChild(t *testing.T) {
 			t.Fatal("wrong sprint environment")
 		}
 		f.role = "sprint"
-		for i := 2; i <= 8; i++ {
+		for i := 2; i <= verbs.SetupSteps; i++ {
 			f.ready[i] = true
 		}
 		id := ""

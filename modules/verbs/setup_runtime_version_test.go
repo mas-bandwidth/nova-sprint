@@ -124,14 +124,14 @@ func TestVersionAdoptionRunsWithStoreStep(t *testing.T) {
 	adopt := &adoptionStub{}
 	r := RuntimeSetup{Store: store, Adoption: adopt}
 	in := SetupInput{Version: "v2.0.0"}
-	check, err := r.Verify(ctx, 2, in)
+	check, err := r.Verify(ctx, StepStore, in)
 	if err != nil || !check.Action {
 		t.Fatal(check, err)
 	}
-	if err = r.Act(ctx, 2, in); err != nil {
+	if err = r.Act(ctx, StepStore, in); err != nil {
 		t.Fatal(err)
 	}
-	check, err = r.Verify(ctx, 2, in)
+	check, err = r.Verify(ctx, StepStore, in)
 	if err != nil || !check.Verified || adopt.applied != 1 || store.actions != 0 {
 		t.Fatal(check, err, adopt.applied, store.actions)
 	}

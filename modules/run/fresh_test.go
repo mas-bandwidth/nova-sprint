@@ -37,7 +37,7 @@ func benchCatalog() policy.Catalog {
 }
 
 // A fresh store is stopped, never started, and a run that comes up on it
-// (up starts the run service at step 4, before the walk is done) ticks
+// (up starts the run service at step 6, before the walk is done) ticks
 // nothing: no card moves, no question to policy, no push. The first start
 // lets the next tick deal (Run.tla NeverStartedMovesNothing). A hooked
 // row's presence is not a move: it comes up while stopped
@@ -94,7 +94,7 @@ func cardsMoved(t *testing.T, f *store.Fake, seq int64) int {
 	return n
 }
 
-// up waits at steps 7-8 for every worker bench hooked and up in the store,
+// up waits at steps 9-10 for every worker bench hooked and up in the store,
 // on a fresh store that is stopped until the coordinator starts it after
 // up: a row present on the bus comes up while stopped (presence deals
 // nothing), and nothing else moves.

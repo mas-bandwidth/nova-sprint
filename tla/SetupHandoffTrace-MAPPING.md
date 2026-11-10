@@ -43,7 +43,12 @@ runUpChild and the real private-FD status handling. It persists and validates
 continuations with the actual helpers and a file-backed fake store. Lease,
 credential/schema readiness, secret command and ready-step dependencies are
 injected. The phase1 under-lock step1 probe is an unrepresented stuttering action
-in this protocol model; detailed walk order belongs to SetupTrace. Launch2 is
+in this protocol model; detailed walk order belongs to SetupTrace. So are the
+two play steps (runner-packages, netwatch) phase1 walks before the store step:
+they are fleet effects outside the sprint's credential, schema and record (the
+plays run under nova-fleet's own secrets, with the admin credential filtered
+from their environment), idempotent, and verified again in phase2; the fixture
+records nothing for them. Launch2 is
 recorded retrospectively from the actual runUpChild invocation, placed before
 its child's captured events. The stale case performs actual store.Clear between
 children; the actual prevalidation refusal is checked to precede bootstrap,

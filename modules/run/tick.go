@@ -265,7 +265,7 @@ type Observed struct {
 // (drift row 4; Run.tla NoTickAfterObservedStop): the results that arrive
 // wait in the inbox for the start. Only raiseSeen runs while stopped: a
 // row's presence moves no card (Store.tla: an op not fenced on Running
-// lands while stopped), and up's steps 7-8 wait on a fresh, never-started
+// lands while stopped), and up's steps 9-10 wait on a fresh, never-started
 // store for the hooked rows to come up.
 func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, error) {
 	t.counts = TickCounts{}
