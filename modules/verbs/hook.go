@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -96,9 +98,8 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 // up"): name takes the coordinator's seat from a coordinator who is gone
 // from the bus, the one way to move it when that coordinator cannot run
 // unhook. In one op, logged under kind take-over with the reason as its
-// note: the old coordinator's hook cleared as unhook clears it (its cards
-// stay: a row going down never takes its cards back; the orphan judgement
-// handles them) and name hooked in as coordinator. A coordinator present on
+// note: the old coordinator's hook cleared as unhook clears it, its hand
+// returned to the queue in the same op, and name hooked in as coordinator. A coordinator present on
 // the bus (the same presence as nova-bus who and the run loop read) is never
 // displaced; with no coordinator at all, this is the plain hook.
 func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason string) (string, error) {
@@ -126,10 +127,14 @@ func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason
 	if err != nil {
 		return "", err
 	}
+	hand, _, err := handBack(snap, old, "unhooked by a take-over")
+	if err != nil {
+		return "", err
+	}
 	op := e.newOp("take-over", name, snap, old, session, reason)
 	op.Note = "took over from " + old + ": " + oneLine(reason)
-	op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}} // one coordinator: no other hook may land between the read and this op
-	op.Writes = []store.Write{store.PutRow{Name: old}, store.PutRow{Name: name, Session: session, Role: "coordinator"}}
+	op.Expect = append([]store.Expect{store.AtSeq{Seq: snap.Seq}}, hand.Expect...) // one coordinator: no other hook may land between the read and this op
+	op.Writes = append([]store.Write{store.PutRow{Name: old}, store.PutRow{Name: name, Session: session, Role: "coordinator"}}, hand.Writes...)
 	if _, err := e.commit(ctx, op, takeOverCommand(name)+" again"); err != nil {
 		return "", err
 	}
@@ -159,23 +164,47 @@ func (e *Engine) newSession() (string, error) {
 
 // runUnhook is `unhook`: one's own hook needs the name on the bus (a
 // worker's restart starts with it); another row's is the coordinator's.
+// It reads the row's hand, never every card (a far bench pays for every
+// byte), then each card's producer and siblings, as the withdraw reads them.
 func runUnhook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	target := in.arg(0)
 	if target == "" || target == in.actor {
 		if err := e.onBus(ctx, in.actor); err != nil {
 			return "", err
 		}
-		snap, err := e.read(ctx, store.Scope{})
+		snap, err := e.read(ctx, store.Scope{Holder: in.actor})
+		if err == nil {
+			snap, err = e.handSnap(ctx, snap, in.actor)
+		}
 		if err != nil {
 			return "", err
 		}
 		return e.unhook(ctx, snap, in.actor, in.actor)
 	}
-	snap, err := e.hooked(ctx, in, roleCoordinator, store.Scope{})
+	snap, err := e.hooked(ctx, in, roleCoordinator, store.Scope{Holder: target})
+	if err == nil {
+		snap, err = e.handSnap(ctx, snap, target)
+	}
 	if err != nil {
 		return "", err
 	}
 	return e.unhook(ctx, snap, target, in.actor)
+}
+
+// handSnap is snap read again with row's hand and each card's producer and
+// siblings; snap itself when the hand is empty.
+func (e *Engine) handSnap(ctx context.Context, snap store.Snapshot, row string) (store.Snapshot, error) {
+	var ids []string
+	for id, c := range snap.Cards {
+		if c.Holder == row && live(c) {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return snap, nil
+	}
+	slices.Sort(ids)
+	return e.read(ctx, store.Scope{IDs: ids, Holder: row})
 }
 
 func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor string) (string, error) {
@@ -185,13 +214,36 @@ func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor 
 	if snap.Rows[target].Session == "" {
 		return "", refuse(target+" is not hooked in", "nova-sprint show "+target)
 	}
+	hand, line, err := handBack(snap, target, "unhooked")
+	if err != nil {
+		return "", err
+	}
 	op := e.newOp("unhook", actor, snap, target)
-	op.Expect = []store.Expect{store.RowGen{Row: target, Gen: snap.Rows[target].Gen}}
-	op.Writes = []store.Write{store.PutRow{Name: target}}
+	op.Expect = append([]store.Expect{store.RowGen{Row: target, Gen: snap.Rows[target].Gen}}, hand.Expect...)
+	op.Writes = append([]store.Write{store.PutRow{Name: target}}, hand.Writes...)
 	if _, err := e.commit(ctx, op, "nova-sprint show "+target); err != nil {
 		return "", err
 	}
-	return done("nova-sprint hook --as "+target+" --role worker", "UNHOOKED "+target), nil
+	return done("nova-sprint hook --as "+target+" --role worker", "UNHOOKED "+target+line), nil
+}
+
+// handBack is the plan returning row's whole hand to the queue, each card
+// released with its branch and head kept, for the op that unhooks the row
+// (Glenn, 2026-11-10: "The cards should be redistributed when anybody goes
+// to held or down automatically"), and the receipt's words for it; empty
+// for an empty hand.
+func handBack(snap store.Snapshot, row, why string) (card.Plan, string, error) {
+	var hand []store.Card
+	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
+		if c := snap.Cards[id]; c.Holder == row && live(c) {
+			hand = append(hand, c)
+		}
+	}
+	if len(hand) == 0 {
+		return card.Plan{}, "", nil
+	}
+	plan, err := withdraw(snap, hand, card.Returned(row, why))
+	return plan, fmt.Sprintf("; its hand returned to the queue, branches and heads kept: %s", idList(hand)), err
 }
 
 // runWake is `wake`, nova-bus hook's --exec (Stella's and Johnny's ask,

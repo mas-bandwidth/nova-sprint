@@ -27,7 +27,7 @@ INVARIANTS = [
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
     "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
-    "LapsedReleased",
+    "LapsedReleased", "HandEmptyWhenClosed",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -270,6 +270,12 @@ WITNESSES = [
      "(item 2, 2026-11-08: 15 untaken, 14 off the bus, 8 past the deadline).",
      [("       IN IF L # {} /\\ Free(p, cl)\n",
        "       IN IF FALSE   \\* FAULT: was L # {} /\\ Free(p, cl)\n", 1)]),
+    ("StepsHandKept", "HandEmptyWhenClosed", "deal",
+     "A row's Gone leaves its hand in place, as before 2026-11-10: a\n"
+     "closed row holds cards nobody works (aurora, unhooked and held,\n"
+     "with 15 cards).",
+     [("                                      THEN ReturnHand([w EXCEPT !.up[r] = FALSE, !.rg[r] = @ + 1], r)",
+       "                                      THEN [w EXCEPT !.up[r] = FALSE, !.rg[r] = @ + 1]   \\* FAULT: was ReturnHand", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"

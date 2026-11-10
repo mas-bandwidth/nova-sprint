@@ -396,6 +396,8 @@ func (w *traceWalk) unhold(stream string) {
 	}
 }
 
+// flip is the row's Gone, with its hand returned in the same op (the
+// model's ReturnHand), or its Seen.
 func (w *traceWalk) flip(row string) {
 	r := w.cardRow(w.snap().Rows[row])
 	var e card.Event = card.Gone{}
@@ -403,8 +405,8 @@ func (w *traceWalk) flip(row string) {
 	if r.State == "down" {
 		e, action = card.Seen{}, "Seen"
 	}
-	pl, ref := card.MoveRow(r, e)
-	if ref == nil && w.apply("row", pl.Expect, pl.Writes...).Accepted {
+	op, ref := Verb(Build(w.snap(), w.now), Inputs{Now: w.now}, Request{Actor: Actor, Row: row, Event: e})
+	if ref == nil && w.apply("row", op.Expect, op.Writes...).Accepted {
 		w.ok()
 		w.moved(action, nil)
 	}

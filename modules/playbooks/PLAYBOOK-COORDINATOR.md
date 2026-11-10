@@ -378,15 +378,17 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 3. Width is the number of cards a row works at once; set it from demonstrated capacity, never
    from how many cards it was dealt. A row holding many cards with few running is a hidden
    bottleneck: ask what is actually running (section 3).
-4. A row going down does not take its cards back. Its cards stay until the silence policy states,
-   then an `orphan` judgement asks you. Before you answer, reach the row on the bus; release only
-   when it is gone. A row that has left for good:
-   for each card the `orphan` judgement names, `nova-sprint release <card>@<gen> --reason "<why>"`
-   prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
+4. A held or down row holds no card. Whatever makes a row held or down (`hold`, `unhook`, a
+   worker's restart, the run marking a silent row down) returns its whole hand to the queue in
+   the same op: taken and untaken cards, each released with no blame, its branch and pushed
+   head kept, and dealt again to another row. You get one `RETURNED card=<id> from=<row>: ...`
+   line per card. A hand still on such a row (left by an older release) goes back on the run's
+   next tick. To give back one card of a row that is up, `nova-sprint release <card>@<gen>
+   --reason "<why>"` prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
-   prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and takes back only the cards it
-   has not acknowledged; work the row has acknowledged stays, and a hold never stops landing.
+   prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and returns its whole
+   hand to the queue (item 4); a hold never stops landing.
    `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
    To hold one card (a wrong brief, a question for the human), name the producer:
    `nova-sprint hold <card> --reason "<why>"`. The card goes to `waiting` with the reason
@@ -407,8 +409,7 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `nova-sprint up --as <you> --take-over --reason "<why>"`. It refuses while that coordinator is
    on the bus (ask them to `unhook`). Otherwise, in one logged op, it clears their hook as
    `unhook` does, hooks you in as coordinator, and goes on with `up`'s steps; then run section
-   1's session start from step 3. Their cards stay where they are (item 4): the `orphan`
-   judgement brings them to you.
+   1's session start from step 3. Their hand goes back to the queue in the same op (item 4).
 
 ## 8. Policy
 
