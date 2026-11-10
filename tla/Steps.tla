@@ -420,6 +420,18 @@ ApplyG(W, g) ==
                                        !.cs[g.c].st = "fail", !.tko = Drop(@, g.c)]
     [] OTHER              -> W
 
+\* A row's whole hand returned to the queue (Glenn, 2026-11-10: "The cards
+\* should be redistributed when anybody goes to held or down
+\* automatically"): every live consumer on r withdrawn as a release does
+\* it, each producer it was working for back to the queue. The op that
+\* closes the row (its Gone, its hold, its unhook) writes this with it.
+ReturnHand(W, r) ==
+  LET H == Load(W, r)
+  IN [W EXCEPT !.ps  = [p \in Prods |-> IF \E c \in H : c[1] = p /\ Releases(W, c)
+                                       THEN [W.ps[p] EXCEPT !.st = BackOf(W, p)] ELSE W.ps[p]],
+               !.cs  = [c \in CIds |-> IF c \in H THEN [W.cs[c] EXCEPT !.st = "fail"] ELSE W.cs[c]],
+               !.tko = SelectSeq(W.tko, LAMBDA c : c \notin H)]
+
 -----------------------------------------------------------------------------
 (* The steps, each a function of the view V, the cards claimed by earlier *)
 (* steps (cl) and the oracle's answers. A card claimed by an earlier step *)
@@ -961,7 +973,9 @@ EnvMove ==
                                                          THEN [w.ps[p] EXCEPT !.st = "waiting"]
                                                          ELSE w.ps[p]]]
            \/ \E s \in UnholdsOf : w.sh[s] /\ w' = [w EXCEPT !.sh[s] = FALSE]
-           \/ \E r \in FlipsOf : w' = [w EXCEPT !.up[r] = ~w.up[r], !.rg[r] = @ + 1]
+           \/ \E r \in FlipsOf : w' = IF w.up[r]   \* Gone returns the hand in its op; Seen opens the row
+                                      THEN ReturnHand([w EXCEPT !.up[r] = FALSE, !.rg[r] = @ + 1], r)
+                                      ELSE [w EXCEPT !.up[r] = TRUE, !.rg[r] = @ + 1]
            \/ PolFlips /\ w' = [w EXCEPT !.pol = ~w.pol]
            \/ \E p \in HandLandsOf : HandLandOK(p) /\ w' = [w EXCEPT !.ps[p].st = "landed"]
      \/ \E r \in BusFlipsOf : bus' = [bus EXCEPT ![r] = ~@] /\ w' = w /\ admitted' = admitted /\ lapsed' = lapsed
@@ -1088,6 +1102,18 @@ DealtWithinKTicks == \A p \in Prods : rdy[p] >= UndealtTicks => p \in ju
 (* consumer removed and every row down.                                   *)
 Unloaded(W) == [W EXCEPT !.cs = [c \in CIds |-> NoCons], !.tko = <<>>, !.up = [r \in Rows |-> FALSE]]
 ReadyNeverFlipsWithLoad == \A p \in Prods : ResolveOK(w, p) = ResolveOK(Unloaded(w), p)
+
+(* A closed row holds no card (Glenn, 2026-11-10: "Aurora is down, but she *)
+(* still has cards. This is forbidden."): a row that is not up has an     *)
+(* empty hand. up stands for open: the code's held and unhooked rows are  *)
+(* closed by one row write as Gone is, which returns the hand in its op   *)
+(* (ReturnHand), and a deal planned on a view from before is refused by   *)
+(* the row's generation (Fence). Not modelled: the code's close is        *)
+(* planned on a read, so a card dealt between that read and its commit,   *)
+(* or claimed by another step of the closing tick, stays on the closed    *)
+(* row until the holds step returns it on the next tick (a deal writes no *)
+(* row, so no fence of the close sees it); here the close is atomic.      *)
+HandEmptyWhenClosed == \A r \in Rows : ~w.up[r] => Load(w, r) = {}
 
 (* Escalation is row choice, never a tier write: every live consumer is  *)
 (* on a row that serves its card's tier.                                  *)

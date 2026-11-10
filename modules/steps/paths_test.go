@@ -141,37 +141,96 @@ func TestTickHolds(t *testing.T) {
 	s.requireState("p1", "landed")
 }
 
-// TestTickRowHoldAndDown: a held row's unacknowledged consumers are
-// withdrawn at once, a down row's after the grace; acknowledged ones stay.
+// TestTickRowHoldAndDown: a hand left on a row that is held, down or not
+// hooked in (an op of an older release closed the row and left its cards,
+// live 2026-11-10: aurora unhooked and held with 15 cards) goes back to the
+// queue on the next tick, taken and untaken alike, each released with the
+// row's reason, no grace (Glenn, 2026-11-10: "Aurora is down, but she still
+// has cards. This is forbidden.").
 func TestTickRowHoldAndDown(t *testing.T) {
 	t.Parallel()
-	s := newSim(t)
-	s.stream("s1")
-	s.row("r1", 2, "pro")
-	s.producer("p1", "s1", "pro", "a/x")
-	s.producer("p2", "s1", "pro", "a/y")
-	s.run(2)
-	s.take("p1.w1")
-	s.requireState("p2.w1", "working")
-	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Hold{Reason: "rest"}))
-	s.tick()
-	require.Empty(t, s.rejected)
-	s.requireState("p1.w1", "working")
-	s.requireState("p2.w1", "fail")
-	s.requireState("p2", "ready")
-	assert.Equal(t, "row r1 is held; redealt", s.card("p2.w1").Reason)
-	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Unhold{Reason: "back"}))
-	s.run(1)
-	s.requireState("p2.w2", "working")
-	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Gone{}))
-	s.tick()
-	s.requireState("p2.w2", "working")
-	s.now = s.now.Add(seconds(Engine.Timeouts.RowSilentGone))
-	s.tick()
-	require.Empty(t, s.rejected)
-	s.requireState("p2.w2", "fail")
-	s.requireState("p1.w1", "working")
-	assert.Equal(t, "row r1 is down; redealt", s.card("p2.w2").Reason)
+	for _, tc := range []struct {
+		name, why string
+		close     func(s *sim)
+	}{
+		{"held", "held", func(s *sim) { s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Hold{Reason: "rest"})) }},
+		{"down", "down", func(s *sim) { s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Gone{})) }},
+		{"unhooked", "not hooked in", func(s *sim) { s.must("unhook", store.PutRow{Name: "r1"}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newSim(t)
+			s.stream("s1")
+			s.row("r1", 2, "pro")
+			s.producer("p1", "s1", "pro", "a/x")
+			s.producer("p2", "s1", "pro", "a/y")
+			s.run(2)
+			s.take("p1.w1")
+			s.requireState("p2.w1", "working")
+			tc.close(s)
+			s.requireState("p1.w1", "working") // the hand the old op left
+			s.tick()
+			require.Empty(t, s.rejected)
+			for _, id := range []string{"p1.w1", "p2.w1"} {
+				s.requireState(id, "fail")
+				assert.Equal(t, card.ReleasedPrefix+card.Returned("r1", tc.why), s.card(id).Reason, id)
+				assert.Empty(t, s.card(id).Result, "released, no blame: %s", id)
+			}
+			s.requireState("p1", "ready")
+			s.requireState("p2", "ready")
+		})
+	}
+}
+
+// TestRowHoldAndGoneReturnTheHandInTheirOp: the coordinator's hold of a row
+// and the tick's Gone of a silent one return its whole hand as they read it,
+// taken and untaken, in the same op that closes the row (a card dealt after
+// that read goes back on the next tick: TestTickRowHoldAndDown).
+func TestRowHoldAndGoneReturnTheHandInTheirOp(t *testing.T) {
+	t.Parallel()
+	setup := func(t *testing.T) *sim {
+		s := newSim(t)
+		s.stream("s1")
+		s.row("r1", 2, "pro")
+		s.producer("p1", "s1", "pro", "a/x")
+		s.producer("p2", "s1", "pro", "a/y")
+		s.run(2)
+		s.take("p1.w1")
+		s.requireState("p2.w1", "working")
+		return s
+	}
+	t.Run("hold", func(t *testing.T) {
+		t.Parallel()
+		s := setup(t)
+		rc, ref := s.verb(Request{Actor: "rowan", Coordinators: []string{"rowan"}, Row: "r1", Event: card.Hold{Reason: "rest"}})
+		require.Nil(t, ref)
+		require.True(t, rc.Accepted, rc.Reason)
+		assert.True(t, s.snap().Rows["r1"].Held)
+		for _, id := range []string{"p1.w1", "p2.w1"} {
+			s.requireState(id, "fail")
+			assert.Equal(t, card.ReleasedPrefix+card.Returned("r1", "held"), s.card(id).Reason, id)
+		}
+		s.requireState("p1", "ready")
+		s.requireState("p2", "ready")
+	})
+	t.Run("gone", func(t *testing.T) {
+		t.Parallel()
+		s := setup(t)
+		s.fold()
+		in := s.inputs()
+		in.Seen["r1"] = in.Now.Add(-seconds(Engine.Timeouts.RowSilentGone))
+		plan := Tick(s.v, in, benchAsk{})
+		plan.Ops = tickOnly(plan.Ops)
+		require.Len(t, plan.Ops, 1)
+		rc, err := s.f.Apply(t.Context(), plan.Ops[0])
+		require.NoError(t, err)
+		require.True(t, rc.Accepted, rc.Reason)
+		assert.Equal(t, "down", s.snap().Rows["r1"].State)
+		for _, id := range []string{"p1.w1", "p2.w1"} {
+			s.requireState(id, "fail")
+			assert.Equal(t, card.ReleasedPrefix+card.Returned("r1", "down"), s.card(id).Reason, id)
+		}
+	})
 }
 
 // TestTickHoldAtLimit: a producer at the bounce limit is held (waiting with
@@ -379,7 +438,11 @@ func TestTickSilentRow(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, rc.Accepted, rc.Reason)
 	assert.Equal(t, "down", s.snap().Rows["r1"].State)
-	s.requireState("p1.w1", "working")
+	s.requireState("p1.w1", "fail") // its hand goes back with the Gone
+	s.requireState("p1", "ready")
+	s.must("seen", store.SetRowState{Row: "r1", State: "up"})
+	s.run(1)
+	s.take("p1.w2")
 	s.fold()
 	in = s.inputs()
 	in.Seen["r1"] = in.Now.Add(-seconds(Engine.Timeouts.RowSilentWithdraw))
@@ -388,9 +451,9 @@ func TestTickSilentRow(t *testing.T) {
 	rc, err = s.f.Apply(t.Context(), plan.Ops[0])
 	require.NoError(t, err)
 	require.True(t, rc.Accepted, rc.Reason)
-	s.requireState("p1.w1", "fail")
+	s.requireState("p1.w2", "fail")
 	s.requireState("p1", "ready")
-	assert.Contains(t, s.card("p1.w1").Reason, "branch sprint/s1/p1 is kept")
+	assert.Contains(t, s.card("p1.w2").Reason, "branch sprint/s1/p1 is kept")
 	s.must("flaps", store.SetRowFlaps{Row: "r1", Flaps: 3})
 	s.tick()
 	assert.Equal(t, []string{"flap.r1.3"}, s.openJudgements("flap"))

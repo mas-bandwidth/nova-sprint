@@ -19,7 +19,7 @@ func coordinateVerbs() []*verb {
 			about: "merges a merging producer's read-ok head into its stream's base by hand, with no CI gate (you looked), and records it landed with the merge sha; answers its open land judgement",
 			needs: []string{"not merging: nova-sprint show <card>", "--head other than its finished head", "a merge the forge or git refuses: names why"}},
 		{name: "hold", group: "coordinate", role: roleCoordinator, usage: "<row|stream|card>... --reason <why> [--dry-run]", flags: "reason= dry-run", min: 1, max: -1, run: runHold,
-			about: "stops deals to a row, parks a stream's ready producers, or holds one producer card waiting with the reason (its live consumers withdrawn, branches kept; never a drop)",
+			about: "stops deals to a row and returns its whole hand to the queue in the same op (taken and untaken cards, branches and heads kept, one RETURNED line each), parks a stream's ready producers, or holds one producer card waiting with the reason (its live consumers withdrawn, branches kept; never a drop)",
 			needs: []string{"a consumer id: hold its producer", "a final card: nothing to hold"}},
 		{name: "unhold", group: "coordinate", role: roleCoordinator, usage: "<row|stream|card>... --reason <why> [--dry-run]", flags: "reason= dry-run", min: 1, max: -1, run: runHold,
 			about: "ends a hold; a held card goes to waiting and is dealt again when its needs have landed"},
