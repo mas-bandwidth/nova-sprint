@@ -5,12 +5,15 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 // limits is the retire and fail limits step (LAYER-3 "Retire and fail
 // limits"): HoldCard with a held judgement when bounces since the last
 // unhold reach the limit (a fault never counts, LESSONS 2.24; an unhold is a
-// fresh budget); Withdraw of a working consumer whose
+// fresh budget), or when reads of its review and head have faulted policy's
+// faults limit running (readFaults; unheld it is dealt again as work, so its
+// next review starts the count afresh); Withdraw of a working consumer whose
 // row is silent past the bound, or that is past its tier's deadline with no
 // report, branch kept; Gone for a row unseen past its
 // bound, never for one missed challenge (LESSONS 4.7: the bound is policy's
@@ -20,11 +23,15 @@ func (t *tick) limits() {
 		for _, p := range t.v.Producers(state) {
 			c := t.v.Cards[p]
 			spent := c.Bounces - c.BounceBase // since its last unhold
-			if c.Kind != "producer" || spent < t.lim.Bounces || !t.free(p) || t.hasLive(p) {
+			faults, last := t.readFaults(c)
+			if c.Kind != "producer" || spent < t.lim.Bounces && faults < t.lim.Faults || !t.free(p) || t.hasLive(p) {
 				continue
 			}
 			why := fmt.Sprintf("bounced %d times, the limit is %d", spent, t.lim.Bounces)
-			if c.BounceBase > 0 {
+			switch {
+			case spent < t.lim.Bounces:
+				why = fmt.Sprintf("reads faulted %d times running at review %d, the limit is %d: %s", faults, c.Review, t.lim.Faults, last)
+			case c.BounceBase > 0:
 				why = fmt.Sprintf("bounced %d times since its last unhold, the limit is %d", spent, t.lim.Bounces)
 			}
 			if g := t.group("hold", p, t.producerMove(p, card.HoldCard{Reason: card.HeldPrefix + why})); g != nil {
@@ -36,6 +43,26 @@ func (t *tick) limits() {
 	for _, n := range t.rowNames {
 		t.rowLimits(n)
 	}
+}
+
+// readFaults is how many reads of producer c's current review and head are
+// done with a fault, and the newest one's reason: the faults running, since
+// a done read that answered ends the review at the verdict. 0 when one
+// answered or c is not in review.
+func (t *tick) readFaults(c store.Card) (n int, last string) {
+	if c.State != "review" {
+		return 0, ""
+	}
+	for _, r := range t.v.Consumers(c.ID) { // in birth order
+		if r.Kind != "read" || r.Review != c.Review || r.Head != c.Head || r.State != "done" {
+			continue
+		}
+		if r.Result != "fault" {
+			return 0, ""
+		}
+		n, last = n+1, r.Reason
+	}
+	return n, last
 }
 
 func (t *tick) hasLive(p string) bool {
