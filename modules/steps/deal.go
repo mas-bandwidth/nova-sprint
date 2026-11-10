@@ -202,9 +202,20 @@ func (t *tick) rankIndex(r string) int {
 
 // rowsAnswer is policy's rows answer for c, read once per candidate (the
 // oracle records a miss per question whatever the candidate's fate); nil
-// when the engine's ranking decides.
+// when the engine's ranking decides. The candidates policy was offered
+// include rows resting after faults (the rest is known only after the
+// questions); the answer drops them, and an answer naming only resting rows
+// is no answer, never a miss: policy named a row it was offered.
 func (t *tick) rowsAnswer(c store.Card, kind string) []string {
-	return t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
+	answered := t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
+	if answered == nil {
+		return nil
+	}
+	out := slices.DeleteFunc(slices.Clone(answered), func(r string) bool { _, resting := t.rested[r]; return resting })
+	if len(out) == 0 && len(answered) > 0 {
+		return nil
+	}
+	return out
 }
 
 // pickRow is one row for c among rows: the engine's best of the rows policy
