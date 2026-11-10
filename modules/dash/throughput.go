@@ -23,10 +23,14 @@ func (c *Cache) rateWindow() (float64, float64, int) {
 	return 0, 0, 0
 }
 
-// MinEtaLandings is the fewest landings in the rate window an ETA is given
-// from (v1 asked five landed in the epoch; v2 measures a one-hour window, so
-// three in it is the floor).
-const MinEtaLandings = 3
+// MinEtaLandings is the fewest landings an ETA is given from: one. An
+// estimate as soon as a card lands, rough at first, beats none (cards left
+// times the time per card so far).
+const MinEtaLandings = 1
+
+// minWindowLandings is the fewest landings in the last hour its rate is read
+// from; below it the sprint's average (time per card so far) is the rate.
+const minWindowLandings = 3
 
 // etaMinutes is v1's estimate: the cards left at rate cards an hour, in whole
 // minutes rounded up; 0 for none (no rate, too few landings, nothing left).
@@ -54,7 +58,7 @@ func etaString(m int64) string {
 
 // landingRate is the rate the ETA (and the throughput tile) read, from the
 // epoch's landing times: the landings in the last hour when there are at least
-// MinEtaLandings of them; else the sprint's average (landings over the time
+// minWindowLandings of them; else the sprint's average (landings over the time
 // since the first, at least ten minutes) when there are that many in all.
 // window is the minutes the rate was measured over, n the landings counted,
 // average whether it is the sprint's average; rate 0 is no rate.
@@ -71,7 +75,7 @@ func landingRate(landings []time.Time, now time.Time) (rate, window float64, n i
 			first = at
 		}
 	}
-	if n >= MinEtaLandings {
+	if n >= minWindowLandings {
 		return float64(n), 60, n, false
 	}
 	total := 0
