@@ -67,7 +67,7 @@ func (p *Pusher) Nudge(ns []steps.Nudge) {
 func (p *Pusher) Observe(e store.Event, after store.Snapshot) {
 	notices := EventNotices{Coordinator: Coordinator(after)}
 	rs := recipients(after)
-	if old := takenFrom(e); old != "" {
+	if old := takenFrom(e); old != "" && !slices.Contains(rs, old) {
 		rs = append(rs, old)
 	}
 	for _, r := range rs {

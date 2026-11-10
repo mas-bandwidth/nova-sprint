@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -161,6 +162,36 @@ func TestUpTakesOverFromACoordinatorOnTheBus(t *testing.T) {
 	}
 	if !strings.Contains(sent["carol"], "TAKEN OVER by=dave: took over from carol: the seat was handed to dave") {
 		t.Fatalf("carol was not told the seat moved: %q", sent["carol"])
+	}
+}
+
+// A displaced coordinator that hooks back in (as a worker) before the pusher
+// reads the take-over is one recipient of it, told once.
+func TestTakeOverTellsARehookedCoordinatorOnce(t *testing.T) {
+	t.Parallel()
+	w := takeoverWorld(t)
+	w.bus.present["carol"] = true
+	want(t, w.do("dave", "up", "--take-over", "--reason", "the seat was handed to dave"), 0, "TOOK OVER from carol")
+	s := w.snap(t)
+	rows := maps.Clone(s.Rows)
+	carol := rows["carol"]
+	carol.Session, carol.Role = "minted-9", "worker"
+	rows["carol"] = carol
+	s.Rows = rows
+	events, err := w.f.Events(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := run.NewPusher()
+	for _, ev := range events {
+		p.Observe(ev, s)
+	}
+	sent := inbox{}
+	if failed := p.Push(context.Background(), sent, w.f, s.Epoch, t0); len(failed) != 0 {
+		t.Fatalf("push failed: %+v", failed)
+	}
+	if n := strings.Count(sent["carol"], "TAKEN OVER by=dave"); n != 1 {
+		t.Fatalf("carol told %d times: %q", n, sent["carol"])
 	}
 }
 
