@@ -566,6 +566,8 @@ type WallConfig struct {
 	// start (DetectGo); GoWallEnv sets them inside it only under a
 	// ReadPaths grant.
 	GoRoot, GoModCache string
+	// GOOS is the OS the wall is built for; "" is runtime.GOOS.
+	GOOS string
 }
 
 // wallKeeps are the names nova-sandbox passes into the wall without --env;

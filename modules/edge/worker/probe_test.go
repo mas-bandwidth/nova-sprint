@@ -282,6 +282,20 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 	}
 }
 
+// nova-sandbox refuses --unix on macOS (bad_unix, exit 2), where a socket
+// inside a --write grant is reachable without it: an adapter's Unix need is
+// passed on Linux only, or every macOS row's probe fails and the row is held.
+func TestWallPassesUnixOnLinuxOnly(t *testing.T) {
+	t.Parallel()
+	j := Job{Consumer: "c1", JobDir: "/job", ProxyAddr: "127.0.0.1:7000", Needs: (&OpenCodeHarness{}).Needs()}
+	for goos, want := range map[string]bool{"linux": true, "darwin": false} {
+		got := strings.Join(sandboxFlags_internal(WallConfig{NetDeny: true, GOOS: goos}, j, nil), " ")
+		if strings.Contains(got, "--unix") != want || !strings.Contains(got, "--net-deny --net-allow 127.0.0.1:7000") {
+			t.Errorf("%s: want --unix %t and the proxy's --net-allow: %s", goos, want, got)
+		}
+	}
+}
+
 // 29: one proxy, a route per provider, chosen by the base URL's provider
 // segment; each upstream gets its own key and the segment is cut.
 func TestKeyProxyRoutesByProviderPrefix(t *testing.T) {
