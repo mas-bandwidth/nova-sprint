@@ -31,9 +31,10 @@ DROPPED = {
     "RunnerForcePushRewinds": ["NoPushAfterFinal"],
     "RunnerWithdrawnPushesRepeatedly": ["NoPushAfterFinal", "BranchOnlyByHolder"],
 }
-# The stale push the three above add is a push with no seal step: PushOnlySealed is not theirs to name.
+# The stale push the three above add is a push with no seal step: PushOnlySealed is not theirs to name;
+# and it moves the tip after the next holder's take: neither is HolderStartsFromTip.
 for _name in DROPPED:
-    DROPPED[_name] = DROPPED[_name] + ["PushOnlySealed"]
+    DROPPED[_name] = DROPPED[_name] + ["PushOnlySealed", "HolderStartsFromTip"]
 
 # name, target invariant, fault, exact replacement pairs
 WITNESSES = [
