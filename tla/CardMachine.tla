@@ -44,7 +44,8 @@
 (* reason, finding, brief, prose, paths, done_when, cost, priced. Edit     *)
 (* writes only prose, paths and done_when, so in the model it changes     *)
 (* nothing but the monitor. prior_head is the work consumer's prior: the  *)
-(* producer's head at Start, which an ok report may not repeat.           *)
+(* producer's head at Start, which an ok report may not repeat once an    *)
+(* earlier attempt finished at it; one pushed and never finished may be.  *)
 (*                                                                         *)
 (* deps also carries the sentinel a, absent until Add puts it with needs  *)
 (* and after chosen from the existing cards, and the id "p1.w1", which    *)
@@ -267,6 +268,10 @@ OverLimit(rec) == rec.bounces - rec.base >= BounceLimit
 PFence(p) == IF op > 0 /\ ps[p].st # snap.ps[p].st THEN {} ELSE {ps[p].st}
 CFence(c) == IF op > 0 /\ cs[c].st # snap.cs[c].st THEN {} ELSE {cs[c].st}
 
+\* The heads a work consumer of p finished at (reported ok): a prior head
+\* in it came back for a finding, so an ok naming it again did nothing.
+FinishedHeads(p) == {cs[k].head : k \in {k \in ConsOf(p) : cs[k].kind = "work" /\ cs[k].res = "ok"}}
+
 StepRule(n, ev, p, c, r) ==
   CASE n = "FinalNeverMoves" ->
          /\ \A q \in P : ps[q].st \in PFinal => ps'[q] = ps[q]
@@ -293,7 +298,8 @@ StepRule(n, ev, p, c, r) ==
     [] n = "ReplaceByLive" -> ev = "Replace" => (r \in P \ {p} /\ NonFinal(r))
     [] n = "HeadNeverRepeats" ->
          (ev \in {"Report", "Withdraw"} /\ cs[c].kind = "work")
-           => (cs'[c].head = 0 \/ cs'[c].head # cs[c].prior)
+           => (cs'[c].head = 0 \/ cs'[c].head # cs[c].prior
+               \/ (cs'[c].res = "ok" /\ cs[c].prior \notin FinishedHeads(c[1])))
     [] n = "WaiveRedNeedsPriorRead" ->
          ev = "WaiveRed" =>
            \E k \in ConsOf(p) :
@@ -708,11 +714,13 @@ Add(p, ns, as) ==
 \* working, in its row's hand; the row's acknowledgement moves no card.
 
 \* A work report: ok carries a pushed head, never the base (0) nor the
-\* attempt's prior_head; fail and fault may carry one or none. A read
-\* report carries the producer's head.
+\* attempt's prior_head once a work consumer of p finished at it (a prior
+\* head pushed and never finished is the attempt's to finish); fail and
+\* fault may carry one or none, never the prior head. A read report carries
+\* the producer's head.
 ReportHeads(c, res) ==
   IF cs[c].kind = "read" THEN {ps[c[1]].head}
-  ELSE IF res = "ok" THEN Heads \ {cs[c].prior} ELSE {0} \cup (Heads \ {cs[c].prior})
+  ELSE IF res = "ok" THEN Heads \ ({cs[c].prior} \cap FinishedHeads(c[1])) ELSE {0} \cup (Heads \ {cs[c].prior})
 \* A work consumer reports ok, fail or fault; a read ok, fix or fault. The
 \* model's bound on bounces sits here, on the report that would raise them
 \* (fail, fix), so Broken and ReadFix are always enabled once reported.

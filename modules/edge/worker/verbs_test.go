@@ -304,7 +304,7 @@ func buildCombinedReportPlan_internal(snap store.Snapshot, c, p store.Card, st s
 	reason := cmp.Or(req.Reason, req.Finding)
 	cCard := card.FromStore(c)
 	pCard := card.FromStore(p)
-	cPlan, ref := card.MoveConsumer(cCard, pCard, card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Report{Row: req.Row, Result: req.Result, Head: head, Reason: reason, Cost: req.Cost, Priced: req.Priced})
+	cPlan, ref := card.MoveConsumer(cCard, pCard, nil, card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Report{Row: req.Row, Result: req.Result, Head: head, Reason: reason, Cost: req.Cost, Priced: req.Priced})
 	if ref != nil {
 		return card.Plan{}, fmt.Errorf("SPRINT REFUSED report: %s: run nova-sprint show %s", ref.Reason, c.ID)
 	}
@@ -387,7 +387,7 @@ func (s *StoreSprintClient) Release(ctx context.Context, row, consumer string, g
 	}
 	p := snap.Cards[c.Of]
 	ev := card.Withdraw{Reason: "released: " + reason, Head: cmp.Or(head, c.Head), Stream: card.StreamFromStore(snap.Streams[p.Stream])}
-	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(snap.Rows[row], 0, nil), ev)
+	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), nil, card.RowFromStore(snap.Rows[row], 0, nil), ev)
 	if why != nil {
 		return fmt.Errorf("%w: %s", ErrRefused, why.Reason)
 	}

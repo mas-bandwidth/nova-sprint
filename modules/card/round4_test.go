@@ -48,7 +48,7 @@ func TestHoldThenStartRefusesHeld(t *testing.T) {
 func TestPreemptWithdrawNeedsWorking(t *testing.T) {
 	t.Parallel()
 	ready := wk(Ready, "", "")
-	_, r := MoveConsumer(ready, pr(Working), rows()["r1"], Withdraw{Reason: "preempted by blocker p2", Stream: Stream{Name: "s1"}, Preempt: true})
+	_, r := MoveConsumer(ready, pr(Working), nil, rows()["r1"], Withdraw{Reason: "preempted by blocker p2", Stream: Stream{Name: "s1"}, Preempt: true})
 	refusal{r, "consumer p1.w1 is ready; a preempt withdraws a working consumer, and the step chooses the youngest on the row"}.check(t)
 }
 

@@ -85,7 +85,7 @@ func withdraw(snap store.Snapshot, cards []store.Card, reason string) (card.Plan
 			head = c.Head
 		}
 		ev := card.Withdraw{Reason: ReleasedPrefix + reason, Head: head, Stream: card.StreamFromStore(snap.Streams[p.Stream])}
-		plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(snap.Rows[c.Holder], 0, nil), ev)
+		plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), consumersOf(snap, p.ID), card.RowFromStore(snap.Rows[c.Holder], 0, nil), ev)
 		if why != nil {
 			return card.Plan{}, moved(why, c.ID)
 		}

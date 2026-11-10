@@ -1105,8 +1105,8 @@ func (m *mover) unholdCard(e UnholdCard) *Refusal {
 }
 
 // MoveConsumer is a consumer's move on event e: c the consumer, p its
-// producer, r its holder row.
-func MoveConsumer(c Card, p Card, r Row, e Event) (Plan, *Refusal) {
+// producer, cons p's consumers, r its holder row.
+func MoveConsumer(c Card, p Card, cons []Card, r Row, e Event) (Plan, *Refusal) {
 	switch {
 	case !consumer(c.Kind):
 		return Plan{}, no("card %s is a %s; MoveConsumer is for consumers", c.ID, c.Kind)
@@ -1115,7 +1115,7 @@ func MoveConsumer(c Card, p Card, r Row, e Event) (Plan, *Refusal) {
 	case final(c.Kind, c.State):
 		return Plan{}, no("consumer %s is %s; nothing moves a %s card", c.ID, c.State, c.State)
 	}
-	m := &mover{p: c}
+	m := &mover{p: c, cons: cons}
 	m.expect(store.CardGen{Card: c.ID, Gen: c.Gen})
 	var refusal *Refusal
 	switch v := e.(type) {
@@ -1129,7 +1129,7 @@ func MoveConsumer(c Card, p Card, r Row, e Event) (Plan, *Refusal) {
 	if refusal != nil {
 		return Plan{}, refusal
 	}
-	return sealConsumer(m, p, r, e)
+	return sealConsumer(m, p, cons, r, e)
 }
 
 // holder refuses a row that is not the consumer's holder.
@@ -1188,11 +1188,19 @@ func (m *mover) reportHead(e Report, p Card) *Refusal {
 		switch {
 		case e.Head == c.BaseSHA:
 			return no("head %s is the base; nothing was done", e.Head)
-		case c.PriorHead != "" && e.Head == c.PriorHead:
+		case c.PriorHead != "" && e.Head == c.PriorHead && (e.Result != "ok" || finished(m.cons, e.Head)):
 			return no("head %s is the prior head; nothing new was pushed", e.Head)
 		}
 	}
 	return nil
+}
+
+// finished: a work consumer of cons reported ok at head. A prior head no
+// attempt finished (a fault's, a fail's or a withdrawal's push) is work the
+// next attempt continues from, and its ok may name it; a finished one came
+// back with a finding, and naming it again does nothing about the finding.
+func finished(cons []Card, head string) bool {
+	return slices.ContainsFunc(cons, func(k Card) bool { return k.Kind == "work" && k.Result == "ok" && k.Head == head })
 }
 
 // readReportHead: a read reports the head it was cut at, which is the

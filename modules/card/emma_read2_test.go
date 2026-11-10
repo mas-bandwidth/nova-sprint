@@ -62,9 +62,9 @@ func TestProbeRead2ReadConsumerHeadBypass(t *testing.T) {
 		Brief: "do p1", Gen: 2,
 	}
 	r2 := rows()["r2"]
-	_, r := MoveConsumer(c, p, r2, Report{Row: "r2", Result: "fix", Reason: "stale finding on h1", Cost: 1, Priced: true})
+	_, r := MoveConsumer(c, p, nil, r2, Report{Row: "r2", Result: "fix", Reason: "stale finding on h1", Cost: 1, Priced: true})
 	refusal{r, "read p1.r2.1 was cut at " + h1 + "; producer p1 is at " + h2}.check(t)
-	_, r = MoveConsumer(c, p, r2, Report{Row: "r2", Result: "ok", Reason: "lgtm", Head: h2, Cost: 1, Priced: true})
+	_, r = MoveConsumer(c, p, nil, r2, Report{Row: "r2", Result: "ok", Reason: "lgtm", Head: h2, Cost: 1, Priced: true})
 	refusal{r, "read p1.r2.1 was cut at " + h1 + ", the report names " + h2}.check(t)
 }
 
@@ -79,12 +79,12 @@ func TestProbeRead2WorkHeadAndWithdrawGuards(t *testing.T) {
 		State: Working, Tier: "pro", Attempt: 2, BaseSHA: base, PriorHead: h1, Brief: "do p1", Gen: 2,
 	}
 	r1 := rows()["r1"]
-	_, r := MoveConsumer(c, p, r1, Report{Row: "r1", Result: "fail", Reason: "tests failed", Head: base, Cost: 1, Priced: true})
+	_, r := MoveConsumer(c, p, nil, r1, Report{Row: "r1", Result: "fail", Reason: "tests failed", Head: base, Cost: 1, Priced: true})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
-	_, r = MoveConsumer(c, p, r1, Withdraw{Reason: "preempted", Head: base, Stream: Stream{Name: "s1"}, Preempt: true})
+	_, r = MoveConsumer(c, p, nil, r1, Withdraw{Reason: "preempted", Head: base, Stream: Stream{Name: "s1"}, Preempt: true})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
 	c.State = Ready
-	_, r = MoveConsumer(c, p, r1, Withdraw{Reason: "cancelled before take", Head: h2, Stream: Stream{Name: "s1"}})
+	_, r = MoveConsumer(c, p, nil, r1, Withdraw{Reason: "cancelled before take", Head: h2, Stream: Stream{Name: "s1"}})
 	refusal{r, "consumer p1.w2 is ready; it has not pushed a head"}.check(t)
 }
 

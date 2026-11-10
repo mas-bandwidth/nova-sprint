@@ -412,7 +412,8 @@ Do not estimate it or use zero to conceal missing API usage.
 
 If work must continue elsewhere, push what you have and release it, with the
 pushed head when available. If the task itself cannot be completed, report a
-failure with a reason instead:
+failure with a reason instead; it carries the card branch's pushed tip at
+origin back with the card, so the next attempt continues from it:
 
 ```sh
 sprint_env nova-sprint release '<card>@<gen>' --head '<pushed-sha>' --reason '<why>' --epoch '<epoch>'
