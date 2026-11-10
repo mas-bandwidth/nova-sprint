@@ -5,6 +5,8 @@
 #   bash tla/make-traces.sh check    write them, then check every trace under
 #                                    tla/traces/ with check-trace.sh, all in
 #                                    parallel; exit 1 if any is not as expected
+#   bash tla/make-traces.sh check <group>   the same for one group only:
+#                                    store, card, policy, steps or edge
 #
 # The walks and their seeds (the seeds are in the tests):
 #   store-fake-<seed>   modules/store/trace_test.go TestTraceWalk, the Fake, with transport faults
@@ -24,19 +26,26 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
 OUT="$HERE/traces"
 cd "$ROOT" || exit 1
+# The second argument names one group (store, card, policy, steps, edge);
+# without it every group runs. CI runs one job per group, on its own runner.
+GROUP="${2:-all}"
+case "$GROUP" in all|store|card|policy|steps|edge) ;; *) echo "make-traces: no group $GROUP (store, card, policy, steps, edge)" >&2; exit 2 ;; esac
+on() { [ "$GROUP" = all ] || [ "$GROUP" = "$1" ]; }
 
 find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
 # The walks write disjoint trace dirs, so they run in parallel; each one's
 # exit code is kept and any failure fails the script after all have ended.
 pids=()
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./modules/store/ & pids+=($!)
-go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ & pids+=($!)
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ & pids+=($!)
-go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ & pids+=($!)
-go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./modules/edge/git & pids+=($!)
-go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./modules/edge/worker & pids+=($!)
-if command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || ls /opt/homebrew/opt/postgresql@18/bin/initdb >/dev/null 2>&1; then
+if on store; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./modules/store/ & pids+=($!); fi
+if on card; then go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ & pids+=($!); fi
+if on policy; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ & pids+=($!); fi
+if on steps; then go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ & pids+=($!); fi
+if on edge; then go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./modules/edge/git & pids+=($!); fi
+if on edge; then go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./modules/edge/worker & pids+=($!); fi
+if ! on store; then
+    :
+elif command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || ls /opt/homebrew/opt/postgresql@18/bin/initdb >/dev/null 2>&1; then
     go test -count=1 -run 'TestFunctionalTraceWalk$' ./modules/store/ & pids+=($!)
 elif [ "${NOVA_TRACE_PG:-0}" = 1 ]; then
     echo "make-traces: NOVA_TRACE_PG=1 and no initdb: the PostgreSQL walk cannot run" >&2
@@ -54,7 +63,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 for d in "$OUT"/*/; do
     name="$(basename "$d")"
-    case "$name" in store-*) model=Store ;; card-*) model=CardMachine ;; policy-*) model=Policy ;; steps-*) model=Steps ;; landedge-*) model=LandEdge ;; runner-*) model=Runner ;; *) continue ;; esac
+    case "$name" in store-*) model=Store g=store ;; card-*) model=CardMachine g=card ;; policy-*) model=Policy g=policy ;; steps-*) model=Steps g=steps ;; landedge-*) model=LandEdge g=edge ;; runner-*) model=Runner g=edge ;; *) continue ;; esac
+    on "$g" || continue
     ( bash "$HERE/check-trace.sh" "$model" "$d" > "$WORK/$name.out" 2>&1; echo $? > "$WORK/$name.code" ) &
 done
 wait
