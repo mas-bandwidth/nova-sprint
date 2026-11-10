@@ -1433,11 +1433,14 @@ func (g *OSGitOps) runGitEnv_internal(ctx context.Context, timeout time.Duration
 		Argv:     append(slices.Clone(gitPrefix_internal), args...),
 		Dir:      dir,
 		Env:      env,
-		CleanEnv: true, Timeout: timeout,
+		CleanEnv: true, Timeout: timeout, MaxBytes: outputMaxBytes_internal,
 	}
 	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, cmd)
 	if err != nil || res.ExitCode != 0 {
 		return res.Stdout + res.Stderr, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
+	}
+	if res.Truncated { // a listing cut short is not the listing (collect reads a whole ls-tree -r)
+		return res.Stdout + res.Stderr, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, fmt.Errorf("output truncated at %d bytes", outputMaxBytes_internal))
 	}
 	return res.Stdout, nil
 }
