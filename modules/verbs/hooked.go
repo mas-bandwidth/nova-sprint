@@ -41,22 +41,34 @@ func (e *Engine) onBus(ctx context.Context, name string) error {
 	if !validName(name) {
 		return refuse(clip(name)+" is not a name the sprint takes", "use 1 to 128 of a-z A-Z 0-9 . _ -")
 	}
+	present, err := e.present(ctx, name)
+	if err != nil {
+		return err
+	}
+	if !present {
+		return refuse(name+" is not on the bus", busRecipe(name))
+	}
+	return nil
+}
+
+// present is name in nova-bus who, the one presence test (the run loop reads
+// the same who for its deals and silences); a who that fails is the failure,
+// named with how name hooks in.
+func (e *Engine) present(ctx context.Context, name string) (bool, error) {
 	if e.Bus == nil {
-		return broken("nova-bus is not configured", "set NOVA_BUS_REDIS, then nova-sprint check")
+		return false, broken("nova-bus is not configured", "set NOVA_BUS_REDIS, then nova-sprint check")
 	}
 	who, err := e.Bus.Who(ctx)
 	var run *edge.ExecError
 	switch {
 	case err != nil && errors.As(err, &run) && AsRefusal(err) == nil:
 		// nova-bus never ran: that is the cause, named first
-		return broken("cannot run nova-bus: "+edge.RedactN(run.Reason, edge.CommandMax), run.Fix+", then "+busRecipe(name))
+		return false, broken("cannot run nova-bus: "+edge.RedactN(run.Reason, edge.CommandMax), run.Fix+", then "+busRecipe(name))
 	case err != nil:
-		return RefusalOr(err, broken("nova-bus who failed ("+errText(err)+")", busRecipe(name)))
+		return false, RefusalOr(err, broken("nova-bus who failed ("+errText(err)+")", busRecipe(name)))
 	}
-	if _, ok := who[name]; !ok {
-		return refuse(name+" is not on the bus", busRecipe(name))
-	}
-	return nil
+	_, ok := who[name]
+	return ok, nil
 }
 
 // busRecipe is how a name hooks in to the bus.
