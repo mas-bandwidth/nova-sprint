@@ -35,9 +35,45 @@ func TestStreamStates(t *testing.T) {
 	for _, row := range d.Streams {
 		got[row.Stream] = row.State
 	}
-	for k, v := range map[string]string{"empty": "waiting", "held": "held", "heldcard": "waiting", "failed": "fail"} {
+	for k, v := range map[string]string{"empty": "waiting", "held": "held", "heldcard": "waiting", "failed": "waiting"} {
 		if got[k] != v {
 			t.Errorf("%s state=%q want=%q", k, got[k], v)
+		}
+	}
+}
+
+// TestStreamStateIsNeverFail: a stream has no fail status. A stream whose
+// cards all failed shows what an empty stream shows; the failed cards still
+// count in the fail column.
+func TestStreamStateIsNeverFail(t *testing.T) {
+	t.Parallel()
+	s := store.Snapshot{Streams: map[string]store.Stream{"one": {Name: "one"}, "two": {Name: "two"}, "mixed": {Name: "mixed"}, "empty": {Name: "empty"}}, Cards: map[string]store.Card{
+		"o":  {ID: "o", Kind: "producer", Stream: "one", State: "fail"},
+		"t1": {ID: "t1", Kind: "producer", Stream: "two", State: "fail"}, "t2": {ID: "t2", Kind: "producer", Stream: "two", State: "fail"},
+		"m1": {ID: "m1", Kind: "producer", Stream: "mixed", State: "landed"}, "m2": {ID: "m2", Kind: "producer", Stream: "mixed", State: "fail"}}}
+	d := mapSnapshot(s, testRoster, time.Time{})
+	got := map[string]string{}
+	for _, row := range d.Streams {
+		got[row.Stream] = row.State
+	}
+	for k, v := range map[string]string{"one": "waiting", "two": "waiting", "mixed": "waiting", "empty": "waiting"} {
+		if got[k] != v {
+			t.Errorf("%s state=%q want=%q", k, got[k], v)
+		}
+	}
+	if w := d.Tables["work"].(map[string]*workRow); w["one"].Fail != 1 || w["two"].Fail != 2 || w["mixed"].Fail != 1 || w["mixed"].Landed != 1 {
+		t.Fatalf("fail counts one=%+v two=%+v mixed=%+v", w["one"], w["two"], w["mixed"])
+	}
+	states := []string{"waiting", "ready", "working", "review", "merging", "landed", "fail"}
+	for _, held := range []bool{false, true} {
+		for _, a := range states {
+			for _, b := range states {
+				s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s", Held: held}}, Cards: map[string]store.Card{
+					"a": {ID: "a", Kind: "producer", Stream: "s", State: a}, "b": {ID: "b", Kind: "producer", Stream: "s", State: b}}}
+				if st := mapSnapshot(s, testRoster, time.Time{}).Streams[0].State; st == "fail" {
+					t.Errorf("held=%v cards %s,%s: stream state %q", held, a, b, st)
+				}
+			}
 		}
 	}
 }

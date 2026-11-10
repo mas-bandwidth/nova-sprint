@@ -407,14 +407,12 @@ func (r *Runner) send_internal(ctx context.Context, jobDir string, rec JobRecord
 	return err
 }
 
-// NoSlotLimit is how many runs of one job may find no nova-reserve slot
-// before the card is given back for a redeal (release, no blame), so a busy
-// bench never holds it for ever. A guess, not measured.
-const NoSlotLimit = 3
-
 // runAndHarvest_internal runs the harness (unless it already ran and wrote
 // its verdict) and harvests it. done: the job ends here (withdrawn, stopped,
-// no slot yet, or a harvest that could not be written).
+// no slot yet, or a harvest that could not be written). A job with no slot
+// stays staged and the next pass runs it again: it holds the card until a
+// slot is free, and the card's deadline (the sprint's withdraw) bounds the
+// wait, so a busy bench never gives back a card only to be dealt it again.
 func (r *Runner) runAndHarvest_internal(p *prepared_internal) (bool, error) {
 	ctx := p.ctx
 	var res WallRunResult
@@ -432,9 +430,6 @@ func (r *Runner) runAndHarvest_internal(p *prepared_internal) (bool, error) {
 		case ctx.Err() != nil:
 			return true, r.stopped_internal(p)
 		case errors.Is(err, ErrNoSlot):
-			if p.rec.NoSlots >= NoSlotLimit {
-				r.releaseNoBlame_internal(ctx, p.rec, fmt.Sprintf("no nova-reserve slot on %s in %d tries", r.Host, p.rec.NoSlots))
-			}
 			return true, err
 		}
 	}
