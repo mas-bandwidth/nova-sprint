@@ -155,11 +155,12 @@ the files. A red gate goes to layer 3's bisection (LANDING step 7); a gate
 that did not run (no CI runner, a cancelled job, a timeout) is a fault and
 blames no head.
 
-The rebase rule: a work consumer is rebased once, by the runner, at report,
-onto the stream head as it is then. After the report the stream moving is
-the landing's to absorb, never the card's to chase (Glenn, LANDING step 3:
+The stream rule: a work consumer has the stream head as it is then merged
+into it once, by the runner, at report; merged, never rebased, so a
+conflict the card resolved stays resolved and the head keeps its history.
+After the report the stream moving is the landing's to absorb, never the card's to chase (Glenn, LANDING step 3:
 "this has always been the rule. you guys just forget it over and over"). A
-rebase conflict is a `fail` report naming the files.
+merge conflict with the stream is a `fail` report naming the files.
 
 A landing refuses for this pass, spending nothing, on: a head not on
 origin; a re-merge conflict; a push
@@ -275,8 +276,8 @@ Deal to report:
    last pushed or the tip it found at stage), never a plain force, and none
    once the consumer is final or a newer generation holds it: a withdrawn
    job pushes nothing (defect 78).
-6. **Rebase** onto the stream head as it is now and re-run the card's test
-   command, inside a slot, bounded by the two-minute rule; push. A conflict
+6. **Merge the stream** head as it is now in (never rebase) and re-run the
+   card's test command, inside a slot, bounded by the two-minute rule; push. A conflict
    is a `fail` naming the files.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
    CI is read by the landing on the group sha, not by the worker.
@@ -291,7 +292,7 @@ past `base_sha` and `prior_head` is pushed (a harness that said ok and left
 its changes uncommitted has its changes inside the card's PATHS committed by
 the worker; anything outside PATHS is logged, never committed). `fail`: the
 result file says broken, no result file ("fail: no verdict" with the
-harness's last output), a rebase conflict, the card's tests red. `fault`:
+harness's last output), a merge conflict with the stream, the card's tests red. `fault`:
 exit 134 or 137; a launch that died inside the 15 s grace on a provider 5xx,
 three times; a rate-limit or credit refusal; a staging failure. A read
 reports `ok`, `fix` with its finding, or `fault` (no result file is a
