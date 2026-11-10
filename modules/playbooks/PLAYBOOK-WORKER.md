@@ -307,8 +307,8 @@ answer, never a thing to route round.
   your next commits are made as it. Never rewrite the pushed commits to fix it: the next head
   must descend from them. Report a `finish --failed` naming it; the coordinator decides.
 - `the sprint has no commit identity`: nothing may commit yet; tell the coordinator.
-- `head <x> is the base; nothing was done`, or `head <x> has no commit beyond <base> and
-  origin/<base>; nothing was done`: an empty head is never a finish.
+- `head <x> is where this attempt started; nothing was done`, or `head <x> has no commit
+  beyond <base_sha> and origin/<base>; nothing was done`: an empty head is never a finish.
 - `bring <branch> up to the stream head`: merge the group branch in (step 9), never rebase,
   re-run your gates, push, and finish again with the new head. A red gate that is
   not your card's (already red at base, outside PATHS) is a `finish --failed` naming it. A CI

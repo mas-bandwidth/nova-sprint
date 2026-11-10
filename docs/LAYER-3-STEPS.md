@@ -161,7 +161,8 @@ high, normal, low; within a rung, policy's order.
 - The row's `take` is its acknowledgement: a cursor, `AckCursor(epoch, c)`,
   written once; it moves no card.
 - Nudge: a working consumer its row has not acknowledged, timeouts
-  `ready_nag` (1 s, the human's number, 2026-11-07) after the deal and until
+  `ready_nag` (30 s in default.star; the human's number of 2026-11-07 was
+  1 s) after the deal and until
   the row's first report, gets a `NUDGE` line each tick in the human's words
   ("you have a new ready card. you have x ready cards, you are currently
   working on y, and your width is z. Please work to width!") naming the
@@ -248,7 +249,7 @@ high, normal, low; within a rung, policy's order.
 - The mechanics (PR, group branch, gate, merge) are layer 4's; there is no
   bisection and no blame. Request ids hash epoch, stream, base, cards,
   heads and reviews, so a restart reissues the same request (LPM R22).
-- Policy: `landing(stream)`: `backed_up` (default 2), `flowing` (validated,
+- Policy: `landing(stream)`: `backed_up` (default 4), `flowing` (validated,
   unused), `ci_wait` (default 600 s, a guess); `ledgers(repo)` (none).
 
 ### Retire and fail limits
@@ -312,7 +313,7 @@ for each candidate, and the engine refuses one below the card's tier.
   bounce over landed, under target over a sample (LESSONS 3.21), while the
   stream has a producer left to land (cleared once it has none).
 - Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
-  hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
+  hour), `idle_floor` (0.5), `land_target` (0.3 over 20).
 
 ### Requests
 
@@ -688,8 +689,8 @@ request). `landRequests` now names the card branch `sprint/<stream>/<id>`
 (it was the producer's empty `Branch`), passes policy's `ci_wait` as the
 request's `Wait`, and ends with `unlanded`, the engine report of a merging
 producer with no request, no judgement and no after hold (intent rule 32;
-by construction none). Policy's default `backed_up` is 2 (it was 4), so
-rung 2 is "more than one head waiting". `Steps.tla`: `LandJ`, `Judged`,
+by construction none). Policy's default `backed_up` was 2 at this round;
+default.star's is 4 now, so rung 2 is "four or more heads waiting". `Steps.tla`: `LandJ`, `Judged`,
 `LandJudged` (a result's judged items), `Answer(p, choice)` in any phase,
 the check `MergingCovered`, the reach `StepsNeverLandJudged` and the
 reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the
