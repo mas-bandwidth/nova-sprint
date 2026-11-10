@@ -934,3 +934,20 @@ func TestRunnerHooksInAsWorkerBeforeFirstTake(t *testing.T) {
 		t.Fatalf("unexpected state after hooked run: card=%+v row=%+v", snap.Cards["p1.w1"], snap.Rows[row])
 	}
 }
+
+// The seal's step-log note keeps the start of the out-of-PATHS list and
+// counts the rest, so a long list is never cut silently.
+func TestSealNoteCountsWhatItDrops(t *testing.T) {
+	t.Parallel()
+	var out strings.Builder
+	for i := range 25 {
+		fmt.Fprintf(&out, "outside PATHS, not committed: ?? f%02d/\n", i)
+	}
+	note := sealNote_internal([]byte(out.String()))
+	if !strings.HasPrefix(note, "outside PATHS, not committed: ?? f00/") || !strings.HasSuffix(note, "\nand 5 more") || strings.Contains(note, "f20/") {
+		t.Fatalf("want the first 20 lines and the rest counted, got:\n%s", note)
+	}
+	if note := sealNote_internal([]byte("a\nb\n")); note != "a\nb" {
+		t.Fatalf("a short list is kept whole, got %q", note)
+	}
+}
