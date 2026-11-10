@@ -127,10 +127,7 @@ func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason
 	if err != nil {
 		return "", err
 	}
-	hand, _, err := handBack(snap, old, "unhooked by a take-over")
-	if err != nil {
-		return "", err
-	}
+	hand, line := handBack(snap, old, "unhooked by a take-over")
 	op := e.newOp("take-over", name, snap, old, session, reason)
 	op.Note = "took over from " + old + ": " + oneLine(reason)
 	op.Expect = append([]store.Expect{store.AtSeq{Seq: snap.Seq}}, hand.Expect...) // one coordinator: no other hook may land between the read and this op
@@ -138,7 +135,7 @@ func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason
 	if _, err := e.commit(ctx, op, takeOverCommand(name)+" again"); err != nil {
 		return "", err
 	}
-	return done("nova-sprint next --as "+name, "TOOK OVER from "+old+": "+oneLine(reason), fmt.Sprintf("HOOKED %s role=coordinator", name), identityLines(snap), playbookLine("coordinator")), nil
+	return done("nova-sprint next --as "+name, "TOOK OVER from "+old+": "+oneLine(reason)+line, fmt.Sprintf("HOOKED %s role=coordinator", name), identityLines(snap), playbookLine("coordinator")), nil
 }
 
 // takeOverCommand is how name takes the seat of a coordinator who is gone.
@@ -214,10 +211,7 @@ func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor 
 	if snap.Rows[target].Session == "" {
 		return "", refuse(target+" is not hooked in", "nova-sprint show "+target)
 	}
-	hand, line, err := handBack(snap, target, "unhooked")
-	if err != nil {
-		return "", err
-	}
+	hand, line := handBack(snap, target, "unhooked")
 	op := e.newOp("unhook", actor, snap, target)
 	op.Expect = append([]store.Expect{store.RowGen{Row: target, Gen: snap.Rows[target].Gen}}, hand.Expect...)
 	op.Writes = append([]store.Write{store.PutRow{Name: target}}, hand.Writes...)
@@ -231,19 +225,35 @@ func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor 
 // released with its branch and head kept, for the op that unhooks the row
 // (Glenn, 2026-11-10: "The cards should be redistributed when anybody goes
 // to held or down automatically"), and the receipt's words for it; empty
-// for an empty hand.
-func handBack(snap store.Snapshot, row, why string) (card.Plan, string, error) {
-	var hand []store.Card
+// for an empty hand. A card the card machine refuses to withdraw never
+// blocks the unhook (the escape hatch): it is named, and the run's next
+// tick returns it or names its refusal as an engine judgement.
+func handBack(snap store.Snapshot, row, why string) (card.Plan, string) {
+	var plans []card.Plan
+	var back, kept []store.Card
 	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
-		if c := snap.Cards[id]; c.Holder == row && live(c) {
-			hand = append(hand, c)
+		c := snap.Cards[id]
+		if c.Holder != row || !live(c) {
+			continue
+		}
+		if p, err := withdraw(snap, []store.Card{c}, card.Returned(row, why)); err == nil {
+			plans, back = append(plans, p), append(back, c)
+		} else {
+			kept = append(kept, c)
 		}
 	}
-	if len(hand) == 0 {
-		return card.Plan{}, "", nil
+	plan, refused := card.Merge(plans...)
+	if refused != nil { // the cards conflict in one op: the run's next tick returns them
+		plan, kept, back = card.Plan{}, append(kept, back...), nil
 	}
-	plan, err := withdraw(snap, hand, card.Returned(row, why))
-	return plan, fmt.Sprintf("; its hand returned to the queue, branches and heads kept: %s", idList(hand)), err
+	line := ""
+	if len(back) > 0 {
+		line += "; its hand returned to the queue, branches and heads kept: " + idList(back)
+	}
+	if len(kept) > 0 {
+		line += "; returned by the run's next tick: " + idList(kept)
+	}
+	return plan, line
 }
 
 // runWake is `wake`, nova-bus hook's --exec (Stella's and Johnny's ask,

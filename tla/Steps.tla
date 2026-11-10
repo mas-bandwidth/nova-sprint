@@ -1108,7 +1108,11 @@ ReadyNeverFlipsWithLoad == \A p \in Prods : ResolveOK(w, p) = ResolveOK(Unloaded
 (* empty hand. up stands for open: the code's held and unhooked rows are  *)
 (* closed by one row write as Gone is, which returns the hand in its op   *)
 (* (ReturnHand), and a deal planned on a view from before is refused by   *)
-(* the row's generation (Fence).                                          *)
+(* the row's generation (Fence). Not modelled: the code's close is        *)
+(* planned on a read, so a card dealt between that read and its commit,   *)
+(* or claimed by another step of the closing tick, stays on the closed    *)
+(* row until the holds step returns it on the next tick (a deal writes no *)
+(* row, so no fence of the close sees it); here the close is atomic.      *)
 HandEmptyWhenClosed == \A r \in Rows : ~w.up[r] => Load(w, r) = {}
 
 (* Escalation is row choice, never a tier write: every live consumer is  *)

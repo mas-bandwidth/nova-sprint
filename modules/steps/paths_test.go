@@ -183,9 +183,9 @@ func TestTickRowHoldAndDown(t *testing.T) {
 }
 
 // TestRowHoldAndGoneReturnTheHandInTheirOp: the coordinator's hold of a row
-// and the tick's Gone of a silent one return its whole hand, taken and
-// untaken, in the same op that closes the row: there is no state in which
-// the row is closed and holds a card.
+// and the tick's Gone of a silent one return its whole hand as they read it,
+// taken and untaken, in the same op that closes the row (a card dealt after
+// that read goes back on the next tick: TestTickRowHoldAndDown).
 func TestRowHoldAndGoneReturnTheHandInTheirOp(t *testing.T) {
 	t.Parallel()
 	setup := func(t *testing.T) *sim {

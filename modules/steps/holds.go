@@ -57,12 +57,20 @@ func closed(r store.Row) string {
 // step of the tick claimed, each released (no blame, no result) with the
 // reason that the row is why, its branch and pushed head kept, then e's
 // move of row n: the row's hold or Gone with its hand returned, in one op.
-// A consumer a step claimed goes back by holds on the next tick.
+// A consumer this op does not return goes back by holds on the next tick:
+// one a step claimed, one the card machine refuses to withdraw (holds'
+// own group names the refusal as an engine judgement; the row still
+// closes), and one dealt between the read this op was planned on and its
+// commit (a deal writes no row, so no fence of the close sees it).
 func (t *tick) handMoves(n, why string, e card.Event) []move {
 	var moves []move
 	for _, id := range t.v.Live(n) {
-		if t.unclaimed(id) && t.free(t.v.Cards[id].Of) {
-			moves = append(moves, t.withdraw(id, card.ReleasedPrefix+card.Returned(n, why)))
+		if !t.unclaimed(id) || !t.free(t.v.Cards[id].Of) {
+			continue
+		}
+		m := t.withdraw(id, card.ReleasedPrefix+card.Returned(n, why))
+		if _, r := m.plan(); r == nil {
+			moves = append(moves, m)
 		}
 	}
 	return append(moves, t.rowMove(n, e))
