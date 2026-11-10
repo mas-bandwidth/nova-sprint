@@ -4,11 +4,9 @@ package usage
 // benches run on API keys, in micro-dollars per million tokens, from the
 // provider's own price page on the date given. The policy's prices() is
 // consulted first; this table prices what it leaves unlisted, so a sprint
-// whose policy keeps prices() at {} still prices every bench run (Glenn,
-// 2026-11-09: "API stuff costs $$$ ... it's all zero cost so far, i don't
-// believe that for a second"). A model in neither is unpriced=no-price,
-// never a silent $0. Keyed by provider/model as a run reports it (Lookup
-// also tries the model alone).
+// whose policy keeps prices() at {} still prices every bench run. A model
+// in neither is unpriced=no-price, never a silent $0. Keyed by
+// provider/model as a run reports it (Lookup also tries the model alone).
 //
 // Each entry cites its source. Change a price here only with the page it
 // came from and the date read.

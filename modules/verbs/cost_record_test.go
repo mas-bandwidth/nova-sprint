@@ -7,8 +7,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 )
 
-// The per-card audit record (Glenn, 2026-11-09: "we used to track every
-// aspect of work on a card, tokens, models, $$$"): a bench's read under a
+// The per-card audit record (tokens, model and dollars on every card): a
+// bench's read under a
 // policy whose prices() is {} (the live sprint's) is priced from the
 // built-in table, exactly, and its stored words say who ran it (the
 // roster's harness), how long (the row's wall), when it was reported (the
