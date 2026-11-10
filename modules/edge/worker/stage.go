@@ -2,6 +2,7 @@ package worker
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -144,12 +145,14 @@ func (g *OSGitOps) fetchHops_internal(ctx context.Context, hops []stageHop_inter
 
 // mergePairs_internal are the (base, tip) pairs that must share a commit in
 // the work clone: each job's base with its prior head, its head and its
-// stream's tip, so the rebase onto the stream and a reader's diff find it.
+// stream's tip, so the rebase onto the stream and a reader's diff find it. A
+// job with no base sha (a read) has its stream's tip as its base.
 func mergePairs_internal(js []Job, tips map[string]string) [][2]string {
 	var out [][2]string
 	for _, j := range js {
+		base := cmp.Or(j.BaseSHA, tips[j.Base])
 		for _, t := range []string{j.PriorHead, j.Head, tips[j.Base]} {
-			if p := [2]string{j.BaseSHA, t}; j.BaseSHA != "" && t != "" && t != j.BaseSHA && !slices.Contains(out, p) {
+			if p := [2]string{base, t}; base != "" && t != "" && t != base && !slices.Contains(out, p) {
 				out = append(out, p)
 			}
 		}
