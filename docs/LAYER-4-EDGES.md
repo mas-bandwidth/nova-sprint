@@ -444,7 +444,9 @@ Restart (at any step), StoreDown; and the card's branch on origin (who
 wrote its tip, the next holder's write, the job's pushes after final).
 Invariants: guarantees 7 to 11; `working`
 within width; slots within capacity; `PassNeverWaitsOnJobs`;
-`StopIsNeverAFault`; `NoPushAfterFinal`; `BranchOnlyByHolder`. Liveness:
+`StopIsNeverAFault`; `NoPushAfterFinal`; `BranchOnlyByHolder`;
+`NoSlotNeverReleases` (a staged job with every slot held waits for one, never
+gives its card back; the sprint's deadline withdraw bounds the wait). Liveness:
 every `working` consumer of the row ends recorded or withdrawn, and a
 withdrawn job's directory is removed (`FinalDirRemoved`). Reversed witnesses: a slot freed while its
 harness lives; a reused job directory; Clean before Report (work lost on a
@@ -454,7 +456,8 @@ fault that bounces); a pass that waits on its jobs (`RunnerPassWaitsOnJobs`);
 a stop reported as a fault (`RunnerStopIsAFault`); a withdrawn job that
 pushes (`RunnerWithdrawnPushes`), again on a later pass
 (`RunnerWithdrawnPushesRepeatedly`), and by plain force over the next
-holder's branch (`RunnerForcePushRewinds`). Reach checks: a take
+holder's branch (`RunnerForcePushRewinds`); a release for want of a slot
+(`RunnerNoSlotReleases`). Reach checks: a take
 while another job runs, a stop, a stopped job back in a pass, a release, a
 retire, the next holder's push over a head the job pushed.
 Size: 2 consumers, width 2, 1 slot, 1 Crash.

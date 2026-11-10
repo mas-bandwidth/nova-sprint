@@ -561,8 +561,8 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, job.Deadline)
 		if errors.Is(runErr, ErrNoSlot) {
 			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
-			rec.NoSlots++
 			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
+			r.logStep_internal(job.Row, job.Consumer, "run", "no nova-reserve slot on "+r.Host+"; staged, waiting for one", 0)
 			return last, runErr
 		}
 		if last.PID > 0 && last.PID != os.Getpid() {
