@@ -29,6 +29,8 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | NO-PROGRESS: a row whose taken cards show no progress within the bound gets one line to the coordinator naming the row, the cards and the minutes since its last progress; last progress shown in show <row> and on the dashboard; detect and tell only (new mechanism: needs the owner's agreement) | ❌ |
 | TAKEN OVER survives a failed send and a restart: a durable pending-notice marker for the coordinator a take-over unhooked (LAYER-6-RUN, Taking the seat: a restart before it is sent does not send it) | ❌ |
 | Every coordinator verb checks at commit that the caller still holds the seat: judge, land, hold, drop, policy, add, clear and unhook <row> check it only on the read, so after a take-over the old coordinator's op in flight commits; stream add, stop, start and identity are fenced (UnchangedSince Hooks) | ❌ |
+| A card that repairs a red base lands on its own gates: when main is red, a card whose stream exists to make it green is gated on its own DONE-WHENs and its CI checks that were green at the base or that it names, never refused because the base is red | ❌ |
+| A bench run's verdict comes from the pushed head and the DONE-WHENs the worker runs, as in v1, never from a result.json the model must write; bench ok% near 100% on a real board is the release bar | ❌ |
 | complete | 0% |
 
 [Source data](roadmap.sexp)
