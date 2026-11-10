@@ -109,9 +109,6 @@ type (
 		// ("": absent). Every push leases from PushedHead, the head this job
 		// last pushed, or else from StartTip (defect 78).
 		StartTip string `json:",omitempty"`
-		// NoSlots counts this job's runs that found no nova-reserve slot;
-		// at NoSlotLimit the card is released for a redeal.
-		NoSlots int `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex
