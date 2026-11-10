@@ -118,6 +118,31 @@ Finish that walkthrough with a green check:
 nova-fleet check
 ```
 
+`nova-fleet up` sets each machine up: its inventory record, its login,
+Tailscale, its seat in the secrets store, its health guards, the tools and the
+services, and with `--runners '<repository-url>'` its GitHub Actions runners
+(every step is idempotent, so `up` can be run again with `--runners`). After
+`up` and before the sprint's own setup, run the two plays `up` does not run on
+every bench, `runner-packages` first so a bench can run gates as soon as it is
+dealt to (`bench` is the inventory group `up` gives every machine it joins;
+`-l` after `--` limits a play to it):
+
+```sh
+nova-fleet runner-packages -- -l bench
+nova-fleet netwatch -- -l bench
+```
+
+`runner-packages` installs the packages a card's gates and a CI job's tests
+need (a CI toolchain by default; the nova-fleet guide says how to pass your
+own list). `netwatch` lets a Linux bench that loses its network or the tailnet
+recover by itself; a Mac is skipped. A stream with `--forge github` lands only
+when CI is green, so every repository it lands in needs runners: `up --runners`
+registers them for one repository, and
+`nova-fleet github-runners -- -e github_runner_url='<repository-url>' -e github_runner_scope=repo`
+for each further one, both with a `gh auth login` on the control machine that
+has admin on the repository. The plays and their variables are in the
+[nova-fleet guide](https://github.com/mas-bandwidth/nova-tools/blob/main/cmd/nova-fleet/README.md).
+
 Choose the machine that will run the sprint. Run setup on that machine, which
 must be in the inventory with the `services` role. `up` runs only on the
 machine you run it on; `--run-on` must name that machine. Machines with
