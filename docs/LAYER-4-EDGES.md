@@ -253,9 +253,10 @@ Deal to report:
    work clone, which borrows the mirror's objects and fetches from the
    mirror, never the network; never from the mirror itself, whose pruning
    fetch would delete branch refs. The worktree's commit identity is the
-   row's, never the machine's (LESSONS 4.21). Siblings the card reads are
-   staged read-only the same way. A staging failure or timeout is a `fault`
-   (LESSONS 4.14). A job directory that exists is refused, so none is
+   row's, never the machine's (LESSONS 4.21). Only the card's own
+   repository is staged: no sibling repository is staged beside it, so a
+   card cannot read another repository's files inside the wall. A staging
+   failure or timeout is a `fault` (LESSONS 4.14). A job directory that exists is refused, so none is
    reused (LESSONS 4.15). Each repo a pass stages from is fetched once per
    pass, before its jobs stage (defect 72). The worker writes `JOB.md` in the
    job directory: the card, repo, base, checkout, paths, done-when and how
@@ -264,7 +265,8 @@ Deal to report:
    <consumer> -- nova-sandbox ... -- <harness>`: the slot lives exactly as
    long as the harness (LESSONS 4.17); no slot within the wait is no start
    yet, never a failure. The wall: `--write` the job directory (worktree,
-   `HOME`, `TMPDIR`, data home), `--read` toolchains and siblings,
+   `HOME`, `TMPDIR`, data home), `--read` toolchains and the repository's
+   work clone and mirror git directories,
    `--net-deny --net-allow localhost:<proxy>` where the host's wall can deny,
    stdin closed. The model is nova-config's for (row, tier), chosen by code
    and recorded in the report (LPM T3, T28).
@@ -568,7 +570,7 @@ An estimate from the interfaces and v1's runner, lines of Go without tests:
 For bench hosts whose OS sandbox (`nova-sandbox`) cannot enforce `--net-deny` at the kernel level, or for cards executing untrusted code, containment runs each job inside a disposable microVM (Firecracker / KVM on Linux benches, `Virtualization.framework` on macOS benches) or rootless network-isolated container (`bwrap` + network namespace) behind the existing `ReserveWall` and `Harness` seams:
 
 1. **Seam**: `MicroVMWall` implements `worker.ReserveWall` (`RunHarness` and `RunTest`). `Runner`, `Harness`, `KeyProxy`, and `job.json` recovery are unchanged.
-2. **Filesystem isolation**: `MicroVMWall` boots a read-only root image exporting `WallConfig.ReadPaths` (toolchains and staged siblings) and mounts only `Job.JobDir` read-write via virtiofs at the same path, with `HOME`, `TMPDIR`, and `XDG_DATA_HOME` inside `Job.JobDir` (`Guarantee 7`).
+2. **Filesystem isolation**: `MicroVMWall` boots a read-only root image exporting `WallConfig.ReadPaths` (toolchains and the repository's git directories) and mounts only `Job.JobDir` read-write via virtiofs at the same path, with `HOME`, `TMPDIR`, and `XDG_DATA_HOME` inside `Job.JobDir` (`Guarantee 7`).
 3. **Host-enforced egress allowlist**: The guest NIC attaches to a host tap/vsock bridge where host firewall rules (outside the guest kernel) drop all outbound traffic except TCP to the host loopback `KeyProxy` (`127.0.0.1:<ProxyPort>`). Credentials stay in `KeyProxy` on the host (`Guarantee 12`), which validates the target `Host` against the route's `AllowedHosts` before injecting the Bearer key.
 4. **Lifecycle**: The microVM runs inside the `nova-reserve run --slots <weight>` lease and is destroyed before the slot is released (`Guarantee 8`).
 
