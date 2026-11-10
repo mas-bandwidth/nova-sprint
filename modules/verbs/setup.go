@@ -213,7 +213,7 @@ func (e *Engine) observeEnd(step int, continuation string, err error) {
 // caller must be the hooked coordinator.
 func (e *Engine) leased(ctx context.Context, lease SetupLease, step int, s SetupInput) error {
 	if step >= 3 {
-		if _, err := e.hooked(ctx, &input{verb: "up", actor: s.Actor}, roleCoordinator); err != nil {
+		if _, err := e.hooked(ctx, &input{verb: "up", actor: s.Actor}, roleCoordinator, store.Scope{}); err != nil {
 			return err
 		}
 	}

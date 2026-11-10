@@ -163,7 +163,7 @@ func unhookRestored(ctx context.Context, tx pgx.Tx) error {
 	if err := tx.QueryRow(ctx, "UPDATE sprint.meta SET restored_at = transaction_timestamp(), restored_digest = $1 WHERE id = 1 RETURNING restored_at", digest).Scan(&at); err != nil {
 		return err
 	}
-	snap, err := snapshotTx(ctx, tx)
+	snap, err := snapshotTx(ctx, tx, Scope{All: true})
 	if err != nil {
 		return err
 	}
