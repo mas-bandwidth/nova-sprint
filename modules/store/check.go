@@ -76,7 +76,8 @@ func check(op Op) error {
 	return c.err
 }
 
-// checkClear is check for a clear: kind clear, no writes, at most AtSeq.
+// checkClear is check for a clear: kind clear, no writes, conditions on the
+// log only (AtSeq, RowsOnlySince).
 func checkClear(op Op) error {
 	if err := check(op); err != nil {
 		return err
@@ -85,8 +86,10 @@ func checkClear(op Op) error {
 		return invalid("op %s: a clear is kind clear with no writes", op.ID)
 	}
 	for _, e := range op.Expect {
-		if _, ok := e.(AtSeq); !ok {
-			return invalid("op %s: a clear takes only an AtSeq condition, not %T", op.ID, e)
+		switch e.(type) {
+		case AtSeq, RowsOnlySince:
+		default:
+			return invalid("op %s: a clear takes only an AtSeq or RowsOnlySince condition, not %T", op.ID, e)
 		}
 	}
 	return nil

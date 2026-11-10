@@ -9,7 +9,7 @@ import (
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, CardRed,
 // NeedsLanded, RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen,
-// Running, AtSeq. There
+// Running, AtSeq, RowsOnlySince. There
 // is no width condition and no tier condition: the writes are the checks (the
 // state write into working for width, put card for the holder's tiers). The
 // set is closed by the unexported method; any other value is ErrInvalid.
@@ -76,6 +76,12 @@ type Running struct{}
 // the store since a snapshot read at Seq.
 type AtSeq struct{ Seq int64 }
 
+// RowsOnlySince holds when every accepted event after seq Seq wrote rows
+// only (its after-image holds rows and nothing else): a clear fenced on it
+// discards nothing a backup taken at Seq or later lacks, since it carries
+// every row, and a worker's beat landing after Seq does not refuse it.
+type RowsOnlySince struct{ Seq int64 }
+
 func (CardGen) isExpect()       {}
 func (CardState) isExpect()     {}
 func (CardHolder) isExpect()    {}
@@ -87,6 +93,7 @@ func (RowHeld) isExpect()       {}
 func (StreamHeld) isExpect()    {}
 func (CardAbsent) isExpect()    {}
 func (AtSeq) isExpect()         {}
+func (RowsOnlySince) isExpect() {}
 func (Running) isExpect()       {}
 func (JudgementOpen) isExpect() {}
 

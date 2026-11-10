@@ -33,6 +33,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"clear":                   clearCarriesRows,
 		"clear refusals":          clearRefusals,
 		"clear releases holds":    clearReleasesHolds,
+		"clear fenced on rows":    clearFencedOnRows,
 		"rebuild":                 rebuild,
 		"events":                  eventsPaging,
 		"policy":                  policy,
@@ -446,6 +447,30 @@ func clearReleasesHolds(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "the rebuild agrees")
 	h.ok(h.op("deal", []Expect{RowHeld{"w1", false}}, PutStream{Name: "s1"}, PutCard{Tier: "pro", Kind: "producer", ID: "c1", Stream: "s1"},
 		PutCard{Tier: "pro", ID: "u1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w1"}))
+}
+
+// A clear fenced on RowsOnlySince lands over beats (rows only) and refused
+// ops since its seq, and is refused, inside its transaction, by anything
+// else accepted since: what the backup taken at that seq would lack.
+func clearFencedOnRows(h *harness) {
+	h.seed()
+	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", Load1Centi: 1, Cores: 8}))
+	h.refused(h.op("nothing", nil, SetCardState{"c9", "ready"}), "card c9 does not exist")
+	h.ok(h.op("reason", nil, SetCardReason{"c1", "r"}))
+	r, err := h.s.Clear(h.ctx, h.op("clear", []Expect{RowsOnlySince{1}}))
+	require.NoError(h.t, err)
+	assert.False(h.t, r.Accepted)
+	assert.Equal(h.t, "the store changed since seq 1: seq 4 wrote more than rows", r.Reason)
+	assert.Equal(h.t, 1, h.snap().Epoch)
+	_, err = h.s.Clear(h.ctx, h.op("clear", []Expect{RowsOnlySince{-1}}))
+	require.ErrorIs(h.t, err, ErrInvalid)
+	seq := h.snap().Seq
+	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", Load1Centi: 2, Cores: 8}))
+	h.refused(h.op("nothing", nil, SetCardState{"c9", "ready"}), "card c9 does not exist")
+	h.clear(RowsOnlySince{seq})
+	got := h.snap()
+	assert.Equal(h.t, 2, got.Epoch)
+	assert.Equal(h.t, 2, got.Rows["w1"].Load1Centi, "the beat after the fence's seq is carried")
 }
 
 func clearRefusals(h *harness) {

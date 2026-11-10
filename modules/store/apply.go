@@ -17,6 +17,8 @@ type txn interface {
 	policy(version int) (PolicyVersion, bool, error)
 	policies() (last int, active []PolicyVersion, err error)
 	lastSeq() (int64, error)
+	// every accepted event after seq, in order: its seq and after-image
+	acceptedSince(seq int64) ([]Event, error)
 	rows() ([]Row, error) // every row of the epoch
 	open() error          // epoch n = n + 1; later puts go to the new epoch
 	putCard(c Card) error
@@ -274,6 +276,16 @@ func condOf(e Expect) cond {
 		return cond{func(c *checker) { c.num64("seq", v.Seq) }, func(w *work) (string, error) {
 			seq, err := w.tx.lastSeq()
 			return when(seq != v.Seq, "the store is at seq %d, expected seq %d", seq, v.Seq), err
+		}}
+	case RowsOnlySince:
+		return cond{func(c *checker) { c.num64("seq", v.Seq) }, func(w *work) (string, error) {
+			events, err := w.tx.acceptedSince(v.Seq)
+			for _, e := range events {
+				if a := e.After; a == nil || a.Epoch != 0 || a.Streams != nil || a.Cards != nil || a.Policies != nil || a.Judgements != nil || a.Cursors != nil || a.Stop != nil || a.Identity != nil {
+					return fmt.Sprintf("the store changed since seq %d: seq %d wrote more than rows", v.Seq, e.Seq), err
+				}
+			}
+			return "", err
 		}}
 	}
 	return cond{}

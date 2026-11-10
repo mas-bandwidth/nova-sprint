@@ -195,9 +195,56 @@ func TestClearWithWorkersBeating(t *testing.T) {
 			t.Fatalf("judgement write: %+v %v", r, err)
 		}
 	}
-	want(t, w.do("carol", "clear", "--confirm", "1"), 1, "the store changed while the backup was made")
+	want(t, w.do("carol", "clear", "--confirm", "1"), 1, "the store changed since seq", "wrote more than rows")
 	if got := w.snap(t); got.Epoch != 1 {
 		t.Fatalf("cleared over a card write: epoch %d", got.Epoch)
+	}
+}
+
+// racing is the store with before run ahead of every Clear: a write by
+// another actor landing between clear's read and its commit, every time.
+type racing struct {
+	*store.Fake
+	before func()
+}
+
+func (r *racing) Clear(ctx context.Context, op store.Op) (store.Receipt, error) {
+	r.before()
+	return r.Fake.Clear(ctx, op)
+}
+
+// TestClearFencedOnRowsNotTheSeq: a beat lands between clear's read and its
+// commit on every try, as a worker beating faster than the store answers
+// does (TestFunctionalClearWhileWorkersBeat's flake, 2026-11-09: refused
+// "the store is at seq N+1, expected seq N"). The clear still lands: it is
+// fenced on every event since its snapshot writing rows only, inside its
+// own transaction, not on the seq. A judgement written in the same place
+// still refuses it.
+func TestClearFencedOnRowsNotTheSeq(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	quiet(&s)
+	w := worldFrom(t, s)
+	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
+	load := 100
+	w.e.Store = &racing{Fake: w.f, before: func() { load++; beat(t, w.f, "alice", load) }}
+	want(t, w.do("carol", "clear", "--confirm", "1"), 0, "CLEARED epoch=2 opened; backup /b/1.dump")
+	if got := w.snap(t); got.Epoch != 2 || len(got.Cards) != 0 || got.Rows["alice"].Load1Centi != load {
+		t.Fatalf("snapshot %+v, want epoch 2 with alice's last beat %d", got, load)
+	}
+
+	w = worldFrom(t, s)
+	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
+	w.e.Store = &racing{Fake: w.f, before: func() {
+		op := store.Op{ID: "judge", Epoch: 1, Actor: "sprint", Kind: "judge", At: t0,
+			Writes: []store.Write{store.PutJudgement{ID: "engine.s.1", Kind: "engine", About: "s", Question: "q", Group: "engine"}}}
+		if r, err := w.f.Apply(context.Background(), op); err != nil || !r.Accepted {
+			t.Fatalf("judgement write: %+v %v", r, err)
+		}
+	}}
+	want(t, w.do("carol", "clear", "--confirm", "1"), 1, "the store changed since seq", "wrote more than rows")
+	if got := w.snap(t); got.Epoch != 1 {
+		t.Fatalf("cleared over a judgement written before the commit: epoch %d", got.Epoch)
 	}
 }
 

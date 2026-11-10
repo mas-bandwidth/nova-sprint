@@ -42,7 +42,7 @@ type Store interface {
 	// same dump can tell the data is already in. It only reads.
 	Restored(ctx context.Context) (digest string, at time.Time, ok bool, err error)
 	// Clear opens a new epoch (n = n + 1) with the protocol of Apply: an op of
-	// kind clear, no writes, at most an AtSeq condition. It is logged with the
+	// kind clear, no writes, AtSeq and RowsOnlySince conditions only. It is logged with the
 	// epoch it closed; the receipt's NewEpoch is the one it opened.
 	Clear(ctx context.Context, op Op) (Receipt, error)
 	// Policy returns one policy version; ErrNotFound when there is none.
