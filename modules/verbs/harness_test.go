@@ -226,12 +226,15 @@ type fakeOrigin struct {
 	contains bool
 	tree     []string          // every file at any base (nil: the root only)
 	files    map[string]string // a file's text at any base, by path
-	commits  []git.Commit      // the head's commits since the base (nil: none)
+	commits  []git.Commit      // the head's commits since the base (nil: one made as the identity)
 	commitsE error
 	err      error
 }
 
 func (o *fakeOrigin) Commits(context.Context, string, string, string, string) ([]git.Commit, error) {
+	if o.commits == nil && o.commitsE == nil {
+		return []git.Commit{{SHA: strings.Repeat("9", 40), AuthorEmail: testIdentity.Email, CommitterEmail: testIdentity.Email}}, nil
+	}
 	return o.commits, o.commitsE
 }
 

@@ -63,8 +63,9 @@ func TestTakeCarriesTheIdentity(t *testing.T) {
 // TestFinishRefusesAnotherIdentity: finish reads the head's commits since the
 // base and refuses one authored or committed by another email, naming each
 // commit and both emails, with the two git config lines and the rewrite as
-// the fix; the identity's email in another case passes; a log that cannot be
-// read is the edge's failure.
+// the fix; the identity's email in another case passes; a head with no
+// commit beyond the base and the stream's base is nothing done; a log that
+// cannot be read is the edge's failure.
 func TestFinishRefusesAnotherIdentity(t *testing.T) {
 	t.Parallel()
 	mine := git.Commit{SHA: strings.Repeat("1", 40), AuthorEmail: testIdentity.Email, CommitterEmail: strings.ToUpper(testIdentity.Email)}
@@ -82,6 +83,8 @@ func TestFinishRefusesAnotherIdentity(t *testing.T) {
 				"333333333333 (author 1+sprint-bot@users.noreply.example.test, committer alice@nova-sprint.local)",
 				`in the clone run git config user.name "Sprint Bot" and git config user.email "1+sprint-bot@users.noreply.example.test"`,
 				"git rebase --rebase-merges " + base + " --exec 'git commit --amend --no-edit --reset-author'", "git push --force-with-lease origin sprint/s/p1"}},
+		{name: "no commit beyond the base", as: "alice", args: finish, exit: 1, prep: commits([]git.Commit{}...),
+			want: []string{"head " + head + " has no commit beyond " + base + " and origin/main; nothing was done", "commit the work on sprint/s/p1, push it, and finish with its head"}},
 		{name: "the log unreadable", as: "alice", args: finish, exit: 2,
 			prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.commitsE = errBroken }, want: []string{"the commits of " + head + " could not be read in a clone of o/r"}},
 	})
