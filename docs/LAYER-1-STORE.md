@@ -211,8 +211,14 @@ Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
 `X` has holder `R` (or none); card `X` is red or not red (`CardRed`); every need of card `X` is `landed` (read from the
 card's own `needs` inside the transaction, never from a caller's list); row
 `R` is in state `S`; row `R` is at gen `G` (`RowGen`); row `R` is held or not held (`RowHeld`); stream `S` is held or not held; card `X` does not exist;
-the store is at seq `N` (a fence
-for a plan that needs nothing at all to have changed since its snapshot). The
+the store is at seq `N` (`AtSeq`: a fence
+for a plan that needs nothing at all to have changed since its snapshot; no
+verb uses it, since every worker's beat moves the seq); no accepted event
+after seq `N` wrote any of the named parts: streams, cards, policies,
+judgements, the stop, the identity, or a row's hook, its session or role
+(`UnchangedSince`: the fence of a verb that read only those parts on a
+snapshot at `N`, so a beat, which writes only its row's telemetry, never
+refuses it). The
 op's epoch must equal the store's epoch; a mismatch is a refusal. Every
 condition is checked inside the same transaction as the writes, against the
 rows as they are at that moment.

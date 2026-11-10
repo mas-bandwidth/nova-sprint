@@ -34,9 +34,11 @@ store's records into the machine's.
 - `MoveRow(r, e)`: Seen, Gone, Width, Hold, Unhold.
 - `MoveStream(s, e)`: HoldStream{Reason, Ready, Seq} holds the stream and
   parks, in the same op, every ready producer named once (a duplicate is
-  refused), fenced by StreamHeld false, AtSeq of the snapshot the ready set
-  was read from, and each producer's gen. A card that became ready after
-  that snapshot is not in the plan, and a stale seq refuses the whole op.
+  refused), fenced by StreamHeld false, UnchangedSince (no stream or card
+  written) the seq of the snapshot the ready set was read from, and each
+  producer's gen. A card that became ready after that snapshot is not in
+  the plan, and any card or stream write since refuses the whole op; a
+  worker's beat, which writes only its row, does not.
   UnholdStream{Reason} clears the hold and parks nothing. The caller passes
   every ready producer of the stream; one it misses is parked later with Park.
   Merged after another plan, HoldStream scans the stream again, so a producer

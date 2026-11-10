@@ -47,7 +47,7 @@ type Result struct {
 }
 
 // Up stores the built-in default as the next version and activates it, in
-// one op fenced at the snapshot's seq, when no version is active; otherwise
+// one op fenced on no version stored since the snapshot, when no version is active; otherwise
 // it changes nothing. A data row stored first (stream data) is only counted
 // (Emma's probe: up once left no active version after one).
 func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
@@ -61,7 +61,7 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 	}
 	v := len(all) + 1
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: "up: the built-in default",
-		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}},
+		Expect: []store.Expect{store.UnchangedSince{Seq: snap.Seq, Policies: true}},
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default.star", Body: defaultBody}, store.SetActivePolicy{Version: v}}}
 	_, err = apply(ctx, st, op, "up")
 	return Result{Version: v, Next: "nova-sprint policy show"}, err
@@ -69,7 +69,8 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 
 // Set compiles the file, checks its names and arity, runs it on the current
 // snapshot read with ro, and stores it as the next version, not active
-// (tla/Policy.tla Set), in an op fenced at the snapshot's seq: a set that
+// (tla/Policy.tla Set), in an op fenced on the policies and judgements of
+// the snapshot (fenced): a set that
 // lands first (the same file from another shell) refuses this one, as
 // "already stored" when it stored this body (rowan2's probe). When no
 // version is active the same op activates it (defect 53: a fresh store took
@@ -101,7 +102,7 @@ func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Cal
 		return Result{}, err
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: reason,
-		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: writes}
+		Expect: []store.Expect{fenced(snap, snap.Policy == 0)}, Writes: writes}
 	after, err := apply(ctx, st, op, "set")
 	for v := range after.Policies { // the one version the op stored
 		if snap.Policy == 0 {
@@ -175,7 +176,8 @@ func unstorable(verb string, fs ...field) *Refusal {
 }
 
 // Activate re-runs check on the current snapshot (read with ro), then in
-// one op fenced at that snapshot's seq (the model's one step) moves the
+// one op fenced on that snapshot's policies and judgements (fenced; the
+// model's one step) moves the
 // active flag to v and answers the open policy judgements of the old
 // version, of v (v now runs clean) and of the built-in (policy:v0: any
 // clean activation answers it). It writes no card (tla/Policy.tla
@@ -210,9 +212,21 @@ func Activate(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, 
 		writes = append(writes, store.AnswerJudgement{ID: id, Answer: fmt.Sprintf("v%d activated: %s", v, reason)})
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-activate", At: c.At, Note: reason,
-		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: writes}
+		Expect: []store.Expect{fenced(snap, true)}, Writes: writes}
 	_, err = apply(ctx, st, op, "activate")
 	return Result{Version: v, Changes: len(rep.Changes), Next: "nova-sprint next"}, err
+}
+
+// fenced is set's and activate's fence: no version stored or activated
+// since snap (the next number and the active version they read), and when
+// the op answers the open judgements it read (activate; set when none is
+// active), no judgement opened or answered since. Never the seq: every
+// worker's beat moves it, and a tick that opens a judgement does not touch
+// a set that answers none. The check is of snap; the snapshot moving
+// between the check and the op is Policy.tla's Drift after Activate, which
+// may break any version at any step.
+func fenced(snap store.Snapshot, answers bool) store.Expect {
+	return store.UnchangedSince{Seq: snap.Seq, Policies: true, Judgements: answers}
 }
 
 // coordinator refuses a caller who is not the coordinator, a blank reason,

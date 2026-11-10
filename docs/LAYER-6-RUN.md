@@ -862,7 +862,8 @@ github.com credential is always gh as the host's login (no switch on
 ### Built: one commit identity for the sprint (stitch w4I, 2026-11-07)
 
 - New verb `identity` (coordinator, group operate): `--name --email --reason` sets the store's
-  identity (one `SetIdentity` op fenced `AtSeq`); the same identity again changes nothing; no
+  identity (one `SetIdentity` op fenced `AtSeq`, since 2026-11-09 `UnchangedSince` on the
+  identity, so a beat does not refuse it); the same identity again changes nothing; no
   flags prints it with its rule. Refusals: none set and none given, a value `ValidIdentity`
   refuses, no reason. How the coordinator sets it for a live fleet:
   `nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint identity

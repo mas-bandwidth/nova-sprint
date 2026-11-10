@@ -467,9 +467,13 @@ answer. Refusals are `*Refusal` in the CORRECT-USE form (`SPRINT REFUSED policy
 events' `reason` column is the refusal's), and an empty reason is refused. `up`
 stores and activates the built-in in one op. `activate` pre-checks "already
 active" with the store's own text and answers the open policy judgements of
-both the old active and the version it activates; it has no `AtSeq` fence (the
-snapshot moves every tick; a version that breaks after its check is caught by
-the fallback). `Show`, `List` and `LoadVersions` walk the whole log; layer 6
+both the old active and the version it activates; it has no fence on the
+seq itself (the snapshot moves every tick, and every worker's beat moves the
+seq; a version that breaks after its check is caught by the fallback). `up`,
+`set` and `activate` are fenced `UnchangedSince` their snapshot on what they
+read: no version stored or activated (all three), and no judgement opened or
+answered when the op answers the open judgements it read (`activate`, and
+`set` when no version is active). `Show`, `List` and `LoadVersions` walk the whole log; layer 6
 should call `PrevOf` as it folds events rather than `LoadVersions` per tick.
 
 **The default.** `modules/policy/default.star` is the design's text unchanged. Not
@@ -680,7 +684,8 @@ probe passes as written, none weakened):
    any row at version 1 as "already up", so a `data` row stored first left no
    active version; `check v<n>` compiled a data row as Starlark. `Up` now
    acts when no version is active, storing the default as the next version
-   and activating it in one op fenced by `AtSeq` at its snapshot; `check`,
+   and activating it in one op fenced by `AtSeq` at its snapshot (since
+   2026-11-09 `UnchangedSince` its snapshot on the policies); `check`,
    `activate` and `catalog` refuse a data version through one helper
    (`script`), with one fix text: `name a script version: nova-sprint
    policy show --list` (activate's and catalog's tests updated to it).
@@ -786,7 +791,8 @@ roster (nova-config changing under the sprint), as it moved the store's.
    (`unstorable`, verbs.go): a `*Refusal` naming the field, never
    `ErrInvalid`.
 3. `TestBreakSetRaceStoresOneBodyTwice`: `set` is fenced `AtSeq` at its
-   snapshot, as `up` is; a set that loses the race is refused as "v<n>
+   snapshot, as `up` is (since 2026-11-09 `UnchangedSince` on the policies
+   and judgements, so a beat does not refuse it); a set that loses the race is refused as "v<n>
    already stores this body" when the winner stored its body.
 4. and 5. `TestFunctionalBreakProseMakesTheInputsOutrunTheTickDeadline`,
    `TestBreakProseLeavesTheBuiltInUnableToAnswer`: the prose is no input
@@ -864,7 +870,11 @@ active version and every version the log deactivated), so
 `FallbackWasActive` is checked against the code; `waitBound` and
 `startBound` are layer 3's waits, which this layer holds no state of, so
 the ledger no longer claims `WaitKeepsItsBound` of this code (L5-8).
-`Activate` is one op fenced `AtSeq` at its snapshot, the model's one step.
+`Activate` is one op, the model's one step, fenced `UnchangedSince` its
+snapshot on the policies and judgements (2026-11-09: `AtSeq` before, which
+every worker's beat refused); a snapshot that moves between the check and
+the op is the model's `Drift` after `Activate`, which may break any version
+at any step, so the states reached are the model's.
 The clock seam: `Clock` (Now, After), `RealClock` the binary's; every unit
 test is on a fake (`testEngine`); the wall-clock timing probes run only
 with `NOVA_LOAD` set (and never under -race or -short). Any clean

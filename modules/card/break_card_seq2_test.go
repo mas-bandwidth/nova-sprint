@@ -589,7 +589,7 @@ func TestBreakHeldRefusedLeavesNothing(t *testing.T) {
 		require.Nil(t, r)
 		b.ok(b.P("p2", Resolve{})) // a card became ready after the snapshot
 		assert.False(t, b.try("stale hold", plan, nil))
-		assert.Contains(t, b.last, "expected seq")
+		assert.Contains(t, b.last, "wrote cards")
 		assert.False(t, b.snap().Streams["s1"].Held)
 		b.is("p1", Ready)
 	})
