@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,6 +36,31 @@ func TestEngineNoHeadJudgementClearsWhenTheHeadIsRead(t *testing.T) {
 	j := s.snap().Judgements["engine.s1.1"]
 	assert.Equal(t, "expired", j.State)
 	assert.Equal(t, "stream s1 has a head in the tick's inputs again", j.Answer)
+}
+
+// TestLandRateNeedsACardLeftToLand: a stream under its land target opens
+// land-rate while it has a producer that may still land; once none is left
+// its rate cannot move, so the judgement clears and no other opens.
+func TestLandRateNeedsACardLeftToLand(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.row("r1", 1, "pro")
+	s.stream("s1")
+	var put, land []store.Write
+	for i := range Engine.LandSample {
+		id := fmt.Sprintf("n%02d", i)
+		put = append(put, store.PutCard{ID: id, Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do " + id, Paths: []string{"n/" + id}})
+		land = append(land, store.SetCardBounces{Card: id, Bounces: 1}, store.SetCardState{Card: id, State: "landed"})
+	}
+	s.must("seed", put...)
+	s.must("land by hand", land...)
+	s.producer("p1", "s1", "pro", "a.go")
+	s.run(2)
+	require.Equal(t, []string{"land-rate.s1.1"}, s.openJudgements("land-rate"))
+	s.must("fail by hand", store.SetCardState{Card: "p1", State: "fail"})
+	s.run(2)
+	assert.Empty(t, s.openJudgements("land-rate"))
+	assert.Equal(t, "stream s1 has no card left to land", s.snap().Judgements["land-rate.s1.1"].Answer)
 }
 
 // TestExpiryReopensWhatStillHolds is item 3 (2026-11-08: 153 stall, 83
