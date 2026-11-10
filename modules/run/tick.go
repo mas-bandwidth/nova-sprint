@@ -69,14 +69,21 @@ func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []PushFailu
 // failing version that did not answer (the answering version's failed
 // questions are the steps' policy judgements, one each; a row the roster
 // does not name is the steps'), as one op on the snapshot the questions
-// were asked on; its id is that seq's, so a replay applies it once.
+// were asked on; its id is that seq's, so a replay applies it once. Each
+// carries the deadline now plus the answering version's timeouts judgement
+// (the engine's when none answered), as RosterUnread's does.
 func judgementOp(a *asker, o Observed) (store.Op, bool) {
 	js := policy.Judgements(a.snap, o.Roster, slices.DeleteFunc(slices.Clone(a.failures), func(f policy.Failure) bool { return f.Version == a.answers.Version }))
 	if len(js) == 0 {
 		return store.Op{}, false
 	}
 	op := store.Op{ID: fmt.Sprintf("judge.policy.%d.%d", a.snap.Epoch, a.snap.Seq), Epoch: a.snap.Epoch, Actor: "sprint", Kind: "judgement", At: o.Now}
+	tmo := a.answers.Timeouts.Judgement
+	if tmo <= 0 {
+		tmo = steps.Engine.Timeouts.Judgement
+	}
 	for _, j := range js {
+		j.Deadline = o.Now.Add(time.Duration(tmo) * time.Second)
 		op.Writes = append(op.Writes, j)
 	}
 	return op, true
