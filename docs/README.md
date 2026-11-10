@@ -257,7 +257,12 @@ runnable. The built-in policy names no bench model: a bench takes a tier's work
 only once the active policy's `catalog()` names that tier's model, as
 `{"bench": {"<tier>": "<provider>/<model>"}}` (`nova-sprint policy set`; `check`
 names each tier without one). Follow any missing-route or harness refusal
-before starting work.
+before starting work. An optional `"concurrency": {"<provider>": <n>}` caps how
+many consumers work on that provider's models across the fleet at once (none:
+unlimited). A job that ends on a provider's rate limit (429, "rate limit",
+"too many requests") is a fault, not the card's fail: the card is dealt again
+without spending an attempt, and its model is dealt to no row for the policy's
+`route_rest_for` (1800 s built in).
 
 A bench worker reaches four providers, each through its key proxy with its key
 opened from the bench's own seat: `deepseek` (`DEEPSEEK_API_KEY`), `inception`

@@ -89,7 +89,10 @@ type Answers struct {
 	Timeouts *Timeouts
 	Failed   map[string]string // question -> why; "*" when the budget was spent
 	Models   map[string]string // tier -> the model a bench runs (the catalog's bench key); none: no bench deal
-	NoDeal   string            // layer 6's gate: why nothing is dealt this tick ("" deals; model.go)
+	// Concurrency is provider -> how many consumers may work on its models
+	// across the fleet at once (the catalog's concurrency key); none: unlimited.
+	Concurrency map[string]int
+	NoDeal      string // layer 6's gate: why nothing is dealt this tick ("" deals; model.go)
 }
 
 // WidthAnswer is width(row): how many the row works at once, at most its
