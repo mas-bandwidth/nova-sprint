@@ -817,7 +817,14 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   `GOTOOLCHAIN=local` and `GOROOT/bin` first on `PATH` inside every wall
   only when a grant covers GOROOT, and `GOMODCACHE` with `GOPROXY=off` only
   when a grant covers the cache; one start line names what was granted.
-  `GOCACHE` stays go's default under the job's own home.
+  `GOCACHE` stays go's default under the job's own home. `~/.cargo/registry`,
+  when it is there, is granted read-only too (the dot-directory rule is
+  waived for it alone; the overlap checks still apply, and a registry that
+  resolves elsewhere gets every check), with one start line; `CargoWallEnv`
+  links it, through an `os.Root` on the job directory, as the job's own
+  `home/.cargo/registry` and sets
+  `CARGO_NET_OFFLINE=true`, so cargo builds from the bench's crates under
+  `--net-deny` and a crate the bench lacks fails at once, named.
 - **The cause line (25).** `edge.CauseLine`: escapes stripped
   (`edge.StripANSI`), the first line holding error, refused or failed, else
   the last non-empty line, bounded; `edge.StderrLines` strips escapes too.

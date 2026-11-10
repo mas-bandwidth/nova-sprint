@@ -13,12 +13,12 @@ import (
 // hooked is the one hooked check (CORRECT-USE, "Hooked before anything that
 // acts as you"; DO NOT REMOVE without Glenn, LESSONS W.17): a name, on the
 // bus, hooked in to the sprint, in the role the verb needs. It returns the
-// snapshot it read, which the verb acts on.
-func (e *Engine) hooked(ctx context.Context, in *input, need role) (store.Snapshot, error) {
+// snapshot it read, with the cards scope names, which the verb acts on.
+func (e *Engine) hooked(ctx context.Context, in *input, need role, scope store.Scope) (store.Snapshot, error) {
 	if err := e.onBus(ctx, in.actor); err != nil {
 		return store.Snapshot{}, err
 	}
-	snap, err := e.snapshot(ctx)
+	snap, err := e.read(ctx, scope)
 	if err != nil {
 		return snap, err
 	}
@@ -102,12 +102,17 @@ func validName(s string) bool {
 	return true
 }
 
-// snapshot is one read of the store.
+// snapshot is one read of the store, every card.
 func (e *Engine) snapshot(ctx context.Context) (store.Snapshot, error) {
+	return e.read(ctx, store.Scope{All: true})
+}
+
+// read is one read of the store with the cards scope names.
+func (e *Engine) read(ctx context.Context, scope store.Scope) (store.Snapshot, error) {
 	if e.Store == nil {
 		return store.Snapshot{}, broken("the store is not configured", "set NOVA_PG_DSN and NOVA_SPRINT_PG_PASSWORD, then nova-sprint check")
 	}
-	snap, err := e.Store.Snapshot(ctx)
+	snap, err := e.Store.Read(ctx, scope)
 	if err != nil {
 		if f := e.storeRefusal(ctx, err); f != nil {
 			return snap, f

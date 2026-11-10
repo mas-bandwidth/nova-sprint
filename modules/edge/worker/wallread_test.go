@@ -185,3 +185,78 @@ func TestDetectedGoIsGrantedWithNoFlagsAndARefusedDirIsSkipped(t *testing.T) {
 		t.Errorf("start lines %q: want one saying the GOROOT is skipped and why", lines)
 	}
 }
+
+// Cargo's registry under the bench's ~/.cargo is granted read-only at start
+// (never the rest of ~/.cargo), and each wall links it into the job's own
+// cargo home with CARGO_NET_OFFLINE=true: a crate the bench holds builds
+// under --net-deny instead of failing on index.crates.io.
+func TestCargoRegistryIsGrantedReadOnlyAndLinkedOffline(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	reg := filepath.Join(home, ".cargo", "registry")
+	if err := os.MkdirAll(reg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	cfg, err := osWallConfig_internal(context.Background(), Config{Row: "r1"}, edge.NewFakeExec(), time.Minute, home, [][2]string{{"--root", filepath.Join(home, "state")}}, func(s string) { lines = append(lines, s) })
+	rReg := resolvePath_internal(reg)
+	if err != nil || cfg.CargoRegistry != rReg || !slices.Equal(cfg.ReadPaths, []string{rReg}) {
+		t.Fatalf("cargo's registry not granted alone: %q %q %v", cfg.CargoRegistry, cfg.ReadPaths, err)
+	}
+	if !slices.ContainsFunc(lines, func(l string) bool { return strings.Contains(l, rReg) && strings.Contains(l, "CARGO_NET_OFFLINE") }) {
+		t.Errorf("start lines %q: want one naming the registry and CARGO_NET_OFFLINE", lines)
+	}
+	cfg.ReserveBin, cfg.SandboxBin, cfg.NetDeny = "nova-reserve", "nova-sandbox", true
+	fx := cr2OKExec_internal()
+	dir := t.TempDir()
+	if _, err := (&OSReserveWall{Exec: fx, Config: cfg}).RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	c := fx.Calls()[0].Cmd
+	if !slices.Contains(c.Env, "CARGO_NET_OFFLINE=true") || !strings.Contains(strings.Join(c.Argv, " "), "--read "+rReg+" ") || strings.Contains(strings.Join(c.Argv, " "), "--write "+rReg) {
+		t.Errorf("wall argv %q env %q: want --read of the registry and CARGO_NET_OFFLINE=true", c.Argv, c.Env)
+	}
+	if got, err := os.Readlink(filepath.Join(dir, "home", ".cargo", "registry")); err != nil || got != rReg {
+		t.Errorf("job cargo home's registry links to %q (%v), want %q", got, err, rReg)
+	}
+
+	fx, dir = cr2OKExec_internal(), t.TempDir()
+	if _, err := (&OSReserveWall{Exec: fx, Config: WallConfig{CargoRegistry: rReg}}).RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "home", ".cargo")); slices.Contains(fx.Calls()[0].Cmd.Env, "CARGO_NET_OFFLINE=true") || err == nil {
+		t.Errorf("an ungranted registry reached the wall: %q", fx.Calls()[0].Cmd.Env)
+	}
+
+	// A job that plants home/.cargo as a link out of its tree is refused,
+	// and the worker writes nothing where the link leads.
+	outside, dir := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "home"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "home", ".cargo")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&OSReserveWall{Exec: cr2OKExec_internal(), Config: cfg}).RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute); err == nil {
+		t.Errorf("a planted home/.cargo link out of the job dir was followed")
+	}
+	if ents, _ := os.ReadDir(outside); len(ents) != 0 {
+		t.Errorf("the worker wrote %v outside the job dir", ents)
+	}
+
+	// A registry that resolves elsewhere in the home gets every home check.
+	home = t.TempDir()
+	ssh := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(filepath.Join(home, ".cargo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ssh, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(ssh, filepath.Join(home, ".cargo", "registry")); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = osWallConfig_internal(context.Background(), Config{Row: "r1"}, edge.NewFakeExec(), time.Minute, home, nil, func(string) {}); err != nil || cfg.CargoRegistry != "" || len(cfg.ReadPaths) != 0 {
+		t.Errorf("a registry resolving to %s was granted: %q %q %v", ssh, cfg.CargoRegistry, cfg.ReadPaths, err)
+	}
+}
