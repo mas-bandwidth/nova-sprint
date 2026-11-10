@@ -19,7 +19,8 @@ import (
 // open one admission judgement per stream. A stream is proved once per head;
 // a proof that fails is said (EDGE FAULT) and the last answer stands until
 // the base moves again; a proof that answers after a newer one began is
-// dropped.
+// dropped. A new epoch (a clear) starts over: every stream is proved again
+// and the old epoch's refusals and late proofs are dropped.
 type Admission struct {
 	// Admit is check's admission of stream's waiting and ready producers in
 	// snap: each refused one's refusal, by id (verbs.Engine.AdmitStream).
@@ -27,6 +28,7 @@ type Admission struct {
 	Fault func(what string, err error)
 
 	mu      sync.Mutex
+	epoch   int                          // the epoch proving and refused are of
 	proving map[string]string            // stream -> the head its latest proof is of
 	refused map[string]map[string]string // stream -> card -> refusal
 	wg      sync.WaitGroup
@@ -40,8 +42,8 @@ func (a *Admission) Prove(ctx context.Context, snap store.Snapshot, heads map[st
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.proving == nil {
-		a.proving, a.refused = map[string]string{}, map[string]map[string]string{}
+	if a.proving == nil || a.epoch != snap.Epoch { // a clear starts the proofs over
+		a.proving, a.refused, a.epoch = map[string]string{}, map[string]map[string]string{}, snap.Epoch
 	}
 	for _, s := range slices.Sorted(maps.Keys(heads)) {
 		h := heads[s]
@@ -59,7 +61,7 @@ func (a *Admission) Prove(ctx context.Context, snap store.Snapshot, heads map[st
 			}
 			a.mu.Lock()
 			defer a.mu.Unlock()
-			if a.proving[s] == h {
+			if a.proving[s] == h && a.epoch == snap.Epoch {
 				a.refused[s] = refused
 			}
 		})
