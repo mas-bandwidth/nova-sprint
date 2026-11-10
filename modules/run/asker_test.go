@@ -3,8 +3,10 @@ package run
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,16 +53,22 @@ func TestStepsAnswersAttributesFailuresToTheirOwnVersion(t *testing.T) {
 // TestJudgementOpLeavesTheAnsweringVersionToSteps: a failed question of the
 // version that answered is the steps' policy judgement (one per question,
 // group policy:v4), so run's op opens none for it; a version that failed
-// and did not answer (v5) is run's, one judgement.
+// and did not answer (v5) is run's, one judgement, whose deadline is the
+// tick's now plus timeouts judgement (the engine's when none answered).
 func TestJudgementOpLeavesTheAnsweringVersionToSteps(t *testing.T) {
 	t.Parallel()
 	a := &asker{snap: store.Snapshot{Seq: 7}, answers: policy.Answers{Version: 4}, failures: []policy.Failure{
 		{Version: 4, Label: "v4", Question: "verdict", Subject: "c1", Line: 3, Msg: "verdict: not a string"},
 		{Version: 5, Label: "v5", Line: 1, Msg: "syntax error"}}}
-	op, ok := judgementOp(a, Observed{})
+	now := time.Unix(1000, 0)
+	op, ok := judgementOp(a, Observed{Now: now})
 	require.True(t, ok)
 	require.Len(t, op.Writes, 1)
 	assert.Equal(t, policy.Group(5), op.Writes[0].(store.PutJudgement).Group)
+	assert.Equal(t, now.Add(time.Duration(steps.Engine.Timeouts.Judgement)*time.Second), op.Writes[0].(store.PutJudgement).Deadline, "the engine's judgement timeout when the version names none")
+	a.answers.Timeouts.Judgement = 600
+	op, _ = judgementOp(a, Observed{Now: now})
+	assert.Equal(t, now.Add(600*time.Second), op.Writes[0].(store.PutJudgement).Deadline, "the answering version's judgement timeout")
 }
 
 // TestStepsAnswersCarryEveryLimit: every limit policy validates reaches the
