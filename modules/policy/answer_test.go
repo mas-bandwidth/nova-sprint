@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -152,6 +153,25 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	a, _ = testEngine().Answer(Versions{}, shapes[3], narrowed, FullQuestions(shapes[3], nil))
 	assert.Empty(t, a.Rows[RowsQuestion{"p2", KindWork}], "no row serves heavy: layer 3's judgement, not a refusal")
 	assert.NotContains(t, a.Order, "p1", "a landed producer is not asked")
+}
+
+// TestEngineDefaultsAreTheBuiltIns: the numbers a tick runs on when no
+// version answers (steps.Engine) are the built-in's limits(), timeouts()
+// and landing(), so a tick with no answer is no stricter than the default.
+func TestEngineDefaultsAreTheBuiltIns(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	snap := w.snap()
+	a, fs := testEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
+	require.Empty(t, fs)
+	l, tm, d := a.Limits, a.Timeouts, steps.Engine
+	assert.Equal(t, d.Limits, steps.Limits{Bounces: l.Bounces, Faults: l.Faults, SameFinding: l.SameFinding, ReportsPerTick: l.ReportsPerTick,
+		RouteRestWindow: l.RouteRestWindow, RouteRestAfter: l.RouteRestAfter, EscalateAfter: l.EscalateAfter, FrontierAfter: l.FrontierAfter,
+		FlapLimit: l.FlapLimit, IdleFloor: l.IdleFloor, LandTarget: l.LandTarget, Budget: d.Limits.Budget, Pack: d.Limits.Pack})
+	assert.Equal(t, d.Timeouts, steps.Timeouts{RowSilentGone: tm.RowSilentGone, RowSilentWithdraw: tm.RowSilentWithdraw, LandingStall: tm.LandingStall,
+		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, ReadyNag: tm.ReadyNag, ReadyTake: tm.ReadyTake, BaseRegate: tm.BaseRegate, Consumer: tm.Consumer})
+	ld := a.Landing["s1"]
+	assert.Equal(t, d.Landing, steps.LandingAnswer{BackedUp: ld.BackedUp, Flowing: ld.Flowing, CIWait: ld.CIWait})
 }
 
 // TestJudgementStorable: a failure's text is made storable before
