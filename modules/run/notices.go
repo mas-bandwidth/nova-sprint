@@ -3,6 +3,7 @@ package run
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -54,7 +55,23 @@ func (n EventNotices) ForEvent(event store.Event, afterView store.Snapshot, reci
 	if recipient == n.Coordinator {
 		out = append(out, judgementNotices(event, n.Coordinator)...)
 	}
+	if recipient == takenFrom(event) {
+		out = append(out, Notice{Subject: "TAKEN OVER", Line: fmt.Sprintf("TAKEN OVER by=%s: %s; you are unhooked and your hand is back in the queue", event.Actor, clipWith(event.Receipt.Note, fmt.Sprintf("event %d in the sprint's log", event.Seq)))})
+	}
 	return out, nil
+}
+
+// takenFrom is the coordinator an accepted take-over unhooked, or "".
+func takenFrom(e store.Event) string {
+	if e.Kind != "take-over" || !e.Accepted || e.Before == nil || e.After == nil {
+		return ""
+	}
+	for _, n := range slices.Sorted(maps.Keys(e.Before.Rows)) {
+		if r := e.Before.Rows[n]; r.Session != "" && r.Role == "coordinator" && e.After.Rows[n].Session == "" {
+			return n
+		}
+	}
+	return ""
 }
 func sortedCardIDs(cards map[string]store.Card) []string {
 	keys := make([]string, 0, len(cards))

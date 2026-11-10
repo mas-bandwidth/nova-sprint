@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -57,6 +59,51 @@ func TestUpTakesOverFromACoordinatorWhoIsGone(t *testing.T) {
 	want(t, w.do("dave", "unhook", "alice"), 0, "UNHOOKED alice")
 }
 
+// inbox is the bus as the run's pusher sends on it: each recipient's
+// messages, one "<subject>: <body>" line each.
+type inbox map[string]string
+
+func (i inbox) Send(_ context.Context, to, subject, body string) (string, error) {
+	i[to] += subject + ": " + body + "\n"
+	return "m-" + to, nil
+}
+
+func (inbox) Who(context.Context) (map[string]bus.Presence, error) { return nil, nil }
+
+// TestUpTakesOverFromACoordinatorOnTheBus: the seat is handed over in
+// conversation, so up --take-over goes through with the old coordinator
+// still on the bus, as it does when that coordinator is gone, and the run's pusher
+// tells the old coordinator who took the seat and why.
+func TestUpTakesOverFromACoordinatorOnTheBus(t *testing.T) {
+	t.Parallel()
+	w := takeoverWorld(t)
+	w.bus.present["carol"] = true
+	want(t, w.do("dave", "up", "--take-over", "--reason", "the seat was handed to dave"), 0,
+		"TOOK OVER from carol: the seat was handed to dave", "HOOKED dave role=coordinator", "UP DONE")
+	s := w.snap(t)
+	if r := s.Rows["carol"]; r.Session != "" || r.Role != "" {
+		t.Fatalf("carol still hooked: %+v", r)
+	}
+	if r := s.Rows["dave"]; r.Session != "minted-1" || r.Role != "coordinator" {
+		t.Fatalf("dave %+v", r)
+	}
+	events, err := w.f.Events(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := run.NewPusher()
+	for _, ev := range events {
+		p.Observe(ev, s)
+	}
+	sent := inbox{}
+	if failed := p.Push(context.Background(), sent, w.f, s.Epoch, t0); len(failed) != 0 {
+		t.Fatalf("push failed: %+v", failed)
+	}
+	if !strings.Contains(sent["carol"], "TAKEN OVER by=dave: took over from carol: the seat was handed to dave") {
+		t.Fatalf("carol was not told the seat moved: %q", sent["carol"])
+	}
+}
+
 func TestUpTakeOverRefusals(t *testing.T) {
 	t.Parallel()
 	hint := `nova-sprint up --as dave --take-over --reason "<why>"`
@@ -67,34 +114,19 @@ func TestUpTakeOverRefusals(t *testing.T) {
 		exit int
 		want []string
 	}{
-		{name: "the coordinator is on the bus", prep: func(_ *testing.T, w *world) { w.bus.present["carol"] = true },
-			args: []string{"up", "--take-over", "--reason", "carol is slow"}, exit: 1,
-			want: []string{"SPRINT REFUSED up: carol is on the bus: ask carol to run nova-sprint unhook --as carol"}},
 		{name: "no reason", args: []string{"up", "--take-over"}, exit: 1,
 			want: []string{"SPRINT REFUSED up: --take-over needs --reason: " + hint}},
+		{name: "an empty reason", args: []string{"up", "--take-over", "--reason", ""}, exit: 2,
+			want: []string{"SPRINT REFUSED up: --reason needs one non-empty value"}},
 		{name: "a reason without the flag", args: []string{"up", "--reason", "x"}, exit: 2,
 			want: []string{"--reason goes with --take-over"}},
 		{name: "without the flag, the old refusal names it", args: []string{"up"}, exit: 1,
-			want: []string{"SPRINT REFUSED up: the sprint's coordinator is carol: ask carol to run nova-sprint unhook --as carol first; if carol is gone: " + hint}},
+			want: []string{"SPRINT REFUSED up: the sprint's coordinator is carol: ask carol to run nova-sprint unhook --as carol first, or take the seat: " + hint}},
 		{name: "hook names it too", args: []string{"hook", "--role", "coordinator"}, exit: 1,
-			want: []string{"the sprint's coordinator is carol", "if carol is gone: " + hint}},
+			want: []string{"the sprint's coordinator is carol", "or take the seat: " + hint}},
 		{name: "the taker is hooked already", prep: func(t *testing.T, w *world) { w.ok(t, "dave", "hook", "--role", "worker") },
 			args: []string{"up", "--take-over", "--reason", "carol is gone"}, exit: 1,
 			want: []string{"dave is already hooked in as worker", "nova-sprint unhook --as dave"}},
-		{name: "the seat moved while the bus was asked", prep: func(t *testing.T, w *world) {
-			calls := 0
-			w.bus.during = func() { // on the take-over's own who (up's second: the first is dave's), carol comes back and hands the seat to erin
-				if calls++; calls != 2 {
-					return
-				}
-				w.bus.during = nil
-				w.bus.present["carol"], w.bus.present["erin"] = true, true
-				w.ok(t, "carol", "unhook")
-				w.ok(t, "erin", "hook", "--role", "coordinator")
-				w.bus.present["carol"] = false
-			}
-		}, args: []string{"up", "--take-over", "--reason", "carol is gone"}, exit: 1,
-			want: []string{"the sprint's coordinator changed to erin meanwhile", hint + " again"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

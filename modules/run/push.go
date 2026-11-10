@@ -62,10 +62,15 @@ func (p *Pusher) Nudge(ns []steps.Nudge) {
 }
 
 // Observe takes one folded event, with the snapshot after it, for every
-// recipient whose cursor is behind it.
+// recipient whose cursor is behind it; a take-over's old coordinator, no
+// longer hooked in, is a recipient of that one event.
 func (p *Pusher) Observe(e store.Event, after store.Snapshot) {
 	notices := EventNotices{Coordinator: Coordinator(after)}
-	for _, r := range recipients(after) {
+	rs := recipients(after)
+	if old := takenFrom(e); old != "" {
+		rs = append(rs, old)
+	}
+	for _, r := range rs {
 		name, err := pushCursorName(r)
 		if err != nil || after.Cursors[name] >= e.Seq {
 			continue
