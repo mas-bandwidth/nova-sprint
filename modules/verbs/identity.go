@@ -46,7 +46,7 @@ func runIdentity(e *Engine, ctx context.Context, in *input, snap store.Snapshot)
 		return done("nova-sprint next --as "+in.actor, "IDENTITY already "+commitIdentity(snap)+"; nothing changed"), nil
 	}
 	op := e.newOp("identity", in.actor, snap, name, email)
-	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Identity: true}} // no other identity set since the read
+	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Identity: true, Hooks: true}} // no other identity set, and the caller still the coordinator it was read as
 	op.Writes, op.Note = []store.Write{store.SetIdentity{Name: name, Email: email}}, reason
 	r, err := e.commit(ctx, op, "nova-sprint identity --as "+in.actor)
 	if err != nil {

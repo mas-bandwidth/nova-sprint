@@ -82,7 +82,7 @@ func TestColdread3DefectMergedRelinksMakeACycle(t *testing.T) {
 
 // D3. HoldStream parks the stream's ready producers "in the same op, so a
 // card that cannot start is never left in ready" (LAYER-2 Park row; LESSONS
-// 2.20), and its AtSeq fence is there so a card that became ready after the
+// 2.20), and its fence (no card or stream written since) is there so a card that became ready after the
 // snapshot refuses the op. Merged with a Resolve planned from the same
 // snapshot (p1 waiting, so the hold rightly names no ready producer), every
 // condition holds before the writes: the op holds s1 and makes p1 ready in

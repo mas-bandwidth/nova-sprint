@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"strings"
 	"testing"
@@ -80,6 +81,27 @@ func TestVerbsFencedOnRecordsNotTheSeq(t *testing.T) {
 			w := c.world(t)
 			w.e.Store = between(w, c.kind, c.matters)
 			want(t, w.do(c.as, c.args...), 1, "the store changed since seq", c.refused)
+		})
+	}
+}
+
+// TestCoordinatorVerbsFencedOnTheirHook: stream add, identity and stop
+// read the caller as the coordinator on their snapshot; unhooked between
+// the read and the commit (a take-over), the op is refused, as the seq
+// fence refused it.
+func TestCoordinatorVerbsFencedOnTheirHook(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{
+		{"stream", "add", "t", "--repo", "o/r", "--forge", "github"},
+		{"identity", "--name", "New Bot", "--email", "3+new-bot@users.noreply.example.test", "--reason", "r"},
+		{"stop", "--reason", "deploy"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			kind := map[string]string{"stream": "stream-add"}[args[0]]
+			w.e.Store = between(w, cmp.Or(kind, args[0]), store.PutRow{Name: "carol"})
+			want(t, w.do("carol", args...), 1, "the store changed since seq", "wrote row carol's hook")
 		})
 	}
 }

@@ -75,8 +75,8 @@ func TestPolicyVerbsFencedOnPoliciesNotTheSeq(t *testing.T) {
 			w     store.Write
 			wrote string
 		}{{"a version", data, "wrote policies"}, {"a judgement", judged, "wrote judgements"}} {
-			if v.name == "up" && m.what == "a judgement" {
-				continue // up answers no judgement, and reads none
+			if v.name != "activate" && m.what == "a judgement" {
+				continue // up, and set with a version active, answer no judgement and read none
 			}
 			t.Run(v.name+": "+m.what+" between", func(t *testing.T) {
 				t.Parallel()
@@ -88,4 +88,23 @@ func TestPolicyVerbsFencedOnPoliciesNotTheSeq(t *testing.T) {
 			})
 		}
 	}
+	t.Run("set: a judgement between, a version active", func(t *testing.T) {
+		t.Parallel()
+		w := fakeWorld(t)
+		require.NoError(t, verbs[1].run(w, &betweenStore{Store: w.st, kind: "policy-set", between: []store.Write{judged}}))
+	})
+	t.Run("set: a judgement between, none active", func(t *testing.T) {
+		t.Parallel()
+		w := fakeWorld(t)
+		err := setFile(w, &betweenStore{Store: w.st, kind: "policy-set", between: []store.Write{judged}})
+		require.Error(t, err, "set activates and answers the open judgements it read")
+		assert.Contains(t, err.Error(), "wrote judgements")
+	})
+}
+
+// setFile is set of a file of its own on st, on a store with no version
+// active.
+func setFile(w *world, st store.Store) error {
+	_, err := Set(w.ctx(), st, w.ro, testEngine(), w.caller(), w.file("f.star", DefaultBody()+"\n# f\n"), "test")
+	return err
 }

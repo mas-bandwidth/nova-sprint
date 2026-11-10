@@ -602,7 +602,7 @@ func TestConformanceHoldStream(t *testing.T) {
 // A hold is fenced at the snapshot it was read from. A producer that becomes
 // ready after that snapshot is not parked by the stale plan: the store
 // refuses the op, and nothing in it lands.
-func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
+func TestConformanceHoldStreamFencedOnCards(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})

@@ -467,12 +467,13 @@ answer. Refusals are `*Refusal` in the CORRECT-USE form (`SPRINT REFUSED policy
 events' `reason` column is the refusal's), and an empty reason is refused. `up`
 stores and activates the built-in in one op. `activate` pre-checks "already
 active" with the store's own text and answers the open policy judgements of
-both the old active and the version it activates; it has no seq fence (the
-snapshot moves every tick, and every worker's beat moves the seq; a version
-that breaks after its check is caught by the fallback). `up`, `set` and
-`activate` are fenced `UnchangedSince` their snapshot on what they read: no
-version stored or activated (all three) and no judgement opened or answered
-(`set` and `activate`). `Show`, `List` and `LoadVersions` walk the whole log; layer 6
+both the old active and the version it activates; it has no fence on the
+seq itself (the snapshot moves every tick, and every worker's beat moves the
+seq; a version that breaks after its check is caught by the fallback). `up`,
+`set` and `activate` are fenced `UnchangedSince` their snapshot on what they
+read: no version stored or activated (all three), and no judgement opened or
+answered when the op answers the open judgements it read (`activate`, and
+`set` when no version is active). `Show`, `List` and `LoadVersions` walk the whole log; layer 6
 should call `PrevOf` as it folds events rather than `LoadVersions` per tick.
 
 **The default.** `modules/policy/default.star` is the design's text unchanged. Not

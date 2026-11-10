@@ -21,6 +21,8 @@
 (* snapshot (UnchangedSince; a beat moves the seq and none of them). The  *)
 (* snapshot moving between its check and its op is Drift after Activate:  *)
 (* Drift may set breaks to any set at any step, so the states are these.  *)
+(* That reordering is argued here, not checked: TLC checks Activate with  *)
+(* a fresh guard, and the PolicyTrace walk is serial.                     *)
 (* breaks is the set of                                                  *)
 (* versions that fail (a runtime error, a refused answer or the deadline) *)
 (* on the current snapshot; Drift moves the snapshot, so breaks changes   *)

@@ -41,8 +41,9 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	}
 	// The admission reads the forge for seconds while a running sprint's
 	// ticks move the store: the op is planned on a snapshot read after it
-	// and fenced on the streams it read (the name absent, the next pos),
-	// never on the seq, which every worker's beat moves.
+	// and fenced on the streams it read (the name absent, the next pos) and
+	// the hooks (the caller the coordinator), never on the seq, which every
+	// worker's beat moves.
 	if snap, err = e.snapshot(ctx); err != nil {
 		return "", err
 	}
@@ -54,7 +55,7 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		pos = max(pos, s.Pos+1)
 	}
 	op := e.newOp("stream-add", in.actor, snap, name)
-	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Streams: true}}
+	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
 	op.Writes = []store.Write{store.PutStream{Name: name, Repo: repo, Base: base, Pos: pos, Mode: mode, Forge: forge}}
 	r, err := e.commit(ctx, op, "nova-sprint show "+name)
 	if err != nil {

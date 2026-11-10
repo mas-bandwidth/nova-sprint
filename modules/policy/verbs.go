@@ -102,7 +102,7 @@ func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Cal
 		return Result{}, err
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: reason,
-		Expect: []store.Expect{fenced(snap)}, Writes: writes}
+		Expect: []store.Expect{fenced(snap, snap.Policy == 0)}, Writes: writes}
 	after, err := apply(ctx, st, op, "set")
 	for v := range after.Policies { // the one version the op stored
 		if snap.Policy == 0 {
@@ -212,19 +212,21 @@ func Activate(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, 
 		writes = append(writes, store.AnswerJudgement{ID: id, Answer: fmt.Sprintf("v%d activated: %s", v, reason)})
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-activate", At: c.At, Note: reason,
-		Expect: []store.Expect{fenced(snap)}, Writes: writes}
+		Expect: []store.Expect{fenced(snap, true)}, Writes: writes}
 	_, err = apply(ctx, st, op, "activate")
 	return Result{Version: v, Changes: len(rep.Changes), Next: "nova-sprint next"}, err
 }
 
-// fenced is set's and activate's fence: no version stored or activated, and
-// no judgement opened or answered, since snap (the next number, the active
-// version and the open judgements they read). Never the seq: every
-// worker's beat moves it. The check is of snap; the snapshot moving between
-// the check and the op is Policy.tla's Drift after Activate, which may break
-// any version at any step.
-func fenced(snap store.Snapshot) store.Expect {
-	return store.UnchangedSince{Seq: snap.Seq, Policies: true, Judgements: true}
+// fenced is set's and activate's fence: no version stored or activated
+// since snap (the next number and the active version they read), and when
+// the op answers the open judgements it read (activate; set when none is
+// active), no judgement opened or answered since. Never the seq: every
+// worker's beat moves it, and a tick that opens a judgement does not touch
+// a set that answers none. The check is of snap; the snapshot moving
+// between the check and the op is Policy.tla's Drift after Activate, which
+// may break any version at any step.
+func fenced(snap store.Snapshot, answers bool) store.Expect {
+	return store.UnchangedSince{Seq: snap.Seq, Policies: true, Judgements: answers}
 }
 
 // coordinator refuses a caller who is not the coordinator, a blank reason,

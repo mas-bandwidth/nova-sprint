@@ -3,7 +3,9 @@ package store
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 )
 
 // txn is one transaction as the shared rules see it, run with the writer
@@ -330,11 +332,11 @@ func (u UnchangedSince) changed(e Event) string {
 			return p.what
 		}
 	}
-	for name, r := range a.Rows {
+	for _, name := range slices.Sorted(maps.Keys(a.Rows)) { // the first by name: one reason in both stores
 		if !u.Hooks {
 			break
 		}
-		if old, ok := b.rowOf(name); !ok || old.Session != r.Session || old.Role != r.Role {
+		if old, ok := b.rowOf(name); !ok || old.Session != a.Rows[name].Session || old.Role != a.Rows[name].Role {
 			return "row " + name + "'s hook"
 		}
 	}
