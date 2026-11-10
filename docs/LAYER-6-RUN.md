@@ -69,7 +69,8 @@ is the engine's, FIFO: a burst of moves costs each a tick or two and is never re
 push cursor (`push:<name>` in `sprint.cursors`) and sends one message per recipient per
 tick, one line per item (always batch), by `nova-bus send --as sprint --to <name> <subject>
 <body>`, and sets the cursor only after the send exits 0. A crash in between resends on
-restart, and every line is safe twice (`take` of a card already held prints the same brief).
+restart, except the take-over notice to the coordinator it unhooked (section 5, Taking the
+seat), and every line is safe twice (`take` of a card already held prints the same brief).
 Bodies are bounded: logs, diffs and findings travel as the command that shows them (LESSONS
 4.4). No send, exec, git or HTTP call runs under the store's writer lock (LESSONS 3.23).
 
@@ -309,7 +310,7 @@ is named and returned by the run's next tick), and hooks the caller in as coordi
 if any hook changed since the seq it read (one coordinator). The run sends the old coordinator
 `TAKEN OVER by=<you>: ...` with the reason and its `WITHDRAWN` lines, and the new coordinator a
 `RETURNED` line per card; a failed send to the old coordinator is sent again each tick while
-the run stays up, but a restart before it is sent does not send it. The walk then goes on, and
+the run stays up, but a restart before it is sent may not send it. The walk then goes on, and
 step 5 records the caller, the hooked coordinator, as the coordinator. With no coordinator
 recorded, `--take-over` is the plain hook. No model covers the seat
 (`docs/roadmap.sexp`, `coordinator-seat-model`): Setup.tla has the walk's steps, Store.tla the
