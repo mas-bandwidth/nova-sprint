@@ -65,13 +65,16 @@ func (t *tick) preemptOn(b store.Card, row, victim string) {
 	g.edges = []EdgeRequest{{ID: "stop." + victim, Kind: "stop", Stream: vc.Stream, Cards: []string{victim}, Row: row, Consumer: victim}}
 }
 
-// serving is the open (up, not held), unclaimed, unrested rows serving c's
-// tier, by name (the candidates' names).
+// serving is the open (up, not held), unrested rows serving c's tier, by
+// name: the candidates without the rows resting after faults. The rest is
+// applied here, not in the candidates, because the candidates are built
+// when the questions are asked, before the rest is known.
 func (t *tick) serving(c store.Card) []string {
-	cands := t.candidates(c, "work")
-	out := make([]string, len(cands))
-	for i, f := range cands {
-		out[i] = f.Name
+	var out []string
+	for _, f := range t.candidates(c, "work") {
+		if _, resting := t.rested[f.Name]; !resting {
+			out = append(out, f.Name)
+		}
 	}
 	return out
 }

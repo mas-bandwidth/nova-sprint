@@ -168,6 +168,13 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	return s, nil
 }
 
+// Read is Snapshot with only the cards scope names.
+func (f *Fake) Read(ctx context.Context, scope Scope) (Snapshot, error) {
+	s, err := f.Snapshot(ctx)
+	s.Cards = scope.of(s.Cards)
+	return s, err
+}
+
 func pick[V any](dst map[string]V, src map[key]V, epoch int) {
 	for k, v := range src {
 		if k.epoch == epoch {

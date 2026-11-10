@@ -659,7 +659,7 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 		rec.PushedHead = cmp.Or(rec.PushedHead, sha)
 		out.Head = sha
 	case out.Result == "ok":
-		return Outcome{Result: "fail", Reason: "harness reported ok without advancing HEAD past base_sha and prior_head, and left nothing to commit"}
+		return Outcome{Result: "fail", Reason: "harness reported ok without advancing HEAD past base_sha and prior_head, and left nothing inside PATHS to commit"}
 	}
 	return out
 }
@@ -683,26 +683,58 @@ func (r *Runner) clonePath_internal(consumer string) string {
 }
 
 // sealScript_internal is the seal step, run in the job's tree inside the
-// wall (net-deny, no token, the harness's writable set): the tree added
-// and, when dirty, committed; then the commits since $1 bundled to $2, or
-// $3 marked when there are none. Whatever the harness left in .git runs
-// here, inside the wall, and nowhere else.
+// wall (net-deny, no token, the harness's writable set): the tree's changes
+// inside the card's PATHS ($7...) added and, when any, committed; then the
+// commits since $1 bundled to $2, or $3 marked when there are none. What
+// the harness left outside PATHS (build output under a nested target/ on
+// rel-rs-ffi-aliasing: 259 files) is never committed; it is printed for
+// the step log. Whatever the harness left in .git runs here, inside the
+// wall, and nowhere else.
 const sealScript_internal = `set -e
-rm -f "$2" "$3"
-git add -A
+rm -f "$2" "$3" "$3.add"
+git reset -q
+if [ $# -gt 6 ]; then
+  (shift 6; git ls-files -z -m -o -d --exclude-standard -- "$@") > "$3.add"
+  if [ -s "$3.add" ]; then git --literal-pathspecs add -A --pathspec-from-file="$3.add" --pathspec-file-nul; fi
+  rm -f "$3.add"
+fi
 if ! git diff --cached --quiet; then
   if [ -n "$5" ]; then git -c user.name="$5" -c user.email="$6" commit -q --no-verify -m "$4"; else git commit -q --no-verify -m "$4"; fi
 fi
+git status --porcelain | sed 's/^/outside PATHS, not committed: /'
 if [ "$(git rev-parse HEAD)" = "$1" ]; then : > "$3"; else git bundle create "$2" "$1..HEAD"; fi`
 
-func sealArgv_internal(jobDir, base, name, email, msg string) []string {
-	return []string{"sh", "-c", sealScript_internal, "seal", base, filepath.Join(jobDir, SealBundle), filepath.Join(jobDir, SealNone), msg, name, email}
+// sealArgv_internal is the seal step's argv; each PATHS entry a git
+// pathspec, a glob (* ? [) matched per segment as the card contract's
+// admission does (a file it matches, or all under a directory it matches),
+// any other entry literal (a file, or a directory and all under it).
+func sealArgv_internal(jobDir, base, name, email, msg string, paths []string) []string {
+	argv := []string{"sh", "-c", sealScript_internal, "seal", base, filepath.Join(jobDir, SealBundle), filepath.Join(jobDir, SealNone), msg, name, email}
+	for _, p := range paths {
+		if strings.ContainsAny(p, "*?[") {
+			p = strings.TrimSuffix(p, "/")
+			argv = append(argv, ":(glob)"+p, ":(glob)"+p+"/**")
+		} else {
+			argv = append(argv, ":(literal)"+p)
+		}
+	}
+	return argv
 }
 
 // applyArgv_internal checks the bundle's head out in the job's tree, in
 // the wall, so the done-when tests run on the head that is pushed.
 func applyArgv_internal(bundle string) []string {
 	return []string{"sh", "-c", `set -e; git fetch -q --no-tags "$1" HEAD; git checkout -q -f --detach FETCH_HEAD`, "apply", bundle}
+}
+
+// sealNote_internal is the seal's output for its step log: the first 20
+// lines (what it left outside PATHS), the rest counted, never cut silently.
+func sealNote_internal(out []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) > 20 {
+		lines = append(lines[:20], fmt.Sprintf("and %d more", len(lines)-20))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // sealAndCollect_internal ends a work job's tree: the seal step in the
@@ -718,9 +750,9 @@ func (r *Runner) sealAndCollect_internal(ctx context.Context, job Job, rec JobRe
 		return "", err
 	}
 	base := cmp.Or(rec.PriorHead, rec.BaseSHA)
-	msg := rec.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness left its changes uncommitted; the worker's seal step committed the tree as it was.\n"
-	res, err := r.Wall.RunStep(ctx, job, sealArgv_internal(job.JobDir, base, job.CommitName, job.CommitEmail, msg), r.Timeouts.RebaseAndTest)
-	r.logStep_internal(rec.Row, rec.Consumer, "seal", fmt.Sprintf("exit=%d %s", res.ExitCode, leftoversNote_internal(res)), res.Elapsed)
+	msg := rec.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness left its changes uncommitted; the worker's seal step committed those inside the card's PATHS.\n"
+	res, err := r.Wall.RunStep(ctx, job, sealArgv_internal(job.JobDir, base, job.CommitName, job.CommitEmail, msg, job.Paths), r.Timeouts.RebaseAndTest)
+	r.logStep_internal(rec.Row, rec.Consumer, "seal", strings.TrimSpace(fmt.Sprintf("exit=%d %s %s", res.ExitCode, leftoversNote_internal(res), sealNote_internal(res.Output))), res.Elapsed)
 	r.report("killing what the seal step of "+rec.Consumer+" left running", res.LeftoverErr)
 	if err == nil && res.ExitCode != 0 {
 		err = fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))

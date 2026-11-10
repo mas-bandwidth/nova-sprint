@@ -570,6 +570,8 @@ type WallConfig struct {
 	// CargoRegistry is the bench's ~/.cargo/registry, granted at start;
 	// CargoWallEnv links it into the job's own cargo home, offline.
 	CargoRegistry string
+	// GOOS is the OS the wall is built for; "" is runtime.GOOS.
+	GOOS string
 }
 
 // wallKeeps are the names nova-sandbox passes into the wall without --env;
@@ -579,9 +581,10 @@ var wallKeeps_internal = []string{"PATH", "HOME", "LANG", "TERM"}
 
 // BuildWallArgv is nova-reserve around nova-sandbox around the harness: the
 // job directory and the adapter's Needs (j.Needs) written, cfg's paths
-// read, --unix and the network as the adapter declares (under cfg.NetDeny:
-// open, denied with the proxy's port reopened, or denied), and every name
-// of env passed with --env.
+// read, --unix (Linux only: nova-sandbox refuses it on macOS, where a socket
+// under a --write is reachable) and the network as the adapter declares
+// (under cfg.NetDeny: open, denied with the proxy's port reopened, or
+// denied), and every name of env passed with --env.
 func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
 	// Card work runs at nice 15, below CI's 0, and the harness, its builds
 	// and its gates inherit it, so a CI job on a shared bench keeps its cap.
@@ -613,7 +616,7 @@ func sandboxFlags_internal(cfg WallConfig, j Job, env []string) []string {
 	}
 	add("--write", append([]string{j.JobDir}, append(slices.Clone(cfg.WritePaths), j.Needs.Writes...)...))
 	add("--read", cfg.ReadPaths)
-	if j.Needs.Unix {
+	if j.Needs.Unix && cmp.Or(cfg.GOOS, runtime.GOOS) != "darwin" {
 		flags = append(flags, "--unix")
 	}
 	if cfg.NetDeny && !j.Needs.NetOpen {

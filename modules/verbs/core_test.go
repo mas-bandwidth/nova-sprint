@@ -110,6 +110,10 @@ func (failingStore) Snapshot(context.Context) (store.Snapshot, error) {
 	return store.Snapshot{}, errBroken
 }
 
+func (s failingStore) Read(ctx context.Context, _ store.Scope) (store.Snapshot, error) {
+	return s.Snapshot(ctx)
+}
+
 func TestVersion(t *testing.T) {
 	t.Parallel()
 	want(t, newWorld(t).do("", "version"), 0, "nova-sprint v2.0.0-test")
@@ -176,10 +180,18 @@ func (credentiallessStore) Snapshot(context.Context) (store.Snapshot, error) {
 	return store.Snapshot{}, NoCredential()
 }
 
+func (s credentiallessStore) Read(ctx context.Context, _ store.Scope) (store.Snapshot, error) {
+	return s.Snapshot(ctx)
+}
+
 type notSetUpStore struct{ *store.Fake }
 
 func (notSetUpStore) Snapshot(context.Context) (store.Snapshot, error) {
 	return store.Snapshot{}, ErrNotSetUp
+}
+
+func (s notSetUpStore) Read(ctx context.Context, _ store.Scope) (store.Snapshot, error) {
+	return s.Snapshot(ctx)
 }
 
 func TestUnhook(t *testing.T) {
