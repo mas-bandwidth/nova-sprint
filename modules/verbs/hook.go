@@ -75,7 +75,7 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then hook again")
 	}
 	if c := coordinatorOf(snap); r == "coordinator" && c != "" {
-		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first")
+		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first; if "+c+" is gone: "+takeOverCommand(name))
 	}
 	session, err := e.newSession()
 	if err != nil {
@@ -90,6 +90,55 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 		return "", err
 	}
 	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), identityLines(snap), playbookLine(r)), nil
+}
+
+// takeOver is up --take-over --reason (Glenn, 2026-11-10: "Add takeover to
+// up"): name takes the coordinator's seat from a coordinator who is gone
+// from the bus, the one way to move it when that coordinator cannot run
+// unhook. In one op, logged under kind take-over with the reason as its
+// note: the old coordinator's hook cleared as unhook clears it (its cards
+// stay: a row going down never takes its cards back; the orphan judgement
+// handles them) and name hooked in as coordinator. A coordinator present on
+// the bus (the same presence as nova-bus who and the run loop read) is never
+// displaced; with no coordinator at all, this is the plain hook.
+func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason string) (string, error) {
+	old := coordinatorOf(snap)
+	if old == "" {
+		return e.hookAs(ctx, snap, name, "coordinator")
+	}
+	if row := snap.Rows[name]; row.Session != "" {
+		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then up again")
+	}
+	present, err := e.present(ctx, old)
+	if err != nil {
+		return "", err
+	}
+	if present {
+		return "", refuse(old+" is on the bus", "ask "+old+" to run nova-sprint unhook --as "+old)
+	}
+	if snap, err = e.snapshot(ctx); err != nil { // who took time: fence the op on a fresh read
+		return "", err
+	}
+	if c := coordinatorOf(snap); c != old {
+		return "", refuse("the sprint's coordinator changed to "+orWord(c, "nobody")+" meanwhile", takeOverCommand(name)+" again")
+	}
+	session, err := e.newSession()
+	if err != nil {
+		return "", err
+	}
+	op := e.newOp("take-over", name, snap, old, session, reason)
+	op.Note = "took over from " + old + ": " + oneLine(reason)
+	op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}} // one coordinator: no other hook may land between the read and this op
+	op.Writes = []store.Write{store.PutRow{Name: old}, store.PutRow{Name: name, Session: session, Role: "coordinator"}}
+	if _, err := e.commit(ctx, op, takeOverCommand(name)+" again"); err != nil {
+		return "", err
+	}
+	return done("nova-sprint next --as "+name, "TOOK OVER from "+old+": "+oneLine(reason), fmt.Sprintf("HOOKED %s role=coordinator", name), identityLines(snap), playbookLine("coordinator")), nil
+}
+
+// takeOverCommand is how name takes the seat of a coordinator who is gone.
+func takeOverCommand(name string) string {
+	return `nova-sprint up --as ` + name + ` --take-over --reason "<why>"`
 }
 
 // playbookLine is where role's playbook is: read it once, not on every hook.
