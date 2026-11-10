@@ -116,7 +116,8 @@ func firstOr(ss []string, or string) string {
 	return ss[0]
 }
 
-// requestMoves is the move (or moves) an event asks for.
+// requestMoves is the move (or moves) an event asks for. A row's Hold and
+// Gone return its whole hand in the same op (handMoves).
 func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 	switch e := r.Event.(type) {
 	case card.Add:
@@ -137,6 +138,12 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 	case card.Seen, card.Gone, card.Hold, card.Unhold:
 		if _, ok := t.v.Rows[r.Row]; !ok {
 			return nil, &card.Refusal{Reason: "row " + r.Row + " does not exist"}
+		}
+		switch e.(type) {
+		case card.Hold:
+			return t.handMoves(r.Row, "held", e), nil
+		case card.Gone:
+			return t.handMoves(r.Row, "down", e), nil
 		}
 		return []move{t.rowMove(r.Row, e)}, nil
 	case card.HoldStream, card.UnholdStream:
