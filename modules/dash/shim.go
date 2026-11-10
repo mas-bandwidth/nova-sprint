@@ -151,8 +151,6 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 		total := w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 		if total > 0 && w.Landed == total {
 			streams[i].State = "landed"
-		} else if total > 0 && w.Fail > 0 && w.Landed+w.Fail == total {
-			streams[i].State = "fail"
 		} else if streams[i].State != "held" && w.Ready+w.Working+w.Review+w.Fix+w.Merging > 0 {
 			streams[i].State = "working"
 		}
