@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -156,6 +157,66 @@ func TestCardTestsRunInsideTheSandbox(t *testing.T) {
 	argv = unniced(argv)
 	if argv[0] != "/fixture/nova-reserve" || !slices.Contains(argv, "/fixture/nova-sandbox") || !slices.Equal(argv[len(argv)-3:], []string{"--", "make", "test"}) {
 		t.Errorf("card test command ran as %q: want nova-reserve, then nova-sandbox, then make test", argv)
+	}
+}
+
+// fifoExec is a wallExec that also looks, while the command "runs", at the
+// FIFO jobserver its CARGO_MAKEFLAGS names: whether it is a named pipe and the
+// tokens the worker holds in it.
+type fifoExec struct {
+	env    []string
+	fifo   string
+	isPipe bool
+	tokens int
+}
+
+func (e *fifoExec) Run(_ context.Context, c edge.Cmd) (edge.Result, error) {
+	e.env = slices.Clone(c.Env)
+	for _, kv := range c.Env {
+		if v, ok := strings.CutPrefix(kv, "CARGO_MAKEFLAGS="); ok {
+			_, e.fifo, _ = strings.Cut(v, "--jobserver-auth=fifo:")
+		}
+	}
+	if st, err := os.Lstat(e.fifo); err == nil && st.Mode()&os.ModeNamedPipe != 0 {
+		e.isPipe = true
+		if f, err := os.OpenFile(e.fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0); err == nil {
+			buf := make([]byte, 64)
+			e.tokens, _ = f.Read(buf)
+			_ = f.Close()
+		}
+	}
+	return edge.Result{}, nil
+}
+
+// A done-when gate under the strict wall gets a FIFO jobserver: cargo's
+// default pipe jobserver makes std fork through socketpair(SOCK_SEQPACKET),
+// which the wall's seccomp refuses, so rustc never runs. The FIFO is in the
+// job's --write directory, held open by the worker with gateJobs-1 tokens,
+// named by CARGO_MAKEFLAGS passed with --env, with TMPDIR in the job's tree
+// passed too; the wall gains no flag (never --unix), and the FIFO is gone
+// after the gate.
+func TestGateGetsFIFOJobserverAndWritableTmpdir(t *testing.T) {
+	t.Parallel()
+	ex := &fifoExec{}
+	w := &OSReserveWall{UseSandbox: true, Exec: ex, Config: WallConfig{ReserveBin: "/fixture/nova-reserve", SandboxBin: "/fixture/nova-sandbox", NetDeny: true}}
+	dir := t.TempDir()
+	res, err := w.RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := strings.Join(res.Argv, " ")
+	if !strings.Contains(argv, "--write "+dir+" ") || !strings.Contains(argv, "--env CARGO_MAKEFLAGS") || !strings.Contains(argv, "--env TMPDIR") || strings.Contains(argv, "--unix") {
+		t.Errorf("wall argv %q: want --write %s, --env CARGO_MAKEFLAGS, --env TMPDIR and no --unix", argv, dir)
+	}
+	want := fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", gateJobs_internal(), ex.fifo)
+	if !slices.Contains(ex.env, want) || !pathUnder_internal(ex.fifo, dir) || !ex.isPipe || ex.tokens != gateJobs_internal()-1 {
+		t.Errorf("gate env %q: want %q, a named pipe under %s holding %d tokens (pipe %v, %d tokens)", ex.env, want, dir, gateJobs_internal()-1, ex.isPipe, ex.tokens)
+	}
+	if !slices.Contains(ex.env, "TMPDIR="+filepath.Join(dir, "tmp")) {
+		t.Errorf("gate env %q: want TMPDIR in the job's --write tree", ex.env)
+	}
+	if _, err := os.Lstat(ex.fifo); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the gate's FIFO %s outlived the gate: %v", ex.fifo, err)
 	}
 }
 

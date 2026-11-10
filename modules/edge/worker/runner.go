@@ -9,11 +9,13 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"io"
+	"io/fs"
 	"maps"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1539,8 +1541,56 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if why != "" {
 		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	env, release, err := gateJobserver_internal(SanitizeWallEnv(os.Environ(), j.JobDir), j.JobDir)
+	if err != nil {
+		return WallRunResult{}, err
+	}
+	defer release()
+	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, env, timeout)
 }
+
+// gateJobs_internal is a gate's build parallelism: one nova-reserve slot,
+// which at nova-reserve's default capacity (CPU/4 slots) is 4 cores, or
+// the bench's cores when it has fewer.
+func gateJobs_internal() int { return max(1, min(4, runtime.NumCPU())) }
+
+// gateJobserver_internal is env with CARGO_MAKEFLAGS naming a FIFO
+// jobserver in jobDir (a --write path of the wall), made and held open
+// read-write here with gateJobs-1 tokens until release; it replaces any
+// CARGO_MAKEFLAGS env had. cargo's own pipe jobserver adds a pre_exec, so
+// std forks through socketpair(AF_UNIX, SOCK_SEQPACKET), which the wall's
+// seccomp refuses (EPERM, rustc never runs); with a fifo: jobserver
+// jobserver-rs adds none and std uses posix_spawn. Harmless to a gate that
+// is not cargo, so every gate gets it. env as it is with no jobDir.
+func gateJobserver_internal(env []string, jobDir string) ([]string, func(), error) {
+	if jobDir == "" {
+		return env, func() {}, nil
+	}
+	fifo := filepath.Join(jobDir, "jobserver.fifo")
+	if err := os.Remove(fifo); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return env, nil, fmt.Errorf("worker: clearing the gate's jobserver FIFO %s: %w", fifo, err)
+	}
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		return env, nil, fmt.Errorf("worker: making the gate's jobserver FIFO %s: %w", fifo, err)
+	}
+	f, err := os.OpenFile(fifo, os.O_RDWR|syscall.O_NOFOLLOW, 0)
+	if err == nil {
+		_, err = f.Write([]byte(strings.Repeat("+", gateJobs_internal()-1)))
+	}
+	release := func() {
+		if f != nil {
+			_ = f.Close()
+		}
+		_ = os.Remove(fifo)
+	}
+	if err != nil {
+		release()
+		return env, nil, fmt.Errorf("worker: seeding the gate's jobserver FIFO %s: %w", fifo, err)
+	}
+	env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(strings.ToUpper(kv), "CARGO_MAKEFLAGS=") })
+	return append(env, fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", gateJobs_internal(), fifo)), release, nil
+}
+
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
 	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }
