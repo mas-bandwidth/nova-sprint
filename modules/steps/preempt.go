@@ -66,9 +66,9 @@ func (t *tick) preemptOn(b store.Card, row, victim string) {
 }
 
 // serving is the open (up, not held), unrested rows serving c's tier, by
-// name (the candidates without the rows resting after faults). A row an
-// earlier group claimed this tick stays: its room is the deal's tally
-// (Steps.tla Eligible).
+// name: the candidates without the rows resting after faults. The rest is
+// applied here, not in the candidates, because the candidates are built
+// when the questions are asked, before the rest is known.
 func (t *tick) serving(c store.Card) []string {
 	var out []string
 	for _, f := range t.candidates(c, "work") {
