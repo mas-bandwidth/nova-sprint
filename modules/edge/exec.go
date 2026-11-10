@@ -98,6 +98,28 @@ func binaryFix_internal(prog string) string {
 	}
 }
 
+// TerminateGrace is how long a stopped process group has, after SIGTERM,
+// before SIGKILL (LAYER-4-EDGES.md). git removes its *.lock files on
+// SIGTERM and leaves them on SIGKILL; a shallow.lock left that way in a
+// work clone refused every later fetch.
+const TerminateGrace, cancelPoll = 3 * time.Second, 50 * time.Millisecond
+
+// stopGroup_internal ends process group pgid: SIGTERM, a probe every poll
+// while any member is left, and SIGKILL once grace has passed. An error
+// from SIGTERM (ESRCH: the group is gone) or from SIGKILL is its error.
+func stopGroup_internal(pgid int, kill func(int, syscall.Signal) error, sleep func(time.Duration), grace, poll time.Duration) error {
+	if err := kill(-pgid, syscall.SIGTERM); err != nil {
+		return err
+	}
+	for waited := time.Duration(0); !errors.Is(kill(-pgid, 0), syscall.ESRCH); waited += poll {
+		if waited >= grace {
+			return kill(-pgid, syscall.SIGKILL)
+		}
+		sleep(poll)
+	}
+	return nil
+}
+
 type OSExec struct{}
 
 func NewOSExec() *OSExec { return &OSExec{} }
@@ -112,8 +134,7 @@ func (o *OSExec) Run(ctx context.Context, cmd Cmd) (Result, error) {
 	c.Stdin, c.Dir, c.WaitDelay, c.SysProcAttr = nil, cmd.Dir, 200*time.Millisecond, &syscall.SysProcAttr{Setpgid: true}
 	c.Cancel = func() error {
 		if c.Process != nil {
-			_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
-			return c.Process.Kill()
+			return errors.Join(stopGroup_internal(c.Process.Pid, syscall.Kill, time.Sleep, TerminateGrace, cancelPoll), c.Process.Kill())
 		}
 		return nil
 	}
