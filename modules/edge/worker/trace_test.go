@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -27,6 +28,9 @@ type runnerJobDirState_internal struct {
 	bounced bool
 	stopped bool
 	sealed  bool
+	// keepsPrior: the job's head still descends from the head it
+	// started from; a Rebase step sets it from the git the stream step runs.
+	keepsPrior bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -90,6 +94,7 @@ type runnerWalkHarness_internal struct {
 	holder     map[string]bool
 	wall       *stepWall_internal // the runner's wall: every seal step it ran
 	sealedAt   map[string]int     // the seal steps the wall had run on c's tree at c's last Run
+	dropped    map[string]bool    // a Rebase step whose git did not keep c's history
 }
 
 func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
@@ -139,6 +144,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		finalAt:  map[string]int{},
 		holder:   map[string]bool{"c1": false, "c2": false},
 		sealedAt: map[string]int{"c1": 0, "c2": 0},
+		dropped:  map[string]bool{},
 	}
 }
 
@@ -271,6 +277,8 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 		bounced: h.bounced[c],
 		stopped: h.stopped[c],
 		sealed:  h.seals_internal(c) > h.sealedAt[c],
+
+		keepsPrior: !h.dropped[c],
 	}
 }
 
@@ -512,6 +520,7 @@ func (h *runnerWalkHarness_internal) advancePostRun_internal(t *testing.T, c, ac
 	ctx := context.Background()
 	switch act {
 	case "Rebase":
+		h.dropped[c] = !streamStepMerges_internal(t)
 		rec, _ := ReadJobRecord(dir)
 		rec.State = JobRebased
 		_ = WriteJobRecord(dir, rec)
@@ -702,8 +711,8 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s]",
-		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed))
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s]",
+		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed), tlaBool_internal(d.keepsPrior))
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {
@@ -737,18 +746,22 @@ func tlaBool_internal(v bool) string {
 func TestRunnerTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
 	driveRunnerEntrypoints_internal(t)
-	seen := map[string]bool{}
-	for seed := int64(1); seed <= 8; seed++ {
+	seen := map[string]int{}
+	for seed := int64(1); seed <= 32; seed++ {
 		steps := walkRunnerTrace_internal(t, seed)
+		fresh := false // a walk of an action no earlier seed walked
 		for _, s := range steps {
-			seen[s.action] = true
+			fresh = fresh || seen[s.action] == 0
+			seen[s.action]++
 		}
 		last := steps[len(steps)-1]
 		if last.action != "Done" {
 			t.Fatalf("seed %d: did not reach Done: %+v", seed, last)
 		}
 		tlaText := formatRunnerTraceTLA_internal(steps)
-		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
+		// Per commit (-short) TLC checks the first 8 walks and each later one
+		// that walks an action they did not; the nightly checks every walk.
+		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" && (!testing.Short() || seed <= 8 || fresh) {
 			sub := filepath.Join(traceDir, fmt.Sprintf("runner-walk-%d", seed))
 			if err := os.MkdirAll(sub, 0o755); err != nil {
 				t.Fatal(err)
@@ -777,9 +790,9 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 	}
 	// The seeds, together, walk every path the model checks the code on,
 	// defect 78's withdraw, retire and holder's push among them.
-	for _, a := range []string{"Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderPush"} {
-		if !seen[a] {
-			t.Errorf("no seed walks %s: the trace binding does not cover it", a)
+	for _, a := range []string{"Rebase", "Conflict", "Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderPush"} {
+		if seen[a] == 0 {
+			t.Errorf("no seed walks %s: the trace binding does not cover it (walked: %v)", a, seen)
 		}
 	}
 }
@@ -820,4 +833,27 @@ func driveRunnerEntrypoints_internal(t *testing.T) {
 	if err := r.StepRow(ctx, row); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// streamStepMerges_internal runs the worker's stream step
+// (OSGitOps.RebaseOntoStream) on a fake git and says whether it merges the
+// stream in and never rebases: Runner.tla's keepsPrior after Rebase.
+func streamStepMerges_internal(t *testing.T) bool {
+	t.Helper()
+	fx := edge.NewFakeExec()
+	fx.On("git", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{} })
+	g := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
+	if _, err := g.RebaseOntoStream(context.Background(), t.TempDir(), testCloneURL, "main"); err != nil {
+		t.Fatalf("the stream step: %v", err)
+	}
+	merges := false
+	for _, c := range fx.Calls() {
+		switch c.Cmd.Argv[gitArg0_internal] {
+		case "rebase":
+			return false
+		case "merge":
+			merges = true
+		}
+	}
+	return merges
 }

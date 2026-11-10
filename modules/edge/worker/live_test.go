@@ -139,7 +139,7 @@ func TestLiveOkWithALeftTreeIsCommittedByTheWorker(t *testing.T) {
 			t.Fatalf("dirty=%v: want one report, got %+v", dirty, reps)
 		case dirty && (reps[0].Result != "ok" || reps[0].Head != testCommitSHA || len(g.commits) != 1 || g.pushed["sprint/s1/p1"] != testCommitSHA):
 			t.Errorf("a left tree must be committed and pushed: report %+v commits %v pushed %v", reps[0], g.commits, g.pushed)
-		case !dirty && (reps[0].Result != "fail" || !strings.Contains(reps[0].Reason, "nothing to commit")):
+		case !dirty && (reps[0].Result != "fail" || !strings.Contains(reps[0].Reason, "nothing inside PATHS to commit")):
 			t.Errorf("ok with nothing done must be a fail naming it, got %+v", reps[0])
 		}
 	}
@@ -170,6 +170,10 @@ func TestLiveJobMDAndPromptAgree(t *testing.T) {
 		}
 		if !strings.Contains(prompt, rules) || !strings.Contains(prompt, JobMDName) {
 			t.Errorf("%s prompt does not carry JOB.md's finish rules:\n%s", kind, prompt)
+		}
+		kin := KinFinishRules(j, KinFinish{Ref: "p1.c1@1", Row: "r", Epoch: 1})
+		if kind == "work" && (!strings.Contains(rules, "Never rebase or reset the branch") || !strings.Contains(kin, "merge it into the branch, never rebase")) {
+			t.Errorf("work finish rules must forbid a rebase (collect refuses a head off the prior head):\n%s\n%s", rules, kin)
 		}
 		if !strings.Contains(rules, "no git push and no gh") {
 			t.Errorf("%s finish rules must forbid push and gh:\n%s", kind, rules)

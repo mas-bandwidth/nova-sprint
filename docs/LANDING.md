@@ -106,7 +106,8 @@ same path.
 ### What a stream needs
 
 - **finish needs only a head on origin.** `finish` checks a full sha, not
-  the base nor the prior head, at the tip of the card's branch at origin.
+  the base nor a prior head an earlier attempt finished, at the tip of the
+  card's branch at origin.
   It asks for no PR, no forge, no token and no up-to-date-ness with any
   other branch: the landing does the forge work.
 - **The run lands as the host's gh identity.** The forge runs `gh` with the

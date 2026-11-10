@@ -232,13 +232,13 @@ func TestConsumerTable(t *testing.T) {
 			if _, ok := c.event.(Withdraw); ok && c.c.Kind == "work" {
 				prod = pr(Working) // the live work consumer releases its working producer
 			}
-			plan, r := MoveConsumer(k, prod, rows()["r1"], c.event)
+			plan, r := MoveConsumer(k, prod, nil, rows()["r1"], c.event)
 			require.Nil(t, r)
 			assert.Equal(t, c.expect, plan.Expect)
 			assert.Equal(t, c.writes, plan.Writes)
 			for _, s := range consumerStates {
 				k.State = s
-				_, r := MoveConsumer(k, prod, rows()["r1"], c.event)
+				_, r := MoveConsumer(k, prod, nil, rows()["r1"], c.event)
 				if slices.Contains(c.from, s) {
 					assert.Nil(t, r, s)
 					continue
@@ -426,11 +426,11 @@ func TestRelinkRefusals(t *testing.T) {
 
 func TestConsumerRefusals(t *testing.T) {
 	t.Parallel()
-	cm := func(c Card, e Event) *Refusal { _, r := MoveConsumer(c, pr(Review), rows()["r1"], e); return r }
+	cm := func(c Card, e Event) *Refusal { _, r := MoveConsumer(c, pr(Review), nil, rows()["r1"], e); return r }
 	work, read := wk(Working, "", ""), rd(Working, "")
 	other := pr(Review)
 	other.ID = "p2"
-	_, wrongProducer := MoveConsumer(work, other, rows()["r1"], Withdraw{Reason: "x"})
+	_, wrongProducer := MoveConsumer(work, other, nil, rows()["r1"], Withdraw{Reason: "x"})
 	for _, c := range []refusal{
 		{cm(pr(Ready), Withdraw{Reason: "x"}), "card p1 is a producer; MoveConsumer is for consumers"},
 		{wrongProducer, "consumer p1.w1 belongs to p1, not p2"},
@@ -446,7 +446,7 @@ func TestConsumerRefusals(t *testing.T) {
 	} {
 		c.check(t)
 	}
-	plan, r := MoveConsumer(work, pr(Review), rows()["r1"], Report{Row: "r1", Result: "fault"})
+	plan, r := MoveConsumer(work, pr(Review), nil, rows()["r1"], Report{Row: "r1", Result: "fault"})
 	require.Nil(t, r, "a fault needs no head")
 	assert.Equal(t, []store.Write{store.SetCardState{Card: "p1.w1", State: Done}, store.SetCardResult{Card: "p1.w1", Result: "fault"}}, plan.Writes)
 }
@@ -526,7 +526,7 @@ func TestReportResultByKind(t *testing.T) {
 		if c.c.Kind == "read" {
 			head = h1
 		}
-		_, r := MoveConsumer(c.c, pr(Review), rows()["r1"], Report{Row: "r1", Result: c.result, Head: head})
+		_, r := MoveConsumer(c.c, pr(Review), nil, rows()["r1"], Report{Row: "r1", Result: c.result, Head: head})
 		if c.want == "" {
 			assert.Nil(t, r, "%s %s", c.c.Kind, c.result)
 			continue
@@ -621,29 +621,29 @@ func TestHoldFromWorking(t *testing.T) {
 // in the same plan; any other withdraw does not.
 func TestWithdrawReleases(t *testing.T) {
 	t.Parallel()
-	_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted", Preempt: true})
+	_, r := MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r1"], Withdraw{Reason: "preempted", Preempt: true})
 	refusal{r, `Withdraw of p1.w1 releases producer p1; it needs p1's stream s1, not ""`}.check(t)
-	plan, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted", Head: h2, Stream: Stream{Name: "s1", Held: true}, Preempt: true})
+	plan, r := MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r1"], Withdraw{Reason: "preempted", Head: h2, Stream: Stream{Name: "s1", Held: true}, Preempt: true})
 	require.Nil(t, r)
 	assert.Equal(t, []store.Expect{gen("p1.w1", 6), p1, store.StreamHeld{Stream: "s1", Held: true}}, plan.Expect, "released into a held stream: parked")
 	assert.Equal(t, []store.Write{store.SetCardState{Card: "p1.w1", State: Fail}, store.SetCardReason{Card: "p1.w1", Reason: "preempted"}, store.SetCardHead{Card: "p1.w1", Head: h2},
 		store.SetCardState{Card: "p1", State: Waiting}, store.SetCardReason{Card: "p1", Reason: "held: stream s1 is held"}, store.SetCardHead{Card: "p1", Head: h2}}, plan.Writes)
 	old := wk(Working, "", "")
 	old.ID = "p1.w0"
-	plan, r = MoveConsumer(old, pr(Working), rows()["r1"], Withdraw{Reason: "stray"})
+	plan, r = MoveConsumer(old, pr(Working), nil, rows()["r1"], Withdraw{Reason: "stray"})
 	require.Nil(t, r)
 	assert.Len(t, plan.Writes, 2, "not the attempt's consumer: nothing released")
-	plan, r = MoveConsumer(rd(Working, ""), pr(Review), rows()["r1"], Withdraw{Reason: "slow"})
+	plan, r = MoveConsumer(rd(Working, ""), pr(Review), nil, rows()["r1"], Withdraw{Reason: "slow"})
 	require.Nil(t, r)
 	assert.Len(t, plan.Writes, 2, "a read releases nothing")
-	_, r = MoveConsumer(rd(Working, ""), pr(Review), rows()["r1"], Withdraw{Head: h2})
+	_, r = MoveConsumer(rd(Working, ""), pr(Review), nil, rows()["r1"], Withdraw{Head: h2})
 	refusal{r, "read p1.r1.1 is of head " + h1 + "; a read is withdrawn without a head of its own"}.check(t)
-	_, r = MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Head: "abc", Stream: Stream{Name: "s1"}})
+	_, r = MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r1"], Withdraw{Head: "abc", Stream: Stream{Name: "s1"}})
 	refusal{r, "head abc is not a full commit sha"}.check(t)
-	_, r = MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Head: base, Stream: Stream{Name: "s1"}})
+	_, r = MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r1"], Withdraw{Head: base, Stream: Stream{Name: "s1"}})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
 	ready := wk(Ready, "", "")
-	_, r = MoveConsumer(ready, pr(Working), rows()["r1"], Withdraw{Reason: "x", Head: h2, Stream: Stream{Name: "s1"}})
+	_, r = MoveConsumer(ready, pr(Working), nil, rows()["r1"], Withdraw{Reason: "x", Head: h2, Stream: Stream{Name: "s1"}})
 	refusal{r, "consumer p1.w1 is ready; it has not pushed a head"}.check(t)
 }
 
@@ -688,7 +688,7 @@ func TestDealIsTake(t *testing.T) {
 	require.Nil(t, r)
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1.w2", State: Working}))
 	assert.NotContains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1.w2", State: Ready}))
-	_, r = MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r4"], Report{Row: "r1", Result: "fail", Reason: "x"})
+	_, r = MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r4"], Report{Row: "r1", Result: "fail", Reason: "x"})
 	require.Nil(t, r, "a held row reports what it holds: a hold stops new deals, not work in hand")
 }
 
@@ -806,7 +806,7 @@ func TestValueRules(t *testing.T) {
 	far.Review = math.MaxInt32
 	far.State = Merging
 	_, red := Move(far, nil, rows(), Stream{Name: "s1"}, nil, Red{Head: h1})
-	_, cost := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
+	_, cost := MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
 	_, noName := MoveRow(Row{}, Hold{})
 	bounced := pr(Review)
 	bounced.Bounces = math.MaxInt32

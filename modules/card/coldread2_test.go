@@ -191,7 +191,7 @@ func TestCold2SuspectWithdrawFromAStaleProducerStrands(t *testing.T) {
 	w.move("p1", Resolve{})
 	stale := w.card("p1") // ready, attempt 0
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	_, r := MoveConsumer(w.card("p1.w1"), stale, w.rows()["r1"], Withdraw{Reason: "silent", Stream: Stream{Name: "s1"}})
+	_, r := MoveConsumer(w.card("p1.w1"), stale, nil, w.rows()["r1"], Withdraw{Reason: "silent", Stream: Stream{Name: "s1"}})
 	refusal{r, "producer p1 is ready; withdrawing live work consumer p1.w1 would leave it working; pass the producer in working, so the withdraw releases it"}.check(t)
 	assert.Equal(t, []string{Working, Working}, []string{w.card("p1").State, w.card("p1.w1").State})
 }
@@ -222,7 +222,7 @@ func TestCold2SuspectWithdrawHeadIsTheBase(t *testing.T) {
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
 	c := w.card("p1.w1")
-	_, r := MoveConsumer(c, w.card("p1"), w.rows()["r1"], Withdraw{Reason: "silent", Head: base, Stream: StreamFromStore(w.snap().Streams["s1"])})
+	_, r := MoveConsumer(c, w.card("p1"), nil, w.rows()["r1"], Withdraw{Reason: "silent", Head: base, Stream: StreamFromStore(w.snap().Streams["s1"])})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
 	assert.Equal(t, []string{Working, Working}, []string{w.card("p1").State, w.card("p1.w1").State})
 	assert.Empty(t, w.card("p1").Head)
@@ -234,14 +234,14 @@ func TestCold2Rulings(t *testing.T) {
 	t.Parallel()
 	t.Run("work reports ok fail fault, read ok fix fault", func(t *testing.T) {
 		for _, res := range []string{"ok", "fail", "fault"} {
-			_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Report{Row: "r1", Result: res, Head: h2})
+			_, r := MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r1"], Report{Row: "r1", Result: res, Head: h2})
 			assert.Nil(t, r, res)
 		}
-		_, r := MoveConsumer(rd(Working, ""), pr(Review), rows()["r1"], Report{Row: "r1", Result: "fail", Head: h1})
+		_, r := MoveConsumer(rd(Working, ""), pr(Review), nil, rows()["r1"], Report{Row: "r1", Result: "fail", Head: h1})
 		refusal{r, "a read consumer reports ok, fix or fault; fail is a work's result"}.check(t)
 	})
 	t.Run("wrong actor", func(t *testing.T) {
-		_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r2"], Report{Row: "r2", Result: "ok", Head: h2})
+		_, r := MoveConsumer(wk(Working, "", ""), pr(Working), nil, rows()["r2"], Report{Row: "r2", Result: "ok", Head: h2})
 		refusal{r, "consumer p1.w1 is held by r1, not r2"}.check(t)
 		refusal{mv(Review, nil, AskRead{Row: "r2"}), "r2 wrote producer p1's head and may not read it"}.check(t)
 	})
@@ -285,7 +285,7 @@ func TestCold2RulingsReplaceAndReads(t *testing.T) {
 		for _, row := range []string{"r3", "r4"} {
 			c := wk(Working, "", "")
 			c.Holder = row
-			_, r := MoveConsumer(c, pr(Working), rows()[row], Report{Row: row, Result: "fault", Reason: "x"})
+			_, r := MoveConsumer(c, pr(Working), nil, rows()[row], Report{Row: row, Result: "fault", Reason: "x"})
 			assert.Nil(t, r, row)
 		}
 	})
@@ -571,7 +571,7 @@ func (w *world) cold2Preempt(rng *rand.Rand, all map[string]Card, cons map[strin
 	if rng.Intn(2) == 0 {
 		head = coldH3
 	}
-	wd, r := MoveConsumer(c, all[c.Of], w.rows()[c.Holder], Withdraw{Reason: "preempted by blocker " + b.ID, Head: head, Stream: stream, Preempt: true})
+	wd, r := MoveConsumer(c, all[c.Of], nil, w.rows()[c.Holder], Withdraw{Reason: "preempted by blocker " + b.ID, Head: head, Stream: stream, Preempt: true})
 	if r != nil {
 		return Plan{}, "", "", false
 	}
@@ -590,7 +590,7 @@ func (w *world) cold2Withdraw(rng *rand.Rand, all map[string]Card, working []str
 	c := all[working[rng.Intn(len(working))]]
 	heads := []string{"", h2, coldH3, c.Head}
 	stream := StreamFromStore(w.snap().Streams["s1"])
-	plan, r := MoveConsumer(c, all[c.Of], w.rows()[c.Holder], Withdraw{Reason: "silent", Head: heads[rng.Intn(len(heads))], Stream: stream})
+	plan, r := MoveConsumer(c, all[c.Of], nil, w.rows()[c.Holder], Withdraw{Reason: "silent", Head: heads[rng.Intn(len(heads))], Stream: stream})
 	return plan, "Withdraw " + c.ID, c.ID, r == nil
 }
 

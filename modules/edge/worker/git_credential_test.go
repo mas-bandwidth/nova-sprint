@@ -154,7 +154,7 @@ func TestWorkerGitTokenNeverReachesTheHarness(t *testing.T) { // unitlint: seria
 		results = append(results, res)
 	}
 	if err == nil {
-		res, err = w.RunStep(context.Background(), j, sealArgv_internal(dir, strings.Repeat("b", 40), "n", "e", "m"), time.Minute)
+		res, err = w.RunStep(context.Background(), j, sealArgv_internal(dir, strings.Repeat("b", 40), "n", "e", "m", nil), time.Minute)
 		results = append(results, res)
 	}
 	if err != nil {
@@ -308,7 +308,7 @@ func TestWorkerGitTokenOnlyOnNetworkCalls(t *testing.T) {
 			t.Fatalf("%q reads the host's global or system git config: %q", args, c.Cmd.Env)
 		}
 	}
-	for _, v := range []string{"init", "fetch", "ls-remote", "push", "rebase", "rev-parse", "config", "bundle", "merge-base", "checkout", "-c"} {
+	for _, v := range []string{"init", "fetch", "ls-remote", "push", "merge", "rev-parse", "config", "bundle", "merge-base", "checkout", "-c"} {
 		if !seen[v] {
 			t.Fatalf("git %s was not reached: %v", v, seen)
 		}
@@ -362,7 +362,7 @@ func TestWorkerGitNeverRunsInTheJobDirAfterTheHarness(t *testing.T) {
 			t.Fatalf("worker git %q ran in the job directory (%s)", args, c.Cmd.Dir)
 		}
 	}
-	for _, v := range []string{"init", "bundle", "merge-base", "push", "fetch", "rebase", "ls-remote"} {
+	for _, v := range []string{"init", "bundle", "merge-base", "push", "fetch", "merge", "ls-remote"} {
 		if !verbs[v] {
 			t.Fatalf("git %s was not reached: %v", v, verbs)
 		}

@@ -19,6 +19,10 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | Engine dead code (dropped from the 2026-11-08 pass): card/values.go mirror of store/check.go; replay.go write-applier; WaiveRed and the red column; the Edit event; Rescore and score; Released, single AskRead, SetCardAfter, ImportedReason; the deadcode list (verbs, edge, policy, card, steps, store, worker, dash, run); schema column drops | ❌ |
 | The faults limit, its hold and the Steps limits witness (wip: model the limits step) | ❌ |
 | up simplified: no two-phase handoff, no provider key step, no saved choices or --run-on, no --version adoption, no setup-time backup verify (S6 S3 S10 S14 S21) | ❌ |
+| A stop holds a landing or promotion already in flight: it merges nothing until start (PR #741, parked) | ❌ |
+| add adopts a card's existing branch as its head, so a continuing card starts from it (PR #726, parked) | ❌ |
+| Steps.tla gains the rest after faults: a resting row is offered to policy but not dealt to (the model gap under #740) | ❌ |
+| Functional flakes fixed: TestFunctionalClearWhileWorkersBeat (clear's seq fence refused: store at seq N+1, expected N, a beat landing between read and clear), TestFunctionalEvaluatorMemoryCap (failed once on main), a postgres start failure in a functional run; and the trace job near the 2-minute runner limit (55-130 s, cancelled on 7 of the 2026-11-09 landing runs) | ❌ |
 | complete | 0% |
 
 [Source data](roadmap.sexp)

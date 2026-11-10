@@ -38,6 +38,7 @@ type streamAtBase struct {
 	url, tip string
 	tree     map[string]bool
 	branches map[string]string
+	texts    map[string]string // the files read at the tip (gatesAtBase), by path
 }
 
 // admitCards proves each producer of facts (CORRECT-USE "Admission"): its
@@ -112,7 +113,7 @@ func (e *Engine) streamBase(ctx context.Context, snap store.Snapshot, name strin
 	if err != nil {
 		return nil, RefusalOr(err, broken("the branches of "+s.Repo+" cannot be listed ("+errText(err)+")", "make "+url+" readable from this host, then add the card again"))
 	}
-	return &streamAtBase{s: s, url: url, tip: tip, tree: treeSet(files), branches: branches}, nil
+	return &streamAtBase{s: s, url: url, tip: tip, tree: treeSet(files), branches: branches, texts: map[string]string{}}, nil
 }
 
 // treeSet is every file and every directory above one ("" is the root).
@@ -189,8 +190,9 @@ func benchNamed(lines []string, ro roster.Roster) (int, string) {
 	return 0, ""
 }
 
-// cardAtBase is the checks at the base: PATHS exist (pathProblem), and the
-// work is not already there: the card's branch at origin an ancestor of
+// cardAtBase is the checks at the base: PATHS exist (pathProblem), what
+// the DONE-WHEN lines run is there (gatesAtBase), and the work is not
+// already there: the card's branch at origin an ancestor of
 // the base.
 func (e *Engine) cardAtBase(ctx context.Context, sb *streamAtBase, f cardFacts) error {
 	for _, p := range f.Paths {
@@ -198,6 +200,9 @@ func (e *Engine) cardAtBase(ctx context.Context, sb *streamAtBase, f cardFacts) 
 			return refuse("card "+f.ID+": PATHS "+p+": "+why+" at "+sb.s.Repo+"'s "+sb.s.Base+" ("+shortSHA(sb.tip)+")",
 				"correct the path, or declare a new directory as its own PATHS entry ending in / (its parent must exist), then add the card again")
 		}
+	}
+	if err := e.gatesAtBase(ctx, sb, f); err != nil {
+		return err
 	}
 	branch := "sprint/" + sb.s.Name + "/" + f.ID
 	sha, ok := sb.branches[branch]
@@ -232,14 +237,58 @@ func pathProblem(tree map[string]bool, paths []string, p string) string {
 		}
 		return "the glob matches nothing"
 	}
-	dir := parentDir(clean)
+	dir, newDir := parentDir(clean), ""
 	switch {
-	case tree[clean], tree[dir]:
+	case tree[clean]:
+		return ""
+	case strings.HasSuffix(p, "/") && tree[dir]:
+		newDir = clean
+	case tree[dir]:
 		return ""
 	case slices.Contains(paths, dir+"/") && tree[parentDir(dir)]:
+		newDir = dir
+	default:
+		if near := namesake(tree, dir); near != "" {
+			return "neither it nor its directory " + dir + "/ is there (" + near + "/ is)"
+		}
+		return "neither it nor its directory " + dir + "/ is there"
+	}
+	// A new directory beside its near namesake is a wrong path far more
+	// often than a new one (2026-11-09: test/ where tests/ is).
+	if near := namesake(tree, newDir); near != "" {
+		return newDir + "/ is not there, and " + near + "/ is: write " + near + "/ if that is meant (a new directory is never named so near an existing one)"
+	}
+	return ""
+}
+
+// namesake is the directory beside dir (the same parent) whose name differs
+// from dir's only in case or a trailing s, or "".
+func namesake(tree map[string]bool, dir string) string {
+	if dir == "" {
 		return ""
 	}
-	return "neither it nor its directory " + dir + "/ is there"
+	parent, name := parentDir(dir), path.Base(dir)
+	for _, d := range slices.Sorted(maps.Keys(tree)) {
+		if d == dir || parentDir(d) != parent || !tree[d] {
+			continue
+		}
+		if n := path.Base(d); strings.EqualFold(n, name) || n == name+"s" || n+"s" == name {
+			if isDir(tree, d) {
+				return d
+			}
+		}
+	}
+	return ""
+}
+
+// isDir is whether p is a directory in tree: some entry is under it.
+func isDir(tree map[string]bool, p string) bool {
+	for k := range tree {
+		if strings.HasPrefix(k, p+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // parentDir is p's directory, "" for the root.

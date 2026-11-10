@@ -107,7 +107,15 @@ func (t *tick) dealWork(c store.Card) {
 	answered := t.rowsAnswer(c, "work")
 	serving := t.serving(c)
 	if len(serving) == 0 {
-		t.judge("unserved", unservedAbout(c), "no open row serves tier "+c.Tier+routesClause(c)+"; ready "+c.ID+" waits")
+		q := "no open row serves tier " + c.Tier + routesClause(c) + "; ready " + c.ID + " waits"
+		var resting []string // serving is empty: every candidate rests after faults
+		for _, f := range t.candidates(c, "work") {
+			resting = append(resting, f.Name)
+		}
+		if len(resting) > 0 {
+			q += "; resting after faults, dealt to again when the rest ends: " + strings.Join(resting, ", ")
+		}
+		t.judge("unserved", unservedAbout(c), q)
 		return
 	}
 	named := t.named(c, serving)
@@ -202,9 +210,20 @@ func (t *tick) rankIndex(r string) int {
 
 // rowsAnswer is policy's rows answer for c, read once per candidate (the
 // oracle records a miss per question whatever the candidate's fate); nil
-// when the engine's ranking decides.
+// when the engine's ranking decides. The candidates policy was offered
+// include rows resting after faults (the rest is known only after the
+// questions); the answer drops them, and an answer naming only resting rows
+// is no answer, never a miss: policy named a row it was offered.
 func (t *tick) rowsAnswer(c store.Card, kind string) []string {
-	return t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
+	answered := t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
+	if answered == nil {
+		return nil
+	}
+	out := slices.DeleteFunc(slices.Clone(answered), func(r string) bool { _, resting := t.rested[r]; return resting })
+	if len(out) == 0 && len(answered) > 0 {
+		return nil
+	}
+	return out
 }
 
 // pickRow is one row for c among rows: the engine's best of the rows policy

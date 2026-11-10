@@ -452,7 +452,9 @@ Released and HoldCard from working are kept as the tables have them but are
 never enabled; Broken, Faulted, ReadFix, Released and that release write the
 producer parked (waiting) when the stream is held; a work consumer reports
 ok, fail or fault, a read ok, fix or fault; an ok work head is neither the
-base nor the attempt's prior_head (the producer's head at Start); AskRead
+base nor the attempt's prior_head (the producer's head at Start) once a work
+consumer finished at it (a prior head pushed and never finished may be
+finished); AskRead
 refuses a row already holding a live read of this head; Replace names an
 existing other card; a sentinel takes no Start, AskRead, Edit or Rescore,
 and takes SetPriority and Relink; Relink's target is a producer (a

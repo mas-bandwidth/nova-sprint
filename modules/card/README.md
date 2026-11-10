@@ -28,7 +28,7 @@ store's records into the machine's.
   A walk that reaches a card not passed is refused. The path is joined with
   " needs " either way. Two relinks from one snapshot close no loop: Merge
   runs the second against the first's writes, and the second's walk sees them.
-- `MoveConsumer(c, p, r, e)`: Report, Withdraw (no Take: the deal is the take, defect 52); `p` is c's producer, `r`
+- `MoveConsumer(c, p, cons, r, e)`: Report, Withdraw (no Take: the deal is the take, defect 52); `p` is c's producer, `cons` its consumers, `r`
   c's holder. `Withdraw.Stream` is p's stream, needed when the withdraw
   releases p.
 - `MoveRow(r, e)`: Seen, Gone, Width, Hold, Unhold.

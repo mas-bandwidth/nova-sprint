@@ -23,6 +23,16 @@ func (o *origin) Tree(ctx context.Context, url, sha string) ([]string, error) {
 	return o.git.ListTree(ctx, dir, sha)
 }
 
+// File is the text of path at sha in the address's clone (fetched first,
+// as Tree is).
+func (o *origin) File(ctx context.Context, url, sha, path string) (string, error) {
+	dir, err := o.fetched(ctx, url)
+	if err != nil {
+		return "", err
+	}
+	return o.git.ShowFile(ctx, dir, sha, path)
+}
+
 // Commits is every commit on head not on base at origin nor reachable from
 // since, in the address's clone under the state dir, fetched first (the
 // head and the base are there): one git log.

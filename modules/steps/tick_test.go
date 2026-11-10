@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 
@@ -307,6 +308,50 @@ func TestTickFaultedReadIsOwedAgain(t *testing.T) {
 	}
 	require.Len(t, dealt, 1, "one new read owed and dealt")
 	assert.NotEqual(t, "p1.r1.1", dealt[0])
+}
+
+// TestTickReadFaultsHold: reads of one review and head that fault the
+// faults limit's times running hold the producer with a held judgement
+// carrying the newest fault's reason; no further read is dealt (live
+// 2026-11-09: one read faulted 378 times on the same missing route, each
+// fault owed and dealt again). A fault short of the limit is owed again.
+func TestTickReadFaultsHold(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 1, "pro", "heavy")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	s.take("p1.w1")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.tick()
+	limit := Engine.Limits.Faults
+	why := card.MissingRoute + " wstring no toolchain on this row"
+	for i := 1; i <= limit; i++ {
+		id := fmt.Sprintf("p1.r1.%d", i)
+		require.Empty(t, s.rejected)
+		s.requireState(id, "working")
+		s.take(id)
+		s.report(id, "fault", "", why)
+		s.tick()
+	}
+	require.Empty(t, s.rejected)
+	s.requireState("p1", "waiting")
+	assert.Equal(t, fmt.Sprintf("held: reads faulted %d times running at review 1, the limit is %d: %s", limit, limit, why), s.card("p1").Reason)
+	require.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
+	s.run(3)
+	s.requireState("p1", "waiting")
+	_, dealt := s.snap().Cards[fmt.Sprintf("p1.r1.%d", limit+1)]
+	assert.False(t, dealt, "never dealt again by itself")
+	rc, ref := s.verb(Request{Actor: "rowan", Judgement: "held.p1.1", Answer: "unhold", Card: "p1", Event: card.UnholdCard{Reason: "route fixed"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.run(3)
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w2", "working")
+	assert.Empty(t, s.openJudgements("held"), "unheld, it is dealt again as work and not held again")
 }
 
 // TestTickBriefJudgementSaysWhatReworkDoes: the same finding twice opens a

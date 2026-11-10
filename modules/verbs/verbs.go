@@ -78,6 +78,8 @@ type Origin interface {
 	Contains(ctx context.Context, url, ancestor, head string) (bool, error)
 	// Tree is every file path at commit sha (git ls-tree -r --name-only).
 	Tree(ctx context.Context, url, sha string) ([]string, error)
+	// File is the text of the file at path at commit sha.
+	File(ctx context.Context, url, sha, path string) (string, error)
 	// Branches is every branch at origin under prefix (a/b/ lists a/b/*),
 	// by name, with its tip: one ls-remote.
 	Branches(ctx context.Context, url, prefix string) (map[string]string, error)
@@ -147,7 +149,7 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 
 func (e *Engine) call(ctx context.Context, v *verb, in *input) (string, error) {
 	if v.role == roleWorker || v.role == roleCoordinator {
-		snap, err := e.hooked(ctx, in, v.role)
+		snap, err := e.hooked(ctx, in, v.role, v.scope(in))
 		if err != nil {
 			return "", err
 		}

@@ -153,6 +153,12 @@ func (e *Engine) report(ctx context.Context, in *input, snap store.Snapshot, o o
 		if err := e.headReady(ctx, snap, c, o.head); err != nil {
 			return store.Receipt{}, err
 		}
+	} else if o.result == "fail" && o.head == "" {
+		h, err := e.pushedHead(ctx, snap, c)
+		if err != nil {
+			return store.Receipt{}, err
+		}
+		o.head = h
 	}
 	p, err := e.priceReport(ctx, snap, in.actor, o)
 	if err != nil {

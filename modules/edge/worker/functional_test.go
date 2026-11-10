@@ -170,7 +170,7 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	gb := setupGitBench_internal(t)
 	seedFunctionalWork_internal(t, pg, gb.originDir, gb.baseSHA)
 
-	// Advance sprint/s1 on origin with a non-conflicting commit so Step 6 rebases onto moved stream head.
+	// Advance sprint/s1 on origin with a non-conflicting commit so Step 6 merges the moved stream head in.
 	require.NoError(t, os.WriteFile(filepath.Join(gb.seedClone, "other.txt"), []byte("other\n"), 0o644))
 	runGitCmd_internal(t, gb.seedClone, "add", "other.txt")
 	runGitCmd_internal(t, gb.seedClone, "commit", "-m", "stream advance")
@@ -205,8 +205,8 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	// The worker's git reads no global or system config: the rebase's committer is the job's identity, set in the worker's clone.
 	assert.Equal(t, runGitCmd_internal(t, gb.originDir, "log", "-1", "--format=%an <%ae>", snap.Cards["p1"].Head),
 		runGitCmd_internal(t, gb.originDir, "log", "-1", "--format=%cn <%ce>", snap.Cards["p1"].Head))
-	parentSHA := runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/sprint/s1/p1^")
-	assert.Equal(t, movedStreamSHA, parentSHA)
+	parentSHA := runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/sprint/s1/p1^2")
+	assert.Equal(t, movedStreamSHA, parentSHA, "the stream is merged into the job's head")
 	_, err = os.Stat(filepath.Join(r.RootDir, "jobs", "p1.w1"))
 	assert.True(t, os.IsNotExist(err), "job directory must be cleaned after ok report")
 }
@@ -268,7 +268,7 @@ func TestFunctionalLateWriterCannotReachThePush(t *testing.T) {
 	jobDir := filepath.Join(root, "jobs", "p1.w1")
 	wt := filepath.Join(jobDir, "repo")
 	j := Job{Repo: gb.originDir, Kind: "work", Branch: "sprint/s1/p1", BaseSHA: gb.baseSHA, Consumer: "p1.w1", Row: "b1.script",
-		JobDir: jobDir, WorktreeDir: wt, CommitName: testCommitName, CommitEmail: testCommitEmail}
+		JobDir: jobDir, WorktreeDir: wt, CommitName: testCommitName, CommitEmail: testCommitEmail, Paths: []string{"work.txt", "left.txt"}}
 	require.NoError(t, g.Fetch(ctx, j))
 	_, err = g.StageWorktree(ctx, j)
 	require.NoError(t, err)

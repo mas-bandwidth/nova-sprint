@@ -46,7 +46,7 @@ func DefaultTimeouts() Timeouts {
 		Stage: 120 * time.Second, LaunchGrace: 15 * time.Second, LaunchTries: 3,
 		LaunchBackoff1Min: 5 * time.Second, LaunchBackoff1Max: 20 * time.Second,
 		LaunchBackoff2Min: 30 * time.Second, LaunchBackoff2Max: 60 * time.Second,
-		TerminateGrace: 3 * time.Second, RebaseAndTest: 2 * time.Minute,
+		TerminateGrace: edge.TerminateGrace, RebaseAndTest: 2 * time.Minute,
 		Push: 60 * time.Second, BusClaim: 60 * time.Second, ReserveWait: 5 * time.Second,
 	}
 }
