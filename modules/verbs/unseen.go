@@ -46,7 +46,7 @@ func unseenOf(snap store.Snapshot, now time.Time, limit int) string {
 // nothing here: the verb that ran already said what it could not read, and
 // check reds it on its own line.
 func (e *Engine) unseen(ctx context.Context, actor string) string {
-	snap, err := e.snapshot(ctx)
+	snap, err := e.read(ctx, store.Scope{})
 	if err != nil || (actor != "" && snap.Rows[actor].Role != "coordinator") {
 		return ""
 	}

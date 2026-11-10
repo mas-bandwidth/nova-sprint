@@ -133,7 +133,8 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 // refusal stops the start), then the GOROOT and GOMODCACHE `go env` names
 // on the worker's PATH (DetectGo), each granted by the same checks or
 // skipped with one line saying why; and the start line naming what go the
-// wall reads (goWallGrant_internal). A go that is missing, refused or does
+// wall reads (goWallGrant_internal); then ~/.cargo/registry when it is
+// there (CargoWallEnv). A go that is missing, refused or does
 // not answer is said, never fatal: cards that need no go still run.
 func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout time.Duration, home string, own [][2]string, out func(string)) (WallConfig, error) {
 	reads, err := CheckWallReads(c.WallReads, home, own)
@@ -160,6 +161,22 @@ func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout 
 	_, notes := goWallGrant_internal(cfg)
 	for _, n := range notes {
 		out(n)
+	}
+	// Cargo's registry holds only downloaded public crates, so it alone of
+	// ~/.cargo is granted (CheckWallReads with no home: the dot-directory
+	// rule would refuse it; the worker's own directories still do). One that
+	// resolves anywhere else gets every home check.
+	if reg := filepath.Join(home, ".cargo", "registry"); checkWallReadForm_internal(reg) == nil {
+		got, err := CheckWallReads([]string{reg}, "", own)
+		if err == nil && got[0] != filepath.Join(resolvePath_internal(home), ".cargo", "registry") {
+			got, err = CheckWallReads([]string{reg}, home, own)
+		}
+		if err != nil {
+			out("worker: cargo's registry " + reg + " is skipped, not granted to the wall: " + edge.RedactN(err.Error(), edge.FailureMax))
+		} else {
+			cfg.CargoRegistry, cfg.ReadPaths = got[0], append(cfg.ReadPaths, got[0])
+			out("worker: the wall reads cargo's registry " + got[0] + " (CARGO_NET_OFFLINE=true)")
+		}
 	}
 	return cfg, nil
 }

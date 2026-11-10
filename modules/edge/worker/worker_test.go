@@ -330,7 +330,7 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 	j.Needs = oh.Needs()
 	wallArgv := BuildWallArgv(WallConfig{
 		ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox",
-		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true,
+		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true, GOOS: "linux",
 	}, j, oEnv, cArgv)
 	if runtime.GOOS != "windows" && (len(wallArgv) < 3 || wallArgv[0] != "nice" || wallArgv[1] != "-n" || wallArgv[2] != "15") {
 		t.Fatalf("wall argv must run the work at nice 15, below CI: %v", wallArgv)

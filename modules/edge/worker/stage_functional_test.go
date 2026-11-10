@@ -113,7 +113,8 @@ func TestFunctionalShallowStage(t *testing.T) {
 			newMain := runGitCmd_internal(t, seed, "rev-parse", "main")
 			runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", newMain, rebased)
 			require.Equal(t, "card.txt\nlate.txt\nmain.txt\nwork.txt", runGitCmd_internal(t, clone, "ls-tree", "--name-only", rebased))
-			require.Equal(t, "2", runGitCmd_internal(t, clone, "rev-list", "--count", newMain+".."+rebased), "only the card's commits are replayed")
+			runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", collected, rebased)
+			require.Equal(t, "3", runGitCmd_internal(t, clone, "rev-list", "--count", newMain+".."+rebased), "the card's commits and the merge of main")
 
 			// The done-when apply: the rebased head, back in the job's tree.
 			bundle := filepath.Join(t.TempDir(), "rebased.bundle")
@@ -126,6 +127,51 @@ func TestFunctionalShallowStage(t *testing.T) {
 			require.Equal(t, rebased, runGitCmd_internal(t, wt, "rev-parse", "HEAD"))
 		})
 	}
+}
+
+// TestFunctionalStreamStepKeepsAResolvedConflict (functional tier: real git
+// on a local origin): a card head that merged main and resolved a conflict
+// is brought onto a main that moved on again; the step merges the stream
+// in, so the resolution stands and the result descends from the head.
+func TestFunctionalStreamStepKeepsAResolvedConflict(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	origin, seed, clone := filepath.Join(root, "origin.git"), filepath.Join(root, "seed"), filepath.Join(root, "clone")
+	runGitCmd_internal(t, root, "init", "-q", "--bare", origin)
+	runGitCmd_internal(t, root, "init", "-q", "-b", "main", seed)
+	commit := func(file, body string) {
+		require.NoError(t, os.WriteFile(filepath.Join(seed, file), []byte(body), 0o644))
+		runGitCmd_internal(t, seed, "add", file)
+		runGitCmd_internal(t, seed, "commit", "-q", "-m", file+" "+body)
+	}
+	commit("f.txt", "base\n")
+	runGitCmd_internal(t, seed, "checkout", "-q", "-b", "card")
+	commit("f.txt", "card\n")
+	runGitCmd_internal(t, seed, "checkout", "-q", "main")
+	commit("f.txt", "main\n")
+	runGitCmd_internal(t, seed, "checkout", "-q", "card")
+	cmd := exec.Command("git", "merge", "main") // conflicts on f.txt
+	cmd.Dir = seed
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Nova Test", "GIT_AUTHOR_EMAIL=test@nova.local", "GIT_COMMITTER_NAME=Nova Test", "GIT_COMMITTER_EMAIL=test@nova.local")
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err)
+	require.Contains(t, string(out), "CONFLICT", "the merge stops on the conflict, not on a missing identity")
+	commit("f.txt", "resolved\n") // the merge commit, with the resolution
+	head := runGitCmd_internal(t, seed, "rev-parse", "HEAD")
+	runGitCmd_internal(t, seed, "checkout", "-q", "main")
+	commit("late.txt", "late\n") // main moves on
+	runGitCmd_internal(t, seed, "remote", "add", "origin", origin)
+	runGitCmd_internal(t, seed, "push", "-q", "origin", "main", "card")
+	runGitCmd_internal(t, root, "clone", "-q", "-b", "card", origin, clone)
+	runGitCmd_internal(t, clone, "config", "user.name", testCommitName)
+	runGitCmd_internal(t, clone, "config", "user.email", testCommitEmail)
+
+	g := &OSGitOps{WorkRoot: filepath.Join(root, "clones")}
+	got, err := g.RebaseOntoStream(context.Background(), clone, origin, "main")
+	require.NoError(t, err, "a resolved conflict comes back")
+	runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", head, got)
+	runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", runGitCmd_internal(t, seed, "rev-parse", "main"), got)
+	require.Equal(t, "resolved", runGitCmd_internal(t, clone, "show", got+":f.txt"))
 }
 
 // TestFunctionalSealCommitsOnlyPaths (functional tier: real git) is the

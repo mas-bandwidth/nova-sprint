@@ -107,7 +107,7 @@ type (
 	OSProcessTable struct{}
 )
 
-func (e *ConflictError) Error() string { return "rebase conflict: " + strings.Join(e.Files, ", ") }
+func (e *ConflictError) Error() string { return "merge conflict: " + strings.Join(e.Files, ", ") }
 func (e *FetchError) Error() string    { return fmt.Sprintf("fetch %s failed: %v", e.StreamRef, e.Cause) }
 func (e *FetchError) Unwrap() error    { return e.Cause }
 func (OSProcessTable) Alive(pid int, nonce string) bool {
@@ -789,7 +789,7 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return fe
 			default: // not a conflict: the worker's git, never the card's work
-				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "rebase fault: " + err.Error()}
+				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "stream merge fault: " + err.Error()}
 			}
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
@@ -823,7 +823,7 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		if err := r.pushBranch_internal(ctx, rec, rec.Outcome.Head); err != nil {
 			// The head that did land is reported, so the next attempt's
 			// prior head (and its lease) is the branch as it stands.
-			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "post-rebase push fault: " + err.Error()}
+			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "post-merge push fault: " + err.Error()}
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
@@ -1364,9 +1364,12 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, clone, remote, streamRe
 	if _, err := g.runRemoteGit_internal(ctx, to, worktree, "fetch", "--quiet", "--no-recurse-submodules", remote, streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
-	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
+	// Merged in, never rebased: a rebase drops a merge commit that resolved
+	// a conflict and replays the card's commits into it again, and its head
+	// no longer descends from the job's.
+	if _, err := g.runGit_internal(ctx, to, worktree, "merge", "-m", "Merge "+streamRef+" into the card", "FETCH_HEAD"); err != nil {
 		out, diffErr := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
-		if _, abortErr := g.runGit_internal(ctx, to, worktree, "rebase", "--abort"); abortErr != nil {
+		if _, abortErr := g.runGit_internal(ctx, to, worktree, "merge", "--abort"); abortErr != nil {
 			err = fmt.Errorf("%w; cleanup: %w", err, abortErr)
 		}
 		if files := strings.Fields(out); diffErr == nil && len(files) > 0 {
@@ -1547,7 +1550,11 @@ func noSlot_internal(res edge.Result) bool {
 func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg WallConfig, cmdArgv, env []string, timeout time.Duration) (WallRunResult, error) {
 	fallbackPID := nextWallPID_internal()
 	nonce := fmt.Sprintf("n-%d", fallbackPID)
-	env = append(GoWallEnv(slices.Clone(env), w.Config), "NOVA_WORKER_NONCE="+nonce)
+	env, err := CargoWallEnv(GoWallEnv(slices.Clone(env), w.Config), w.Config, j.JobDir)
+	if err != nil {
+		return WallRunResult{}, err
+	}
+	env = append(env, "NOVA_WORKER_NONCE="+nonce)
 	argv := BuildWallArgv(cfg, j, env, cmdArgv)
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
 		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: timeout,
