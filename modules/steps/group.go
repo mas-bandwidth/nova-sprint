@@ -235,7 +235,7 @@ func (t *tick) producerMove(p string, e card.Event, extra ...string) move {
 func (t *tick) consumerMove(c string, e card.Event) move {
 	return move{label: eventName(e) + " " + c, plan: func() (card.Plan, *card.Refusal) {
 		cc := t.cardOf(c)
-		return card.MoveConsumer(cc, t.cardOf(cc.Of), t.rows()[cc.Holder], e)
+		return card.MoveConsumer(cc, t.cardOf(cc.Of), t.consOf(cc.Of), t.rows()[cc.Holder], e)
 	}}
 }
 

@@ -196,7 +196,8 @@ func (w *world) consumerPlan(id string, e Event) Plan {
 		v.Stream = StreamFromStore(w.snap().Streams[p.Stream])
 		e = v
 	}
-	plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
+	_, cons := w.all()
+	plan, r := MoveConsumer(c, p, cons[p.ID], w.rows()[c.Holder], e)
 	require.Nil(w.t, r, "%s %s", name(e), id)
 	return plan
 }
@@ -576,7 +577,7 @@ func TestConformanceWorkFixRefused(t *testing.T) {
 	w.move("p", Resolve{})
 	w.move("p", Start{Row: "r1", Branch: "b", Base: base})
 	c := w.card("p.w1")
-	_, r := MoveConsumer(c, w.card("p"), w.rows()["r1"], Report{Row: "r1", Result: "fix", Reason: "fix"})
+	_, r := MoveConsumer(c, w.card("p"), nil, w.rows()["r1"], Report{Row: "r1", Result: "fix", Reason: "fix"})
 	refusal{r, "a work consumer reports ok, fail or fault; fix is a read's result"}.check(t)
 	w.is("p.w1", Working)
 }

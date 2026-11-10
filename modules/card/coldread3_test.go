@@ -297,7 +297,7 @@ func cold3Work(rng *rand.Rand, p Card, cons []Card, rs map[string]Row, stream St
 	case Working:
 		h := []string{h1, h2, coldH3}[rng.Intn(3)]
 		res := []string{"ok", "ok", "fail", "fault"}[rng.Intn(4)]
-		return cold3Consume(c, p, rs, Report{Row: c.Holder, Result: res, Head: h, Reason: "r"})
+		return cold3Consume(c, p, cons, rs, Report{Row: c.Holder, Result: res, Head: h, Reason: "r"})
 	case Done:
 		ev := map[string]Event{"ok": Finished{Consumer: c.ID}, "fail": Broken{Consumer: c.ID}, "fault": Faulted{Consumer: c.ID}}[c.Result]
 		return cold3Move(p, cons, rs, stream, needs, ev)
@@ -320,7 +320,7 @@ func cold3Review(rng *rand.Rand, p Card, cons []Card, rs map[string]Row, stream 
 		case c.Kind != "read":
 		case live(c):
 			res := []string{"ok", "fix"}[rng.Intn(2)]
-			return cold3Consume(c, p, rs, Report{Row: c.Holder, Result: res, Head: p.Head, Reason: "finding " + fmt.Sprint(rng.Intn(3))})
+			return cold3Consume(c, p, cons, rs, Report{Row: c.Holder, Result: res, Head: p.Head, Reason: "finding " + fmt.Sprint(rng.Intn(3))})
 		case c.State == Done && c.Review == p.Review && c.Result == "ok":
 			okRead = true
 		case c.State == Done && c.Review == p.Review && c.Result == "fix":
@@ -367,8 +367,8 @@ func cold3Move(p Card, cons []Card, rs map[string]Row, stream Stream, needs map[
 	return plan, name(e) + " " + p.ID, r == nil
 }
 
-func cold3Consume(c, p Card, rs map[string]Row, e Event) (Plan, string, bool) {
-	plan, r := MoveConsumer(c, p, rs[c.Holder], e)
+func cold3Consume(c, p Card, cons []Card, rs map[string]Row, e Event) (Plan, string, bool) {
+	plan, r := MoveConsumer(c, p, cons, rs[c.Holder], e)
 	return plan, name(e) + " " + c.ID, r == nil
 }
 
