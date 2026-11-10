@@ -707,7 +707,7 @@ Common situations and the next step:
 | This process has no sprint credential | Run it through `sprint_env`; confirm your seat has the sprint grant. Do not rerun setup just because your shell lacks a credential. |
 | Not on the bus | Start the harness's bus hook, then retry the sprint hook. |
 | Already hooked | Recover your own session with `unhook`, then hook again. Resolve another live owner first. |
-| The sprint's coordinator is another row | Ask that row to `unhook`. If it is gone from `nova-bus who` and cannot, take the seat with `up --as <you> --take-over --reason "<why>"`; it refuses while that row is on the bus, and it returns the row's cards to the queue. |
+| The sprint's coordinator is another row | Ask that row to `unhook`, or, only when the operator says so, take the seat with `up --as <you> --take-over --reason "<why>"`. The take-over needs nothing from that row, on the bus or gone: it unhooks the row, returns its cards to the queue, and the run tells it who took the seat and why. |
 | No commit identity | The coordinator sets it with `identity`; the worker then hooks or takes again. |
 | Not dealt at this generation, withdrawn or already reported | Run `next` as your row and use its current command. Do not invent a new generation. |
 | Head is absent at origin | Push the dealt branch and verify its full remote SHA before finishing. |

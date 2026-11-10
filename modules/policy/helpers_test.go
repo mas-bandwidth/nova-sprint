@@ -92,9 +92,15 @@ func fakeWorld(t testing.TB) *world {
 	return w
 }
 
+// hooked is row name hooked in as a worker, as rows are while the sprint
+// deals to them.
+func hooked(name string) store.PutRow {
+	return store.PutRow{Name: name, Session: "s-" + name, Role: "worker"}
+}
+
 // seed: streams s1 and s2; rows r1 (flash pro heavy, width 2), r2 (flash,
-// width 1), r3 (frontier kin, width 1), r4 (pro, width 1, held), all up,
-// their configuration in w.ro (seedRoster);
+// width 1), r3 (frontier kin, width 1), r4 (pro, width 1, held), all up and
+// hooked in, their configuration in w.ro (seedRoster);
 // producers p1 (s1 pro, ready), p2 (s1 heavy, ready, 2 bounces, a prior
 // head), p3 (s2 flash, review 1, author r2, one ok read by r1 done), p4 (s2
 // pro, waiting), p5 (s1 pro, review, author r1, no read yet).
@@ -102,7 +108,7 @@ func (w *world) seed() {
 	writes := []store.Write{
 		store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1},
 		store.PutStream{Name: "s2", Repo: "git@example.com:r.git", Base: "main", Pos: 2},
-		store.PutRow{Name: "r1"}, store.PutRow{Name: "r2"}, store.PutRow{Name: "r3"}, store.PutRow{Name: "r4"},
+		hooked("r1"), hooked("r2"), hooked("r3"), hooked("r4"),
 	}
 	for _, p := range [][2]string{{"p1", "pro"}, {"p2", "heavy"}, {"p3", "flash"}, {"p4", "pro"}, {"p5", "pro"}} {
 		stream := map[bool]string{true: "s2", false: "s1"}[p[0] == "p3" || p[0] == "p4"]

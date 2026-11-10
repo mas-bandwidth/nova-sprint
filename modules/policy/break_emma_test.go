@@ -39,8 +39,8 @@ func TestBreakVerdictCountsDoneReadsFromDifferentHead(t *testing.T) {
 		Epoch:   1,
 		Streams: map[string]store.Stream{"s1": {Name: "s1"}},
 		Rows: map[string]store.Row{
-			"r1": {Name: "r1", State: "up"},
-			"r4": {Name: "r4", State: "up"},
+			"r1": {Name: "r1", State: "up", Session: "s-r1", Role: "worker"},
+			"r4": {Name: "r4", State: "up", Session: "s-r4", Role: "worker"},
 		},
 		Cards: map[string]store.Card{
 			"p5": {
@@ -97,8 +97,8 @@ func TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck(t *testing.T) {
 			Epoch:   1,
 			Streams: map[string]store.Stream{"s1": {Name: "s1"}},
 			Rows: map[string]store.Row{
-				"r1": {Name: "r1", State: "up"},
-				"r2": {Name: "r2", State: "up"},
+				"r1": {Name: "r1", State: "up", Session: "s-r1", Role: "worker"},
+				"r2": {Name: "r2", State: "up", Session: "s-r2", Role: "worker"},
 			},
 			Cards: map[string]store.Card{
 				"p0":    {ID: "p0", Kind: "producer", Stream: "s1", State: "working", Tier: "pro", Priority: "normal"},
@@ -123,9 +123,9 @@ func TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck(t *testing.T) {
 			Epoch:   1,
 			Streams: map[string]store.Stream{"s1": {Name: "s1"}},
 			Rows: map[string]store.Row{
-				"r1": {Name: "r1", State: "up"},
-				"r3": {Name: "r3", State: "up"},
-				"r4": {Name: "r4", State: "up"},
+				"r1": {Name: "r1", State: "up", Session: "s-r1", Role: "worker"},
+				"r3": {Name: "r3", State: "up", Session: "s-r3", Role: "worker"},
+				"r4": {Name: "r4", State: "up", Session: "s-r4", Role: "worker"},
 			},
 			Cards: map[string]store.Card{
 				"p0":    {ID: "p0", Kind: "producer", Stream: "s1", State: "review", Tier: "pro", Priority: "normal", Author: "r1"},
@@ -162,7 +162,7 @@ func TestBreakCheckReportsRefusedJointAnswerAsValidChangeAndCascadesFromRefusedW
 	w.up()
 	w.configure(rc{"r5", "kin", 0, []string{"pro", "heavy", "frontier"}, "m-frontier"})
 	w.apply(
-		store.PutRow{Name: "r5"},
+		hooked("r5"),
 		store.SetRowState{Row: "r5", State: "up"},
 	)
 

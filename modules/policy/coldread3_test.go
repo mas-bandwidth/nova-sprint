@@ -70,7 +70,7 @@ func readWorld(t *testing.T) *world {
 	writes := []store.Write{store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1},
 		store.PutCard{ID: "p", Kind: "producer", Stream: "s1", Tier: "pro", Score: 1, Brief: "do p", Prose: "do p"}}
 	for _, r := range []string{"a", "b", "c"} {
-		writes = append(writes, store.PutRow{Name: r})
+		writes = append(writes, hooked(r))
 		w.configure(rc{r, "worker", 1, []string{"pro"}, ""})
 	}
 	w.apply(writes...)

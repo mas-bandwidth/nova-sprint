@@ -211,7 +211,7 @@ func TestBreakJointCheckIgnoresTheReadCount(t *testing.T) {
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "review", Tier: "flash", Priority: "normal", Author: "c", Review: 1, Head: "h"},
 	}}
 	for _, n := range []string{"a", "b", "c"} {
-		snap.Rows[n] = store.Row{Name: n, State: "up"}
+		snap.Rows[n] = store.Row{Name: n, State: "up", Session: "s-" + n, Role: "worker"}
 		ro.Workers[n] = roster.Worker{Name: n, Width: 1, Tiers: []string{"flash"}, Harness: roster.WorkerHarness}
 	}
 	body := strings.Replace(DefaultBody(), "    return 1  # v1 standing rule", "    return 2  # v1 standing rule", 1)

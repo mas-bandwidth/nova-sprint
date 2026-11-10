@@ -98,7 +98,7 @@ func TestColdread2DefectCacheRetainsUnboundedBytes(t *testing.T) {
 	t.Parallel()
 	ro := handRoster(rc{"r", "worker", 2, store.Tiers, ""})
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},
-		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}}}
+		Rows: map[string]store.Row{"r": {Name: "r", State: "up", Session: "s-r", Role: "worker"}}}
 	body, _ := override("order", "def order(card):\n    return (\"x\" * 60000 + card.id,)")
 	e := testEngine()
 	for tick := range 10 {

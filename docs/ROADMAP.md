@@ -24,9 +24,11 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | Steps.tla gains the rest after faults: a resting row is offered to policy but not dealt to (the model gap under #740) | ❌ |
 | next --json answers small: the finished cards of the epoch listed in brief, or only the last few (82-214 KB on nine benches on 2026-11-09, past the worker's old 64 KiB cap; the worker now reads 16 MiB and names a truncated answer, so the fix here is the size, not the parse) | ❌ |
 | Functional flakes fixed: TestFunctionalClearWhileWorkersBeat (clear's seq fence refused: store at seq N+1, expected N, a beat landing between read and clear), TestFunctionalEvaluatorMemoryCap (failed once on main), a postgres start failure in a functional run; and the trace job near the 2-minute runner limit (55-130 s, cancelled on 7 of the 2026-11-09 landing runs) | ❌ |
-| A model of the coordinator's seat: one coordinator; hook, unhook and up --take-over, the take-over guarded by the coordinator's absence from the bus, with a reversed witness (take-over while present); no module covers it (Setup.tla has the walk's steps, Store.tla the PutRow write) | ❌ |
+| A model of the coordinator's seat: one coordinator; hook, unhook and up --take-over, the take-over moving the seat whether the old coordinator is on the bus or gone, with a reversed witness (two coordinators at once); no module covers it (Setup.tla has the walk's steps, Store.tla the PutRow write) | ❌ |
 | A row that misses N takes in a row is unhooked by the sprint (its hand returned) with a DOWN line to the coordinator; a take or a re-hook resets the count (new mechanism: needs the owner's agreement) | ❌ |
 | NO-PROGRESS: a row whose taken cards show no progress within the bound gets one line to the coordinator naming the row, the cards and the minutes since its last progress; last progress shown in show <row> and on the dashboard; detect and tell only (new mechanism: needs the owner's agreement) | ❌ |
+| TAKEN OVER survives a failed send and a restart: a durable pending-notice marker for the coordinator a take-over unhooked (LAYER-6-RUN, Taking the seat: a restart before it is sent does not send it) | ❌ |
+| Every coordinator verb checks at commit that the caller still holds the seat: judge, land, hold, drop, policy, add, clear and unhook <row> check it only on the read, so after a take-over the old coordinator's op in flight commits; stream add, stop, start and identity are fenced (UnchangedSince Hooks) | ❌ |
 | complete | 0% |
 
 [Source data](roadmap.sexp)
