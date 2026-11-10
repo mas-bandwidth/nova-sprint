@@ -28,7 +28,10 @@ func TestCostSummaryAPIOnlyWithSeatTokens(t *testing.T) {
 		// the kin's whole card: p2 is landed with no API spend, out of the per-card divisor
 		"p2.w1": {ID: "p2.w1", Kind: "work", Of: "p2", Stream: "s", State: "done", Result: "ok", Holder: "alex", Tier: "pro", Priced: true,
 			Usage: "billing=subscription charged=-"},
-		// API runs with no price: one with no tokens, two of models prices() leaves out
+		// API runs with no price: one with no tokens, two of models prices() leaves out; of
+		// those, the mercury-3 run was recorded no-price under a policy with no price for it and
+		// is counted at the built-in table's rate at read (usage.Repriced: 10 x 0.10 + 5 x 0.35
+		// per million is 2.75 micro-dollars, 3 half up), while openai/sol is in neither sheet
 		"p2.r1": {ID: "p2.r1", Kind: "read", Of: "p2", Stream: "s", State: "done", Holder: "r", Tier: "pro", Usage: "billing=api charged=- unpriced=no-tokens"},
 		"p2.r2": {ID: "p2.r2", Kind: "read", Of: "p2", Stream: "s", State: "done", Holder: "r", Tier: "pro", Usage: "input=10 output=5 model=inception/mercury-3 billing=api charged=- unpriced=no-price"},
 		"p2.r3": {ID: "p2.r3", Kind: "read", Of: "p2", Stream: "s", State: "fail", Holder: "w", Tier: "pro", Usage: "input=3 model=openai/sol billing=api charged=- unpriced=no-price"},
@@ -39,8 +42,8 @@ func TestCostSummaryAPIOnlyWithSeatTokens(t *testing.T) {
 		Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}, "stella": {Name: "stella", State: "up"}, "alex": {Name: "alex", State: "up"}, "r": {Name: "r", State: "up"}, "w": {Name: "w", State: "up"}}}
 	env := mapSnapshot(s, testRoster, time.Time{})
 	c := env.Cost
-	want := costSummary{Total: "$0.01", PerCard: "$0.0050", ByTier: map[string]string{"flash": "$0.01", "pro": "$0.00"}, Priced: 2, Unpriced: 3, NoTokens: 1, NoPrice: 2,
-		Missing: []string{"inception/mercury-3", "openai/sol"}, Landed: 2, PricedCards: 2, APITokens: "56.6K", SeatRuns: 2, SeatTokens: "1.2M"}
+	want := costSummary{Total: "$0.02", PerCard: "$0.0050", ByTier: map[string]string{"flash": "$0.01", "pro": "$0.01"}, Priced: 3, Unpriced: 2, NoTokens: 1, NoPrice: 1,
+		Missing: []string{"openai/sol"}, Landed: 2, PricedCards: 2, APITokens: "56.7K", SeatRuns: 2, SeatTokens: "1.2M"}
 	b, _ := json.Marshal(c)
 	w, _ := json.Marshal(want)
 	if string(b) != string(w) {

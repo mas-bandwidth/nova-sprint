@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/usage"
 )
 
 // runShow is `show`: the record a refusal named, as JSON (a card's brief
@@ -122,8 +123,9 @@ func stitchOf(snap store.Snapshot, s store.Stream) stitchView {
 		e := stitchEntry{ID: p.ID, State: p.State, Head: p.Head, Author: p.Author, Finding: p.Finding, Reads: []store.Card{}, Work: []store.Card{}}
 		var cost int64
 		for _, c := range consumers(snap, p.ID) {
-			cost += c.Cost
-			e.Unpriced = e.Unpriced || (c.Result != "" && !c.Priced)
+			micro, priced := usage.Repriced(c.Usage, c.Cost, c.Priced) // as the board counts it
+			cost += micro
+			e.Unpriced = e.Unpriced || (c.Result != "" && !priced)
 			if c.Kind == "read" {
 				e.Reads = append(e.Reads, c)
 			} else {

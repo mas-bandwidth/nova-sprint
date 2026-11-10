@@ -89,7 +89,9 @@ type costSummary struct {
 // priced API run (a seat card) counting at $0 (imported v1 landings are left
 // out of the divisor). A subscription run adds its tokens, never
 // dollars. A record from before round 25 (no usage) counts as it was
-// recorded: priced or not.
+// recorded: priced or not. A run stored unpriced=no-price whose model the
+// built-in table prices counts at the table's rate (usage.Repriced): the
+// spend was real when the policy had no price for it.
 func summarizeCost(s store.Snapshot) *costSummary {
 	out := &costSummary{ByTier: map[string]string{}, Missing: []string{}}
 	micros := map[string]*big.Int{}
@@ -102,19 +104,20 @@ func summarizeCost(s store.Snapshot) *costSummary {
 			continue
 		}
 		r := usage.MustParse(c.Usage)
+		cost, priced := usage.Repriced(c.Usage, c.Cost, c.Priced)
 		switch {
 		case r.Billing == usage.BillingSubscription:
 			out.SeatRuns++
 			seatTokens += r.Tokens.Total()
-		case c.Priced:
+		case priced:
 			pricedOf[c.Of] = true
 			out.Priced++
 			apiTokens += r.Tokens.Total()
 			if micros[c.Tier] == nil {
 				micros[c.Tier] = new(big.Int)
 			}
-			micros[c.Tier].Add(micros[c.Tier], big.NewInt(c.Cost))
-			total.Add(total, big.NewInt(c.Cost))
+			micros[c.Tier].Add(micros[c.Tier], big.NewInt(cost))
+			total.Add(total, big.NewInt(cost))
 		case c.State == "done" || c.State == "fail":
 			out.Unpriced++
 			if r.Unpriced == usage.WhyNoPrice {

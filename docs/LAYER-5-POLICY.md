@@ -103,7 +103,7 @@ end of file` (ruled 2026-11-07).
 | `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000, optional `"ci_wait"`: seconds 1..86400 | f >= b, ci_wait outside 1..86400 | backed up (rung 2) at 2 merging, flowing again at 1; ci_wait 600 (a guess) |
 | `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (the seconds after a deal from which a row is nagged each tick for a card in hand it has not taken: Glenn 2026-11-07, default 1) and `ready_take` (the seconds after which such a card is withdrawn and dealt to another row with room: default 180); optional `judgement_unseen` (the age at which an open judgement counts as unseen: its push woke nobody, and `next`, `check` and the coordinator's verbs print an UNSEEN line: Glenn 2026-11-08, default 300) | zero, negative, absent: no wait is ever unbounded | below |
 | `stitch(stream)` | name, cards, landed | `True` or `False` | a non-bool | `True` when the stream has more than one card |
-| `prices()` | none | dict: model name to `{"in": n, "out": n}`, micro-dollars per million tokens, n >= 0 | a negative or non-int price | `{}`: every run unpriced until the coordinator sets them |
+| `prices()` | none | dict: model name to `{"in": n, "out": n}`, micro-dollars per million tokens, n >= 0 | a negative or non-int price | `{}`: a model the policy leaves unlisted is priced by the built-in table (`modules/usage/prices.go`, each price with its source); a model in neither is unpriced, never $0 |
 
 Beyond the per-answer domain, the validator checks the answers together,
 so no policy can leave the sprint unable to deal (LESSONS 5.6): it refuses
@@ -197,7 +197,7 @@ def stitch(stream):
     return stream.cards > 1
 
 def prices():
-    return {}  # micro-dollars per million tokens, by model: unpriced until set
+    return {}  # micro-dollars per million tokens, by model; the built-in table prices the rest
 ```
 
 ## The embedding

@@ -35,6 +35,7 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 	}
 	e.checkPolicy(ctx, r, snap)
 	e.checkCards(ctx, r, snap)
+	checkCost(r, snap)
 	checkWorking(r, snap, who)
 	e.checkWorkers(ctx, r, snap, who)
 	e.checkWorkerVersions(ctx, r, snap)

@@ -109,7 +109,7 @@ func TestFinish(t *testing.T) {
 	takeW1(t, w)
 	first := w.do("alice", "finish", "p1.w1@1", "--head", head, "--cost", "0.04")
 	want(t, first, 0, "FINISHED p1.w1 head="+head, "next: "+waitNext)
-	if c := w.snap(t).Cards["p1.w1"]; c.State != "done" || c.Cost != 0 || c.Priced || c.Usage != "billing=api charged=0.04 unpriced=no-tokens" {
+	if c := w.snap(t).Cards["p1.w1"]; c.State != "done" || c.Cost != 0 || c.Priced || c.Usage != "harness=nova-worker at=2026-11-06T12:00:00Z billing=api charged=0.04 unpriced=no-tokens" {
 		t.Fatalf("a bench's --cost is the harness's evidence, never its price; no tokens is unpriced: %+v", c)
 	}
 	if again := w.do("alice", "finish", "p1.w1@1", "--head", head, "--cost", "0.04"); again != first {
@@ -127,7 +127,7 @@ func TestFinishFailedAndReportForms(t *testing.T) {
 	takeW1(t, w)
 	r := w.do("alice", "report", "p1.w1@1", "--result", "fault", "--reason", "bench down", "--json")
 	want(t, r, 0, `"accepted":true`)
-	if c := w.snap(t).Cards["p1.w1"]; c.Result != "fault" || c.Cost != 0 || c.Priced || c.Usage != "billing=api charged=- unpriced=no-tokens" {
+	if c := w.snap(t).Cards["p1.w1"]; c.Result != "fault" || c.Cost != 0 || c.Priced || c.Usage != "harness=nova-worker at=2026-11-06T12:00:00Z billing=api charged=- unpriced=no-tokens" {
 		t.Fatalf("card %+v", c)
 	}
 }
@@ -224,7 +224,7 @@ func TestReadCarriesCost(t *testing.T) {
 	delete(w.roster.ro.Workers, "bob")
 	takeR1(t, w)
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.015"), 0, "READ p2.r1 head="+head+" result=ok")
-	if c := w.snap(t).Cards["p2.r1"]; c.State != "done" || c.Cost != 0 || !c.Priced || c.Usage != "billing=subscription charged=0.015" {
+	if c := w.snap(t).Cards["p2.r1"]; c.State != "done" || c.Cost != 0 || !c.Priced || c.Usage != "harness=claude at=2026-11-06T12:00:00Z billing=subscription charged=0.015" {
 		t.Fatalf("read card %+v", c)
 	}
 	w = newWorld(t)
@@ -441,14 +441,14 @@ func TestReadPricedFromUsage(t *testing.T) {
 	takeR1(t, w)
 	words := "input=19541 cache_read=36336 output=692 reasoning=70 model=deepseek/deepseek-flash"
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.015", "--usage", words), 0, "READ p2.r1 head="+head+" result=ok")
-	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 8658 || !c.Priced || c.Usage != words+" billing=api charged=0.015" {
+	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 8658 || !c.Priced || c.Usage != words+" harness=nova-worker at=2026-11-06T12:00:00Z billing=api charged=0.015" {
 		t.Fatalf("read card %+v", c)
 	}
 	w = newWorld(t)
 	w.e.Answers = fakeAnswers{prices: sheet}
 	takeR1(t, w)
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", "input=10 output=2 model=openai/sol"), 0, "READ p2.r1")
-	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || c.Priced || c.Usage != "input=10 output=2 model=openai/sol billing=api charged=- unpriced=no-price" {
+	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || c.Priced || c.Usage != "input=10 output=2 model=openai/sol harness=nova-worker at=2026-11-06T12:00:00Z billing=api charged=- unpriced=no-price" {
 		t.Fatalf("read card %+v", c)
 	}
 	w = newWorld(t)

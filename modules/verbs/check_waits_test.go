@@ -145,7 +145,7 @@ func TestReadTakesCost(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.04"), 0, "READ p2.r1")
-	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || c.Priced || c.Usage != "billing=api charged=0.04 unpriced=no-tokens" {
+	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || c.Priced || c.Usage != "harness=nova-worker at=2026-11-06T12:00:00Z billing=api charged=0.04 unpriced=no-tokens" {
 		t.Fatalf("cost %d priced %t usage %q, want 0 false and the charged evidence", c.Cost, c.Priced, c.Usage)
 	}
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.0000001"), 2, "--cost is dollars, at most six decimals")

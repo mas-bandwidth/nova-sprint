@@ -103,7 +103,9 @@ def stitch(stream):
 
 def prices():
     # micro-dollars per million tokens: {"in", "out"}, cache_read and
-    # cache_write default to in. Unlisted API models are unpriced, never $0.
+    # cache_write default to in. An unlisted API model is priced by the
+    # built-in table (modules/usage/prices.go, each price with its source);
+    # a model in neither is unpriced, never $0.
     return {}
 
 def catalog():
