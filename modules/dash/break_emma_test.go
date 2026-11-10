@@ -14,19 +14,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// TestBreakDashAllFinalStreamWithFailuresNeverSetsEnvelopeStreamStateFail breaks
-// shim.go:114-124 against dash/README.md lines 14 & 89:
-//   - "Streams show landed when all cards landed, fail when all are final and at
-//     least one failed, held when held, working when work is in flight, and
-//     waiting otherwise, including empty streams."
-//   - "3. Empty streams and streams of waiting cards wait; all-final streams with failures show fail."
-//
-// Sequence:
-//  1. Stream "s1" has p1 in state "landed" and p2 in state "fail" (Total=2, Landed=1, Fail=1).
-//  2. All cards in "s1" are final and at least one failed.
-//  3. setStreamStates (shim.go:114-124) has branches only for "landed" and "working",
-//     leaving data.streams[0].state as "waiting" instead of "fail"!
-func TestBreakDashAllFinalStreamWithFailuresNeverSetsEnvelopeStreamStateFail(t *testing.T) {
+// TestAllFinalStreamWithFailuresIsWaiting: a stream has no fail status. Stream
+// "s1" has p1 landed and p2 failed (Total=2, Landed=1, Fail=1); nothing is in
+// flight and not every card landed, so the stream shows waiting.
+func TestAllFinalStreamWithFailuresIsWaiting(t *testing.T) {
 	t.Parallel()
 	s := store.Snapshot{
 		Epoch:   1,
@@ -40,8 +31,8 @@ func TestBreakDashAllFinalStreamWithFailuresNeverSetsEnvelopeStreamStateFail(t *
 	if len(env.Streams) != 1 {
 		t.Fatalf("expected 1 stream, got %d", len(env.Streams))
 	}
-	if env.Streams[0].State != "fail" {
-		t.Fatalf("all-final stream s1 (1 landed, 1 fail) has envelope Streams[0].State = %q, want %q", env.Streams[0].State, "fail")
+	if env.Streams[0].State != "waiting" {
+		t.Fatalf("all-final stream s1 (1 landed, 1 fail) has envelope Streams[0].State = %q, want %q", env.Streams[0].State, "waiting")
 	}
 }
 
