@@ -227,4 +227,36 @@ func TestCargoRegistryIsGrantedReadOnlyAndLinkedOffline(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(dir, "home", ".cargo")); slices.Contains(fx.Calls()[0].Cmd.Env, "CARGO_NET_OFFLINE=true") || err == nil {
 		t.Errorf("an ungranted registry reached the wall: %q", fx.Calls()[0].Cmd.Env)
 	}
+
+	// A job that plants home/.cargo as a link out of its tree is refused,
+	// and the worker writes nothing where the link leads.
+	outside, dir := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "home"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "home", ".cargo")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&OSReserveWall{Exec: cr2OKExec_internal(), Config: cfg}).RunTest(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, "cargo test", time.Minute); err == nil {
+		t.Errorf("a planted home/.cargo link out of the job dir was followed")
+	}
+	if ents, _ := os.ReadDir(outside); len(ents) != 0 {
+		t.Errorf("the worker wrote %v outside the job dir", ents)
+	}
+
+	// A registry that resolves elsewhere in the home gets every home check.
+	home = t.TempDir()
+	ssh := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(filepath.Join(home, ".cargo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ssh, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(ssh, filepath.Join(home, ".cargo", "registry")); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = osWallConfig_internal(context.Background(), Config{Row: "r1"}, edge.NewFakeExec(), time.Minute, home, nil, func(string) {}); err != nil || cfg.CargoRegistry != "" || len(cfg.ReadPaths) != 0 {
+		t.Errorf("a registry resolving to %s was granted: %q %q %v", ssh, cfg.CargoRegistry, cfg.ReadPaths, err)
+	}
 }

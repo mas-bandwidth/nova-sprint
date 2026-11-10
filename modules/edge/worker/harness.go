@@ -841,20 +841,29 @@ func GoWallEnv(env []string, cfg WallConfig) []string {
 // cfg.CargoRegistry, when a grant in cfg.ReadPaths covers it: the registry is
 // read-only and the wall has no network, so a crate the bench holds builds
 // and one it lacks fails at once, named, as GOMODCACHE does for go. A path
-// already at the link is left as it is; env as it is when not granted.
+// already at the link is left as it is; env as it is when not granted. The
+// link is made through an os.Root on jobDir: the job owns its tree between
+// runs, and a symlink it plants there never leads the worker outside it.
 func CargoWallEnv(env []string, cfg WallConfig, jobDir string) ([]string, error) {
 	reg := resolvePath_internal(cfg.CargoRegistry)
 	if reg == "" || jobDir == "" || !slices.ContainsFunc(cfg.ReadPaths, func(d string) bool { return pathUnder_internal(reg, resolvePath_internal(d)) }) {
 		return env, nil
 	}
-	link := filepath.Join(jobDir, "home", ".cargo", "registry")
-	if _, err := os.Lstat(link); errors.Is(err, fs.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+	root, err := os.OpenRoot(jobDir)
+	if err != nil {
+		return env, fmt.Errorf("worker: opening the job directory to link cargo's registry: %w", err)
+	}
+	defer root.Close()
+	link := filepath.Join("home", ".cargo", "registry")
+	if _, err := root.Lstat(link); errors.Is(err, fs.ErrNotExist) {
+		if err := root.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			return env, fmt.Errorf("worker: making the job's cargo home: %w", err)
 		}
-		if err := os.Symlink(reg, link); err != nil {
+		if err := root.Symlink(reg, link); err != nil {
 			return env, fmt.Errorf("worker: linking the bench's cargo registry into the job's cargo home: %w", err)
 		}
+	} else if err != nil {
+		return env, fmt.Errorf("worker: the job's cargo home: %w", err)
 	}
 	return append(env, "CARGO_NET_OFFLINE=true"), nil
 }

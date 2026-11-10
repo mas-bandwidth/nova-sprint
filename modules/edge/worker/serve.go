@@ -164,9 +164,14 @@ func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout 
 	}
 	// Cargo's registry holds only downloaded public crates, so it alone of
 	// ~/.cargo is granted (CheckWallReads with no home: the dot-directory
-	// rule would refuse it; the worker's own directories still do).
+	// rule would refuse it; the worker's own directories still do). One that
+	// resolves anywhere else gets every home check.
 	if reg := filepath.Join(home, ".cargo", "registry"); checkWallReadForm_internal(reg) == nil {
-		if got, err := CheckWallReads([]string{reg}, "", own); err != nil {
+		got, err := CheckWallReads([]string{reg}, "", own)
+		if err == nil && got[0] != filepath.Join(resolvePath_internal(home), ".cargo", "registry") {
+			got, err = CheckWallReads([]string{reg}, home, own)
+		}
+		if err != nil {
 			out("worker: cargo's registry " + reg + " is skipped, not granted to the wall: " + edge.RedactN(err.Error(), edge.FailureMax))
 		} else {
 			cfg.CargoRegistry, cfg.ReadPaths = got[0], append(cfg.ReadPaths, got[0])
