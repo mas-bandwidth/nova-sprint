@@ -48,11 +48,14 @@ type runnerEnvState_internal struct {
 
 // runnerBranch_internal is Runner.tla's branch[c]: who wrote the card
 // branch's tip on origin (none, job, holder), whether the next holder did,
-// and the job's pushes after its consumer was final (defect 78).
+// and the job's pushes after its consumer was final (defect 78); the head
+// the store learned (known) and the one the next holder's take started it
+// from (from: unset before that take), each by its writer.
 type runnerBranch_internal struct {
 	tip         string
 	holderWrote bool
 	finalPushes int
+	known, from string
 }
 
 type runnerTraceStep_internal struct {
@@ -94,6 +97,9 @@ type runnerWalkHarness_internal struct {
 	wall       *stepWall_internal // the runner's wall: every seal step it ran
 	sealedAt   map[string]int     // the seal steps the wall had run on c's tree at c's last Run
 	dropped    map[string]bool    // a Rebase step whose git did not keep c's history
+	known      map[string]string  // the head the store learned for c's card (a release reports its own)
+	from       map[string]string  // the next holder's start (StartHead), once it took c's card
+	took       map[string]bool
 }
 
 func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
@@ -144,6 +150,9 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		holder:   map[string]bool{"c1": false, "c2": false},
 		sealedAt: map[string]int{"c1": 0, "c2": 0},
 		dropped:  map[string]bool{},
+		known:    map[string]string{},
+		from:     map[string]string{},
+		took:     map[string]bool{},
 	}
 }
 
@@ -180,16 +189,12 @@ func runnerBranchName_internal(c string) string { return "sprint/s1/" + c }
 // projectBranch_internal reads branch[c] off the fake origin: the tip's
 // writer by its sha, and the pushes of c's branch since c went final.
 func (h *runnerWalkHarness_internal) projectBranch_internal(c string) runnerBranch_internal {
-	b := runnerBranch_internal{tip: "none", holderWrote: h.holder[c]}
+	b := runnerBranch_internal{holderWrote: h.holder[c], known: runnerWriter_internal(h.known[c]), from: "unset"}
 	h.git.mu.Lock()
-	tip := h.git.originHeads[runnerBranchName_internal(c)]
+	b.tip = runnerWriter_internal(h.git.originHeads[runnerBranchName_internal(c)])
 	h.git.mu.Unlock()
-	switch tip {
-	case "":
-	case testHolderSHA:
-		b.tip = "holder"
-	default:
-		b.tip = "job"
+	if h.took[c] {
+		b.from = runnerWriter_internal(h.from[c])
 	}
 	if at, final := h.finalAt[c]; final {
 		for _, p := range h.git.pushes()[at:] {
@@ -199,6 +204,18 @@ func (h *runnerWalkHarness_internal) projectBranch_internal(c string) runnerBran
 		}
 	}
 	return b
+}
+
+// runnerWriter_internal names a head of the walk's branch by who wrote it:
+// none, the next holder, or the job.
+func runnerWriter_internal(sha string) string {
+	switch sha {
+	case "":
+		return "none"
+	case testHolderSHA:
+		return "holder"
+	}
+	return "job"
 }
 
 // refinementRunnerState_internal projects the real store.Fake + on-disk JobRecord state
@@ -370,7 +387,7 @@ func (h *runnerWalkHarness_internal) processStep_internal(t *testing.T, act, c s
 		h.pass = "idle"
 	case "Release":
 		h.release_internal(t, c)
-	case "Withdraw", "Retire", "HolderPush":
+	case "Withdraw", "Retire", "HolderTake", "HolderPush":
 		h.branchStep_internal(t, act, c)
 	case "Restart":
 		h.env.crashed = false
@@ -430,6 +447,7 @@ func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
 		t.Fatal(err)
 	}
 	h.pushed[c], h.gone[c], h.jobState[c] = true, &kept, JobCleaned
+	h.known[c] = kept.PushedHead // releaseNoBlame_internal reports the head it pushed
 	h.finalAt[c] = len(h.git.pushes())
 	h.env.released = true
 }
@@ -460,6 +478,11 @@ func (h *runnerWalkHarness_internal) branchStep_internal(t *testing.T, act, c st
 			h.gone[c] = &kept
 		}
 		h.jobState[c] = JobCleaned
+	case "HolderTake": // the next holder's take: its prior head is StartHead's, as take hands it over
+		h.git.mu.Lock()
+		tip := h.git.originHeads[runnerBranchName_internal(c)]
+		h.git.mu.Unlock()
+		h.from[c], h.took[c] = StartHead(testBaseSHA, h.known[c], tip), true
 	case "HolderPush":
 		h.git.mu.Lock()
 		h.git.originHeads[runnerBranchName_internal(c)] = testHolderSHA
@@ -510,6 +533,14 @@ func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, di
 	h.alive[c] = 0
 	h.slotsInUse--
 	h.seal_internal(t, c, rec) // the seal step, after the harness
+	if act == "Harvest" {      // harvestWorkHead_internal pushes the sealed head, by lease
+		if err := h.runner.pushBranch_internal(context.Background(), &rec, testWorkSHA); err != nil {
+			t.Fatalf("Harvest %s: the push by lease: %v", c, err)
+		}
+		if err := WriteJobRecord(dir, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
 	h.jobState[c] = JobHarvested
 }
 
@@ -673,7 +704,11 @@ func branchMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_in
 	case st.storeState[c] == "fail" && st.pass == "planning":
 		moves = append(moves, runnerMove_internal{"Retire", c})
 	}
-	if st.storeState[c] == "fail" && !st.branch[c].holderWrote {
+	switch {
+	case st.storeState[c] != "fail" || st.branch[c].holderWrote:
+	case st.branch[c].from == "unset":
+		moves = append(moves, runnerMove_internal{"HolderTake", c})
+	default:
 		moves = append(moves, runnerMove_internal{"HolderPush", c})
 	}
 	return moves
@@ -714,7 +749,7 @@ func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {
-	return fmt.Sprintf("[tip |-> %q, holderWrote |-> %s, finalPushes |-> %d]", b.tip, tlaBool_internal(b.holderWrote), b.finalPushes)
+	return fmt.Sprintf("[tip |-> %q, holderWrote |-> %s, finalPushes |-> %d, known |-> %q, from |-> %q]", b.tip, tlaBool_internal(b.holderWrote), b.finalPushes, b.known, b.from)
 }
 
 func formatRunnerOpsTLA_internal(ops []runnerAppliedOp_internal) string {
@@ -788,7 +823,7 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 	}
 	// The seeds, together, walk every path the model checks the code on,
 	// defect 78's withdraw, retire and holder's push among them.
-	for _, a := range []string{"Rebase", "Conflict", "Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderPush"} {
+	for _, a := range []string{"Rebase", "Conflict", "Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
 		if seen[a] == 0 {
 			t.Errorf("no seed walks %s: the trace binding does not cover it (walked: %v)", a, seen)
 		}

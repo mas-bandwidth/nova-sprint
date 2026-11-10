@@ -33,6 +33,61 @@ func TestTake(t *testing.T) {
 	}
 }
 
+// The head an attempt starts from is its branch's tip at origin when the
+// branch holds work past the base: an earlier attempt pushed it and was
+// withdrawn, or reported without it, so the store's prior head is stale or
+// none (johnny's four cards, 2026-11-09). A tip at the base, or no branch,
+// leaves the store's prior head; an origin that cannot be read refuses.
+func TestTakeHandsOverTheBranchTip(t *testing.T) {
+	t.Parallel()
+	prior := func(t *testing.T, w *world, ref string) string {
+		t.Helper()
+		r := w.do("alice", "take", ref, "--json")
+		want(t, r, 0)
+		var got takeReceipt
+		if err := json.Unmarshal([]byte(r.Output), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.PriorHead
+	}
+	for _, kase := range []struct {
+		name, storePrior, originTip, want string
+		absent                            bool
+	}{
+		{name: "pushed, store knows none", originTip: tip, want: tip},
+		{name: "pushed past a stale prior", storePrior: head, originTip: tip, want: tip},
+		{name: "the tip is the prior", storePrior: head, originTip: head, want: head},
+		{name: "the tip is the base", storePrior: head, originTip: base, want: head},
+		{name: "no branch at origin", storePrior: head, absent: true, want: head},
+	} {
+		t.Run(kase.name, func(t *testing.T) {
+			t.Parallel()
+			s := sprint()
+			setCard("p1.w1", func(c *store.Card) { c.Prior = kase.storePrior })(&s)
+			w := worldFrom(t, s)
+			w.origin.tips["o/r sprint/s/p1"] = kase.originTip
+			if kase.absent {
+				delete(w.origin.tips, "o/r sprint/s/p1")
+			}
+			if got := prior(t, w, "p1.w1@1"); got != kase.want {
+				t.Fatalf("prior_head %q, want %q", got, kase.want)
+			}
+		})
+	}
+	w := newWorld(t)
+	w.origin.tips["o/r sprint/s/p1"] = tip
+	want(t, w.do("alice", "take", "p1.w1@1"), 0, "continue from "+tip, "git checkout -b sprint/s/p1 "+tip, "never from the base")
+	w = newWorld(t)
+	w.origin.err = errBroken
+	want(t, w.do("alice", "take", "p1.w1@1"), 2, "git ls-remote of o/r failed", "take again")
+	w.origin.err = nil
+	want(t, w.do("alice", "take", "p1.w1@1"), 0, "TAKEN p1.w1")
+	// A read starts from the head it reads, never a branch tip.
+	w = newWorld(t)
+	w.origin.err = errBroken
+	want(t, w.do("bob", "take", "p2.r1@1"), 0, "TAKEN p2.r1")
+}
+
 func TestTakeJSONIsTheReceipt(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)

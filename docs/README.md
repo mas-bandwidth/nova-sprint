@@ -357,14 +357,17 @@ The receipt starts with:
 TAKEN <card> repo=<repository> base=<sha> branch=<branch> deadline=<n>s forge=<forge>
 ```
 
-It includes the full brief, any previous head and finding, the commit identity
-and the exact finish command. Repeating the same `take` prints the brief again
-without changing the generation.
+It includes the full brief, the head to continue from when the dealt branch
+holds earlier work (its tip at origin, which `take` reads, so work an earlier
+attempt pushed is never lost), any finding, the commit identity and the exact
+finish command. Repeating the same `take` prints the brief again without
+changing the generation; it names a newer tip only if the branch moved.
 
-1. Clone the repository into a directory used only by this attempt. Inspect the
-   dealt branch at origin. If it exists, fetch it and continue from its tip;
-   a prior attempt may already have pushed work. Otherwise create the dealt
-   branch at the supplied base SHA. Do not discard earlier work.
+1. Clone the repository into a directory used only by this attempt. When the
+   receipt names a head to continue from, fetch the dealt branch and create it
+   at that head, never at the base. Otherwise create the dealt branch at the
+   supplied base SHA. Take in a newer base by merging it, never by rebasing.
+   Do not discard earlier work.
 2. Read the repository instructions and the brief. Work only within `PATHS`.
    Run the brief's gates at the starting head to identify existing failures;
    cite documented base failures rather than expanding the task to fix them.

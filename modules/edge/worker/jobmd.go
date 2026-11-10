@@ -67,6 +67,19 @@ type KinFinish struct {
 // by finish, read or report in place of result.json.
 func KinFinishRules(j Job, k KinFinish) string { return finishRules(j, &k) }
 
+// StartHead is the head a work attempt starts from: its branch's tip at
+// origin when the branch holds work past the base (an earlier attempt
+// pushed it, whether or not the store learned it: a withdraw reads no
+// origin), else the store's prior head ("" on a first attempt). take hands
+// it over as the receipt's prior_head; the attempt merges a newer base into
+// it and never rebases. Model: tla/Runner.tla TakePrior, HolderStartsFromTip.
+func StartHead(base, prior, tip string) string {
+	if tip != "" && tip != base {
+		return tip
+	}
+	return prior
+}
+
 // finishRules is the one text of how j finishes: a bench's (k nil: the
 // harness writes result.json, the worker pushes) or a kin row's (k: the row
 // pushes and runs the verb).
@@ -103,7 +116,7 @@ func finishRules(j Job, k *KinFinish) string {
 			"   nova-sprint read " + k.Ref + " fix --finding \"<path>:<line>: <the defect and its repair>\"" + tail + ": it does not; name every defect.\n" +
 			fault
 	}
-	return "1. In a fresh clone of your own, commit your work on branch " + j.Branch + " (from the prior head when there is one, else the base), then git push origin " + j.Branch + ". Open no pull request: the landing opens it.\n" +
+	return "1. In a fresh clone of your own, commit your work on branch " + j.Branch + " (from the head take said to continue from when it names one, never the base then; else the base), then git push origin " + j.Branch + ". Open no pull request: the landing opens it.\n" +
 		"   To take in a newer base (a merge conflict), merge it into the branch, never rebase, so the earlier attempts' work and history stay.\n" +
 		kinIdentity(j) +
 		"2. Run every done-when command at the head you pushed; each must exit 0.\n" +

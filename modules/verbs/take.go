@@ -85,7 +85,7 @@ func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 			return "", err
 		}
 	}
-	return takenOutput(in, snap, c, a)
+	return e.takenOutput(ctx, in, snap, c, a)
 }
 
 // heldBy is consumer id at gen as row holds it: dealt to row, working, on
@@ -147,11 +147,26 @@ func working(snap store.Snapshot, row string) []string {
 
 // takenOutput is the receipt, as JSON for a machine or as the brief for a
 // mind, of consumer c as row holds it: the model is the one its deal named.
-func takenOutput(in *input, snap store.Snapshot, c store.Card, a policy.Answers) (string, error) {
+// A work card's prior head is where it starts (worker.StartHead): the dealt
+// branch's tip at origin, read now, when it holds work past the base, so
+// work an earlier attempt pushed is never lost to a prior head the store
+// did not learn. An origin that cannot be read refuses, after the
+// acknowledgement; take again.
+func (e *Engine) takenOutput(ctx context.Context, in *input, snap store.Snapshot, c store.Card, a policy.Answers) (string, error) {
 	s := snap.Streams[c.Stream]
+	prior := c.Prior
+	if c.Kind == "work" {
+		_, _, tip, ok, err := e.branchTip(ctx, snap, c, "then take again")
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			prior = worker.StartHead(c.BaseSHA, c.Prior, tip)
+		}
+	}
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
-		PriorHead: c.Prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
+		PriorHead: prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
 		Review: c.Review, Model: c.Model, Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge,
 		CommitName: snap.Identity.Name, CommitEmail: snap.Identity.Email}
 	if in.has("json") {
@@ -174,7 +189,12 @@ func takenText(t takeReceipt, row string) string {
 	}
 	lines := []string{fmt.Sprintf("TAKEN %s repo=%s base=%s branch=%s %s", t.Consumer, t.Repo, t.BaseSHA, t.Branch, terms)}
 	if t.PriorHead != "" {
-		lines = append(lines, "continue from "+t.PriorHead+" (git fetch origin "+t.Branch+"); the finding: "+t.Finding)
+		start := "continue from " + t.PriorHead + ", never from the base: git fetch origin " + t.Branch + ", then git checkout -b " + t.Branch + " " + t.PriorHead +
+			"; merge a newer base into it, never rebase."
+		if t.Finding != "" {
+			start += " The finding: " + t.Finding
+		}
+		lines = append(lines, start)
 	}
 	lines = append(lines, t.Brief, rules)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
