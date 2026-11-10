@@ -727,6 +727,16 @@ func applyArgv_internal(bundle string) []string {
 	return []string{"sh", "-c", `set -e; git fetch -q --no-tags "$1" HEAD; git checkout -q -f --detach FETCH_HEAD`, "apply", bundle}
 }
 
+// sealNote_internal is the seal's output for its step log: the first 20
+// lines (what it left outside PATHS), the rest counted, never cut silently.
+func sealNote_internal(out []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) > 20 {
+		lines = append(lines[:20], fmt.Sprintf("and %d more", len(lines)-20))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // sealAndCollect_internal ends a work job's tree: the seal step in the
 // wall, the harness's process group killed after it (the wall's
 // KillGroup), then Collect into the worker's own clone. After it no worker
@@ -742,7 +752,7 @@ func (r *Runner) sealAndCollect_internal(ctx context.Context, job Job, rec JobRe
 	base := cmp.Or(rec.PriorHead, rec.BaseSHA)
 	msg := rec.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness left its changes uncommitted; the worker's seal step committed those inside the card's PATHS.\n"
 	res, err := r.Wall.RunStep(ctx, job, sealArgv_internal(job.JobDir, base, job.CommitName, job.CommitEmail, msg, job.Paths), r.Timeouts.RebaseAndTest)
-	r.logStep_internal(rec.Row, rec.Consumer, "seal", strings.TrimSpace(fmt.Sprintf("exit=%d %s %s", res.ExitCode, leftoversNote_internal(res), TailBytes(res.Output, 512))), res.Elapsed)
+	r.logStep_internal(rec.Row, rec.Consumer, "seal", strings.TrimSpace(fmt.Sprintf("exit=%d %s %s", res.ExitCode, leftoversNote_internal(res), sealNote_internal(res.Output))), res.Elapsed)
 	r.report("killing what the seal step of "+rec.Consumer+" left running", res.LeftoverErr)
 	if err == nil && res.ExitCode != 0 {
 		err = fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
