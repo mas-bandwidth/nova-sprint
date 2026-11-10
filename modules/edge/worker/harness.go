@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"math"
 	"net/url"
@@ -566,6 +567,9 @@ type WallConfig struct {
 	// start (DetectGo); GoWallEnv sets them inside it only under a
 	// ReadPaths grant.
 	GoRoot, GoModCache string
+	// CargoRegistry is the bench's ~/.cargo/registry, granted at start;
+	// CargoWallEnv links it into the job's own cargo home, offline.
+	CargoRegistry string
 	// GOOS is the OS the wall is built for; "" is runtime.GOOS.
 	GOOS string
 }
@@ -833,6 +837,38 @@ func GoWallEnv(env []string, cfg WallConfig) []string {
 		}
 	}
 	return append(out, vars...)
+}
+
+// CargoWallEnv is env with CARGO_NET_OFFLINE=true, and the job's cargo home
+// (<jobDir>/home/.cargo, from the wall's HOME) given a registry link to
+// cfg.CargoRegistry, when a grant in cfg.ReadPaths covers it: the registry is
+// read-only and the wall has no network, so a crate the bench holds builds
+// and one it lacks fails at once, named, as GOMODCACHE does for go. A path
+// already at the link is left as it is; env as it is when not granted. The
+// link is made through an os.Root on jobDir: the job owns its tree between
+// runs, and a symlink it plants there never leads the worker outside it.
+func CargoWallEnv(env []string, cfg WallConfig, jobDir string) ([]string, error) {
+	reg := resolvePath_internal(cfg.CargoRegistry)
+	if reg == "" || jobDir == "" || !slices.ContainsFunc(cfg.ReadPaths, func(d string) bool { return pathUnder_internal(reg, resolvePath_internal(d)) }) {
+		return env, nil
+	}
+	root, err := os.OpenRoot(jobDir)
+	if err != nil {
+		return env, fmt.Errorf("worker: opening the job directory to link cargo's registry: %w", err)
+	}
+	defer root.Close()
+	link := filepath.Join("home", ".cargo", "registry")
+	if _, err := root.Lstat(link); errors.Is(err, fs.ErrNotExist) {
+		if err := root.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			return env, fmt.Errorf("worker: making the job's cargo home: %w", err)
+		}
+		if err := root.Symlink(reg, link); err != nil {
+			return env, fmt.Errorf("worker: linking the bench's cargo registry into the job's cargo home: %w", err)
+		}
+	} else if err != nil {
+		return env, fmt.Errorf("worker: the job's cargo home: %w", err)
+	}
+	return append(env, "CARGO_NET_OFFLINE=true"), nil
 }
 
 // DetectGo is `go env GOROOT GOMODCACHE` on the worker's PATH, outside the
