@@ -259,6 +259,14 @@ only once the active policy's `catalog()` names that tier's model, as
 names each tier without one). Follow any missing-route or harness refusal
 before starting work.
 
+A bench worker reaches four providers, each through its key proxy with its key
+opened from the bench's own seat: `deepseek` (`DEEPSEEK_API_KEY`), `inception`
+(`INCEPTION_API_KEY`), `opencode`, OpenCode Zen (`OPENCODE_API_KEY`), and
+`openrouter`, OpenRouter (`OPENROUTER_API_KEY`). The model's prefix picks the
+provider; point a tier at one in the policy's catalog, for example
+`{"bench": {"flash": "openrouter/z-ai/glm-5.3-flash", "pro":
+"opencode/deepseek-v4-pro"}}`.
+
 Use `--services none` to skip API-key setup. This does **not** disable the worker
 services installed on bench machines. For a sprint using only friend sessions,
 configure the inventory accordingly. To repair one selected service's key,

@@ -110,4 +110,8 @@ def catalog():
     # The one model a bench runs per tier, as its harness names it
     # (provider/model); the deal names it and the take receipt carries it. A
     # tier with no bench model deals to no bench: the operator names them.
+    # The bench providers beside deepseek and inception, none on a tier:
+    #   opencode:   "opencode/deepseek-v4-pro", "opencode/deepseek-v4.1-flash"
+    #   openrouter: "openrouter/z-ai/glm-5.3-flash", "openrouter/x-ai/grok-4.7"
+    # e.g. {"bench": {"flash": "openrouter/z-ai/glm-5.3-flash"}}.
     return {"bench": {}}
