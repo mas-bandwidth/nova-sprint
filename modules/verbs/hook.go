@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -261,7 +262,10 @@ func handBack(snap store.Snapshot, row, why string) (card.Plan, string) {
 // message from sprint that names this row is taken here, before the session
 // wakes, and replaced by take's own output (TAKEN with the brief, or the
 // refusal); every other line, and every other message, passes unchanged.
-// It never fails a message: nova-bus would end the hook on a non-zero exit.
+// It never fails a message: nova-bus would end the hook on a non-zero exit,
+// and it answers within wakeBudget: nova-bus ends the hook on an --exec cut
+// off by its limit too. A take that would start after the budget, or was cut
+// off by it, leaves its line as the sprint wrote it, for the session to run.
 func runWake(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	if in.actor == "" {
 		return "", misuse("wake", "pass --as <you>")
@@ -276,14 +280,33 @@ func runWake(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 		return line + "\n", nil
 	}
 	body := strings.Split(busUnescape.Replace(f[4]), "\n")
+	end := e.Now().Add(wakeBudget)
 	for i, l := range body {
-		if ref, epoch, ok := takeLine(l, in.actor); ok {
-			body[i] = strings.TrimSuffix(e.Execute(ctx, []string{"take", ref, "--epoch", epoch, "--as", in.actor}).Output, "\n")
+		ref, epoch, ok := takeLine(l, in.actor)
+		if !ok {
+			continue
+		}
+		left := end.Sub(e.Now())
+		if left <= 0 {
+			continue
+		}
+		tctx, cancel := context.WithTimeout(ctx, left)
+		out := e.Execute(tctx, []string{"take", ref, "--epoch", epoch, "--as", in.actor}).Output
+		cut := tctx.Err() != nil
+		cancel()
+		if !cut {
+			body[i] = strings.TrimSuffix(out, "\n")
 		}
 	}
 	f[4] = busEscape.Replace(strings.Join(body, "\n"))
 	return strings.Join(f, "\t") + "\n", nil
 }
+
+// wakeBudget is how long wake spends on takes: nova-bus hook cuts an --exec
+// off at 8 s (cmd/nova-bus/README.md in nova-tools). 5 s is a guess,
+// unmeasured: 3 s left for starting this process, the --exec wrapper and the
+// reply.
+const wakeBudget = 5 * time.Second
 
 // takeLine is the take a sprint line tells row to run ("run nova-sprint
 // take <ref> --epoch <e> --as <row>" in a DEAL, "run: nova-sprint take <ref>
