@@ -469,10 +469,11 @@ func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader
 	if err := dec.Decode(&extra); err != io.EOF {
 		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("more than one request", int(dec.InputOffset()), data))
 	}
-	// The write is fenced on the seq it read; a live run's tick between the
-	// read and the write moves the seq, so a refusal logged past an op of
-	// someone else's reads again (each try its own op id: a refused op
-	// replays as refused). A refusal logged right after the read is final.
+	// The write is fenced on the policies it read (no version stored since
+	// its seq; a beat or a tick does not refuse it); a version stored
+	// between the read and the write refuses it, so a refusal logged past
+	// an op of someone else's reads again (each try its own op id: a refused
+	// op replays as refused). A refusal logged right after the read is final.
 	var refused *handoffRefused
 	for try := range handoffTries {
 		snap, err := st.Snapshot(ctx)
@@ -498,7 +499,7 @@ func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader
 		if try > 0 {
 			opID += fmt.Sprintf("-%d", try)
 		}
-		op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: request.Actor, Kind: "setup continuation", At: at, Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: "setup:continuation:" + request.ID, Body: string(body)}}}
+		op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: request.Actor, Kind: "setup continuation", At: at, Expect: []store.Expect{store.UnchangedSince{Seq: snap.Seq, Policies: true}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: "setup:continuation:" + request.ID, Body: string(body)}}}
 		err = applyHandoff(ctx, st, op)
 		if !errors.As(err, &refused) {
 			if err != nil {

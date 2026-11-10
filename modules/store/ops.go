@@ -9,7 +9,7 @@ import (
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, CardRed,
 // NeedsLanded, RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen,
-// Running, AtSeq, RowsOnlySince. There
+// Running, AtSeq, RowsOnlySince, UnchangedSince. There
 // is no width condition and no tier condition: the writes are the checks (the
 // state write into working for width, put card for the holder's tiers). The
 // set is closed by the unexported method; any other value is ErrInvalid.
@@ -82,6 +82,18 @@ type AtSeq struct{ Seq int64 }
 // every row, and a worker's beat landing after Seq does not refuse it.
 type RowsOnlySince struct{ Seq int64 }
 
+// UnchangedSince holds when no accepted event after seq Seq wrote any part
+// of the state it names: a verb that read only those parts on a snapshot
+// at Seq is fenced on them, and a worker's beat, a tick's card move or any
+// other write after Seq leaves it standing. Streams, Cards, Policies (any
+// version, script or data, and the active flag), Judgements, Stop and
+// Identity are those tables; Hooks is a row's session or role (PutRow), not
+// its state, flaps, hold or heartbeat. At least one part is named.
+type UnchangedSince struct {
+	Seq                                                         int64
+	Streams, Cards, Policies, Judgements, Stop, Identity, Hooks bool
+}
+
 func (CardGen) isExpect()       {}
 func (CardState) isExpect()     {}
 func (CardHolder) isExpect()    {}
@@ -96,6 +108,8 @@ func (AtSeq) isExpect()         {}
 func (RowsOnlySince) isExpect() {}
 func (Running) isExpect()       {}
 func (JudgementOpen) isExpect() {}
+
+func (UnchangedSince) isExpect() {}
 
 // Write is one write. The set is closed by the unexported method; any other
 // value is ErrInvalid. An op that writes a card raises its gen by one, once.

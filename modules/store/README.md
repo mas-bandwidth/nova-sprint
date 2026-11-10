@@ -224,12 +224,17 @@ landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`,
 `JudgementOpen`, `AtSeq` (the last event's seq is N: nothing at all entered
 the store since a snapshot at N, a refused op included, since a refusal is an
 event and moves seq too), `RowsOnlySince` (every accepted event after seq N
-wrote rows only: what a clear carries, so a beat does not refuse it). One rule for a value outside its closed set
+wrote rows only: what a clear carries, so a beat does not refuse it),
+`UnchangedSince` (no accepted event after seq N wrote a part it names:
+streams, cards, policies, judgements, the stop, the identity, or a row's
+hook, its session or role; a verb that read only those parts fences on
+them, so a worker's beat or a tick's card move does not refuse it; at least
+one part is named). One rule for a value outside its closed set
 (card kind, state, result, priority and tier; row kind, state and tiers,
 none twice; policy kind), for an empty key (a card, judgement id; a
 stream, row, cursor name) and for every name an op points at (a card's
 stream, each of its needs and after), and for an integer outside its range
-(a `CardGen` or `RowGen` gen, an `AtSeq` or `RowsOnlySince` seq below 0), in a condition
+(a `CardGen` or `RowGen` gen, an `AtSeq`, `RowsOnlySince` or `UnchangedSince` seq below 0), in a condition
 exactly as in a write: it is `ErrInvalid` ("card state \"flying\" is not one
 of ...", "a card needs an id"), never a refusal, and nothing is logged, so
 no reason has a gap where a name should be. `CardHolder`'s holder `""`, a
@@ -428,8 +433,8 @@ rise"), nothing lands, in both stores.
 
 `Clear` takes an op of kind `clear` with no writes and only `AtSeq` and
 `RowsOnlySince` conditions. It opens epoch n + 1 and carries every row into it (same name,
-kind, width, session, held, tiers, model and harness; state down, no flaps,
-gen raised by one);
+kind, width, session, tiers, model and harness; state down, no flaps, not
+held and its reason empty, gen raised by one);
 streams, cards and judgements stay behind in the old epoch, policy and
 cursors are kept. The event carries the epoch it closed; the receipt's
 `NewEpoch` is the one it opened. Like Apply, Clear with an op id already

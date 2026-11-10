@@ -216,8 +216,9 @@ func StreamFromStore(s store.Stream) Stream { return Stream{Name: s.Name, Held: 
 // Stream events. HoldStream holds the stream and parks, in the same op,
 // the ready producers named (the caller passes every ready producer of the
 // stream, each once; one it misses is parked later by Park). Seq is the
-// snapshot's seq: the plan fences AtSeq, so a card that became ready after
-// the snapshot refuses the op. UnholdStream clears the hold and parks
+// snapshot's seq: the plan fences UnchangedSince its streams and cards, so a
+// card that became ready after the snapshot refuses the op (a worker's beat,
+// which writes neither, does not). UnholdStream clears the hold and parks
 // nothing (Resolve does that). A stream has no reason column; UnholdStream's
 // reason is for the caller, and a park into the hold names the stream.
 type HoldStream struct {

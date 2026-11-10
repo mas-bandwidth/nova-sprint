@@ -271,7 +271,7 @@ func (t *fakeTx) acceptedSince(seq int64) ([]Event, error) {
 	var out []Event
 	for _, fe := range t.events {
 		if fe.Seq > seq && fe.Accepted {
-			out = append(out, Event{Seq: fe.Seq, After: decodeState(fe.after)})
+			out = append(out, Event{Seq: fe.Seq, Before: decodeState(fe.before), After: decodeState(fe.after)})
 		}
 	}
 	return out, nil
