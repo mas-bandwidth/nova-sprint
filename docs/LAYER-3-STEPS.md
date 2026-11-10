@@ -970,8 +970,10 @@ consumes A's landed output), a hold, a missing serving row and width keep
 a ready card from starting. Two cards that edit one file both start; the
 landing ladder (the group rung on `sprint-group/<s>`, then a land
 judgement) and the coordinator's merge stitch them. PATHS stays for
-admission (each path exists at the base) and for the worker's
-confinement. Removed with it: the view's paths index, `Concrete`,
+admission (each path exists at the base) and for the worker's seal step,
+which commits only uncommitted changes inside PATHS; committed changes are
+not checked against it (the reader, the PR and CI catch one outside
+it). Removed with it: the view's paths index, `Concrete`,
 `Overlaps`, `heldBehind`, `leastHolder`, `Holder` and the `overlap`
 judgement kind (an open one left in a store expires at its deadline).
 The model loses `Overlap`, `NeverOverlapStarted`, `HeldBehindShown`, the

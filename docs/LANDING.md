@@ -234,7 +234,9 @@ gate each time.
 ## Kept from the first design
 
 - **Conflicts are stitched, not prevented.** Every card declares its paths
-  (admission and the worker's confinement), but two cards that edit one
+  (checked at admission; the worker's seal step commits only uncommitted
+  changes inside them, and a committed change outside them is the
+  reader's, the PR's and CI's to catch), but two cards that edit one
   file both start: only a NEEDS orders starts (2026-11-08). Their heads meet
   on the group rung; a conflict there is a rung-3 judgement, and the
   coordinator stitches it in the holistic merge.

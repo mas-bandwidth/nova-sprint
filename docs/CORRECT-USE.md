@@ -85,7 +85,10 @@ them on NEEDS not yet landed (long chains). So:
   main.
 
 PATHS lists the files a card edits: `add` checks each exists at the base,
-and the worker is confined to them. It never orders starts.
+and a bench worker's seal step commits only the uncommitted changes inside
+them. Committed changes are not checked against PATHS (neither the worker's
+collect nor `finish` refuses one outside them): the reader, the PR and CI
+catch an out-of-scope change. It never orders starts.
 
 Before `start`, and whenever the fleet is under width, run `nova-sprint check`
 and read its lines: the width line (a `WARN ... nothing dealable: N chains
