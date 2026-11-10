@@ -43,6 +43,13 @@ func TestBranchesAndListTree(t *testing.T) {
 	if _, err := c.ListTree(context.Background(), "/repo", a); err == nil || !strings.Contains(err.Error(), "ls-tree") {
 		t.Fatalf("a failed ls-tree: %v", err)
 	}
+	if _, err := c.ShowFile(context.Background(), "/repo", a, "Makefile"); err == nil || !strings.Contains(err.Error(), "cat-file") {
+		t.Fatalf("a failed cat-file: %v", err)
+	}
+	out, code = "test:\n", 0
+	if text, err := c.ShowFile(context.Background(), "/repo", a, "Makefile"); err != nil || text != out || strings.Join(argv, " ") != "git cat-file blob "+a+":Makefile" {
+		t.Fatalf("ShowFile = %q, %v (argv %v)", text, err, argv)
+	}
 }
 
 // TestCommits: one git log of head --not the bases (an empty base skipped),

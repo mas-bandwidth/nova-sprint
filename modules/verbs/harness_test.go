@@ -220,8 +220,9 @@ func (l *fakeLander) CreateGroup(_ context.Context, s store.Stream, sha string) 
 type fakeOrigin struct {
 	tips     map[string]string // "<clone address> branch" -> sha
 	contains bool
-	tree     []string     // every file at any base (nil: the root only)
-	commits  []git.Commit // the head's commits since the base (nil: none)
+	tree     []string          // every file at any base (nil: the root only)
+	files    map[string]string // a file's text at any base, by path
+	commits  []git.Commit      // the head's commits since the base (nil: none)
 	commitsE error
 	err      error
 }
@@ -236,6 +237,10 @@ func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, er
 
 func (o *fakeOrigin) Tree(context.Context, string, string) ([]string, error) {
 	return o.tree, o.err
+}
+
+func (o *fakeOrigin) File(_ context.Context, _, _, path string) (string, error) {
+	return o.files[path], o.err
 }
 
 // Branches is the tips at the address under prefix.

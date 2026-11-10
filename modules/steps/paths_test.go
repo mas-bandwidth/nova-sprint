@@ -555,6 +555,7 @@ func TestTickRestingRowIsNotDealtTo(t *testing.T) {
 	s.requireState("p1", "ready")
 	open := s.openJudgements("unserved")
 	require.Len(t, open, 1)
+	assert.Contains(t, s.snap().Judgements[open[0]].Question, "resting after faults, dealt to again when the rest ends: r1", "the question names the resting row")
 	// The rest holds: the judgement stays open (a resting row does not clear
 	// it), with no new episode, and nothing is dealt.
 	s.tick()

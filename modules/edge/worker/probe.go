@@ -208,11 +208,14 @@ func (r *Runner) probeModel_internal(ctx context.Context, row string, h Harness,
 }
 
 // probeFailure_internal is a failed probe run in one line: the harness's
-// cause line (escapes stripped), a death inside the wall before its log
+// cause line (escapes stripped) and the probe's verdict, a death inside the wall before its log
 // with the command that shows the wall, the proxy's provider status, the
 // harness's known limits, and where its output is kept.
 func probeFailure_internal(pj Job, res WallRunResult, runErr error, out Outcome) error {
-	cause := cmp.Or(edge.CauseLine(string(res.Stderr), edge.FailureMax), edge.CauseLine(string(res.Output), edge.FailureMax), edge.RedactN(out.Reason, edge.FailureMax))
+	cause := cmp.Or(edge.CauseLine(string(res.Stderr), edge.FailureMax), edge.CauseLine(string(res.Output), edge.FailureMax))
+	if why := edge.RedactN(out.Reason, edge.FailureMax); why != "" && !strings.Contains(cause, why) {
+		cause = strings.TrimPrefix(cause+"; "+why, "; ")
+	}
 	if runErr != nil {
 		cause = edge.RedactN(runErr.Error(), edge.FailureMax) + ": " + cause
 	}
