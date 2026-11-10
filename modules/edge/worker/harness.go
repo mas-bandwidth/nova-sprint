@@ -439,6 +439,7 @@ func classifyHTTPStatus_internal(status int, elapsed, launchGrace time.Duration)
 	}
 	return Outcome{}, false
 }
+
 // ClassifyJob is the job's outcome; a provider's rate limit that ended it
 // short of ok is the bench's fault naming the model (card.RateLimited), so
 // the card is dealt again without spending an attempt and the model rests.
