@@ -60,19 +60,20 @@ func TestSetupHandoffClosesLeaseBeforeSignal(t *testing.T) {
 	if got.Exit != 0 || got.Output != "" || !called {
 		t.Fatal(got)
 	}
-	if strings.Contains(strings.Join(s.trace, ","), "verify3") {
+	// the handoff is prepared after the store step: nothing past it ran
+	if strings.Contains(","+strings.Join(s.trace, ",")+",", fmt.Sprintf(",verify%d,", StepCoordinator)) {
 		t.Fatal(s.trace)
 	}
 	s.trace = nil
 	got = e.Execute(context.Background(), []string{"up", "--continuation", strings.Repeat("a", 64)})
-	if got.Exit != 0 || !s.validated || s.validations != 2 || lock.held || !strings.Contains(strings.Join(s.trace, ","), "verify8") {
+	if got.Exit != 0 || !s.validated || s.validations != 2 || lock.held || !strings.Contains(","+strings.Join(s.trace, ",")+",", fmt.Sprintf(",verify%d,", SetupSteps)) {
 		t.Fatal(got, s.trace)
 	}
 }
 
 func TestSetupObservationsFollowActualCalls(t *testing.T) {
 	t.Parallel()
-	s := &setupFake{stop: 5}
+	s := &setupFake{stop: StepDashboard}
 	var seen []SetupObservation
 	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: s, Lock: setupLeaseFake{}, SetupObserver: func(o SetupObservation) { seen = append(seen, o) }}
 	r := e.Execute(context.Background(), []string{"up"})
@@ -90,7 +91,7 @@ func TestSetupObservationsFollowActualCalls(t *testing.T) {
 	}
 	found := false
 	for _, o := range seen {
-		if o.Scope == "walk" && o.Kind == "stop" && o.Step == 5 {
+		if o.Scope == "walk" && o.Kind == "stop" && o.Step == StepDashboard {
 			found = true
 		}
 	}

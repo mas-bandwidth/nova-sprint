@@ -103,7 +103,7 @@ func TestSetupRunNoLockShowsUnitStateAndLog(t *testing.T) {
 }
 
 // Step 4 still not ready after its act is a refusal naming the condition,
-// never "step 4 is not verified".
+// never "step 6 is not verified".
 func TestRuntimeRunCheckRefusalNamesTheCondition(t *testing.T) {
 	t.Parallel()
 	r := RuntimeSetup{Run: notReadyRun{}, RunService: FleetService{Name: "sprint-run", Machine: "bench-a"}, DefaultRunHost: "bench-a"}

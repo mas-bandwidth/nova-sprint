@@ -380,7 +380,7 @@ func (r *Runner) sprintHook_internal(ctx context.Context, row string) error {
 // then the sprint hook, then the wake loop. Probing
 // before the sprint hook makes a hooked row a probed one: its harness
 // lists the policy's models and its seat's provider keys reached it, which
-// is what up's step 7 proves by the row being hooked and up (admission,
+// is what up's workers step (9) proves by the row being hooked and up (admission,
 // intent rule 34). A failed probe leaves the row unhooked and held, and the
 // probe is retried (probeHeld_internal).
 func (r *Runner) ServeRow(ctx context.Context, row, harness string) error {

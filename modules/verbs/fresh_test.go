@@ -9,8 +9,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// midUp is the store as up's walk leaves it after step 2 (the store made)
-// and before step 8: a fresh store, stopped and never started, the walk's
+// midUp is the store as up's walk leaves it after step 4 (the store made)
+// and before step 10: a fresh store, stopped and never started, the walk's
 // answers saved, the coordinator hooked in (up hooks carol once the store
 // exists); no stream, no card, no start.
 func midUp(t *testing.T) *world {
@@ -96,7 +96,7 @@ func TestStartOnARunningSprint(t *testing.T) {
 func TestHelpSaysWhatUpGives(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	want(t, w.do("", "help", "stop"), 0, "up: the store up makes at step 2 (an epoch), at any later step of up")
+	want(t, w.do("", "help", "stop"), 0, "up: the store up makes at step 4 (an epoch), at any later step of up")
 	want(t, w.do("", "help", "check"), 0, "up: nothing")
 	want(t, w.do("", "help"), 0, "whatever step up is at")
 }

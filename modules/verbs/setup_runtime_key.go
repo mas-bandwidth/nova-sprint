@@ -6,7 +6,7 @@ import (
 )
 
 // ServiceKey verifies an existing saved key by a model-list request. It is only
-// one part of setup step 6; grants and rows must also verify before that step passes.
+// one part of setup step 8 (services); grants and rows must also verify before that step passes.
 type ServiceKey struct {
 	Terminal SecretTerminal
 	Sink     SecretSink

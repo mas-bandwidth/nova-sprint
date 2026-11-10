@@ -2,12 +2,12 @@
 EXTENDS Naturals, Sequences, FiniteSets
 
 (***************************************************************************
- Eight-step resumable setup, LAYER-6-RUN section 5 and docs/SETUP.
+ Ten-step resumable setup, LAYER-6-RUN section 5 and docs/SETUP.
  verified is evidence from THIS walk, not a durable completion bitmap.
  Restart always begins at step 1. World regressions are separate from the
  last successful probe: a regression after a probe cannot be magically
  detected, so NeverAhead means verified in this walk, not an instantaneous
- distributed transaction across all eight outside services.
+ distributed transaction across all ten outside services.
 
  Answers represents completed durable writes to policy/nova-secrets. Ask
  below abstracts prompt AND successful durable save as one action. Therefore
@@ -28,20 +28,46 @@ EXTENDS Naturals, Sequences, FiniteSets
 
  The workload steps, bound to cmd/nova-sprint/setup_workload.go by
  TestWorkloadStepsMatchTheSetupModel (every state of a two-bench fleet):
- world[7] is every worker bench (every bench but the run machine) on the
- bus and up in the store (WorkersReady); world[8] is world[7] and every
- worker bench with cores, so dealable once the sprint starts (SmokeReady;
- a fresh sprint is stopped until start, so up deals no card itself). Do
- at 7 writes the worker service records and applies them; world[7]
- becomes true only when the units come up, so an Act that returns before
- that maps to repair again, never to Do (SetupTrace-MAPPING.md).
+ world[StepWorkers] is every worker bench on the bus and up in the store
+ (WorkersReady); world[StepSmoke] is world[StepWorkers] and every worker
+ bench with cores, so dealable once the sprint starts (SmokeReady; a fresh
+ sprint is stopped until start, so up deals no card itself). Do at
+ StepWorkers writes the worker service records and applies them;
+ world[StepWorkers] becomes true only when the units come up, so an Act
+ that returns before that maps to repair again, never to Do
+ (SetupTrace-MAPPING.md).
+
+ The play steps (PlaySteps), bound to modules/verbs/setup_runtime_plays.go
+ by TestFleetPlayStepsMatchTheSetupModel (every state of a two-bench
+ fleet): world[k] is nova-fleet's play in check mode reporting changed=0,
+ unreachable=0 and failed=0 on every bench; a check that ran and found a
+ change is not verified (the SetupPlayCheckRan witness counts it and
+ breaks OnlyVerified).
 ***************************************************************************)
 CONSTANT MaxDisruptions
-Steps == 1..8
+\* up's steps by name, as modules/verbs/setup.go numbers them: the fleet,
+\* nova-fleet's two plays every bench needs (runner-packages, then netwatch),
+\* then the sprint's own setup from the store up.
+StepTools == 1
+StepPackages == 2
+StepNetwatch == 3
+StepStore == 4
+StepCoordinator == 5
+StepRun == 6
+StepDashboard == 7
+StepServices == 8
+StepWorkers == 9
+StepSmoke == 10
+LastStep == StepSmoke
+\* A play step's world is nova-fleet <play> --check reporting nothing to
+\* change, nothing unreachable and nothing failed on every bench; its Do
+\* is the play itself (FleetPlays in modules/verbs/setup_runtime_plays.go).
+PlaySteps == {StepPackages, StepNetwatch}
+Steps == 1..LastStep
 Questions == {"coordinator", "dashboard", "services", "key"}
-Need(k) == CASE k = 3 -> {"coordinator"}
-            [] k = 5 -> {"dashboard"}
-            [] k = 6 -> {"services", "key"}
+Need(k) == CASE k = StepCoordinator -> {"coordinator"}
+            [] k = StepDashboard -> {"dashboard"}
+            [] k = StepServices -> {"services", "key"}
             [] OTHER -> {}
 VARIABLES world, verified, answers, asked, pc, phase, disruptions,
           keySinks, orderOK, verifiedOnly, resumeOK
@@ -63,7 +89,7 @@ Probe ==
   /\ (1..(pc-1)) \subseteq verified
   /\ IF world[pc] /\ Need(pc) \subseteq answers
      THEN /\ verified' = verified \cup {pc}
-          /\ pc' = pc + 1 /\ phase' = IF pc = 8 THEN "done" ELSE "probe"
+          /\ pc' = pc + 1 /\ phase' = IF pc = LastStep THEN "done" ELSE "probe"
           /\ verifiedOnly' = (verifiedOnly /\ world[pc])
      ELSE /\ phase' = "repair" /\ UNCHANGED <<verified, pc, verifiedOnly>>
   /\ UNCHANGED <<world, answers, asked, disruptions, keySinks, orderOK, resumeOK>>
@@ -98,7 +124,7 @@ Next == Progress \/ (\E q \in Questions : Reanswer(q)) \/ Crash \/ (\E k \in Ste
 Spec == Init /\ [][Next]_vars /\ WF_vars(Progress)
 TypeOK == /\ world \in [Steps -> BOOLEAN] /\ verified \subseteq Steps
           /\ answers \subseteq Questions /\ asked \in [Questions -> 0..2]
-          /\ pc \in 1..9 /\ phase \in {"probe", "repair", "done", "stopped"}
+          /\ pc \in 1..(LastStep+1) /\ phase \in {"probe", "repair", "done", "stopped"}
           /\ disruptions \in 0..MaxDisruptions
 NeverAhead == orderOK /\ (phase # "stopped" => (1..(pc-1)) \subseteq verified)
 OnlyVerified == verifiedOnly

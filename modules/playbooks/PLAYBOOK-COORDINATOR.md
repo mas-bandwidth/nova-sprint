@@ -70,7 +70,8 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    sprint, `start`. A fresh sprint is stopped, its reason `never started`, and moves nothing
    (no deal, read or landing) until you run `nova-sprint start --as <you> --reason "<why>"`;
    the board shows `STOPPED never started` until then. `stop`, `start`, `hook`, `show` and
-   `next` work as soon as `up` has made the store (its step 2), whatever step `up` is at.
+   `next` work as soon as `up` has made the store (its step 4, after the fleet check and
+   nova-fleet's `runner-packages` and `netwatch` plays, steps 2 and 3), whatever step `up` is at.
 5. List the judgements owed: `nova-sprint judge --as <you>`. Each is one line,
    `JUDGEMENT <j> kind=<kind> about=<id> group=<g> choices=<c|c>`, and the last line is `next:` with the
    command for the first. `no open judgements` means nothing waits on you.
@@ -250,7 +251,7 @@ Before any worker hooks, the sprint needs its commit identity: the one forge acc
 repositories' contributor-agreement allowlist that every commit is authored and committed as
 (ask the human which; its git user.name and its noreply address). Set it with
 `nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason "<why>"`;
-`up` step 7 asks for it, a worker's hook and take refuse until it is set, and finish refuses a
+`up` step 9 asks for it, a worker's hook and take refuse until it is set, and finish refuses a
 head with a commit made as anyone else. `nova-sprint identity` with no flags prints it.
 
 A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base main]
@@ -367,7 +368,7 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `hook`, `unhook`, `hold` and `unhold`. Change a width or a tier in nova-config; the sprint sees it
    on the next tick.
 2. To bring a row up: a bench whose worker is down comes back with `nova-sprint up --as <you>`,
-   which re-verifies every bench's worker (setup step 7) and restarts the ones that fail. A friend row
+   which re-verifies every bench's worker (setup step 9) and restarts the ones that fail. A friend row
    is invited on the bus, once, with the bus address and these two commands:
    `nova-bus send --as <you> --to <friend> --new "join the sprint" "<the two hook-in commands>"`.
 3. Width is the number of cards a row works at once; set it from demonstrated capacity, never

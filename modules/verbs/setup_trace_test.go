@@ -10,7 +10,7 @@ import (
 )
 
 type traceSetup struct {
-	world   [9]bool
+	world   [SetupSteps + 1]bool
 	answers [4]bool
 }
 
@@ -21,9 +21,9 @@ func (s *traceSetup) Act(_ context.Context, k int, _ SetupInput) error { s.world
 func (*traceSetup) Completion(context.Context) (string, error)         { return "UP DONE simulation", nil }
 
 type traceState struct {
-	world           [9]bool
+	world           [SetupSteps + 1]bool
 	answers         [4]bool
-	verified        [9]bool
+	verified        [SetupSteps + 1]bool
 	pc, disruptions int
 	phase           string
 }
@@ -45,7 +45,7 @@ func (c *setupTraceCapture) observe(o SetupObservation) {
 	}
 	switch o.Kind {
 	case "begin":
-		c.state.verified = [9]bool{}
+		c.state.verified = [SetupSteps + 1]bool{}
 		c.state.pc = 1
 		c.state.phase = "probe"
 		action := "Restart"
@@ -60,7 +60,7 @@ func (c *setupTraceCapture) observe(o SetupObservation) {
 		if o.Verified {
 			c.state.verified[o.Step] = true
 			c.state.pc++
-			if o.Step == 8 {
+			if o.Step == SetupSteps {
 				c.state.phase = "done"
 			}
 		} else {
@@ -94,7 +94,7 @@ func TestSetupActualTrace(t *testing.T) {
 	}
 	rng := rand.New(rand.NewSource(1762466400))
 	fake := &traceSetup{answers: [4]bool{true, true, true, true}}
-	for k := 1; k <= 8; k++ {
+	for k := 1; k <= SetupSteps; k++ {
 		fake.world[k] = rng.Intn(2) == 1
 	}
 	capture := &setupTraceCapture{t: t, setup: fake}
@@ -104,7 +104,7 @@ func TestSetupActualTrace(t *testing.T) {
 			t.Fatal(r)
 		}
 		if round < 3 {
-			k := 2 + rng.Intn(7)
+			k := 2 + rng.Intn(SetupSteps-1)
 			if !fake.world[k] {
 				t.Fatal("regression requires true world")
 			}
@@ -137,7 +137,7 @@ func renderSetupTrace(records []traceRecord) string {
 }
 func renderTraceState(out *strings.Builder, s traceState) {
 	out.WriteString(", world |-> <<")
-	for k := 1; k <= 8; k++ {
+	for k := 1; k <= SetupSteps; k++ {
 		if k > 1 {
 			out.WriteString(", ")
 		}
@@ -149,7 +149,7 @@ func renderTraceState(out *strings.Builder, s traceState) {
 	}
 	out.WriteString(">>, verified |-> {")
 	first := true
-	for k := 1; k <= 8; k++ {
+	for k := 1; k <= SetupSteps; k++ {
 		if s.verified[k] {
 			if !first {
 				out.WriteString(", ")

@@ -15,7 +15,7 @@ import (
 )
 
 type choiceTraceState struct {
-	world, verified [9]bool
+	world, verified [SetupSteps + 1]bool
 	answers         [4]bool
 	asked           [4]int
 	pc, disruptions int
@@ -44,7 +44,7 @@ func (c *choiceTrace) observe(o SetupObservation) {
 	case "begin":
 		c.state.pc = 1
 		c.state.phase = "probe"
-		c.state.verified = [9]bool{}
+		c.state.verified = [SetupSteps + 1]bool{}
 		action := "Restart"
 		if len(c.records) == 0 {
 			action = "Init"
@@ -57,7 +57,7 @@ func (c *choiceTrace) observe(o SetupObservation) {
 		if o.Verified {
 			c.state.verified[o.Step] = true
 			c.state.pc++
-			if o.Step == 8 {
+			if o.Step == SetupSteps {
 				c.state.phase = "done"
 			}
 		} else {
@@ -222,8 +222,8 @@ func emitChoiceTrace(t *testing.T, dir, choice string) {
 func walkChoices(t *testing.T, e Engine, trace *choiceTrace, work *runtimeWork, input string) {
 	ctx := context.Background()
 	rng := rand.New(rand.NewSource(1762466400))
-	for k := 1; k <= 8; k++ {
-		if k != 6 {
+	for k := 1; k <= SetupSteps; k++ {
+		if k != StepServices {
 			trace.state.world[k] = rng.Intn(2) == 1
 		}
 	}
@@ -232,12 +232,12 @@ func walkChoices(t *testing.T, e Engine, trace *choiceTrace, work *runtimeWork, 
 			t.Fatal(r)
 		}
 		if round < 3 {
-			k := 2 + rng.Intn(7)
+			k := 2 + rng.Intn(SetupSteps-1)
 			if !trace.state.world[k] {
 				t.Fatalf("regress unready step %d", k)
 			}
 			trace.state.world[k] = false
-			if k == 6 {
+			if k == StepServices {
 				work.services = false
 			}
 			trace.state.disruptions++
@@ -270,7 +270,7 @@ func renderChoiceTrace(records []choiceTraceRecord) string {
 }
 func renderChoiceState(out *strings.Builder, s choiceTraceState) {
 	fmt.Fprintf(out, ", servicesChoice |-> %q, world |-> <<", s.services)
-	for i := 1; i <= 8; i++ {
+	for i := 1; i <= SetupSteps; i++ {
 		if i > 1 {
 			out.WriteString(", ")
 		}
@@ -278,7 +278,7 @@ func renderChoiceState(out *strings.Builder, s choiceTraceState) {
 	}
 	out.WriteString(">>, verified |-> {")
 	sep := ""
-	for i := 1; i <= 8; i++ {
+	for i := 1; i <= SetupSteps; i++ {
 		if s.verified[i] {
 			fmt.Fprintf(out, "%s%d", sep, i)
 			sep = ", "

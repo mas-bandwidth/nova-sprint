@@ -23,7 +23,7 @@ type handoffTraceFixture struct {
 	t            *testing.T
 	path         string
 	role         string
-	ready        [9]bool
+	ready        [verbs.SetupSteps + 1]bool
 	held         bool
 	records      []string
 	boot         bool
@@ -55,9 +55,9 @@ func (f *handoffTraceFixture) Verify(_ context.Context, n int, _ verbs.SetupInpu
 }
 func (f *handoffTraceFixture) Act(_ context.Context, n int, _ verbs.SetupInput) error {
 	f.ready[n] = true
-	if n == 2 && f.role == "admin" {
+	if n == verbs.StepStore && f.role == "admin" {
 		if !f.held {
-			return fmt.Errorf("step 2 without lease")
+			return fmt.Errorf("store step without lease")
 		}
 		f.add("PreparedRole", `, credential |-> TRUE, schema |-> TRUE, lease |-> "ours"`)
 	}
