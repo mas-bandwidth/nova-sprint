@@ -22,6 +22,9 @@ type Store interface {
 	// Snapshot is one consistent read of the current epoch, with the seq it
 	// was read at.
 	Snapshot(ctx context.Context) (Snapshot, error)
+	// Read is Snapshot with only the cards scope names: the rest of the
+	// snapshot is whole. Snapshot is Read of Scope{All: true}.
+	Read(ctx context.Context, scope Scope) (Snapshot, error)
 	// Apply runs one operation as one transaction. It ends one of four ways:
 	// an accepted receipt; a refused receipt (nothing changed, the refusal is
 	// logged); ErrInvalid (the op never entered the store); ErrUnknown (the
@@ -367,6 +370,42 @@ type Snapshot struct {
 	Stopped    bool     // the sprint is stopped (Stop)
 	StopReason string   // why it was stopped or started again
 	Identity   Identity // the git identity the sprint commits as; zero when not set
+}
+
+// Scope is the cards a Read takes: the zero value none. A far bench pays for
+// every byte of every card (2026-11-09: 36 MB, 20-44 s a read), so a verb
+// reads the cards it touches.
+type Scope struct {
+	All       bool     // every card
+	IDs       []string // these cards, each with its producer (itself, for a producer) and every consumer of that producer
+	Holder    string   // every consumer this row holds in hand (not done or fail), with each one's producer
+	Final     bool     // with Holder: its done and failed consumers too
+	Producers bool     // every producer and sentinel
+}
+
+// of is the cards of all that s takes: the one meaning of a Scope, which
+// the Fake reads by and PG's query is checked against.
+func (s Scope) of(all map[string]Card) map[string]Card {
+	if s.All {
+		return all
+	}
+	family := map[string]bool{}
+	for _, id := range s.IDs {
+		if c, ok := all[id]; ok {
+			family[cmp.Or(c.Of, c.ID)] = true
+		}
+	}
+	out := map[string]Card{}
+	for id, c := range all {
+		held := s.Holder != "" && c.Holder == s.Holder && (s.Final || c.State != "done" && c.State != "fail")
+		if slices.Contains(s.IDs, id) || family[id] || family[c.Of] || held || s.Producers && (c.Kind == "producer" || c.Kind == "sentinel") {
+			out[id] = c
+		}
+		if p, ok := all[c.Of]; ok && held {
+			out[p.ID] = p
+		}
+	}
+	return out
 }
 
 func emptySnapshot(epoch int) Snapshot {

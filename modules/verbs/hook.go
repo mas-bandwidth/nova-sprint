@@ -28,7 +28,7 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	if err := e.onBus(ctx, in.actor); err != nil {
 		return "", err
 	}
-	snap, err := e.snapshot(ctx) // the store credential finish and read need: without it, CredentialFix
+	snap, err := e.read(ctx, store.Scope{}) // the store credential finish and read need: without it, CredentialFix
 	if err != nil {
 		return "", err
 	}
@@ -116,13 +116,13 @@ func runUnhook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (str
 		if err := e.onBus(ctx, in.actor); err != nil {
 			return "", err
 		}
-		snap, err := e.snapshot(ctx)
+		snap, err := e.read(ctx, store.Scope{})
 		if err != nil {
 			return "", err
 		}
 		return e.unhook(ctx, snap, in.actor, in.actor)
 	}
-	snap, err := e.hooked(ctx, in, roleCoordinator)
+	snap, err := e.hooked(ctx, in, roleCoordinator, store.Scope{})
 	if err != nil {
 		return "", err
 	}
