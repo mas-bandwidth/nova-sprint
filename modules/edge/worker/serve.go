@@ -113,6 +113,7 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		return nil, err
 	}
 	wall.ReserveBin, wall.SandboxBin, wall.ReserveWait, wall.NetDeny, wall.WorkRoot, wall.MirrorRoot = "nova-reserve", "nova-sandbox", timeouts.ReserveWait, true, workRoot, mirrorRoot
+	wall.EnvScript = filepath.Join(home, "sdk", "env.sh")
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,

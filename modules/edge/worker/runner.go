@@ -1506,7 +1506,33 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if why != "" {
 		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	cfg := w.effectiveConfig_internal(j)
+	argv, note := gateArgv_internal(cfg, fields)
+	res, err := w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	if note != "" && (err != nil || res.ExitCode != 0) {
+		res.Output = append(res.Output, "\n"+note...)
+	}
+	return res, err
+}
+
+// gateSourceScript_internal sources the script ($0) and execs the gate.
+const gateSourceScript_internal = `. "$0" && exec "$@"`
+
+// gateArgv_internal is a done-when gate's argv in the wall: through /bin/sh
+// sourcing cfg.EnvScript when it is on the bench under a --read grant, so the
+// gate sees the toolchain environment a worker's shell does (PATH, SQ, DART
+// and the rest); else the gate as it is, with the note saying why.
+func gateArgv_internal(cfg WallConfig, fields []string) ([]string, string) {
+	if cfg.EnvScript == "" {
+		return fields, ""
+	}
+	if !fileExists_internal(cfg.EnvScript) {
+		return fields, "the gate ran without the bench's toolchain environment: " + cfg.EnvScript + " is not on this bench"
+	}
+	if s := resolvePath_internal(cfg.EnvScript); !slices.ContainsFunc(cfg.ReadPaths, func(d string) bool { return pathUnder_internal(s, resolvePath_internal(d)) }) {
+		return fields, "the gate ran without the bench's toolchain environment: " + cfg.EnvScript + " is outside the wall (no --read grant covers it)"
+	}
+	return append([]string{"/bin/sh", "-c", gateSourceScript_internal, cfg.EnvScript}, fields...), ""
 }
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
 	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)

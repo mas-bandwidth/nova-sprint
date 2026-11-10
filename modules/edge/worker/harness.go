@@ -570,6 +570,9 @@ type WallConfig struct {
 	// CargoRegistry is the bench's ~/.cargo/registry, granted at start;
 	// CargoWallEnv links it into the job's own cargo home, offline.
 	CargoRegistry string
+	// EnvScript is the bench's toolchain environment (~/sdk/env.sh): a
+	// done-when gate sources it inside the wall (RunTest); "" none.
+	EnvScript string
 	// GOOS is the OS the wall is built for; "" is runtime.GOOS.
 	GOOS string
 }
