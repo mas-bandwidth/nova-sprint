@@ -309,6 +309,29 @@ func noProgressSim(t *testing.T) *sim {
 	return s
 }
 
+// TestTickNoProgressFromTheStart: a producer that pushes nothing from its
+// first attempt is held once same_finding of its no-head fails were dealt at
+// the top rank, at frontier_after + same_finding bounces, not at the bounce
+// limit: the attempts below the top rank were escalation's, and do not count.
+func TestTickNoProgressFromTheStart(t *testing.T) {
+	t.Parallel()
+	s := noProgressSim(t)
+	at := Engine.Limits.FrontierAfter + Engine.Limits.SameFinding
+	for i := 1; i < at; i++ {
+		s.requireState("p1", "working")
+		s.take(fmt.Sprintf("p1.w%d", i))
+		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", "red")
+		s.tick()
+		assert.Empty(t, s.openJudgements("held"), "w%d: one top-rank fail at most", i)
+	}
+	s.take(fmt.Sprintf("p1.w%d", at))
+	s.report(fmt.Sprintf("p1.w%d", at), "fail", "", "red")
+	s.tick()
+	s.requireState("p1", "waiting")
+	assert.Equal(t, at, s.snap().Cards["p1"].Bounces)
+	assert.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
+}
+
 // TestTickNoProgressEditedBrief: an edit of the brief's paths between two
 // no-head fails ends the run: the brief is no longer the same.
 func TestTickNoProgressEditedBrief(t *testing.T) {

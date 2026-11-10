@@ -26,14 +26,11 @@ func (t *tick) limits() {
 			c := t.v.Cards[p]
 			spent := c.Bounces - c.BounceBase // since its last unhold
 			faults, last := t.readFaults(c)
-			// The no-progress run, since the last unhold, of attempts dealt
-			// at the top rank: each fail of the run spent the run's last
-			// bounces, so the first was dealt at c.Bounces - stuck, and
-			// escalation (escalate_after, frontier_after) is spent first.
-			stuck := min(t.noProgress(c), spent)
-			if c.Bounces-stuck < t.lim.FrontierAfter {
-				stuck = 0
-			}
+			// The no-progress run, since the last unhold, counting only its
+			// attempts dealt at the top rank: each fail of the run spent one of
+			// the last bounces, and those dealt below frontier_after bounces
+			// were escalation's room (escalate_after, frontier_after).
+			stuck := max(0, min(t.noProgress(c), spent, c.Bounces-t.lim.FrontierAfter))
 			if c.Kind != "producer" || spent < t.lim.Bounces && faults < t.lim.Faults && stuck < t.lim.SameFinding || !t.free(p) || t.hasLive(p) {
 				continue
 			}
