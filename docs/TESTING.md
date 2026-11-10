@@ -92,7 +92,7 @@ Trace validation (the code's walks against the models). Per commit it is
 short (the store walks at 150 steps); the nightly runs them at 500 and the
 Layer 6 traces too (`tla/check-layer6-traces.py`):
 
-    GOFLAGS=-short NOVA_TRACE_PG=1 bash tla/make-traces.sh check   # per commit
+    GOFLAGS=-short NOVA_TRACE_PG=1 bash tla/make-traces.sh check <group>   # per commit, one CI job per group
     NOVA_TRACE_PG=1 bash tla/make-traces.sh check                  # nightly
 
 TLC, nightly (Store must pass; every witness and reach check must report a
