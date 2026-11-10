@@ -3,6 +3,8 @@ package verbs
 import (
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 )
 
 // The per-card audit record (Glenn, 2026-11-09: "we used to track every
@@ -30,8 +32,36 @@ func TestReportIsTheAuditRecord(t *testing.T) {
 
 	w = newWorld(t)
 	takeR1(t, w)
-	want(t, w.do("bob", "report", "p2.r1@1", "--result", "fault", "--reason", "bench down", "--usage", "wall=9"), 0, "READ p2.r1 head="+head+" result=fault")
+	want(t, w.do("bob", "report", "p2.r1@1", "--result", "fault", "--reason", "bench down", "--usage", "wall=9 harness=claude"), 0, "READ p2.r1 head="+head+" result=fault")
 	if c := w.snap(t).Cards["p2.r1"]; c.Result != "fault" || c.Priced || c.Usage != "wall=9 harness=nova-worker at=2026-11-06T12:00:00Z billing=api charged=- unpriced=no-tokens" {
-		t.Fatalf("faulted card %+v", c)
+		t.Fatalf("faulted card %+v (the row's own harness word is never kept)", c)
+	}
+}
+
+// A kin the roster names with no harness is still a kin: billed as a
+// subscription seat, as before the harness stamp (the cold read of PR 759).
+func TestKinWithNoHarnessIsStillASeat(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.roster.ro.Kin["bob"] = roster.Kin{Name: "bob", Model: "m-bob", Width: 2, Tiers: []string{"pro"}}
+	delete(w.roster.ro.Workers, "bob")
+	takeR1(t, w)
+	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", "input=10 output=5 model=deepseek/deepseek-flash"), 0, "READ p2.r1")
+	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || !c.Priced || c.Usage != "input=10 output=5 model=deepseek/deepseek-flash at=2026-11-06T12:00:00Z billing=subscription charged=-" {
+		t.Fatalf("read card cost %d priced %t usage %q", c.Cost, c.Priced, c.Usage)
+	}
+}
+
+// show <card> prints a consumer's dollars as the board counts them, a run
+// stored unpriced=no-price under an empty prices() included.
+func TestShowPrintsTheCardsDollars(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	takeR1(t, w)
+	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", "input=101488 cache_read=7906944 cache_write=0 output=17506 reasoning=31275 model=deepseek/deepseek-flash"), 0, "READ p2.r1")
+	want(t, w.do("bob", "show", "p2.r1"), 0, `"cost_usd": "0.136425"`, `"usage": "input=101488`)
+	want(t, w.do("bob", "show", "p2"), 0)
+	if out := w.do("bob", "show", "p2").Output; strings.Contains(out, "cost_usd") {
+		t.Fatalf("a producer has no run to price:\n%s", out)
 	}
 }

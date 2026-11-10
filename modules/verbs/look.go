@@ -61,11 +61,16 @@ func runShow(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	return done("nova-sprint next --as "+in.actor, string(b)), nil
 }
 
-// shownCard is a card as show prints it: the brief once. Prose is the
-// brief's task part (store.Card), so it is left out when the brief holds it.
+// shownCard is a card as show prints it: the brief once, and a consumer's
+// dollars as the board counts them. Prose is the brief's task part
+// (store.Card), so it is left out when the brief holds it. CostUSD is the
+// run's cost in dollars (usage.Repriced: the stored price, else a run stored
+// unpriced=no-price at the built-in table's rate), left out when the run is
+// unpriced or the card is no consumer.
 type shownCard struct {
 	store.Card
-	Prose string `json:"prose,omitempty"`
+	Prose   string `json:"prose,omitempty"`
+	CostUSD string `json:"cost_usd,omitempty"`
 }
 
 // wholeView is the snapshot with each card shown once.
@@ -75,10 +80,16 @@ type wholeView struct {
 }
 
 func briefOnce(c store.Card) shownCard {
-	if strings.Contains(c.Brief, c.Prose) {
-		return shownCard{Card: c}
+	s := shownCard{Card: c}
+	if !strings.Contains(c.Brief, c.Prose) {
+		s.Prose = c.Prose
 	}
-	return shownCard{Card: c, Prose: c.Prose}
+	if c.Kind == "work" || c.Kind == "read" {
+		if micro, priced := usage.Repriced(c.Usage, c.Cost, c.Priced); priced {
+			s.CostUSD = usage.USD(micro)
+		}
+	}
+	return s
 }
 
 func record(snap store.Snapshot, name string) (any, bool) {

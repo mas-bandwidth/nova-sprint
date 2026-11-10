@@ -37,7 +37,7 @@ func (e *Engine) priceReport(ctx context.Context, snap store.Snapshot, row strin
 	if why != "" && p.Record.Billing == usage.BillingAPI {
 		p.Record.Unpriced, p.Cost, p.Priced = why, 0, false
 	}
-	p.Record.Harness = cmp.Or(harness, p.Record.Harness)
+	p.Record.Harness = harness // the roster's, or none: never the row's own word
 	p.Record.At = e.Now().UTC().Format(time.RFC3339)
 	return p, nil
 }
@@ -76,23 +76,23 @@ func (e *Engine) billingOf(ctx context.Context, snap store.Snapshot, row string)
 	if err != nil {
 		return billing, "", Sheet(a.Prices), cmp.Or(why, whyRosterUnreadable)
 	}
-	harness := rowHarness(ro, row)
-	if harness == "" {
+	harness, named := rowHarness(ro, row)
+	if !named {
 		return billing, "", Sheet(a.Prices), why
 	}
 	return usage.Billing(harness), harness, Sheet(a.Prices), why
 }
 
-// rowHarness is row's harness in the roster: a kin's or a worker's, "" for
-// a row it does not name.
-func rowHarness(ro roster.Roster, row string) string {
+// rowHarness is row's harness in the roster, a kin's or a worker's (a kin's
+// may be ""), and whether the roster names the row at all.
+func rowHarness(ro roster.Roster, row string) (string, bool) {
 	if k, ok := ro.Kin[row]; ok {
-		return k.Harness
+		return k.Harness, true
 	}
 	if w, ok := ro.Workers[row]; ok {
-		return w.Harness
+		return w.Harness, true
 	}
-	return ""
+	return "", false
 }
 
 // Sheet is the policy's prices() as package usage reads them.
