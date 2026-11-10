@@ -51,8 +51,9 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	}
 	// The admission reads the stream's repository for seconds while a running
 	// sprint's ticks move the store: the op is planned on a snapshot read
-	// after it and fenced on the records it reads, as a person's moves are,
-	// never on the store's seq, which a busy sprint moves every second
+	// after it and fenced on the cards it puts, as a person's moves are fenced
+	// on their records, never on the store's seq, which a busy sprint moves
+	// every second
 	// (2026-11-10: every add refused "the store is at seq N"). Each new id is
 	// fenced absent; the store refuses a need or after that is not a card of
 	// the epoch, and an op of another epoch; a kind never changes, and no card

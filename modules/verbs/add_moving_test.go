@@ -48,7 +48,7 @@ func TestAddCommitsOnAMovingStore(t *testing.T) {
 		w := newWorld(t)
 		w.e.Store = &movingStore{Fake: w.f, between: store.Op{ID: "other-add", Epoch: 1, Actor: "carol", Kind: "add", At: t0,
 			Writes: []store.Write{store.PutCard{ID: "a1", Kind: "sentinel", Stream: "s", Tier: "flash", Needs: []string{"p1"}}}}}
-		want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a1", "")), 1, "a1")
+		want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a1", "")), 1, "card a1 exists")
 		if c := w.snap(t).Cards["a1"]; c.Kind != "sentinel" {
 			t.Fatalf("card a1 %+v, want the sentinel that landed first", c)
 		}
