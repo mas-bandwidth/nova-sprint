@@ -32,9 +32,9 @@ cd "$ROOT" || exit 1
 # one job per group, on its own runner. The steps traces are split five ways
 # (one per Steps.tla walk scenario, and the model's own fixtures), since
 # together they took 101-132 s on one runner; steps names all five.
-GROUPS="store card policy steps steps-pre steps-deal steps-land steps-burst steps-fixtures edge"
+NAMES="store card policy steps steps-pre steps-deal steps-land steps-burst steps-fixtures edge"
 GROUP="${2:-all}"
-case " all $GROUPS " in *" $GROUP "*) ;; *) echo "make-traces: no group $GROUP ($GROUPS)" >&2; exit 2 ;; esac
+case " all $NAMES " in *" $GROUP "*) ;; *) echo "make-traces: no group $GROUP ($NAMES)" >&2; exit 2 ;; esac
 on() {
     [ "$GROUP" = all ] || [ "$GROUP" = "$1" ] ||
         { [ "$GROUP" = steps ] && [ "${1#steps-}" != "$1" ]; } ||
