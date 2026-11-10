@@ -146,7 +146,16 @@ Then, against the roster and origin:
 - each PATHS entry is at the base: a glob (`*`, `?`, `[`) matches a file or
   directory there; a literal exists, or its directory does, or its directory
   is declared in PATHS as `dir/` and that directory's parent exists (a new
-  directory is declared, never implied);
+  directory is declared, never implied); a new directory beside a namesake
+  differing only in case or a trailing s is refused, naming it (`test/` where
+  `tests/` is; added 2026-11-09 after rocketnet cards were dealt with `test/`);
+- what each DONE-WHEN runs is there (added 2026-11-09, after `make test` was
+  dealt to a Makefile with no `test` rule): `make <target>` (with `-C`, `-f`)
+  needs a Makefile there with a rule, pattern rule or built-in source for the
+  target, its includes read; a repository path as the first DONE-WHEN's
+  program must exist. Admitted as unknowable: a Makefile or program in the
+  card's PATHS, a program after an earlier DONE-WHEN (which may build it), and
+  a Makefile with a computed or absent include or target;
 - the work is not already at the base: the card's branch at origin, a HEAD
   line, or a PR's head is not an ancestor of the base tip, and the PR has not
   merged.

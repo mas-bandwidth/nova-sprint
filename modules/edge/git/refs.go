@@ -59,6 +59,20 @@ func (c *Client) ListTree(ctx context.Context, repoDir, rev string) ([]string, e
 	return out, nil
 }
 
+// ShowFile is the text of the file at path in rev in the clone at repoDir
+// (`git cat-file blob rev:path`): admission reads a Makefile a DONE-WHEN runs.
+func (c *Client) ShowFile(ctx context.Context, repoDir, rev, path string) (string, error) {
+	args := []string{"cat-file", "blob", rev + ":" + path}
+	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, args...)
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "", c.failed_internal(code, stdout, stderr, nil, args...)
+	}
+	return stdout, nil
+}
+
 // Commit is one commit's identity as `git log` reads it: who authored it and
 // who committed it (finish's check of the sprint's commit identity).
 type Commit struct {
