@@ -123,7 +123,7 @@ func (e *Engine) acknowledge(ctx context.Context, row string, snap store.Snapsho
 	}
 	// refused: acknowledged all the same only if the cursor is written
 	// (a take that raced this one), read from the store, never the words
-	now, err := e.snapshot(ctx)
+	now, err := e.read(ctx, store.Scope{}) // the cursors
 	if err != nil {
 		return err
 	}

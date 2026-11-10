@@ -149,7 +149,7 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 
 func (e *Engine) call(ctx context.Context, v *verb, in *input) (string, error) {
 	if v.role == roleWorker || v.role == roleCoordinator {
-		snap, err := e.hooked(ctx, in, v.role)
+		snap, err := e.hooked(ctx, in, v.role, v.scope(in))
 		if err != nil {
 			return "", err
 		}

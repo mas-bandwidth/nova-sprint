@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -96,20 +97,31 @@ func all[K comparable, T any](ctx context.Context, tx pgx.Tx, scan func(pgx.Row)
 }
 
 // Snapshot reads the current epoch in one REPEATABLE READ transaction.
-func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) {
+func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) { return p.Read(ctx, Scope{All: true}) }
+
+// Read is Snapshot with only the cards scope names, in the same transaction.
+func (p *PG) Read(ctx context.Context, scope Scope) (Snapshot, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("store: snapshot: %w", err)
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }() // ignored: read only, nothing to keep
-	s, err := snapshotTx(ctx, tx)
+	s, err := snapshotTx(ctx, tx, scope)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("store: snapshot: %w", err)
 	}
 	return s, nil
 }
 
-func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
+// scopedCards is Scope.of as one query: $2 the ids, $3 the holder, $4 the
+// producers, $5 the holder's final consumers too. A holder is a row's name,
+// so "" (no holder) matches none.
+const scopedCards = `WITH family AS (SELECT coalesce("of", id) AS p FROM sprint.cards WHERE epoch = $1 AND id = ANY($2)),
+	held AS (SELECT id, "of" FROM sprint.cards WHERE epoch = $1 AND holder = $3 AND ($5 OR state NOT IN ('done', 'fail')))
+	SELECT ` + cardCols + ` FROM sprint.cards WHERE epoch = $1 AND (id = ANY($2) OR id IN (SELECT p FROM family) OR "of" IN (SELECT p FROM family)
+	OR id IN (SELECT id FROM held) OR id IN (SELECT "of" FROM held) OR ($4 AND kind IN ('producer', 'sentinel')))`
+
+func snapshotTx(ctx context.Context, tx pgx.Tx, scope Scope) (Snapshot, error) {
 	var s Snapshot
 	err := tx.QueryRow(ctx, `SELECT n, (SELECT coalesce(max(version), 0) FROM sprint.policy WHERE active),
 		(SELECT coalesce(max(seq), 0) FROM sprint.events), stopped, stop_reason, commit_name, commit_email FROM sprint.epoch WHERE id = 1`).Scan(&s.Epoch, &s.Policy, &s.Seq, &s.Stopped, &s.StopReason, &s.Identity.Name, &s.Identity.Email)
@@ -119,7 +131,21 @@ func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	if s.Streams, err = all(ctx, tx, scanStream, func(v Stream) string { return v.Name }, "SELECT "+streamCols+" FROM sprint.streams WHERE epoch = $1", s.Epoch); err != nil {
 		return s, err
 	}
-	if s.Cards, err = all(ctx, tx, scanCard, func(v Card) string { return v.ID }, "SELECT "+cardCols+" FROM sprint.cards WHERE epoch = $1", s.Epoch); err != nil {
+	cardID := func(v Card) string { return v.ID }
+	switch {
+	case scope.All:
+		s.Cards, err = all(ctx, tx, scanCard, cardID, "SELECT "+cardCols+" FROM sprint.cards WHERE epoch = $1", s.Epoch)
+	case len(scope.IDs) > 0 || scope.Holder != "" || scope.Producers:
+		q := scopedCards
+		if scope.Unworded {
+			q = strings.Replace(q, "brief, reason,", "'', '',", 1)
+			q = strings.Replace(q, "prose, review, finding,", "'', review, '',", 1)
+		}
+		s.Cards, err = all(ctx, tx, scanCard, cardID, q, s.Epoch, list0(scope.IDs), scope.Holder, scope.Producers, scope.Final)
+	default:
+		s.Cards = map[string]Card{}
+	}
+	if err != nil {
 		return s, err
 	}
 	if s.Rows, err = all(ctx, tx, scanRow, func(v Row) string { return v.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", s.Epoch); err != nil {
