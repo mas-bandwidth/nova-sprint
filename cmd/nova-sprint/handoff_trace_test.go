@@ -89,7 +89,7 @@ func (f *handoffTraceFixture) Check(context.Context) error {
 }
 func (f *handoffTraceFixture) Close() error { f.held = false; return nil }
 func (f *handoffTraceFixture) PrepareHandoff(ctx context.Context, in verbs.SetupInput) (string, bool, error) {
-	if !f.held || !f.ready[2] {
+	if !f.held || !f.ready[verbs.StepStore] {
 		return "", false, fmt.Errorf("prerequisites absent")
 	}
 	st, err := openFileStore(f.path)
@@ -176,7 +176,7 @@ func TestHandoffTraceChild(t *testing.T) {
 			t.Fatal("wrong sprint environment")
 		}
 		f.role = "sprint"
-		for i := 2; i <= 8; i++ {
+		for i := 2; i <= verbs.SetupSteps; i++ {
 			f.ready[i] = true
 		}
 		id := ""

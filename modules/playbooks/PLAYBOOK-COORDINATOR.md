@@ -368,7 +368,9 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `hook`, `unhook`, `hold` and `unhold`. Change a width or a tier in nova-config; the sprint sees it
    on the next tick.
 2. To bring a row up: a bench whose worker is down comes back with `nova-sprint up --as <you>`,
-   which re-verifies every bench's worker (setup step 9) and restarts the ones that fail. A friend row
+   which re-verifies every bench's worker (setup step 9) and restarts the ones that fail. Its steps
+   2 and 3 run nova-fleet's plays on every bench first, so a bench nova-fleet cannot reach stops
+   `up` there, naming it: bring it back, or take the bench role off it, then `up` again. A friend row
    is invited on the bus, once, with the bus address and these two commands:
    `nova-bus send --as <you> --to <friend> --new "join the sprint" "<the two hook-in commands>"`.
 3. Width is the number of cards a row works at once; set it from demonstrated capacity, never

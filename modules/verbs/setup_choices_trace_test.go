@@ -145,13 +145,13 @@ type choiceTraceSetup struct {
 }
 
 func (s *choiceTraceSetup) Verify(ctx context.Context, k int, in SetupInput) (SetupCheck, error) {
-	if k == 6 {
+	if k == StepServices {
 		return s.runtime.servicesCheck(ctx, in)
 	}
 	return SetupCheck{Verified: s.trace.state.world[k], Action: !s.trace.state.world[k]}, nil
 }
 func (s *choiceTraceSetup) Act(ctx context.Context, k int, in SetupInput) error {
-	if k == 6 {
+	if k == StepServices {
 		if err := s.runtime.servicesAct(ctx, in); err != nil {
 			return err
 		}

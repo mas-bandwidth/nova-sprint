@@ -74,18 +74,18 @@ func (f FleetPlays) Verify(ctx context.Context, step int) (SetupCheck, error) {
 		// act, since the play itself may still succeed; when it does not,
 		// its own error is the refusal (Act); when it does and the check
 		// still fails, this one is.
-		return SetupCheck{Action: true, Refusal: playRefusal(play.name, limit, err)}, nil
+		return SetupCheck{Action: true, Refusal: playRefusal(play.name, " --check", limit, err)}, nil
 	}
 	recap, err := playRecap(out)
 	if err != nil {
 		return SetupCheck{}, fmt.Errorf("nova-fleet %s --check on %s: %w", play.name, limit, err)
 	}
-	changed := playRecapChanged(recap)
+	changed := playRecapChanged(recap, benches)
 	if len(changed) == 0 {
 		return SetupCheck{Verified: true, Line: fmt.Sprintf("UP %d/%d %s: %s (nova-fleet %s, nothing to change) on %s: VERIFIED", step, SetupSteps, play.name, play.gives, play.name, limit)}, nil
 	}
 	return SetupCheck{Action: true, Refusal: &OperationError{
-		Problem: edge.RedactN(fmt.Sprintf("nova-fleet %s --check still reports a change on %s after the play ran", play.name, strings.Join(changed, ",")), edge.FailureMax),
+		Problem: edge.RedactN(fmt.Sprintf("nova-fleet %s --check still reports a change, or no line, for %s after the play ran", play.name, strings.Join(changed, ",")), edge.FailureMax),
 		Fix:     fmt.Sprintf("nova-fleet %s -- -l %s, read what it changes each time (a play that is not idempotent, or a bench it cannot reach), then nova-sprint up again", play.name, strings.Join(changed, ",")), Exit: 1}}, nil
 }
 
@@ -102,16 +102,16 @@ func (f FleetPlays) Act(ctx context.Context, step int) error {
 	}
 	limit := strings.Join(benches, ",")
 	if _, err = f.command(ctx, "nova-fleet", play.name, "--", "-l", limit); err != nil {
-		return RefusalOr(err, playRefusal(play.name, limit, err))
+		return RefusalOr(err, playRefusal(play.name, "", limit, err))
 	}
 	return nil
 }
 
-// playRefusal is a failed play as a refusal: the play, the benches and
-// nova-fleet's own words (the task that failed and on which machine), and
-// the fix.
-func playRefusal(play, limit string, err error) *OperationError {
-	return &OperationError{Problem: edge.RedactN("nova-fleet "+play+" on "+limit+" failed: "+err.Error(), edge.FailureMax+400),
+// playRefusal is a failed play as a refusal: the play (mode " --check" for
+// its check-mode run), the benches and nova-fleet's own words (the task that
+// failed and on which machine), and the fix.
+func playRefusal(play, mode, limit string, err error) *OperationError {
+	return &OperationError{Problem: edge.RedactN("nova-fleet "+play+mode+" on "+limit+" failed: "+err.Error(), edge.FailureMax+400),
 		Fix: "fix what it says for each machine it names (nova-fleet check; nova-fleet help " + play + "), or take the bench role off a machine that is gone, then nova-sprint up again", Exit: 1}
 }
 
@@ -149,12 +149,21 @@ func playRecap(out []byte) ([]playRecapHost, error) {
 }
 
 // playRecapChanged is every host the play would change, could not reach or
-// failed on, sorted.
-func playRecapChanged(recap []playRecapHost) []string {
+// failed on, and every bench the recap has no line for (a limit that matched
+// no host, or output in another form, is never read as nothing to change),
+// sorted.
+func playRecapChanged(recap []playRecapHost, benches []string) []string {
 	var hosts []string
+	seen := map[string]bool{}
 	for _, h := range recap {
+		seen[h.host] = true
 		if h.changed > 0 || h.unreachable > 0 || h.failed > 0 {
 			hosts = append(hosts, h.host)
+		}
+	}
+	for _, b := range benches {
+		if !seen[b] {
+			hosts = append(hosts, b)
 		}
 	}
 	slices.Sort(hosts)

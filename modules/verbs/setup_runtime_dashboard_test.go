@@ -105,7 +105,7 @@ func TestDashboardProbeUnreachableNamesRequestAndCause(t *testing.T) {
 	}
 }
 
-// Step 5 still failing after its act prints the probe's error and its fix,
+// The dashboard step still failing after its act prints the probe's error and its fix,
 // never "step 7 is not verified".
 func TestRuntimeDashboardRefusalIsTheProbeError(t *testing.T) {
 	t.Parallel()

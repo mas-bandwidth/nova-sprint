@@ -66,7 +66,7 @@ func TestNextNamesStartOnAStoppedSprint(t *testing.T) {
 	want(t, w.do("alice", "next"), 0, "NEXT work p1.w1 is in hand with alice")
 }
 
-// Before the store exists (no epoch: up at step 1), every verb that reads
+// Before the store exists (no epoch: up before its store step), every verb that reads
 // it refuses naming up, and next answers up (exit 0).
 func TestVerbsBeforeTheStore(t *testing.T) {
 	t.Parallel()

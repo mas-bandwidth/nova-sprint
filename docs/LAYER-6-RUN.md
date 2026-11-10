@@ -672,7 +672,7 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   and a missing one cannot survive that. The stale-secret refusal ("delete the stale
   NOVA_SPRINT_PG_PASSWORD") is gone: the seat's value is the one every service reads.
 - Unit tests: a fake fleet records every argv (`setup_workload_test.go`), a fake PostgreSQL
-  for the password (`setup_runtime_role_password_test.go`), and the steps-9/10 binding to
+  for the password (`setup_runtime_role_password_test.go`), and the steps-7/8 binding to
   `tla/Setup.tla` over every state of a two-bench fleet. The functional role tests
   (`TestFunctionalSprintRolePasswordOnATrustHost` among them) were changed but not run here;
   they run on a bench.

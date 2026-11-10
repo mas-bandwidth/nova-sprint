@@ -115,6 +115,24 @@ func TestRuntimeSetupFleetPlayFailureIsItsOwnRefusal(t *testing.T) {
 	if _, err = r.Verify(ctx, StepPackages, SetupInput{}); err == nil || !strings.Contains(err.Error(), "PLAY RECAP") {
 		t.Fatal(err)
 	}
+	// an empty recap (the limit matched no host) is not verified: an act, then a refusal naming the bench
+	r = RuntimeSetup{Plays: FleetPlays{Command: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		out, err := g.command(ctx, name, args...)
+		if name == "nova-fleet" {
+			return []byte("PLAY RECAP *****\n\n"), err
+		}
+		return out, err
+	}}}
+	check, err = r.Verify(ctx, StepPackages, SetupInput{})
+	if err != nil || check.Verified || !check.Action || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-1") {
+		t.Fatal(check, err)
+	}
+	// the check-mode run failing names the check-mode run, not the play
+	f.fail = errors.New("FAILED ansible-playbook exit=4")
+	r = RuntimeSetup{Plays: FleetPlays{Command: f.command}}
+	if check, err = r.Verify(ctx, StepNetwatch, SetupInput{}); err != nil || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "nova-fleet netwatch --check on amd-1 failed") {
+		t.Fatal(check, err)
+	}
 	// no bench in the inventory: nothing to run, the step is verified and says so
 	r = RuntimeSetup{Plays: FleetPlays{Command: (&playFleet{changed: map[string]int{}}).command}}
 	check, err = r.Verify(ctx, StepPackages, SetupInput{})
@@ -177,7 +195,11 @@ func TestPlayRecapParsesAnsible(t *testing.T) {
 	if err != nil || len(recap) != 3 {
 		t.Fatal(recap, err)
 	}
-	if got := strings.Join(playRecapChanged(recap), ","); got != "space,titan" {
+	if got := strings.Join(playRecapChanged(recap, []string{"amd-1", "titan"}), ","); got != "space,titan" {
+		t.Fatal(got)
+	}
+	// a bench the recap has no line for is never read as nothing to change
+	if got := strings.Join(playRecapChanged(recap, []string{"amd-1", "amd-2"}), ","); got != "amd-2,space,titan" {
 		t.Fatal(got)
 	}
 	if _, err = playRecap([]byte("PLAY [x]\nok: [amd-1]\n")); err == nil {
