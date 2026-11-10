@@ -127,11 +127,12 @@ func (t *tick) dealWork(c store.Card) {
 	if !ok || (t.overBudget() && rung(c) != "blocker") {
 		return // past the budget nothing more is dealt; the judgements above are still opened
 	}
-	row := t.pickRow(c, t.named(c, answered), t.withRoom(named))
+	row := t.pickRow(c, t.named(c, answered), t.withRoom(t.dealable(c, named)))
 	if row == "" {
 		return
 	}
 	t.tally[row]++ // the in-tick tally counts the deal whether or not the budget admits it
+	t.provTally[provider(t.model(c, row))]++
 	start := card.Start{Row: row, Branch: branch(c), Base: base, Model: t.model(c, row)}
 	if g := t.group("start", c.ID, t.producerMove(c.ID, start)); g != nil {
 		g.blocker = rung(c) == "blocker"
@@ -161,16 +162,57 @@ func (t *tick) dealRead(c store.Card) {
 	if t.overBudget() {
 		return
 	}
-	rows := t.pickRows(c, t.named(c, answered), t.withRoom(named), t.owed(c))
+	var rows, models []string
+	for _, r := range t.pickRows(c, t.named(c, answered), t.withRoom(t.dealable(c, named)), t.owed(c)) {
+		if m := t.model(c, r); len(t.dealable(c, []string{r})) > 0 { // the budget counts this read's earlier rows
+			t.tally[r]++
+			t.provTally[provider(m)]++
+			rows, models = append(rows, r), append(models, m)
+		}
+	}
 	if len(rows) == 0 {
 		return
 	}
-	models := make([]string, len(rows))
-	for i, r := range rows {
-		t.tally[r]++
-		models[i] = t.model(c, r)
-	}
 	t.group("read", c.ID, t.producerMove(c.ID, card.AskReads{Rows: rows, Models: models}))
+}
+
+// dealable drops the rows whose model for c rests after a provider's rate
+// limit (View.RateLimited, for policy's route_rest_for), or whose provider
+// is at its concurrency budget: its consumers live across the fleet plus
+// this tick's deals (Answers.Concurrency; none is unlimited).
+func (t *tick) dealable(c store.Card, rows []string) []string {
+	var out []string
+	for _, r := range rows {
+		m := t.model(c, r)
+		if at, ok := t.v.RateLimited[m]; ok && t.in.Now.Before(at.Add(seconds(t.tmo.RouteRestFor))) {
+			continue
+		}
+		if budget, ok := t.o.a.Concurrency[provider(m)]; ok && t.providerUsed(provider(m)) >= budget {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// providerUsed is the consumers live on provider p's models, fleet-wide,
+// plus this tick's deals.
+func (t *tick) providerUsed(p string) int {
+	n := t.provTally[p]
+	for _, ids := range t.v.liveOnRow {
+		for id := range ids {
+			if provider(t.v.Cards[id].Model) == p {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// provider is the provider half of a provider/model id.
+func provider(model string) string {
+	p, _, _ := strings.Cut(model, "/")
+	return p
 }
 
 // withRoom keeps the rows with room: live consumers plus this tick's deals

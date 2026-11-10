@@ -18,13 +18,18 @@ import (
 type Catalog struct {
 	Version int
 	Bench   map[string]string
+	// Concurrency is provider -> how many consumers may work on its models
+	// across the fleet at once (v1's per-provider budget); none: unlimited.
+	Concurrency map[string]int
 }
 
 // CatalogFix is the command that changes the catalog.
 const CatalogFix = "nova-sprint policy set <file> --reason <why>"
 
 // clone is c with its own map.
-func (c Catalog) clone() Catalog { return Catalog{Version: c.Version, Bench: maps.Clone(c.Bench)} }
+func (c Catalog) clone() Catalog {
+	return Catalog{Version: c.Version, Bench: maps.Clone(c.Bench), Concurrency: maps.Clone(c.Concurrency)}
+}
 
 // BenchModel is the model a bench runs for tier t, "" when the catalog
 // names none.
@@ -35,7 +40,7 @@ func (c Catalog) BenchModel(t string) string { return c.Bench[t] }
 // "harnesses" keys are accepted and not read. Linear in the answer, and its
 // loop stops at the tick's deadline.
 func checkCatalog(ctx context.Context, v starlark.Value) (Catalog, string) {
-	d, msg := dictWith(v, []string{"bench"}, "models", "harnesses")
+	d, msg := dictWith(v, []string{"bench"}, "models", "harnesses", "concurrency")
 	if msg != "" {
 		return Catalog{}, msg
 	}
@@ -57,6 +62,23 @@ func checkCatalog(ctx context.Context, v starlark.Value) (Catalog, string) {
 			return Catalog{}, refuse("bench: %s's model %s is not provider/model", string(tier), cut(kv[1].String(), 64))
 		}
 		c.Bench[string(tier)] = string(model)
+	}
+	if d["concurrency"] == nil {
+		return c, ""
+	}
+	cd, ok := d["concurrency"].(*starlark.Dict)
+	if !ok {
+		return Catalog{}, refuse("concurrency is %s, not a dict of provider to budget", kind(d["concurrency"]))
+	}
+	c.Concurrency = map[string]int{}
+	for _, kv := range cd.Items() {
+		p, okP := kv[0].(starlark.String)
+		n, okN := kv[1].(starlark.Int)
+		budget, okI := n.Int64()
+		if !okP || p == "" || !okN || !okI || budget < 1 || budget > 10000 {
+			return Catalog{}, refuse("concurrency: %s's budget %s is not an int of at least 1", cut(kv[0].String(), 64), cut(kv[1].String(), 64))
+		}
+		c.Concurrency[string(p)] = int(budget)
 	}
 	return c, ""
 }

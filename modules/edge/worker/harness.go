@@ -439,7 +439,19 @@ func classifyHTTPStatus_internal(status int, elapsed, launchGrace time.Duration)
 	}
 	return Outcome{}, false
 }
+
+// ClassifyJob is the job's outcome; a provider's rate limit that ended it
+// short of ok is the bench's fault naming the model (card.RateLimited), so
+// the card is dealt again without spending an attempt and the model rests.
 func ClassifyJob(h Harness, j Job, exit int, elapsed, launchGrace time.Duration, tail []byte) Outcome {
+	out := classifyJob_internal(h, j, exit, elapsed, launchGrace, tail)
+	if out.Result != "ok" && out.Result != "yes" && out.Result != "fix" && card.RateLimited(out.Reason) {
+		out.Result, out.NoVerdict, out.Reason = "fault", false, "rate limited on "+cmp.Or(j.Model, "the model")+": "+out.Reason
+	}
+	return out
+}
+
+func classifyJob_internal(h Harness, j Job, exit int, elapsed, launchGrace time.Duration, tail []byte) Outcome {
 	text := TailBytes(tail, MaxReasonBytes)
 	if exit == 134 || exit == 137 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
