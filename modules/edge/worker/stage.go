@@ -188,10 +188,7 @@ func (g *OSGitOps) deepenHops_internal(ctx context.Context, hops []stageHop_inte
 			if !fileExists_internal(filepath.Join(h.gitDir, "shallow")) {
 				continue
 			}
-			args := []string{"fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-auto-gc", step, h.src}
-			if step != "--unshallow" {
-				args = append(args, shas...)
-			}
+			args := append([]string{"fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-auto-gc", step, h.src}, shas...)
 			if _, err := g.hopGit_internal(ctx, h, args...); err != nil {
 				return fmt.Errorf("deepen for a merge base (%s): %w", step, err)
 			}
