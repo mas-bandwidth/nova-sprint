@@ -364,8 +364,8 @@ finish command. Repeating the same `take` prints the brief again without
 changing the generation; it names a newer tip only if the branch moved.
 
 1. Clone the repository into a directory used only by this attempt. When the
-   receipt names a head to continue from, fetch the dealt branch and create it
-   at that head, never at the base. Otherwise create the dealt branch at the
+   receipt names a head to continue from, fetch that head and create the dealt
+   branch at it, never at the base. Otherwise create the dealt branch at the
    supplied base SHA. Take in a newer base by merging it, never by rebasing.
    Do not discard earlier work.
 2. Read the repository instructions and the brief. Work only within `PATHS`.

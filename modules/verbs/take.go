@@ -189,7 +189,7 @@ func takenText(t takeReceipt, row string) string {
 	}
 	lines := []string{fmt.Sprintf("TAKEN %s repo=%s base=%s branch=%s %s", t.Consumer, t.Repo, t.BaseSHA, t.Branch, terms)}
 	if t.PriorHead != "" {
-		start := "continue from " + t.PriorHead + ", never from the base: git fetch origin " + t.Branch + ", then git checkout -b " + t.Branch + " " + t.PriorHead +
+		start := "continue from " + t.PriorHead + ", never from the base: git fetch origin " + t.PriorHead + ", then git checkout -b " + t.Branch + " " + t.PriorHead +
 			"; merge a newer base into it, never rebase."
 		if t.Finding != "" {
 			start += " The finding: " + t.Finding

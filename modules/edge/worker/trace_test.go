@@ -97,8 +97,8 @@ type runnerWalkHarness_internal struct {
 	wall       *stepWall_internal // the runner's wall: every seal step it ran
 	sealedAt   map[string]int     // the seal steps the wall had run on c's tree at c's last Run
 	dropped    map[string]bool    // a Rebase step whose git did not keep c's history
-	known      map[string]string  // the head the store learned for c's card (a release reports its own)
-	from       map[string]string  // the next holder's start (StartHead), once it took c's card
+	known      map[string]string  // the head a re-deal's store prior carries: a release reports its own
+	from       map[string]string  // the next holder's start, once it took c's card: StartHead is the code bound here; take's origin read is TestTakeHandsOverTheBranchTip's
 	took       map[string]bool
 }
 
@@ -207,10 +207,11 @@ func (h *runnerWalkHarness_internal) projectBranch_internal(c string) runnerBran
 }
 
 // runnerWriter_internal names a head of the walk's branch by who wrote it:
-// none, the next holder, or the job.
+// none (no branch, or the base: nothing past it), the next holder, or the
+// job.
 func runnerWriter_internal(sha string) string {
 	switch sha {
-	case "":
+	case "", testBaseSHA:
 		return "none"
 	case testHolderSHA:
 		return "holder"

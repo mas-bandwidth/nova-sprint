@@ -161,7 +161,7 @@ Each message is a wake. Handle it, then wait for the bus again.
 2. Make a fresh clone of `https://github.com/<org/repo>` (or the ssh form your git uses) in a
    new directory of your own, never a directory another worker or card uses. The dealt branch
    is the same for every attempt of a card. If take printed `continue from <sha>`, an earlier
-   attempt pushed work (a fix, a withdraw, a release or a fault): `git fetch origin <branch>`,
+   attempt pushed work (a fix, a withdraw, a release or a fault): `git fetch origin <sha>`,
    then `git checkout -b <branch> <sha>`, never `<base>`: a head built on the base is not a
    descendant of the branch, and its plain push is rejected. Otherwise no attempt pushed yet:
    create the branch at the base commit, `git checkout -b <branch> <base>`. Before your first
