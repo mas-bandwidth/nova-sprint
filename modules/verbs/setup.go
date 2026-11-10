@@ -10,7 +10,12 @@ import (
 
 // SetupInput is up's non-secret choices. A service key is read by the setup
 // adapter at a hidden terminal prompt and sent straight to nova-secrets.
-type SetupInput struct{ Actor, Dash, Services, Key, RunOn, Version, Continuation string }
+// TakeOver with Reason is --take-over --reason: the coordinator's seat moved
+// from a coordinator who is gone from the bus (takeOver).
+type SetupInput struct {
+	Actor, Dash, Services, Key, RunOn, Version, Continuation, Reason string
+	TakeOver                                                         bool
+}
 
 // SetupCheck is one step's probe. Action is true only when the choices make
 // the step's next idempotent action possible without another question.
@@ -90,7 +95,8 @@ const (
 // setupInput is up's flags as the walk's input.
 func setupInput(in *input) (SetupInput, error) {
 	s := SetupInput{Actor: in.actor, Dash: in.str("dash"), Services: in.str("services"), Key: in.str("key"),
-		RunOn: in.str("run-on"), Version: in.str("version"), Continuation: in.str("continuation")}
+		RunOn: in.str("run-on"), Version: in.str("version"), Continuation: in.str("continuation"),
+		TakeOver: in.has("take-over"), Reason: in.str("reason")}
 	switch {
 	case !validName(s.Actor):
 		return s, refuse("up names its coordinator", "nova-sprint up --as <you>")
@@ -98,8 +104,12 @@ func setupInput(in *input) (SetupInput, error) {
 		return s, misuse("up", "--continuation is the 64-hex id up printed")
 	case s.Dash != "" && s.Dash != "tailnet" && !strings.HasPrefix(s.Dash, "public="):
 		return s, misuse("up", "--dash is tailnet or public=<machine>[:<port>]")
+	case s.TakeOver && s.Reason == "":
+		return s, refuse("--take-over needs --reason", takeOverCommand(s.Actor))
+	case s.Reason != "" && !s.TakeOver:
+		return s, misuse("up", "--reason goes with --take-over")
 	}
-	for _, v := range []string{s.Services, s.Key, s.RunOn, s.Version, s.Dash} {
+	for _, v := range []string{s.Services, s.Key, s.RunOn, s.Version, s.Dash, s.Reason} {
 		if len(v) > 512 {
 			return s, misuse("up", "a value is at most 512 bytes")
 		}
@@ -269,7 +279,7 @@ func (e *Engine) prepareHandoff(ctx context.Context, lease SetupLease, s SetupIn
 }
 
 // upHook hooks the caller in as coordinator once the store exists, unless
-// it already is.
+// it already is; with --take-over, from a coordinator who is gone.
 func (e *Engine) upHook(ctx context.Context, lease SetupLease, s SetupInput, out *strings.Builder) error {
 	snap, err := e.snapshot(ctx)
 	if err != nil {
@@ -278,7 +288,13 @@ func (e *Engine) upHook(ctx context.Context, lease SetupLease, s SetupInput, out
 	if row := snap.Rows[s.Actor]; row.Session != "" && row.Role == "coordinator" {
 		return nil
 	}
-	text, err := e.hookAs(ctx, snap, s.Actor, "coordinator")
+	hook := e.hookAs
+	if s.TakeOver {
+		hook = func(ctx context.Context, snap store.Snapshot, name, _ string) (string, error) {
+			return e.takeOver(ctx, snap, name, s.Reason)
+		}
+	}
+	text, err := hook(ctx, snap, s.Actor, "coordinator")
 	if err != nil {
 		return err
 	}

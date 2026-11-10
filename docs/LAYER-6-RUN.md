@@ -109,11 +109,11 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | (none) | | runs `next --as <me>` | | 0 |
 | `next` | `[--as <name>]` | never; a broken prerequisite is its answer | the one command (section 4) | 0; 2 if it cannot look |
 | `help` | `[<verb>\|<group>]`, or `-h` | unknown verb: the index | `nova-sprint` | 0 |
-| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded; `worker` on a sprint with no commit identity: `identity` | `next --as <name>` | 0, 1 |
+| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded (the fix names that coordinator's `unhook`, and for one who is gone, `up --take-over --reason`); `worker` on a sprint with no commit identity: `identity` | `next --as <name>` | 0, 1 |
 | `identity` | `[--name <git user.name> --email <git user.email> --reason <why>]` | coordinator only; none set and none given; a quote, backslash, `$`, backtick or angle bracket, or an email that is not one address; no reason | `check` | 0, 1 |
 | `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
 | `check` | `[--integrity]` | prints every line; red (exit 1, or 2 when a read failed): fleet not green; nova-tools below the pin (above: a warning); `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable; a stream whose repository or base cannot be read; an open judgement (one line per kind); nothing runs the sprint; ready producers and nothing dealt (with why); a landing waiting on a judgement, run or a hold | `next`, or the first red line's fix | 0, 1, 2 |
-| `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
+| `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>] [--take-over --reason "<why>"]` | the first unverified step, with its fix (section 5); another coordinator recorded (ask them to `unhook`; one who is gone: `--take-over`); `--take-over` without `--reason`; `--take-over` while the recorded coordinator is on the bus (ask them to `unhook`) | the next step, then `stream add` | 0, 1 |
 | `stream add` | `<s> --repo <owner/name> [--base main] [--mode auto\|hand] [--forge github\|none]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>`; with a forge, the group branch `sprint-group/<s>` cannot be created (a name git refuses, a branch at origin in its way, origin's branches unreadable, the push refused), naming the fix | `add --stream <s> --brief-file <f>` | 0, 1 |
 | `add` | `--stream <s> --brief-file <f>... [--dry-run]`, or `--stream <s> --sentinel <id> --needs <a,b>` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
 | `run` | `[--listen <addr>]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
@@ -296,6 +296,20 @@ Each step's action is idempotent.
 | 8 services | for each chosen service, the key at a hidden prompt, piped into `nova-secrets set <SERVICE>_API_KEY` on stdin, then the grants, seats, worker rows and service rows | one request to the service's model list through `nova-secrets exec`, judged by its exit code only | which services, once; each key, once |
 | 9 workers | the sprint credential granted to each bench seat; one service record `sprint-worker-<machine>` per worker bench (every bench but the run machine) running `nova-sprint worker --as <machine>`, applied in one `nova-fleet services` play limited to those benches | each worker bench present on the bus and `up` in the store; the refusal names each that is not and its unit's last log line | no |
 | 10 first deal | nothing: a fresh sprint is stopped until `start` and moves nothing, so up deals no card | every worker row hooked, `up` and dealable (cores set in nova-config; a bench without is held at width 0) | no |
+
+**Taking the seat** (Glenn, 2026-11-10: "Add takeover to up"). The coordinator's seat is the
+row hooked in with role `coordinator`, and only `unhook` frees it: by that row, or by the
+coordinator, which is that row. A coordinator whose host or session is gone can run neither, so
+`up --as <you> --take-over --reason "<why>"` moves the seat. It refuses without `--reason`, and
+while the recorded coordinator is in `nova-bus who` (the same presence the run loop reads),
+naming their `unhook`. Otherwise, where `up` hooks the caller in (after step 4, the store), one op logged
+under kind `take-over` with the reason as its note clears the old coordinator's hook as `unhook`
+clears it and hooks the caller in as coordinator, fenced on the seq it read (one coordinator);
+the walk then goes on. The old coordinator's cards stay where they are: a row going down never
+takes its cards back, and the `orphan` judgement brings them to the new coordinator. With no
+coordinator recorded, `--take-over` is the plain hook. No model covers the seat
+(`docs/roadmap.sexp`, `coordinator-seat-model`): Setup.tla has the walk's steps, Store.tla the
+PutRow write; the guard is unit-tested (`modules/verbs/takeover_test.go`).
 
 **The key.** The prompt turns off echo on the human's terminal and reads one line. Without a
 terminal (an AI's shell) `up --key` refuses and names the terminal it must be run in. The

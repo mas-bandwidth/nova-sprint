@@ -55,7 +55,9 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    `next:` line. It refuses until
    the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role to
    any name but the one `up` recorded. Both refusals are the tool enforcing the order. Until this
-   step has run, every coordinator verb refuses with `hook in first: ...`.
+   step has run, every coordinator verb refuses with `hook in first: ...`. If the recorded
+   coordinator is gone (not in `nova-bus who`, so unable to run `unhook`), take the seat:
+   `nova-sprint up --as <you> --take-over --reason "<why>"` (section 7, item 8).
 3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per
    thing it checked (the fleet, nova-tools against the pin, the store, the bus, each stream's
    repository and base, the open judgements, run, the width, why each stream's producers wait,
@@ -399,6 +401,14 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 7. Keep the fleet healthy with `nova-sprint check`; it is the one doctor. Never kill a process
    blindly: read it first. Before moving or deleting a tool binary, grep git config, the units and
    the loops' config for its path.
+8. A coordinator who is gone. The seat is the row hooked in as coordinator, and only `unhook` by
+   that row frees it, so a coordinator whose host or session is gone leaves the judgements with
+   no one to answer them. Check `nova-bus who` for the name; when it is not listed, run
+   `nova-sprint up --as <you> --take-over --reason "<why>"`. It refuses while that coordinator is
+   on the bus (ask them to `unhook`). Otherwise, in one logged op, it clears their hook as
+   `unhook` does, hooks you in as coordinator, and goes on with `up`'s steps; then run section
+   1's session start from step 3. Their cards stay where they are (item 4): the `orphan`
+   judgement brings them to you.
 
 ## 8. Policy
 

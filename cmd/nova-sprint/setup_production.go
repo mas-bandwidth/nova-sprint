@@ -303,7 +303,7 @@ var handoffID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var handoffActor = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
 func handoffDigest(in verbs.SetupInput) (string, error) {
-	values := []string{in.Actor, in.Dash, in.Services, in.Key, in.RunOn, in.Version}
+	values := []string{in.Actor, in.Dash, in.Services, in.Key, in.RunOn, in.Version, strconv.FormatBool(in.TakeOver), in.Reason}
 	if !handoffActor.MatchString(in.Actor) {
 		return "", fmt.Errorf("invalid setup actor %q: want 1-128 of A-Z a-z 0-9 . _ -", edge.Redact(in.Actor))
 	}

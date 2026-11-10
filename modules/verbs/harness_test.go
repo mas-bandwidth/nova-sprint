@@ -149,9 +149,13 @@ func want(t *testing.T, r Result, exit int, parts ...string) {
 type fakeBus struct {
 	present map[string]bool
 	err     error
+	during  func() // runs inside Who: writes that land while the bus is asked
 }
 
 func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
+	if b.during != nil {
+		b.during()
+	}
 	out := map[string]bus.Presence{}
 	for n, ok := range b.present {
 		if ok {

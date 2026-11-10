@@ -24,6 +24,7 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | Steps.tla gains the rest after faults: a resting row is offered to policy but not dealt to (the model gap under #740) | ❌ |
 | next --json answers small: the finished cards of the epoch listed in brief, or only the last few (82-214 KB on nine benches on 2026-11-09, past the worker's old 64 KiB cap; the worker now reads 16 MiB and names a truncated answer, so the fix here is the size, not the parse) | ❌ |
 | Functional flakes fixed: TestFunctionalClearWhileWorkersBeat (clear's seq fence refused: store at seq N+1, expected N, a beat landing between read and clear), TestFunctionalEvaluatorMemoryCap (failed once on main), a postgres start failure in a functional run; and the trace job near the 2-minute runner limit (55-130 s, cancelled on 7 of the 2026-11-09 landing runs) | ❌ |
+| A model of the coordinator's seat: one coordinator; hook, unhook and up --take-over, the take-over guarded by the coordinator's absence from the bus, with a reversed witness (take-over while present); no module covers it (Setup.tla has the walk's steps, Store.tla the PutRow write) | ❌ |
 | complete | 0% |
 
 [Source data](roadmap.sexp)
