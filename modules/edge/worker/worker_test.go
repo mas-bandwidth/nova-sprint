@@ -330,7 +330,7 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 	j.Needs = oh.Needs()
 	wallArgv := BuildWallArgv(WallConfig{
 		ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox",
-		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true,
+		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true, GOOS: "linux",
 	}, j, oEnv, cArgv)
 	if runtime.GOOS != "windows" && (len(wallArgv) < 3 || wallArgv[0] != "nice" || wallArgv[1] != "-n" || wallArgv[2] != "15") {
 		t.Fatalf("wall argv must run the work at nice 15, below CI: %v", wallArgv)
@@ -932,5 +932,22 @@ func TestRunnerHooksInAsWorkerBeforeFirstTake(t *testing.T) {
 	snap, _ := st.Snapshot(ctx)
 	if snap.Cards["p1.w1"].State != card.Done || snap.Rows[row].Session != "worker:1" || snap.Cards["p1.w1"].BaseSHA != testBaseSHA {
 		t.Fatalf("unexpected state after hooked run: card=%+v row=%+v", snap.Cards["p1.w1"], snap.Rows[row])
+	}
+}
+
+// The seal's step-log note keeps the start of the out-of-PATHS list and
+// counts the rest, so a long list is never cut silently.
+func TestSealNoteCountsWhatItDrops(t *testing.T) {
+	t.Parallel()
+	var out strings.Builder
+	for i := range 25 {
+		fmt.Fprintf(&out, "outside PATHS, not committed: ?? f%02d/\n", i)
+	}
+	note := sealNote_internal([]byte(out.String()))
+	if !strings.HasPrefix(note, "outside PATHS, not committed: ?? f00/") || !strings.HasSuffix(note, "\nand 5 more") || strings.Contains(note, "f20/") {
+		t.Fatalf("want the first 20 lines and the rest counted, got:\n%s", note)
+	}
+	if note := sealNote_internal([]byte("a\nb\n")); note != "a\nb" {
+		t.Fatalf("a short list is kept whole, got %q", note)
 	}
 }

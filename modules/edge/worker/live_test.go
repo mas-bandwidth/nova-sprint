@@ -139,7 +139,7 @@ func TestLiveOkWithALeftTreeIsCommittedByTheWorker(t *testing.T) {
 			t.Fatalf("dirty=%v: want one report, got %+v", dirty, reps)
 		case dirty && (reps[0].Result != "ok" || reps[0].Head != testCommitSHA || len(g.commits) != 1 || g.pushed["sprint/s1/p1"] != testCommitSHA):
 			t.Errorf("a left tree must be committed and pushed: report %+v commits %v pushed %v", reps[0], g.commits, g.pushed)
-		case !dirty && (reps[0].Result != "fail" || !strings.Contains(reps[0].Reason, "nothing to commit")):
+		case !dirty && (reps[0].Result != "fail" || !strings.Contains(reps[0].Reason, "nothing inside PATHS to commit")):
 			t.Errorf("ok with nothing done must be a fail naming it, got %+v", reps[0])
 		}
 	}

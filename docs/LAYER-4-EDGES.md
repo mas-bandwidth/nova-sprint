@@ -288,7 +288,8 @@ Deal to report:
 
 Results, classified by the adapter. `ok`: the result file says ok and a head
 past `base_sha` and `prior_head` is pushed (a harness that said ok and left
-its changes uncommitted has its tree committed by the worker). `fail`: the
+its changes uncommitted has its changes inside the card's PATHS committed by
+the worker; anything outside PATHS is logged, never committed). `fail`: the
 result file says broken, no result file ("fail: no verdict" with the
 harness's last output), a rebase conflict, the card's tests red. `fault`:
 exit 134 or 137; a launch that died inside the 15 s grace on a provider 5xx,
@@ -815,7 +816,14 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   `GOTOOLCHAIN=local` and `GOROOT/bin` first on `PATH` inside every wall
   only when a grant covers GOROOT, and `GOMODCACHE` with `GOPROXY=off` only
   when a grant covers the cache; one start line names what was granted.
-  `GOCACHE` stays go's default under the job's own home.
+  `GOCACHE` stays go's default under the job's own home. `~/.cargo/registry`,
+  when it is there, is granted read-only too (the dot-directory rule is
+  waived for it alone; the overlap checks still apply, and a registry that
+  resolves elsewhere gets every check), with one start line; `CargoWallEnv`
+  links it, through an `os.Root` on the job directory, as the job's own
+  `home/.cargo/registry` and sets
+  `CARGO_NET_OFFLINE=true`, so cargo builds from the bench's crates under
+  `--net-deny` and a crate the bench lacks fails at once, named.
 - **The cause line (25).** `edge.CauseLine`: escapes stripped
   (`edge.StripANSI`), the first line holding error, refused or failed, else
   the last non-empty line, bounded; `edge.StderrLines` strips escapes too.
@@ -1044,9 +1052,10 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
 - **No verdict and a left tree (the harness note).** A work harness that
   exits 0 with no result file is "fail: no verdict: ..." with its last
   output. One that says ok, leaves its changes uncommitted and HEAD where
-  it started has its tree committed by the worker (`GitOps.CommitAll`,
-  `--no-verify`, the row's identity) and pushed; ok with nothing to commit
-  is a fail saying so.
+  it started has its changes inside the card's PATHS committed by the
+  worker's seal step (`--no-verify`, the row's identity) and pushed; what
+  is outside PATHS (build output) is named in the step log, never
+  committed; ok with nothing inside PATHS to commit is a fail saying so.
 - **JOB.md (68).** Written at stage: card, repository, base, checkout,
   prior head and finding, paths, done-when, the card's prose, and "How this
   card finishes" (`finishRules_internal`), which the prompt carries word for
