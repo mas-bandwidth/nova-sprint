@@ -189,8 +189,9 @@ func TestFetchKeepsADeepCloneDeep(t *testing.T) {
 // A card branch forked below the shallow boundary shares no fetched commit
 // with its base: each shallow hop is deepened, mirror first, by 64 then
 // 1024 commits, then unshallowed, until it does; the deepening stops at the
-// first check that passes. A pair that shares none once nothing is
-// shallow is left to the step that needs it.
+// first check that passes. Every step names the commits, the unshallow
+// too: a source's HEAD may be unborn (a bare mirror). A pair that shares
+// none once nothing is shallow is left to the step that needs it.
 func TestFetchDeepensUntilTheMergeBaseIsFetched(t *testing.T) {
 	t.Parallel()
 	for _, kase := range []struct {
@@ -219,9 +220,6 @@ func TestFetchDeepensUntilTheMergeBaseIsFetched(t *testing.T) {
 		wantWork = append(wantWork, fetchFlags+" --depth=1 "+mirror+" "+shaBase+" "+shaPrior)
 		for _, s := range kase.steps {
 			wants := " " + shaBase + " " + shaPrior
-			if s == "--unshallow" {
-				wants = ""
-			}
 			wantMirror = append(wantMirror, fetchFlags+" "+s+" "+testCloneURL+wants)
 			wantWork = append(wantWork, fetchFlags+" "+s+" "+mirror+wants)
 		}
