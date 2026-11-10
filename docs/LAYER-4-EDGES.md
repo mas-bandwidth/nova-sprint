@@ -825,6 +825,27 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   `home/.cargo/registry` and sets
   `CARGO_NET_OFFLINE=true`, so cargo builds from the bench's crates under
   `--net-deny` and a crate the bench lacks fails at once, named.
+- **A FIFO jobserver for every gate.** cargo's own pipe jobserver adds a
+  `pre_exec`, so Rust's std forks through `socketpair(AF_UNIX,
+  SOCK_SEQPACKET)`, which the wall's seccomp refuses: rustc is never
+  executed. Before each done-when gate `RunTest` makes
+  `<jobDir>/jobserver.fifo` (in the wall's `--write` tree), holds it open
+  read-write with N-1 tokens, and passes
+  `CARGO_MAKEFLAGS=-jN --jobserver-auth=fifo:<path>` with `--env` (replacing
+  any the bench set); with a `fifo:` jobserver std uses posix_spawn. N is one
+  nova-reserve slot at its default capacity (CPU/4 slots): 4, or the
+  bench's cores when fewer. Every gate gets it (a non-cargo gate ignores it),
+  and the FIFO is removed after the gate. rustc runs its linker by name
+  under its own `PATH`, which std also spawns by fork, so on Linux the gate
+  passes `CARGO_TARGET_<host>_LINKER` set to the absolute `cc` on the
+  worker's `PATH` (the glibc triple on amd64 and arm64; it overrides a
+  project's own linker setting). Whatever the job left at the FIFO's name is
+  removed, never followed, and the tokens are written without blocking. A
+  cargo too old for `fifo:` still makes its own pipe jobserver and meets the
+  refusal. `TMPDIR` is already the job's
+  `tmp` (cc needs it). The wall is unchanged: no `--unix`. Code under test
+  that itself spawns with a `pre_exec` (or sets uid/gid) still meets the
+  refusal.
 - **The cause line (25).** `edge.CauseLine`: escapes stripped
   (`edge.StripANSI`), the first line holding error, refused or failed, else
   the last non-empty line, bounded; `edge.StderrLines` strips escapes too.

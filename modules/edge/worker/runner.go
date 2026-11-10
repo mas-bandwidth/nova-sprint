@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1539,8 +1540,94 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if why != "" {
 		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	env, release, err := gateJobserver_internal(SanitizeWallEnv(os.Environ(), j.JobDir), j.JobDir)
+	if err != nil {
+		return WallRunResult{}, err
+	}
+	defer release()
+	lookPath := w.LookPath
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	if kv := cargoLinkerEnv_internal(runtime.GOOS, runtime.GOARCH, lookPath); kv != "" {
+		env = append(env, kv)
+	}
+	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, env, timeout)
 }
+
+// cargoLinkerEnv_internal is CARGO_TARGET_<host>_LINKER=<absolute cc> on
+// Linux, "" elsewhere or without a cc: rustc runs its linker by name with
+// its own PATH, and std spawns a name under a changed PATH by fork, never
+// posix_spawn, which the wall refuses as for the pipe jobserver; an
+// absolute path keeps posix_spawn.
+func cargoLinkerEnv_internal(goos, goarch string, lookPath func(string) (string, error)) string {
+	triple := map[string]string{"amd64": "X86_64", "arm64": "AARCH64"}[goarch]
+	cc, err := lookPath("cc")
+	if goos != "linux" || triple == "" || err != nil || !filepath.IsAbs(cc) {
+		return ""
+	}
+	return "CARGO_TARGET_" + triple + "_UNKNOWN_LINUX_GNU_LINKER=" + cc
+}
+
+// gateJobs_internal is a gate's build parallelism: one nova-reserve slot,
+// which at nova-reserve's default capacity (CPU/4 slots) is 4 cores, or
+// the bench's cores when it has fewer.
+func gateJobs_internal() int { return max(1, min(4, runtime.NumCPU())) }
+
+// gateJobserver_internal is env with CARGO_MAKEFLAGS naming a FIFO
+// jobserver in jobDir (a --write path of the wall), made and held open
+// read-write here with gateJobs-1 tokens until release; it replaces any
+// CARGO_MAKEFLAGS env had. cargo's own pipe jobserver adds a pre_exec, so
+// std forks through socketpair(AF_UNIX, SOCK_SEQPACKET), which the wall's
+// seccomp refuses (EPERM, rustc never runs); with a fifo: jobserver
+// jobserver-rs adds none and std uses posix_spawn. Harmless to a gate that
+// is not cargo, so every gate gets it. env as it is with no jobDir.
+func gateJobserver_internal(env []string, jobDir string) ([]string, func(), error) {
+	if jobDir == "" {
+		return env, func() {}, nil
+	}
+	// The job owns its tree between runs, so whatever is at the name goes
+	// (RemoveAll unlinks a link, never its target), and the FIFO is opened
+	// without following a link, checked, and seeded without blocking: a
+	// leftover process that swaps or fills it fails the gate, never hangs it.
+	fifo := filepath.Join(jobDir, "jobserver.fifo")
+	if err := os.RemoveAll(fifo); err != nil {
+		return env, nil, fmt.Errorf("worker: clearing the gate's jobserver FIFO %s: %w", fifo, err)
+	}
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		return env, nil, fmt.Errorf("worker: making the gate's jobserver FIFO %s: %w", fifo, err)
+	}
+	fd, err := syscall.Open(fifo, syscall.O_RDWR|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		fd = -1
+	}
+	release := func() {
+		if fd >= 0 {
+			_ = syscall.Close(fd)
+		}
+		_ = os.Remove(fifo)
+	}
+	var st syscall.Stat_t
+	if err == nil {
+		err = syscall.Fstat(fd, &st)
+	}
+	if err == nil && st.Mode&syscall.S_IFMT != syscall.S_IFIFO {
+		err = errors.New("not a FIFO")
+	}
+	tokens := []byte(strings.Repeat("+", gateJobs_internal()-1))
+	if n := 0; err == nil && len(tokens) > 0 {
+		if n, err = syscall.Write(fd, tokens); err == nil && n != len(tokens) {
+			err = fmt.Errorf("wrote %d of %d tokens", n, len(tokens))
+		}
+	}
+	if err != nil {
+		release()
+		return env, nil, fmt.Errorf("worker: seeding the gate's jobserver FIFO %s: %w", fifo, err)
+	}
+	env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(strings.ToUpper(kv), "CARGO_MAKEFLAGS=") })
+	return append(env, fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", gateJobs_internal(), fifo)), release, nil
+}
+
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
 	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }

@@ -538,6 +538,10 @@ matches are checked at the stream's base. A new file may be named explicitly whe
 directory, declare it as a separate `PATHS` entry ending in `/`; its parent
 must exist. Keep the allowed paths as narrow as the task permits. Each
 `DONE-WHEN` is one program and its arguments, not an unquoted shell pipeline; repeat the field for multiple gates.
+The worker runs each gate inside the sandbox with `TMPDIR` in the job's
+directory, `CARGO_MAKEFLAGS` naming a FIFO jobserver it holds (`-j4`, or
+fewer cores) and, on Linux, the host target's linker set to the absolute `cc`
+on its `PATH`, so `cargo build` and `cargo test` gates run under the strict wall.
 
 `NEEDS` lists producer ids whose landed output this task actually consumes.
 Independent work should have no needs. `AFTER` is an optional soft landing
