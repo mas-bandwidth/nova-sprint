@@ -22,17 +22,20 @@ import (
 // and base (the repository by its owner/repo, however a stream names it),
 // however many streams share it, and only while those streams have live
 // cards; a stream with no forge is not watched, and a base that leaves the
-// watch forgets what it read. A tip whose checks completed (green, or red
-// with none still running) is read once: the answer is kept by tip. A tip
-// still running, or with no check yet, is asked again every LandPoll (the
-// landing's cadence) until CIWait (the landing's bound) has passed since it
-// was first asked; one that showed a failure by then is red. A
-// rate-limited forge, a failed read and a gate fault are no fact: the last
-// completed read stands. The coordinator's answer to the open judgement,
-// and a land pass that finds the base red at the tip held (LandSawRed: a
-// nightly or a re-run failing at a sha that was green), read the tip again
-// once. Reads run off the tick; Read is what the next tick passes to the
-// steps (Inputs.Bases).
+// watch forgets what it read. A tip still running, or with no check yet,
+// is asked again every LandPoll (the landing's cadence) until CIWait (the
+// landing's bound) has passed since it was first asked, then every CIWait
+// until every check on it is done; one that showed a failure by CIWait is
+// red. A tip whose checks all completed (green, red, or a gate that did not
+// run) is asked again every CIWait too, so a re-run or a nightly that turns
+// it red at the same sha is seen: a base whose tip does not move costs one
+// checks call per CIWait, and a red tip read again keeps its red stretch
+// and reads no log again. A rate-limited forge, a failed read and a gate
+// fault are no fact: the last completed read stands. The coordinator's
+// answer to the open judgement, and a land pass that finds the base red at
+// the tip held (LandSawRed), read the tip again at once, once. Reads run
+// off the tick; Read is what the next tick passes to the steps
+// (Inputs.Bases).
 type BaseWatch struct {
 	Forge forge.Forge // nil: nothing is read
 	Fault func(what string, err error)
@@ -50,10 +53,9 @@ type baseWatch struct {
 	asked   time.Time     // when it was asked
 	first   time.Time     // when tip was first asked
 	reading bool          // a read is in flight
-	settled bool          // tip is answered for good: completed, or CIWait passed
+	settled bool          // every check on tip is done: asked again only at the slow cadence
 	faulted bool          // the last read failed, and was said
 	green   bool          // a green read was taken since the watch began
-	readAt  time.Time     // when the last completed read was taken
 	fact    *steps.BaseCI // the last completed read; nil: none yet
 }
 
@@ -105,14 +107,14 @@ func (w *BaseWatch) Watch(ctx context.Context, snap store.Snapshot, heads map[st
 		if tip == "" || b.reading {
 			continue
 		}
-		if b.fact != nil && answeredSince(snap, about, b.readAt) {
-			b.settled = false // retry: look again
-		}
-		if tip == b.tip && (b.settled || now.Before(b.asked.Add(LandPoll))) {
-			continue
-		}
 		if tip != b.tip {
-			b.first, b.settled = now, false
+			b.first, b.settled, b.asked = now, false, time.Time{}
+		}
+		if answeredSince(snap, about, b.asked) {
+			b.asked = time.Time{} // retry: look again now, once
+		}
+		if now.Before(b.asked.Add(b.every(now))) {
+			continue
 		}
 		b.tip, b.asked, b.reading = tip, now, true
 		repo, base, _ := strings.Cut(about, "@")
@@ -120,8 +122,20 @@ func (w *BaseWatch) Watch(ctx context.Context, snap store.Snapshot, heads map[st
 	}
 }
 
+// every is how long after it was last asked b's tip is asked again:
+// LandPoll inside CIWait of its first ask while its checks may still be
+// starting or running (the landing's cadence), and CIWait once they are all
+// done or CIWait has passed (the landing's bound, as the slow cadence: no
+// new number).
+func (b *baseWatch) every(now time.Time) time.Duration {
+	if b.settled || !now.Before(b.first.Add(CIWait)) {
+		return CIWait
+	}
+	return LandPoll
+}
+
 // LandSawRed is a land pass that read repo's base red at tip: a tip the
-// watch holds as settled (green, say) is read again at the next Watch.
+// watch holds (green, say) is read again at the next Watch.
 func (w *BaseWatch) LandSawRed(repo, base, tip string) {
 	if w == nil {
 		return
@@ -129,7 +143,7 @@ func (w *BaseWatch) LandSawRed(repo, base, tip string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if b := w.bases[steps.BaseAbout(repoKey(repo), base)]; b != nil && b.tip == tip {
-		b.settled, b.asked = false, time.Time{}
+		b.asked = time.Time{}
 	}
 }
 
@@ -158,7 +172,7 @@ func watchedBases(snap store.Snapshot, heads map[string]string) (map[string][]st
 }
 
 // answeredSince is whether the coordinator answered a base-red judgement
-// about about after at.
+// about about after at (the tip was last asked): an answer reads it once.
 func answeredSince(snap store.Snapshot, about string, at time.Time) bool {
 	for _, j := range snap.Judgements {
 		if j.Kind == "base-red" && j.About == about && j.State == "answered" && j.ClosedAt.After(at) {
@@ -170,21 +184,33 @@ func answeredSince(snap store.Snapshot, about string, at time.Time) bool {
 
 // read is one checks read of tip, and for a red tip whose checks all
 // completed (or that has waited CIWait since it was first asked), the
-// first failing lines of at most failingJobs failing jobs (each log once:
-// a completed tip is never read again).
+// first failing lines of at most failingJobs failing jobs; a tip read red
+// again with the same failing checks keeps the lines it had (each log is
+// read once).
 func (w *BaseWatch) read(ctx context.Context, about, repo, base, tip string, now time.Time) {
 	rollups, err := w.Forge.Checks(ctx, repo, []string{tip})
 	var r forge.CheckRollup
 	if err == nil {
 		r = rollups[tip]
 	}
+	var waited bool
+	var prev steps.BaseCI
 	w.mu.Lock()
-	// this read is the CIWait/LandPoll-th of tip or later, as the landing counts its passes
-	waited := w.bases[about] != nil && !now.Add(LandPoll).Before(w.bases[about].first.Add(CIWait))
+	if b := w.bases[about]; b != nil {
+		// this read is the CIWait/LandPoll-th of tip or later, as the landing counts its passes
+		waited = !now.Add(LandPoll).Before(b.first.Add(CIWait))
+		if b.fact != nil {
+			prev = *b.fact
+		}
+	}
 	w.mu.Unlock()
 	red := err == nil && r.State == forge.CheckRed && (!r.Waiting || waited)
 	var lines []string
-	if red {
+	switch {
+	case !red:
+	case prev.Red && prev.Tip == tip && slices.Equal(prev.Failing, r.Failing):
+		lines = prev.Lines
+	default:
 		lines = w.failingLines(ctx, repo, r)
 	}
 	w.mu.Lock()
@@ -203,18 +229,18 @@ func (w *BaseWatch) read(ctx context.Context, about, repo, base, tip string, now
 		}
 		b.faulted = true
 	case r.State == forge.CheckGreen:
-		b.settled, b.readAt, b.green = true, now, true
+		b.settled, b.green = true, true
 		b.fact = &steps.BaseCI{Repo: repo, Base: base, Tip: tip}
 	case red:
 		f := steps.BaseCI{Repo: repo, Base: base, Tip: tip, Red: true, Failing: r.Failing, Lines: lines, FirstRed: tip, Since: now, SinceWatch: !b.green}
 		if b.fact != nil && b.fact.Red {
 			f.FirstRed, f.Since, f.SinceWatch = b.fact.FirstRed, b.fact.Since, b.fact.SinceWatch
 		}
-		b.settled, b.readAt, b.fact = true, now, &f
+		b.settled, b.fact = !r.Waiting, &f // red with checks still running is read on until they are done
 	case r.State == forge.CheckFault:
-		b.settled = true // a gate that did not run is neither red nor green, and stays so
-	default: // running, or no check yet: asked again until CIWait
-		b.settled = waited
+		b.settled = true // a gate that did not run is neither red nor green: the last fact stands
+	default: // running, or no check yet: asked again
+		b.settled = false
 	}
 	if err == nil {
 		b.faulted = false

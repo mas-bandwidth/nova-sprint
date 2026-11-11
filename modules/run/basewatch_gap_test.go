@@ -20,11 +20,11 @@ func watchStep(w *BaseWatch, snap store.Snapshot, tip string, now *time.Time, d 
 }
 
 // TestBaseWatchRereadsAGreenTipTheLandingFoundRed (the cold read of #793):
-// a tip that settled green is not polled again, but a nightly or a re-run
-// can fail at the same sha later, and the landing reads the base tip on
-// every red pass. A landing that finds the base failing at the tip the
-// watch holds unsettles it, so the next Watch reads it again: no new
-// polling, and the base-red push is not lost. The repository is one key
+// a tip that settled green is read again only every CIWait, but a nightly
+// or a re-run can fail at the same sha in between, and the landing reads
+// the base tip on every red pass. A landing that finds the base failing at
+// the tip the watch holds has the next Watch read it again at once: no new
+// polling, and the base-red push is not late. The repository is one key
 // whether a stream names it o/r or by its clone URL.
 func TestBaseWatchRereadsAGreenTipTheLandingFoundRed(t *testing.T) {
 	t.Parallel()
@@ -33,7 +33,7 @@ func TestBaseWatchRereadsAGreenTipTheLandingFoundRed(t *testing.T) {
 	w := &BaseWatch{Forge: f}
 	snap, now := watchSnap(), time.Unix(1000, 0).UTC()
 	watchStep(w, snap, a, &now, 0)
-	watchStep(w, snap, a, &now, time.Hour)
+	watchStep(w, snap, a, &now, CIWait/2)
 	if n, _ := f.counts(); n != 1 {
 		t.Fatalf("a settled green tip read %d times, want 1", n)
 	}
@@ -70,7 +70,8 @@ func TestEdgesTellTheWatchWhenTheBaseIsRed(t *testing.T) {
 // TestBaseWatchOpensARedTipStillRunningAfterCIWait (the cold read of
 // #793): a tip that has shown a failure while other checks still run (a job
 // stuck in the queue, a long nightly) is red once it has waited CIWait, the
-// landing's own bound; and a tip still running is not polled past CIWait.
+// landing's own bound; and a tip still running is polled every CIWait
+// past CIWait, not every LandPoll.
 func TestBaseWatchOpensARedTipStillRunningAfterCIWait(t *testing.T) {
 	t.Parallel()
 	a, b := strings.Repeat("a", 40), strings.Repeat("b", 40)
@@ -95,8 +96,9 @@ func TestBaseWatchOpensARedTipStillRunningAfterCIWait(t *testing.T) {
 	for range 100 {
 		watchStep(w, snap, b, &now, LandPoll)
 	}
-	if n, _ := f.counts(); n-n0 > int(CIWait/LandPoll)+1 {
-		t.Fatalf("a running tip polled %d times, want at most %d", n-n0, int(CIWait/LandPoll)+1)
+	want := int(CIWait/LandPoll) + int((100*LandPoll-CIWait)/CIWait) + 1
+	if n, _ := f.counts(); n-n0 > want {
+		t.Fatalf("a running tip polled %d times, want at most %d", n-n0, want)
 	}
 }
 
@@ -134,7 +136,8 @@ func TestBaseWatchForgetsABaseItStopsWatching(t *testing.T) {
 }
 
 // TestBaseWatchAllCancelledOpensNothing: a tip whose checks were all
-// cancelled is a gate that did not run, neither red nor green: no fact.
+// cancelled is a gate that did not run, neither red nor green: no fact, and
+// read again only at the slow cadence (a re-run may complete it).
 func TestBaseWatchAllCancelledOpensNothing(t *testing.T) {
 	t.Parallel()
 	a := strings.Repeat("a", 40)
@@ -146,8 +149,8 @@ func TestBaseWatchAllCancelledOpensNothing(t *testing.T) {
 	if r, ok := w.Read()["o/r@main"]; ok {
 		t.Fatalf("an all-cancelled tip is a fact: %+v", r)
 	}
-	if n, _ := f.counts(); n != 1 {
-		t.Fatalf("an all-cancelled tip read %d times, want 1", n)
+	if n, _ := f.counts(); n != 2 {
+		t.Fatalf("an all-cancelled tip read %d times in an hour of one Watch, want 2", n)
 	}
 }
 

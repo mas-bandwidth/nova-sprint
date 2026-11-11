@@ -85,8 +85,8 @@ func watchHeads(tip string) map[string]string {
 
 // TestBaseWatchReadsEachBaseOncePerTip: one checks read per repository and
 // base however many streams share it, none for a base with no live card or
-// a stream with no forge; a completed tip (red or green) is never read
-// again, its logs read once each for at most three distinct failing jobs;
+// a stream with no forge; a completed tip (red or green) is read again only
+// every CIWait, its logs read once each for at most three distinct failing jobs;
 // running checks and a rate-limited forge are asked again on the landing's
 // cadence and are no fact; the red stretch keeps its first red tip; a green
 // tip ends it; the coordinator's answer reads the tip once more.
@@ -128,8 +128,8 @@ func TestBaseWatchReadsEachBaseOncePerTip(t *testing.T) {
 		t.Fatal("a base with no live card is read")
 	}
 	step(a, time.Hour)
-	if n, logs := f.counts(); n != 2 || logs != 3 {
-		t.Fatalf("%d checks reads and %d log reads after a completed tip, want 2 and 3", n, logs)
+	if n, logs := f.counts(); n != 3 || logs != 3 {
+		t.Fatalf("%d checks reads and %d log reads an hour after a completed tip, want 3 and 3", n, logs)
 	}
 
 	f.set(b, forge.CheckRollup{}, &forge.FaultError{Kind: forge.FaultRateLimit, Reason: "HTTP 403: API rate limit exceeded"})
@@ -159,10 +159,10 @@ func TestBaseWatchReadsEachBaseOncePerTip(t *testing.T) {
 	}
 }
 
-// TestBaseWatchStopsAskingATipWithNoCI: a tip with no check at all is
-// asked every LandPoll only until CIWait, then left (no fact, no more
-// calls) until the tip moves.
-func TestBaseWatchStopsAskingATipWithNoCI(t *testing.T) {
+// TestBaseWatchSlowsAskingATipWithNoCI: a tip with no check at all is
+// asked every LandPoll until CIWait, then every CIWait (a check may yet
+// start), and is no fact.
+func TestBaseWatchSlowsAskingATipWithNoCI(t *testing.T) {
 	t.Parallel()
 	a := strings.Repeat("a", 40)
 	f := &checksForge{rollups: map[string]forge.CheckRollup{a: {SHA: a, State: forge.CheckAbsent}}}
@@ -173,8 +173,9 @@ func TestBaseWatchStopsAskingATipWithNoCI(t *testing.T) {
 		w.Wait()
 		now = now.Add(LandPoll)
 	}
-	if n, _ := f.counts(); n != int(CIWait/LandPoll) {
-		t.Fatalf("asked a tip with no CI %d times, want %d", n, int(CIWait/LandPoll))
+	want := int(CIWait/LandPoll) + int((100*LandPoll-CIWait)/CIWait)
+	if n, _ := f.counts(); n != want {
+		t.Fatalf("asked a tip with no CI %d times, want %d", n, want)
 	}
 	if len(w.Read()) != 0 {
 		t.Fatal("no CI is a fact")
