@@ -37,6 +37,10 @@ type Edges struct {
 	Bus      bus.Bus
 	ReposDir string
 	Pause    func(context.Context, time.Duration) error // between asks of a pending CI
+	// Streams is the streams as now folded (run's copy), read by a landing
+	// before each pass for its stream's base (stream set --base); nil keeps
+	// the stream the request was dispatched with.
+	Streams func() map[string]store.Stream
 	// Fault is told every edge failure, with its cause (the run log's EDGE
 	// FAULT line); nil drops nothing that layer 3 reads, only the line.
 	Fault func(what string, err error)
@@ -159,6 +163,11 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	absent, rested := time.Duration(0), false
 	for {
+		if e.Streams != nil {
+			if cur, ok := e.Streams()[r.Stream]; ok && cur.Base != "" && cur.Base != s.Base {
+				s.Base, gate = cur.Base, git.Gate{} // the base changed (stream set --base): a gate built on the old one is let go
+			}
+		}
 		res, err := e.pass(ctx, dir, pass)
 		gate = res.Kept()
 		if again, waited := askAgain_internal(res, err, absent, wait); again {

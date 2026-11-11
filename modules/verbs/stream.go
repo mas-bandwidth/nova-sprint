@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -108,17 +109,44 @@ func (e *Engine) baseTip(ctx context.Context, s store.Stream, again string) (str
 	return sha, nil
 }
 
-// runStreamSet is `stream set`: a stream's mode, forge or gates, one write
-// each. Only a change of mode or forge is admitted again (its repository,
-// base and group branch); the gates change nothing there.
+// runStreamSet is `stream set`: a stream's mode, forge, gates or base, one
+// write each. A change of mode, forge or base is admitted again (its
+// repository, base and group branch); the gates change nothing there. A
+// base change is refused while cards merged onto the old base wait for
+// their promotion to main (it looks for them on the stream's base); cards
+// merging have their gate let go and the group built on the new base by
+// the landing's next pass (edges.go land), and cards working finish their
+// attempt on the old base, their heads landing onto the new one.
 func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	name := in.arg(0)
 	s, ok := snap.Streams[name]
 	if !ok {
 		return "", refuse("no stream "+name, "nova-sprint stream add "+name+" --repo <org/repo>")
 	}
-	if !in.has("mode") && !in.has("forge") && !in.has("gate") {
-		return "", misuse("stream set", "stream set changes --mode, --forge, --gate, or several")
+	if !in.has("mode") && !in.has("forge") && !in.has("gate") && !in.has("base") {
+		return "", misuse("stream set", "stream set changes --mode, --forge, --gate, --base, or several")
+	}
+	oldBase, base := s.Base, orWord(in.str("base"), s.Base)
+	var merging, working []string
+	if base != oldBase {
+		var based []string
+		for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
+			c := snap.Cards[id]
+			_, onBase := store.BaseMerge(c.Reason)
+			switch {
+			case c.Stream != name || c.Kind != "producer":
+			case c.State == "merging" && onBase:
+				based = append(based, id)
+			case c.State == "merging":
+				merging = append(merging, id)
+			case c.State == "working":
+				working = append(working, id)
+			}
+		}
+		if len(based) > 0 {
+			return "", refuse("stream "+name+" has cards merged onto "+oldBase+" that wait for their promotion to main ("+strings.Join(based, ", ")+")",
+				"let the promotion land them on main (nova-sprint show "+name+"), then set the base again")
+		}
 	}
 	mode, forge, err := streamSettings(in, s.Mode, s.Forge)
 	if err != nil {
@@ -129,21 +157,25 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		return "", err
 	}
 	var ws []store.Write
-	if mode != orWord(s.Mode, store.StreamAuto) {
-		ws = append(ws, store.SetStreamMode{Stream: name, Mode: mode})
-	}
-	if forge != s.Forge {
-		ws = append(ws, store.SetStreamForge{Stream: name, Forge: forge})
+	if base != oldBase { // overwrites repo, base, pos, mode and forge; keeps held and gates
+		ws = append(ws, store.PutStream{Name: name, Repo: s.Repo, Base: base, Pos: s.Pos, Mode: mode, Forge: forge})
+	} else {
+		if mode != orWord(s.Mode, store.StreamAuto) {
+			ws = append(ws, store.SetStreamMode{Stream: name, Mode: mode})
+		}
+		if forge != s.Forge {
+			ws = append(ws, store.SetStreamForge{Stream: name, Forge: forge})
+		}
 	}
 	landing := len(ws) > 0
 	if !slices.Equal(gates, s.Gates) {
 		ws = append(ws, store.SetStreamGates{Stream: name, Gates: gates})
 	}
 	if len(ws) == 0 {
-		return done(waitNext, append([]string{fmt.Sprintf("STREAM %s mode=%s forge=%s unchanged", name, mode, orWord(forge, "none"))}, gateLines(gates)...)...), nil
+		return done(waitNext, append([]string{fmt.Sprintf("STREAM %s base=%s mode=%s forge=%s unchanged", name, base, mode, orWord(forge, "none"))}, gateLines(gates)...)...), nil
 	}
 	// the stream it makes is admitted as stream add admits one
-	s.Mode, s.Forge = mode, forge
+	s.Mode, s.Forge, s.Base = mode, forge, base
 	if landing {
 		if _, err := e.admitStream(ctx, s, "set the stream again"); err != nil {
 			return "", err
@@ -152,14 +184,25 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 			return "", err
 		}
 	}
-	op := e.newOp("stream-set", in.actor, snap, name, mode, forge, gates)
+	op := e.newOp("stream-set", in.actor, snap, name, mode, forge, gates, base)
 	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
 	op.Writes = ws
 	r, err := e.commit(ctx, op, "nova-sprint show "+name)
 	if err != nil {
 		return "", err
 	}
-	return done(waitNext, append(append([]string{fmt.Sprintf("STREAM %s mode=%s forge=%s applied at seq %d", name, mode, orWord(forge, "none"), r.Seq)}, gateLines(gates)...), e.gatelessWarn(ctx, snap, store.Stream{Name: name, Gates: gates})...)...), nil
+	line := fmt.Sprintf("STREAM %s mode=%s forge=%s applied at seq %d", name, mode, orWord(forge, "none"), r.Seq)
+	var moved []string
+	if base != oldBase {
+		line = fmt.Sprintf("STREAM %s base=%s (was %s) mode=%s forge=%s applied at seq %d", name, base, oldBase, mode, orWord(forge, "none"), r.Seq)
+		if len(merging) > 0 {
+			moved = append(moved, "NOTE cards merging ("+strings.Join(merging, ", ")+"): the landing lets go of any gate built on "+oldBase+" and builds the group on "+base+" at its next pass")
+		}
+		if len(working) > 0 {
+			moved = append(moved, "NOTE cards working ("+strings.Join(working, ", ")+"): each finishes its attempt on "+oldBase+" and its head lands onto "+base+"; cards taken from now on, and every retry, start from "+base)
+		}
+	}
+	return done(waitNext, append(append(append([]string{line}, moved...), gateLines(gates)...), e.gatelessWarn(ctx, snap, store.Stream{Name: name, Gates: gates})...)...), nil
 }
 
 // streamGates is --gate over the stream's own gates: each given one

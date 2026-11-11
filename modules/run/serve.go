@@ -138,6 +138,7 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
 		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Landings: t.Landings(), Stats: t.Stats(), At: now}, cfg.Clock.Now)}
 	l.edges.Fault = l.log.EdgeFault
+	l.edges.Streams = l.streamsCopy
 	l.admit = &Admission{Admit: cfg.Admit, Fault: l.log.EdgeFault}
 	l.setStreams(t.snap.Streams)
 	return l, nil
