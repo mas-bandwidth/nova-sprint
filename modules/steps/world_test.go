@@ -24,10 +24,10 @@ type world struct {
 	cursor     int64
 	n          int
 	now        time.Time
-	headless   set               // streams the inputs carry no head for (the edge's read failed)
-	away       set               // rows the inputs do not see on the bus this tick (their hook is down)
-	lapse      time.Duration     // how long ago the last good who read saw the rest (0: this tick)
-	unadmitted map[string]string // producers layer 6's admission re-proof refuses, and why (Inputs.Unadmitted)
+	headless   set                 // streams the inputs carry no head for (the edge's read failed)
+	away       set                 // rows the inputs do not see on the bus this tick (their hook is down)
+	lapse      time.Duration       // how long ago the last good who read saw the rest (0: this tick)
+	unadmitted map[string]string   // producers layer 6's admission re-proof refuses, and why (Inputs.Unadmitted)
 	bases      map[string]BaseCI   // each watched base's last completed CI read (Inputs.Bases)
 	moves      map[string]BaseMove // each watched base moved by something other than the sprint's landing (Inputs.Moves)
 }
