@@ -213,7 +213,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	cfg.Procs = cmp.Or[ProcessTable](cfg.Procs, OSProcessTable{})
 	if cfg.Wall == nil {
 		grace := cfg.Timeouts.TerminateGrace
-		cfg.Wall = &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, KillGroup: OSKillGroup, KillJob: func(d string) (int, error) { return OSKillJob(d, grace) },
+		cfg.Wall = &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, KillGroup: OSKillGroup, KillJob: func(d string) (int, error) { return OSKillJob(cfg.RootDir, d, grace) },
 			Config: WallConfig{ReserveWait: cfg.Timeouts.ReserveWait, NetDeny: true}}
 		if cfg.KillJob == nil {
 			cfg.KillJob = cfg.Wall.(*OSReserveWall).KillJob

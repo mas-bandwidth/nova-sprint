@@ -44,6 +44,13 @@ program:
     go test -count=1 -race -short -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...   # per commit
     go test -count=1 -race -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...          # nightly
 
+Per commit, CI splits the unit and functional tiers into shards, one job
+each (`ci.yml`, the matrices): the same tests, each run once, so each job
+fits 2 minutes on a loaded runner. A long test is split by its subtests with
+one complement shard, and a shard named `rest` runs every package no other
+shard names. `go run ./cmd/cishards` (in the lint job) checks that every test
+runs in exactly one shard; a new test or package needs no change there.
+
 Functional tests (each starts its own PostgreSQL with `initdb`; CI fails if `initdb` is missing).
 `TestFunctionalREADMECommandsRunCold` builds the binary and runs the commands
 README.md and docs/README.md show that run cold (help, version, `help <verb>`
