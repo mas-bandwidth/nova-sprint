@@ -51,6 +51,7 @@ func (t *tick) pack() Plan {
 	if jop, ok := t.judgementOp(); ok {
 		plan.Ops = append(plan.Ops, jop)
 	}
+	plan.Broken = t.broken()
 	return plan
 }
 

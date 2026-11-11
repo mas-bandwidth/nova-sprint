@@ -46,15 +46,15 @@ type ExecFunc func(ctx context.Context, cmd edge.Cmd) (edge.Result, error)
 func (f ExecFunc) Run(ctx context.Context, cmd edge.Cmd) (edge.Result, error) { return f(ctx, cmd) }
 
 // CheckRollup is a commit's checks: State, the failing checks with the
-// first one's URL, and Waiting, some check still queued or running (a red
-// or faulted rollup can still be waiting: directive 76), Pending of them.
-// A red rollup that is still waiting is no verdict yet: the landing reads
-// it as unfinished, never as red (LANDING.md "A verdict only from completed
-// checks").
+// first one's URL (and each one's, in URLs), and Waiting, some check still
+// queued or running (a red or faulted rollup can still be waiting:
+// directive 76), Pending of them. A red rollup that is still waiting is no
+// verdict yet: the landing reads it as unfinished, never as red (LANDING.md
+// "A verdict only from completed checks").
 type CheckRollup struct {
 	SHA, URL, Reason string
 	State            CheckState
-	Failing          []string
+	Failing, URLs    []string
 	Waiting          bool
 	Pending          int
 }
@@ -505,7 +505,7 @@ func classifyNode_internal(n gqlNode) (CheckState, string, string) {
 	}
 }
 func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRollup {
-	var failing, faulted []string
+	var failing, faulted, redURLs []string
 	var firstRedURL, firstFaultURL string
 	pending := 0
 	for _, n := range nodes {
@@ -514,7 +514,7 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 		case CheckPending:
 			pending++
 		case CheckRed:
-			failing, firstRedURL = append(failing, name), cmp.Or(firstRedURL, url)
+			failing, firstRedURL, redURLs = append(failing, name), cmp.Or(firstRedURL, url), append(redURLs, url)
 		case CheckFault:
 			faulted, firstFaultURL = append(faulted, name), cmp.Or(firstFaultURL, url)
 		}
@@ -523,7 +523,7 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 	case len(faulted) > 0 && len(failing) == 0:
 		return CheckRollup{SHA: sha, State: CheckFault, Failing: faulted, URL: firstFaultURL, Waiting: pending > 0, Pending: pending, Reason: "gate did not run: " + strings.Join(faulted, ", ")}
 	case len(failing) > 0:
-		return CheckRollup{SHA: sha, State: CheckRed, Failing: failing, URL: firstRedURL, Waiting: pending > 0, Pending: pending, Reason: "CI red: " + strings.Join(failing, ", ")}
+		return CheckRollup{SHA: sha, State: CheckRed, Failing: failing, URL: firstRedURL, URLs: redURLs, Waiting: pending > 0, Pending: pending, Reason: "CI red: " + strings.Join(failing, ", ")}
 	case strings.EqualFold(rollupState, "FAILURE") || strings.EqualFold(rollupState, "ERROR"):
 		return CheckRollup{SHA: sha, State: CheckRed, Failing: []string{"statusCheckRollup"}, Reason: "statusCheckRollup state " + rollupState}
 	case pending > 0 || strings.EqualFold(rollupState, "PENDING") || strings.EqualFold(rollupState, "EXPECTED") || len(nodes) == 0:

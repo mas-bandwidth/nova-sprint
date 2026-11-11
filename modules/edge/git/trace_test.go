@@ -90,15 +90,18 @@ type landWalk_internal struct {
 // reads as a failure.
 type walkForge_internal struct {
 	*fakeForge_internal
-	w                 *landWalk_internal
-	gate, ci, res     string
-	absent, move, old bool
+	w                         *landWalk_internal
+	gate, ci, res             string
+	absent, move, old, rested bool
 }
 
 const walkJob = "https://example.invalid/actions/runs/1/job/2"
 
 func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
 	f.call_internal("Checks")
+	if f.rested {
+		return nil, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, Reason: "HTTP 403: API rate limit exceeded"}
+	}
 	out := make(map[string]forge.CheckRollup, len(shas))
 	for _, sha := range shas {
 		r := forge.CheckRollup{SHA: sha, State: forge.CheckGreen, Failing: []string{"test"}, URL: walkJob}
@@ -287,12 +290,13 @@ var walkOutcomes = map[LandOutcome]string{OutcomeLanded: "landed", OutcomeConfli
 // outcome (layer 6, as edges.land: pending and unfinished are asked again,
 // unfinished after the wait is no verdict).
 func (w *landWalk_internal) pass_internal(s string) {
-	w.passWith_internal(s, w.rng.Intn(8) == 0, w.extCount_internal() < walkK && w.rng.Intn(6) == 0, w.rng.Intn(6) == 0)
+	w.passWith_internal(s, w.rng.Intn(8) == 0, w.extCount_internal() < walkK && w.rng.Intn(6) == 0, w.rng.Intn(6) == 0, w.rng.Intn(8) == 0)
 }
 
 // passWith_internal is pass_internal with the forge's choices given: absent
-// CI, a base that moves under a green gate, a refused merge.
-func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse bool) {
+// CI, a base that moves under a green gate, a refused merge, a forge GitHub
+// rate-limited (its checks read refused: forge_rested).
+func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, rested bool) {
 	r := w.req[s]
 	req := LandRequest{Repo: "o/r", Stream: s, Base: "main", Gate: r.pin}
 	for _, c := range r.cards {
@@ -300,7 +304,7 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse boo
 		req.Branches = append(req.Branches, "sprint/"+s+"/"+c)
 	}
 	w.ff.gate, w.ff.ci, w.ff.res = r.gate, r.ci, r.res
-	w.ff.absent, w.ff.move = absent, move
+	w.ff.absent, w.ff.move, w.ff.rested = absent, move, rested
 	w.ff.OnMerge = func(sha string) (string, error) {
 		if refuse {
 			return "", fmt.Errorf("required reviews missing")
@@ -324,6 +328,9 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse boo
 	case OutcomeBaseMoved:
 		r.ci = "none" // let go: the next pass builds on the new tip
 		w.req[s] = r
+		return
+	case OutcomeRested:
+		w.req[s] = r // a rate-limited forge: asked again, its gate kept, nothing read
 		return
 	case OutcomeConflict:
 		for _, c := range r.cards {
@@ -485,7 +492,7 @@ var landEdgeBreakers = map[string]func(t *testing.T, w *landWalk_internal, step 
 		breakerOldForge_internal(t, w, step, "done", "stopped")
 	},
 	"landedge-breaker-rebuilds-in-flight": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
-		w.passWith_internal("s1", false, false, false)
+		w.passWith_internal("s1", false, false, false, false)
 		step(walkMove_internal{act: "Pass", arg: "s1"})
 		gate := w.req["s1"].gate
 		w.extCommit_internal()
@@ -493,22 +500,22 @@ var landEdgeBreakers = map[string]func(t *testing.T, w *landWalk_internal, step 
 		r := w.req["s1"]
 		r.pin = Gate{} // the old run keeps no gate
 		w.req["s1"] = r
-		w.passWith_internal("s1", false, false, false)
+		w.passWith_internal("s1", false, false, false, false)
 		step(walkMove_internal{act: "Pass", arg: "s1"})
 		if w.req["s1"].gate == gate {
 			t.Fatal("rebuilds-in-flight: the pass with no gate kept did not rebuild the group")
 		}
 	},
 	"landedge-breaker-conflict-judges-group": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
-		w.passWith_internal("s2", false, false, false)
+		w.passWith_internal("s2", false, false, false, false)
 		step(walkMove_internal{act: "Pass", arg: "s2"})
 		r := w.req["s2"]
 		r.ci, r.res = "done", "green"
 		w.req["s2"] = r
 		step(walkMove_internal{act: "CIStep", arg: "s2"})
-		w.passWith_internal("s2", false, false, false)
+		w.passWith_internal("s2", false, false, false, false)
 		step(walkMove_internal{act: "Pass", arg: "s2"})
-		w.passWith_internal("s1", false, false, false)
+		w.passWith_internal("s1", false, false, false, false)
 		step(walkMove_internal{act: "Pass", arg: "s1"})
 		if w.req["s2"].out != "landed" || w.req["s1"].out != "conflict" || !slices.Equal(w.req["s1"].odd, []string{"c2"}) {
 			t.Fatalf("conflict-judges-group: s2 %+v, s1 %+v, want c3 landed and s1's group conflicting on c2", w.req["s2"], w.req["s1"])
@@ -522,7 +529,7 @@ var landEdgeBreakers = map[string]func(t *testing.T, w *landWalk_internal, step 
 // breakerOldForge_internal is s1's first pass (the gate's CI starts), CI
 // moved to ci/res, and one pass on the old forge, which judges red.
 func breakerOldForge_internal(t *testing.T, w *landWalk_internal, step func(walkMove_internal), ci, res string) {
-	w.passWith_internal("s1", false, false, false)
+	w.passWith_internal("s1", false, false, false, false)
 	step(walkMove_internal{act: "Pass", arg: "s1"})
 	r := w.req["s1"]
 	if ci == "done" {
@@ -534,7 +541,7 @@ func breakerOldForge_internal(t *testing.T, w *landWalk_internal, step func(walk
 	w.req["s1"] = r
 	step(walkMove_internal{act: "CIStep", arg: "s1"})
 	w.ff.old = true
-	w.passWith_internal("s1", false, false, false)
+	w.passWith_internal("s1", false, false, false, false)
 	step(walkMove_internal{act: "Pass", arg: "s1"})
 	if w.req["s1"].out != "red" {
 		t.Fatalf("the old forge's pass is %q, want red", w.req["s1"].out)

@@ -15,6 +15,17 @@ func githubStream(s *store.Snapshot) {
 	s.Streams["s"] = st
 }
 
+// baseRedOpen is githubStream with the run's base-red judgement open on its
+// repository and base, which check's CHECK RED line names.
+func baseRedOpen(s *store.Snapshot) {
+	githubStream(s)
+	if s.Judgements == nil {
+		s.Judgements = map[string]store.Judgement{}
+	}
+	s.Judgements["base-red.o/r@main.1"] = store.Judgement{ID: "base-red.o/r@main.1", Kind: "base-red", About: "o/r@main", State: "open",
+		Question: "BASE RED at bbbbbbbbbbbb, o/r main: 7 checks red", Command: "nova-sprint judge base-red.o/r@main.1 <choice> --reason <why>   choices: retry"}
+}
+
 // baseChecks gives the fake forge the base tip's rollup.
 func baseChecks(r forge.CheckRollup) func(*testing.T, *world) {
 	return func(_ *testing.T, w *world) { w.forge.rollups = map[string]forge.CheckRollup{base: r} }
@@ -108,7 +119,9 @@ func TestCheckSaysTheBaseIsRed(t *testing.T) {
 	t.Parallel()
 	runCases(t, []tcase{
 		{name: "red", as: "carol", args: []string{"check"}, exit: 1, snap: githubStream, prep: then(healthy, baseChecks(sevenRed)),
-			want: []string{"CHECK RED stream s: base o/r main is red at bbbbbbbbbbbb: 7 checks red (unit, lint, tsan, asan, msan and 2 more), so no card of it lands: make o/r's main green at bbbbbbbbbbbb (cards for that are admitted), then check again"}},
+			want: []string{"CHECK RED stream s: base o/r main is red at bbbbbbbbbbbb: 7 checks red (unit, lint, tsan, asan, msan and 2 more), so no card of it lands; no base-red judgement is open for it yet: make o/r's main green at bbbbbbbbbbbb (cards for that are admitted), then check again"}},
+		{name: "red, judged", as: "carol", args: []string{"check"}, exit: 1, snap: baseRedOpen, prep: then(healthy, baseChecks(sevenRed)),
+			want: []string{"CHECK RED stream s: base o/r main is red at bbbbbbbbbbbb: 7 checks red (unit, lint, tsan, asan, msan and 2 more), so no card of it lands; judgement base-red.o/r@main.1 is open: fix the base first, then answer it: make o/r's main green"}},
 		{name: "unreadable", as: "carol", args: []string{"check"}, exit: 0, snap: githubStream, prep: then(healthy, func(_ *testing.T, w *world) { w.forge.rollupE = errBroken }),
 			want: []string{"CHECK WARN stream s: the checks of o/r's main at bbbbbbbbbbbb cannot be read (connection refused), so it is not known green"}},
 	})

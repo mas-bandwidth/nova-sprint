@@ -181,6 +181,12 @@ Pass(s) ==
         /\ NoMerge(s)
         /\ Done(s, [req[s] EXCEPT !.rung = RungOf(s), !.odd = Odd(s)], "conflict")
         /\ UNCHANGED base
+     \* GitHub rate-limited the forge (forge_rested): no CI read, asked again,
+     \* nothing changed. (A rest after a new gate was pushed keeps that gate,
+     \* LandResult.Kept: that is the no-verdict-yet branch below, with no read.)
+     \/ /\ ~(req[s].cards \subseteq Tip.cards)
+        /\ ~NoMerge(s) \/ Kept(s)
+        /\ UNCHANGED <<base, req>>
      \/ /\ ~(req[s].cards \subseteq Tip.cards)
         /\ ~NoMerge(s) \/ Kept(s)               \* a kept gate is read whatever base did since
         /\ LET r == Gate1(s) IN

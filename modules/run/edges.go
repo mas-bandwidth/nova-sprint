@@ -44,6 +44,10 @@ type Edges struct {
 	// Fault is told every edge failure, with its cause (the run log's EDGE
 	// FAULT line); nil drops nothing that layer 3 reads, only the line.
 	Fault func(what string, err error)
+	// BaseRed is told each land pass that read its base tip red (the
+	// stream's repository and base, and that tip): BaseWatch reads a tip it
+	// had settled again (LandSawRed). nil tells no one.
+	BaseRed func(repo, base, tip string)
 
 	mu      sync.Mutex
 	results []steps.InboxItem
@@ -169,6 +173,9 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		}
 		res, err := e.pass(ctx, dir, pass)
 		gate = res.Kept()
+		if err == nil {
+			e.sawBaseRed(s, res)
+		}
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			if res.Outcome != git.OutcomeRested {
 				rested = false
@@ -195,19 +202,30 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 }
 
+// sawBaseRed tells BaseRed when a pass read its base tip red.
+func (e *Edges) sawBaseRed(s store.Stream, res git.LandResult) {
+	if len(res.BaseFailing) > 0 && e.BaseRed != nil {
+		e.BaseRed(s.Repo, s.Base, res.BaseTip)
+	}
+}
+
 // askAgain_internal says whether a pass is asked again after LandPoll, and
 // how long the gated sha has had no check at all, or a failed check while
 // others still run. Pending CI, a base that moved after the gate and a
 // forge GitHub rate-limited are asked again (a
 // resting forge refuses its calls without making them, so those passes
 // spend nothing); an absent CI and an unfinished one only until wait, after
-// which the pass goes to layer 3 as no-ci and as ci_no_verdict.
+// which the pass goes to layer 3 as no-ci and as ci_no_verdict. A rested
+// pass read no CI, so it keeps absent as it was: a rest neither restarts
+// the no-CI clock nor counts on it.
 func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, 0
 	}
 	switch res.Outcome {
-	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested:
+	case git.OutcomeRested:
+		return true, absent
+	case git.OutcomePending, git.OutcomeBaseMoved:
 		return true, 0
 	case git.OutcomeAbsent, git.OutcomeUnfinished:
 		absent += LandPoll
