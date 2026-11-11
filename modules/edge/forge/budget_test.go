@@ -86,6 +86,8 @@ func TestChecksReadsEveryPageOnlyForAFailingCommit(t *testing.T) {
 	}{
 		{"running, nothing failed", "PENDING", 326, map[string]int{"SUCCESS": 250, "IN_PROGRESS": 50, "QUEUED": 26},
 			func(i int) string { return map[bool]string{true: "SUCCESS"}[i < 250] }, CheckPending, 1},
+		{"rollup success, running on a later page", "SUCCESS", 326, map[string]int{"SUCCESS": 300, "IN_PROGRESS": 26},
+			func(i int) string { return map[bool]string{true: "SUCCESS"}[i < 300] }, CheckPending, 1},
 		{"all green", "SUCCESS", 326, map[string]int{"SUCCESS": 300, "SKIPPED": 20, "NEUTRAL": 6, "FAILURE": 0}, green, CheckGreen, 1},
 		{"one failed on the last page", "FAILURE", 326, map[string]int{"SUCCESS": 325, "FAILURE": 1},
 			func(i int) string { return map[bool]string{true: "FAILURE", false: "SUCCESS"}[i == 325] }, CheckRed, 4},
