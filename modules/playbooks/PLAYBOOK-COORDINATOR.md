@@ -354,6 +354,32 @@ automatic path is green-and-merge only; everything else is yours. Each stream is
    streams when two of them conflict, and fix the cause (a brief, the order) before you answer
    `retry`.
 
+**A verdict only from completed checks.** A landing is judged on CI only once every check at
+the gated sha has completed. A check that fails while others still run is no verdict yet: the
+run asks again, and if checks are still running after the stream's `ci_wait` it is yours as
+`ci_no_verdict` ("no verdict after <wait>: <n> checks still pending; failed so far: ..."),
+never `ci_red`. "The base itself is red" is said only from the base tip's completed checks;
+while they run the judgement says "base CI still running at its tip <sha>: <n> red so far".
+
+What each cause of a land judgement means:
+
+- `ci_red`: checks completed and at least one failed on its own. "failing" names those; checks
+  GitHub says were stopped are named apart as "stopped, not failed (no verdict)".
+- `ci_no_verdict`: CI said nothing about the code. Either every failing check was stopped
+  (killed, `exit code 137` or `143`; cancelled; timed out), and the run already ran those jobs
+  again once (`gh run rerun --failed`) and they were stopped again; or checks were still running
+  after `ci_wait`. Look at the runners and the load before blaming the card; `retry` asks a new
+  landing.
+- `ci_fault`: a check that never ran (a workflow that did not start, its checks unreadable).
+- `no-ci`: no check at all appeared within `ci_wait`.
+- `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`, `missing_head`, `head_moved`,
+  `base_behind`, `hand`, `fault`: what their names say, with the facts.
+
+A stopped check is read only from GitHub's own words (the check's conclusion and its failure
+annotations), never from a fleet's: a job killed at a runner's time limit, by the out-of-memory
+killer or by hand all read "killed (exit code 137)", and a run cancelled by a newer one reads as
+cancelled.
+
 **You stitch.** Cards that edit the same file run at the same time, so their heads can meet in
 a conflict. That is expected, not a fault of the cards: the group rung merges what merges
 cleanly, and what does not comes to you. Do the holistic merge yourself (by hand, below):
@@ -368,7 +394,8 @@ fix: merge it into the base yourself, push, and land it again (a head already on
 at once). Never land a card that is not merging, and never resolve a conflict on a card's branch,
 which no reader has read.
 
-A pending CI and a base that moved are asked again by the run on their own. A merging card with
+A pending CI, a base that moved, a stopped check's first rerun and a rate-limited forge are asked
+again by the run on their own. A merging card with
 no land request and no land judgement is reported to you as an `engine` judgement: answer it
 `retry`, and take it to the project's own tracker.
 

@@ -141,12 +141,13 @@ branch>, Heads, Branches}` run on a goroutine of its own (never under the
 tick), with the stream's forge (`Forge` "github": `forge.New`, acting as
 the host's gh login, `GH_GATE_TOKEN` an optional override). A stream with
 mode hand or no forge is answered at once with outcome `hand`. The pass is
-asked again after `LandPoll` on `ci_pending` and `base_moved`, and on
-`ci_absent` until `Wait` (10 minutes when none), when it is `no-ci`. Its
+asked again after `LandPoll` on `ci_pending`, `base_moved`, `forge_rested`
+and `ci_rerun`, and on `ci_absent` and `ci_unfinished` until `Wait` (10
+minutes when none), when it is `no-ci` and `ci_no_verdict`. Its
 `LandResult` comes back as one `steps.InboxItem{Kind: "land", Request:
 req.ID, Outcome, Landed, Merge, Reason}`: landed -> `landed` with the
 landed heads and the merge sha; every other outcome (`ci_red`, `no-ci`,
-`conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`, `ci_fault`,
+`ci_no_verdict`, `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`, `ci_fault`,
 `missing_head`, `head_moved`, `hand`) keeps its name and carries the facts
 in `Reason` (rung, base tip, group tip, gated sha, PR, failing checks, their
 URL and first lines, conflicts, the pass's reason); an error is `fault`.

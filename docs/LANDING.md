@@ -71,6 +71,37 @@ rate-limited (`forge_rested`) is asked again the same way, said once in the
 run log as an edge fault; the identity rests meanwhile, so those passes make
 no call.
 
+### A verdict only from completed checks (2026-11-11)
+
+The sprint of 2026-11-10 judged landings red while their CI still ran: the
+rollup is red as soon as one check fails, and one killed job read as the
+card's fault. A land verdict is now taken only from completed checks:
+
+- **Checks still running.** A gated sha with a failed check while others
+  still run (`CheckRollup.Waiting`) is `ci_unfinished`: no log is read and
+  the pass is asked again. When `ci_wait` passes with checks still running
+  it is one `ci_no_verdict` judgement: "no verdict after <wait>: <n> checks
+  still pending; failed so far: <names>", a different cause from red.
+- **Stopped is not failed.** Once the checks complete, each failing one is
+  read (`forge.Failures`: its conclusion and its failure annotations, one
+  GraphQL call per 100 checks) and those GitHub says were stopped (a
+  conclusion of cancelled or timed out; an annotation "exit code 137",
+  "exit code 143", "exceeded the maximum execution time", "has timed out
+  after", "the operation was canceled") are named apart in the judgement
+  as "stopped, not failed (no verdict): <name> <how>". The words are
+  GitHub's own, never a fleet's: a job killed at a runner's time limit, by
+  the out-of-memory killer or by hand all read "killed (exit code 137)",
+  and a run cancelled by a newer one reads as cancelled. They cannot be told
+  apart from here.
+- **Every failing check stopped.** That is no verdict about the code: the
+  stopped jobs are run again once (`gh run rerun <run> --failed`, one call
+  per distinct run, outcome `ci_rerun`, asked again), and if they are
+  stopped again, or the rerun is refused, it is one `ci_no_verdict`
+  judgement saying so. A request is run again at most once (`reran`).
+- **Red is a check that failed on its own**, after every check completed:
+  `ci_red`, with those checks, the first one's URL and its first failing
+  lines (read once, from that completed run).
+
 ### A red base
 
 A red gated sha is one `ci_red` judgement at once, with the failing checks
@@ -84,12 +115,16 @@ red, the judgement leads with both sides, plainly:
 > ... land: you looked, merge it by hand; fix: back to its producer with
 > your finding as the reason; retry: a new landing
 
+"The base itself is red" is said only from the base tip's completed checks.
+While they still run the reason says "base CI still running at its tip
+<sha>: <n> red so far (<names>)", and no comparison is made; the head's
+red is itself taken only from completed checks (above).
+
 A red base is a merge question for the whole picture, so the landing does
 not classify which of the head's failures are "the base's" and gives no
 advice: the coordinator decides with all three choices (land, fix, retry).
 A base tip whose checks cannot be read is said in the reason. Red never
-lands by itself (`BaseNeverRed`); `LandEdge.tla` is unchanged, since every
-non-green, non-absent gate is one judgement (`red`) in the model.
+lands by itself (`BaseNeverRed`).
 
 ### land: the hand merge
 
@@ -265,8 +300,21 @@ does not read the gate, so a red tree merges), `LandEdgeStaleGate` (base
 moves under the gate and the pass merges anyway: the heads on the new tip
 land, not the tree CI passed), `LandEdgeJudgementHoldsStream` (a judgement
 on one card holds its whole stream, so the stream's other merging cards
-are left with neither a request nor a judgement). Reach checks show rung 2, a
-judgement, a hand landing and a red gate. `tla/Steps.tla` carries the land
+are left with neither a request nor a judgement). CI takes time in the
+model (`CIStep`: a gate's checks run, may fail while others run, and
+complete green, red or stopped; `Late`: the wait passes), with three more
+invariants: `VerdictOnlyCompleted` (red only from completed checks),
+`RedIsReal` (red only on a tree that is red; a stopped gate is never red)
+and `StoppedRunAgainOnce` (a completed gate is no verdict only after its
+stopped jobs were run again once). Their reversed witnesses:
+`LandEdgeRedWhileRunning` (a failure while checks run is judged red),
+`LandEdgeStoppedIsRed` (stopped jobs read as failed) and
+`LandEdgeStoppedJudgedAtOnce` (no rerun before the no verdict). Reach
+checks show rung 2, a judgement, a hand landing, a red gate, a no verdict,
+a rerun and a wait that passed. The trace walk plays CI per gate too, and
+two committed breakers, `tla/traces/landedge-breaker-red-while-running`
+and `landedge-breaker-stopped-is-red` (the 2.0.36 landing's judgements),
+are refused at their last record. `tla/Steps.tla` carries the land
 judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
 `MergingCovered` (judgements as the tick's snapshot saw them) and the
 reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the earlier card lands, so a card after one sent to fix sits with no request).
@@ -296,8 +344,14 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
   than forbidding it.
 - **`flowing` is validated and not used.** Rung 2 is taken whenever
   `backed_up` or more heads wait; there is no hysteresis back to rung 1.
-- **Pending CI has no bound of its own.** A check that never leaves pending
-  is met by the stall judgement, not by `ci_wait`.
+- **Pending CI has no bound of its own.** A check that never leaves pending,
+  with none failed, is met by the stall judgement, not by `ci_wait`; one
+  failed while others run is bounded by `ci_wait` (`ci_no_verdict`).
+- **A rerun not yet visible.** The pass after `ci_rerun` reads the checks
+  again; if GitHub still shows the old, stopped run there, that pass is the
+  no verdict. Not seen live; a rerun's checks are queued at once.
+- **Why a job was killed is not known here.** Exit 137 is the same for a
+  runner's time limit, the out-of-memory killer and a hand kill.
 - **Stream mode `group`** is accepted and behaves as `auto`.
 
 ## Where it lives

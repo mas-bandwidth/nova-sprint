@@ -671,7 +671,7 @@ dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
 `v2-stitch-w2L`).** Superseding the stitch above where they differ. The
 landing's automatic path is green-and-merge only: `landResults` moves cards
 only on `landed` (with `card.Landed{Head, Merge}`, the merge sha), and every
-other outcome (`ci_red`, `no-ci`, `conflict`, `merge_refused`,
+other outcome (`ci_red`, `no-ci`, `ci_no_verdict`, `conflict`, `merge_refused`,
 `pr_unopenable`, `branch_failed`, `ci_fault`, `missing_head`, `head_moved`,
 `hand`, `fault`) opens one `land` judgement per card still merging at the
 request's head (`land.<card>.<n>`, group key `land`, no deadline; choices
