@@ -11,3 +11,6 @@ runner-breaker/
 runner-restart/
 runner-breaker-refused/
 verbfence-walk-*/
+basered-walk-*/
+answeredquiet-walk-*/
+hook-walk-*/

@@ -291,7 +291,9 @@ func streamsAnswer(s store.Snapshot) (string, string) {
 	return "nothing needs you", waitNext
 }
 
-// openJudgements are the open judgements, oldest first.
+// openJudgements are the open judgements, a red base's first (it is fixed
+// before anything else: nothing on its streams lands until it is green),
+// then oldest first.
 func openJudgements(s store.Snapshot) []judgementLine {
 	var js []store.Judgement
 	for _, j := range s.Judgements {
@@ -300,13 +302,21 @@ func openJudgements(s store.Snapshot) []judgementLine {
 		}
 	}
 	slices.SortFunc(js, func(a, b store.Judgement) int {
-		return cmp.Or(a.OpenedAt.Compare(b.OpenedAt), strings.Compare(a.ID, b.ID))
+		return cmp.Or(cmp.Compare(baseRedRank(a), baseRedRank(b)), a.OpenedAt.Compare(b.OpenedAt), strings.Compare(a.ID, b.ID))
 	})
 	out := []judgementLine{}
 	for _, j := range js {
 		out = append(out, judgementLine{ID: j.ID, Kind: j.Kind, About: j.About, Question: j.Question, Command: strings.TrimSpace(j.Command)})
 	}
 	return out
+}
+
+// baseRedRank is 0 for a base-red judgement, 1 for any other.
+func baseRedRank(j store.Judgement) int {
+	if j.Kind == "base-red" {
+		return 0
+	}
+	return 1
 }
 
 // dealOrder is the deal's order: level, then score, then id.

@@ -3,11 +3,11 @@ package verbs
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -29,9 +29,6 @@ type Forge interface {
 	// them with (forge.Forge.Checks); a sha with no checks has no entry.
 	Checks(ctx context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error)
 }
-
-// baseRedNamed is how many of a red base's failing checks a line names.
-const baseRedNamed = 5
 
 // baseRed is a github stream's base tip read by the landing's own rule
 // (forge.CheckRed, what makes the landing say "the base itself is red": a
@@ -61,20 +58,6 @@ func (e *Engine) baseRed(ctx context.Context, s store.Stream, tip string) ([]str
 	return nil, nil
 }
 
-// redChecks is n failing checks as a line says them: "<n> check(s) red
-// (<the first five> and <m> more)".
-func redChecks(failing []string) string {
-	named := strings.Join(failing[:min(len(failing), baseRedNamed)], ", ")
-	if more := len(failing) - baseRedNamed; more > 0 {
-		named += fmt.Sprintf(" and %d more", more)
-	}
-	checks := "checks"
-	if len(failing) == 1 {
-		checks = "check"
-	}
-	return fmt.Sprintf("%d %s red (%s)", len(failing), checks, named)
-}
-
 // baseRedLine is add's and stream add's line for stream s at tip: BASE RED
 // when the base is red, a WARN when its checks could not be read, else "".
 func (e *Engine) baseRedLine(ctx context.Context, s store.Stream, tip string) string {
@@ -85,7 +68,7 @@ func (e *Engine) baseRedLine(ctx context.Context, s store.Stream, tip string) st
 		return "WARN stream " + s.Name + ": the checks of " + s.Repo + "'s " + s.Base + " at " + at + " cannot be read (" + oneLine(errText(err)) + "), so it is not known green: " +
 			"if it is red, no card of it lands until it is green (gh auth status on this host shows who reads them)"
 	case len(failing) > 0:
-		return "BASE RED " + s.Repo + " " + s.Base + " at " + at + ": " + redChecks(failing) + "; cards land only once it is green: make it green first (cards for that are admitted)"
+		return "BASE RED " + s.Repo + " " + s.Base + " at " + at + ": " + steps.RedChecks(failing) + "; cards land only once it is green: make it green first (cards for that are admitted)"
 	}
 	return ""
 }

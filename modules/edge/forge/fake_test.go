@@ -162,4 +162,18 @@ func (f *Fake) FailedLines(_ context.Context, _, url string) ([]string, error) {
 	return nil, fmt.Errorf("forge: %s names no Actions job, so its log cannot be read", url)
 }
 
+// Failures is sha's failing checks as its rollup names them, each failed on
+// its own, the first at the rollup's url.
+func (f *Fake) Failures(_ context.Context, repo, sha string) ([]Failure, error) {
+	f.call_internal("Failures")
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	r := f.world.checks[repo][sha]
+	var out []Failure
+	for i, n := range r.Failing {
+		out = append(out, Failure{Name: n, URL: map[bool]string{true: r.URL}[i == 0]})
+	}
+	return out, nil
+}
+
 var _ Forge = (*Fake)(nil)

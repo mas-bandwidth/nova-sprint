@@ -47,6 +47,7 @@ type MergeResult struct {
 	Kind        MergeKind
 	SHA, Reason string
 	Conflicts   []string
+	Head        string // MergeConflict: the head whose merge failed
 }
 type Git interface {
 	Fetch(ctx context.Context, repoDir string, refs ...string) error
@@ -379,7 +380,7 @@ func (c *Client) mergeOneHead_internal(ctx context.Context, repoDir, onto, head 
 		// git's own words are the reason.
 		reason = fmt.Sprintf("merge of %s failed: %v", head, cmp.Or(listErr, c.failed_internal(code, mergeOut, mergeErr, nil, "merge", "--no-ff", "-m", commitMsg, head)))
 	}
-	return MergeResult{Kind: MergeConflict, Conflicts: conflicts, Reason: reason + cleanup}, true, nil
+	return MergeResult{Kind: MergeConflict, Conflicts: conflicts, Reason: reason + cleanup, Head: head}, true, nil
 }
 
 // cleanup_internal runs each git command to put a work tree back; it

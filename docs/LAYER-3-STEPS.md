@@ -301,8 +301,9 @@ for each candidate, and the engine refuses one below the card's tier.
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `no-model`,
-  `no-policy`, `undealt`, `admission` (`conflict`, `base-red`,
-  `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
+  `no-policy`, `undealt`, `admission`, `base-red` (`conflict`,
+  `no-ci` and `forge` went with intent rule 32, 2026-11-07; `base-red`
+  came back 2026-11-10 as a push only, below). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
   the tick (LESSONS 3.17).
 - Alarms: `stall`, nothing landed in the bound while producers wait in
@@ -310,6 +311,42 @@ for each candidate, and the engine refuses one below the card's tier.
   width while producers wait, causes by count, closed back over three
   quarters (LESSONS 3.18); `land-rate`, a stream's or model's landed with no
   bounce over landed, under target over a sample (LESSONS 3.21).
+- `base-red` (`modules/steps/basered.go`; 2026-11-10, a base red for
+  eleven days with no push): layer 6 reads each watched base tip's checks
+  (`run.BaseWatch`) and passes the last completed read per repository and
+  base in `Inputs.Bases`. A red read (a check failed and none still
+  running, or a check failed and the tip has waited `CIWait`, the
+  landing's bound; a tip is asked every `LandPoll` inside `CIWait` of its
+  first ask, then every `CIWait`, done or not, so a red that completes
+  late or a re-run that turns a green tip red is read: one checks call
+  per `CIWait` for a base whose tip does not move)
+  with live producers on its streams has one open `base-red` about
+  `<repo>@<base>`, choice `retry`: the tip, the red checks, the first
+  failing lines of up to three jobs, the first red tip of the stretch and
+  when it was seen, the streams with their merging and other live cards,
+  and "the base is red: fix it now, before anything else". The same red set
+  at another tip is the same judgement; a changed red set expires it naming
+  the next episode, opened in the same op; a green read clears it; no read
+  (pending, rested, failed) neither opens nor clears; a base that leaves the
+  watch (no live cards) forgets its read, and a land pass that finds the
+  base red at a tip that read green reads it again at once. Answered, the
+  same red set in the same red stretch stays quiet for the judgement
+  timeout, then opens `STILL RED`; a stretch the watch began after the
+  answer (a green read between) opens at once, plain. An all-cancelled
+  tip is no fact: the open judgement keeps naming the last tip read red.
+  Nothing is held, stopped or dealt differently: the push only (v1's
+  TickBaseCI; `tla/BaseRed.tla`, bound to the code by the trace walk
+  `modules/run/basered_trace_test.go`).
+- Answered watch judgements (a kind whose one choice is `retry`;
+  `judge`, 2026-11-10: a stall answered `retry` reopened seconds later,
+  again and again): one answered while its cause still holds stays quiet
+  for the judgement timeout, then reopens as `STILL HOLDS <d> after your
+  answer: ...`. The quiet belongs to one unbroken stretch of the cause: a
+  tick that sees the cause not holding ends it (`Plan.Broken`, which
+  layer 6 carries to the next tick as `Inputs.Broken`), so the cause
+  coming back opens at once, plain; an answer from before the run's view
+  began is no quiet (`tla/AnsweredQuiet.tla`, bound to the code by the
+  trace walk `modules/run/answeredquiet_trace_test.go`).
 - Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 
@@ -671,10 +708,12 @@ dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
 `v2-stitch-w2L`).** Superseding the stitch above where they differ. The
 landing's automatic path is green-and-merge only: `landResults` moves cards
 only on `landed` (with `card.Landed{Head, Merge}`, the merge sha), and every
-other outcome (`ci_red`, `no-ci`, `conflict`, `merge_refused`,
+other outcome (`ci_red`, `no-ci`, `ci_no_verdict`, `conflict`, `merge_refused`,
 `pr_unopenable`, `branch_failed`, `ci_fault`, `missing_head`, `head_moved`,
 `hand`, `fault`) opens one `land` judgement per card still merging at the
-request's head (`land.<card>.<n>`, group key `land`, no deadline; choices
+request's head (a `conflict` whose item names the head that did not merge,
+`Head`: that card's alone, the rest asked again next tick; 2026-11-11)
+(`land.<card>.<n>`, group key `land`, no deadline; choices
 `land | fix | retry`), with the question naming the card, stream, base and
 its tip, branch, head, outcome, the edge's facts, and the cards landing
 together. Nothing is blamed: the `red`, `no-ci`, `conflict`, `base-red` and

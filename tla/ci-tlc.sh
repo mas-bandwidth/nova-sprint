@@ -13,6 +13,12 @@
 #     StepsBurst.cfg (its scenarios, invariants and the liveness property)
 #                                      must pass            (TLC exit 0)
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
+#   BaseRed.tla with BaseRed.cfg (the base-red judgement) must pass;
+#     its witnesses BaseRedNoPush, BaseRedQuietSwallows and reach checks BaseRedNever{Opens,Replaced}
+#     must be violated
+#   AnsweredQuiet.tla with AnsweredQuiet.cfg (an answered watch judgement's
+#     quiet) must pass; its witnesses AnsweredQuiet{Reopens,Swallows} and
+#     reach check AnsweredQuietNeverReopens must be violated
 #   KinAlive.tla with KinAlive.cfg (kin liveness by challenge)
 #                                      must pass            (TLC exit 0);
 #     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
@@ -202,10 +208,13 @@ run StepsLand pass . StepsLand.cfg Steps.tla 4
 run StepsBurst pass . StepsBurst.cfg Steps.tla 4
 run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
+run LandEdgeLive pass . LandEdgeLive.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run KinAlive pass . KinAlive.cfg KinAlive.tla 2
 run VerbFence pass . VerbFence.cfg VerbFence.tla 2
 run VerbFenceCoarse pass . VerbFenceCoarse.cfg VerbFence.tla 2
+run BaseRed pass . BaseRed.cfg BaseRed.tla 2
+run AnsweredQuiet pass . AnsweredQuiet.cfg AnsweredQuiet.tla 2
 run Hook pass . Hook.cfg Hook.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
@@ -243,7 +252,8 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
          KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
-         HookAnySession HookReplaceUnhooks HookReplaceChangesRole; do
+         HookAnySession HookReplaceUnhooks HookReplaceChangesRole \
+         BaseRedNoPush BaseRedQuietSwallows AnsweredQuietReopens AnsweredQuietSwallows; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
@@ -254,6 +264,11 @@ done
 for m in VerbFenceOneTry VerbFenceOneTryCoarse VerbFenceNoOwn VerbFenceNeverRetried VerbFenceNeverDealt; do
     run "witness-$m" violate . "$m.cfg" VerbFence.tla 1
 done
+# BaseRed's reach checks (a judgement opens; a changed red set opens the next).
+for m in NeverOpens NeverReplaced; do
+    run "reach-BaseRed$m" violate . "BaseRed$m.cfg" BaseRed.tla 1
+done
+run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg AnsweredQuiet.tla 1
 
 # KinAlive's reach checks (a kin row goes down, and comes back on a pong).
 for m in NeverDown NeverBack; do

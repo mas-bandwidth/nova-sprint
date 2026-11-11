@@ -42,6 +42,7 @@ type Ticker struct {
 	inbox      []steps.InboxItem
 	inflight   map[string]steps.EdgeRequest
 	refused    []steps.RefusedOp
+	broken     map[string]bool // the last plan's Broken: answered judgements whose quiet a tick ended
 	seen       map[string]time.Time
 	last       time.Time // the last tick's Now
 	prev       int
@@ -302,6 +303,12 @@ type Observed struct {
 	// Unadmitted is each producer the latest admission proof of its stream
 	// refused, and why (Admission.Unadmitted).
 	Unadmitted map[string]string
+	// Bases is each watched repository and base's last completed CI read
+	// (BaseWatch.Read).
+	Bases map[string]steps.BaseCI
+	// Moves is each watched base a foreigner moved within the last CIWait
+	// (BaseWatch.Moves).
+	Moves map[string]steps.BaseMove
 }
 
 // Tick is one tick: check the lock, fold, and, unless the sprint is stopped,
@@ -341,9 +348,11 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	}
 	o.Roster = o.Roster.Advertised(t.snap.Rows, o.Version) // a worker's own width and tiers (defect 74), none when its binary is behind the run's (D3)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
-		Seen: maps.Clone(t.seen), Alive: t.kin.evidence(), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted}
+		Seen: maps.Clone(t.seen), Alive: t.kin.evidence(), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted, Bases: o.Bases,
+		Moves: o.Moves, Broken: t.broken}
 	a := t.asker(ctx, o.Roster)
 	plan := steps.Tick(t.view, in, a)
+	t.broken = plan.Broken
 	t.push.Nudge(append(plan.Nudges, challenges...))
 	if a.asked {
 		t.limits, t.timeouts = a.answers.Limits, a.answers.Timeouts

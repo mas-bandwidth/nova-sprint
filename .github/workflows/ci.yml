@@ -209,7 +209,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [store, card, policy, steps-pre, steps-deal, steps-land, steps-burst, steps-fixtures, edge, hook, verbs]
+        group: [store, card, policy, steps-pre, steps-deal, steps-land, steps-burst, steps-fixtures, edge, hook, verbs, base-red, answered-quiet]
     name: trace (${{ matrix.group }})
     steps:
       - *clean

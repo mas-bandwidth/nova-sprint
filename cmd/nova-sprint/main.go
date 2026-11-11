@@ -25,7 +25,7 @@ import (
 // release workflow (the tag); toolPin may be set the same way.
 var (
 	binaryVersion = "dev"
-	toolPin       = "v2.0.36"
+	toolPin       = "v2.0.39"
 )
 
 func main() { os.Exit(command(os.Args[1:])) }

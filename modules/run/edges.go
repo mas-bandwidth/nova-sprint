@@ -37,9 +37,17 @@ type Edges struct {
 	Bus      bus.Bus
 	ReposDir string
 	Pause    func(context.Context, time.Duration) error // between asks of a pending CI
+	// Streams is the streams as now folded (run's copy), read by a landing
+	// before each pass for its stream's base (stream set --base); nil keeps
+	// the stream the request was dispatched with.
+	Streams func() map[string]store.Stream
 	// Fault is told every edge failure, with its cause (the run log's EDGE
 	// FAULT line); nil drops nothing that layer 3 reads, only the line.
 	Fault func(what string, err error)
+	// BaseRed is told each land pass that read its base tip red (the
+	// stream's repository and base, and that tip): BaseWatch reads a tip it
+	// had settled again (LandSawRed). nil tells no one.
+	BaseRed func(repo, base, tip string)
 
 	mu      sync.Mutex
 	results []steps.InboxItem
@@ -143,8 +151,9 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault", Reason: "the clone of " + s.Repo + " failed: " + err.Error()})
 		return
 	}
+	var gate git.Gate // the gate the last pass kept: read to its verdict, never rebuilt meanwhile
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate})
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
@@ -157,7 +166,16 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	absent, rested := time.Duration(0), false
 	for {
+		if e.Streams != nil {
+			if cur, ok := e.Streams()[r.Stream]; ok && cur.Base != "" && cur.Base != s.Base {
+				s.Base, gate = cur.Base, git.Gate{} // the base changed (stream set --base): a gate built on the old one is let go
+			}
+		}
 		res, err := e.pass(ctx, dir, pass)
+		gate = res.Kept()
+		if err == nil {
+			e.sawBaseRed(s, res)
+		}
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			if res.Outcome != git.OutcomeRested {
 				rested = false
@@ -184,20 +202,32 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 }
 
+// sawBaseRed tells BaseRed when a pass read its base tip red.
+func (e *Edges) sawBaseRed(s store.Stream, res git.LandResult) {
+	if len(res.BaseFailing) > 0 && e.BaseRed != nil {
+		e.BaseRed(s.Repo, s.Base, res.BaseTip)
+	}
+}
+
 // askAgain_internal says whether a pass is asked again after LandPoll, and
-// how long the gated sha has had no check at all. Pending CI, a base that
-// moved after the gate and a forge GitHub rate-limited are asked again (a
+// how long the gated sha has had no check at all, or a failed check while
+// others still run. Pending CI, a base that moved after the gate and a
+// forge GitHub rate-limited are asked again (a
 // resting forge refuses its calls without making them, so those passes
-// spend nothing); an absent CI only until wait, after which the pass goes
-// to layer 3 as no-ci.
+// spend nothing); an absent CI and an unfinished one only until wait, after
+// which the pass goes to layer 3 as no-ci and as ci_no_verdict. A rested
+// pass read no CI, so it keeps absent as it was: a rest neither restarts
+// the no-CI clock nor counts on it.
 func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, 0
 	}
 	switch res.Outcome {
-	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested:
+	case git.OutcomeRested:
+		return true, absent
+	case git.OutcomePending, git.OutcomeBaseMoved:
 		return true, 0
-	case git.OutcomeAbsent:
+	case git.OutcomeAbsent, git.OutcomeUnfinished:
 		absent += LandPoll
 		return absent < wait, absent
 	}
@@ -206,9 +236,11 @@ func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration
 
 // landItem is LandResult as layer 3 reads it (SEAMS 6): landed with the
 // heads and the merge sha, or the outcome and its facts for the
-// coordinator's judgement (an error is the outcome fault).
+// coordinator's judgement (an error is the outcome fault). A conflict of
+// the group's merge names, as Head, the head whose merge failed: that card
+// alone is the coordinator's.
 func landItem(id string, res git.LandResult, err error, wait time.Duration) steps.InboxItem {
-	it := steps.InboxItem{Kind: "land", Request: id, Outcome: string(res.Outcome)}
+	it := steps.InboxItem{Kind: "land", Request: id, Outcome: string(res.Outcome), Head: res.ConflictHead}
 	switch {
 	case err != nil:
 		it.Outcome, it.Reason = "fault", err.Error()
@@ -219,6 +251,11 @@ func landItem(id string, res git.LandResult, err error, wait time.Duration) step
 	case res.Outcome == git.OutcomeAbsent:
 		it.Outcome = "no-ci"
 		res.Reason = fmt.Sprintf("no check was reported on %s within %s", res.GatedSHA, wait)
+	case res.Outcome == git.OutcomeUnfinished:
+		it.Outcome = string(git.OutcomeNoVerdict)
+		// failed so far, and named so: never as the failing checks of a red
+		res.Reason = fmt.Sprintf("no verdict after %s: %d checks still pending; failed so far: %s", wait, res.Pending, strings.Join(res.FailingCI, ", "))
+		res.FailingCI, res.CIURL = nil, ""
 	}
 	it.Reason = landFacts(res)
 	return it
@@ -228,8 +265,9 @@ func landItem(id string, res git.LandResult, err error, wait time.Duration) step
 // first that the base itself is red at its tip and on which checks, and
 // which checks the card's head is red on, so the coordinator weighs the two
 // together; then the rung, the base and its tip, the group tip, the gated
-// sha, the PR, the failing checks with the first one's URL and its first
-// failing lines, the conflicting files, and the pass's own reason.
+// sha, the PR, the failing checks, the checks stopped rather than failed,
+// the first own failure's URL and its first failing lines, the conflicting
+// files, and the pass's own reason.
 func landFacts(res git.LandResult) string {
 	var parts []string
 	add := func(label, v string) {
@@ -247,6 +285,7 @@ func landFacts(res git.LandResult) string {
 	add("gated", res.GatedSHA)
 	add("PR", res.PR)
 	add("failing", strings.Join(res.FailingCI, ", "))
+	add("stopped, not failed (no verdict):", strings.Join(res.Stopped, ", "))
 	add("at", res.CIURL)
 	add("first failing lines:", strings.Join(res.FailingLines, " | "))
 	add("conflicts:", strings.Join(res.Conflicts, ", "))

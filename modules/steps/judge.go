@@ -3,6 +3,7 @@ package steps
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -23,15 +24,74 @@ var choices = map[string]string{
 	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
 	"no-model": "retry", "no-policy": "retry", "undealt": "retry", "admission": "retry", "down": "retry",
+	"base-red": "retry", "base-moved": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once); an
 // open one's cause is detected again (held).
 func (t *tick) judge(kind, about, question string) {
+	t.detect(kind, about)
 	if t.held(kind, about) || t.pending(kind, about) {
 		return
 	}
+	if since, quiet := t.answeredQuiet(kind, about); quiet {
+		return
+	} else if since > 0 {
+		question = fmt.Sprintf("STILL HOLDS %s after your answer: %s", since.Truncate(time.Second), question)
+	}
 	t.addJudge(judgement{kind: kind, about: about, question: question})
+}
+
+// answeredQuiet is whether kind about about's latest episode is a watch
+// judgement answered within the judgement timeout whose cause has held at
+// every tick since the answer: the answer says the coordinator is on it,
+// so the same cause still holding is no news until the timeout passes
+// (seen live 2026-11-10: a stall answered retry reopened seconds later,
+// again and again). A cause a tick saw not holding since the answer
+// (Inputs.Broken), or an answer from before this run's view began (it did
+// not watch the cause since), is news: no quiet, and since is 0, so it
+// opens with no STILL HOLDS. Past the timeout, an unbroken cause's since
+// is how long ago it was answered.
+func (t *tick) answeredQuiet(kind, about string) (since time.Duration, quiet bool) {
+	j, ok := t.answered(kind, about)
+	if !ok || t.in.Broken[j.ID] || j.ClosedAt.Before(t.v.Since) {
+		return 0, false
+	}
+	return t.in.Now.Sub(j.ClosedAt), t.in.Now.Before(j.ClosedAt.Add(seconds(t.tmo.Judgement)))
+}
+
+// answered is kind about about's latest episode when it is a watch
+// judgement (its one choice is retry) the coordinator answered.
+func (t *tick) answered(kind, about string) (store.Judgement, bool) {
+	if choices[kind] != "retry" {
+		return store.Judgement{}, false
+	}
+	j := t.v.Judgements[fmt.Sprintf("%s.%s.%d", kind, about, t.episodes(kind, about))]
+	return j, j.State == "answered"
+}
+
+// broken is the next tick's Inputs.Broken: each answered watch judgement,
+// the latest of its kind and about, whose cause a tick has seen not holding
+// since the answer (no step detected it this tick, or one did not before).
+// base-red's red stretch is dated by the watch instead (baseRed).
+func (t *tick) broken() map[string]bool {
+	var out map[string]bool
+	for _, j := range t.v.Judgements {
+		if j.State != "answered" || j.Kind == "base-red" {
+			continue
+		}
+		if latest, ok := t.answered(j.Kind, j.About); !ok || latest.ID != j.ID {
+			continue
+		}
+		if _, holds := t.detected[jkey(j.Kind, j.About)]; holds && !t.in.Broken[j.ID] {
+			continue
+		}
+		if out == nil {
+			out = map[string]bool{}
+		}
+		out[j.ID] = true
+	}
+	return out
 }
 
 // judgeAt opens episode n of kind about about once: a count that only grows
@@ -79,11 +139,18 @@ func (t *tick) held(kind, about string) bool {
 	if !t.isOpen(kind, about) {
 		return false
 	}
+	t.detect(kind, about)
+	return true
+}
+
+// detect records that a step detected kind about about's cause this tick:
+// an open one's deadline reopens it (lapse), and an answered one's quiet
+// holds (broken).
+func (t *tick) detect(kind, about string) {
 	if t.detected == nil {
 		t.detected = set{}
 	}
 	t.detected[jkey(kind, about)] = struct{}{}
-	return true
 }
 
 // episodes is how many judgements of kind about about exist, open or closed.
@@ -158,12 +225,14 @@ func (t *tick) put(j judgement) store.Write {
 // to the coordinator again as NEEDS YOU.
 func (t *tick) judgements() {
 	t.alarms()
+	t.baseRed()
+	t.baseMoved()
 	for _, q := range t.o.missed() {
 		t.judge("policy", q, fmt.Sprintf("policy v%d failed question %s: %s; the default answered this tick: run nova-sprint policy check", t.o.a.Version, q, t.o.why(q)))
 	}
 	for _, id := range sortedKeys(t.v.Judgements) {
 		j := t.v.Judgements[id]
-		if j.State != "open" {
+		if _, replaced := t.expires[id]; replaced || j.State != "open" { // replaced: baseRed or baseMoved opened its next episode
 			continue
 		}
 		if why := t.cleared(j); why != "" {
@@ -277,6 +346,10 @@ func (t *tick) clearedDeal(j store.Judgement) string {
 		if j.About != t.coordinatorRow() {
 			return "the coordinator's row is now " + t.coordinatorRow()
 		}
+	case "base-red":
+		return t.clearedBase(j.About)
+	case "base-moved":
+		return t.clearedMoved(j.About)
 	}
 	return ""
 }

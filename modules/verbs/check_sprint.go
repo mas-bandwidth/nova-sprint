@@ -96,11 +96,24 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 			r.warn("stream "+s.Name+": the checks of "+s.Repo+"'s "+s.Base+" at "+at+" cannot be read ("+errText(redErrs[i])+"), so it is not known green",
 				"gh auth status on this host shows who reads them; run check again")
 		} else if len(reds[i]) > 0 {
-			r.red(refuse("stream "+s.Name+": base "+s.Repo+" "+s.Base+" is red at "+at+": "+redChecks(reds[i])+", so no card of it lands",
+			r.red(refuse("stream "+s.Name+": base "+s.Repo+" "+s.Base+" is red at "+at+": "+steps.RedChecks(reds[i])+", so no card of it lands"+baseRedJudged(snap, s),
 				"make "+s.Repo+"'s "+s.Base+" green at "+at+" (cards for that are admitted), then check again"))
 		}
 	}
 	return heads
+}
+
+// baseRedJudged names the open base-red judgement of s's repository and
+// base, which the run pushed to the coordinator (steps.baseRed), or says
+// none is open yet (the run has not seen the tip's checks complete red).
+func baseRedJudged(snap store.Snapshot, s store.Stream) string {
+	about := run.BaseAboutOf(s)
+	for _, j := range snap.Judgements {
+		if j.Kind == "base-red" && j.About == about && j.State == "open" {
+			return "; judgement " + j.ID + " is open: fix the base first, then answer it"
+		}
+	}
+	return "; no base-red judgement is open for it yet"
 }
 
 // streamGatesRelease is the first nova-sprint release whose bench worker

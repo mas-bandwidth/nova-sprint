@@ -137,6 +137,23 @@ present or has a named reason (held, away, broken) that you are repairing.
 
 What each judgement kind asks of you, and where to look before you choose:
 
+- `base-red`: a base the streams land on is red: its tip's checks completed with failures (or a
+  check failed and the rest have run past the landing's CI wait). One
+  per repository and base (`about` is `<repo>@<base>`), however many streams share it, and it
+  comes first in `next`. It names the tip, the red checks, the first failing lines of up to
+  three failing jobs, since when it has been red, and the streams and their cards behind it.
+  Fix the base now, before anything else: start your own child on it, or add a blocker card
+  onto the base's stream with the failing lines as its brief. Nothing on those streams lands by
+  itself until the base is green. Then answer `retry`: the run reads the tip's checks again. It
+  clears by itself when a later tip is green; a different red (other checks, other jobs) is
+  pushed again as its next episode; unanswered, it escalates like the others. The sprint holds,
+  stops and deals nothing differently because of it: the fix is yours (section 5). When it says
+  red since only since the run began watching the base, it may have been red for longer.
+- Any watch judgement (one whose one choice is `retry`) that you answer stays quiet while its
+  cause still holds without a break, for the judgement timeout (one hour by default); then it
+  reopens as `STILL HOLDS <d> after your answer: ...` (`STILL RED` for a base). A cause that
+  cleared and came back is new: it is pushed at once, plain. Answering `retry` is "I am on it",
+  not "it is fixed".
 - `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unhold`, or `drop`. An unhold gives the card a full fresh bounce budget (the limit
@@ -296,6 +313,14 @@ A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base 
 [--mode auto|group|hand] [--forge github]` prints `STREAM <s> repo=... base=... mode=...
 forge=... applied at seq <n>`; give `--forge github` when the repo requires PRs and CI, and only
 then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either later).
+Land a stream into a branch that does not move (a stream branch, promoted into main by the
+sprint), never into a main that direct fixes merge into one at a time under the landing group.
+`nova-sprint stream set <s> --base <branch>` moves a live stream onto such a branch. Push the
+branch first. The command is refused while cards merged onto the old base wait for their
+promotion; let the promotion land them, then set the base again. Its receipt names the cards:
+merging ones have any gate built on the old base let go, and their group is built on the new
+base at the landing's next pass. Working ones finish their attempt on the old base and land
+onto the new one. Cards taken from now on, and every retry, start from the new base.
 
 A rule every card of a stream must keep (the committed generated tree is current, the lint is
 clean) is a stream gate, never a line each brief has to remember: `--gate "<command>"` on
@@ -374,6 +399,39 @@ automatic path is green-and-merge only; everything else is yours. Each stream is
    streams when two of them conflict, and fix the cause (a brief, the order) before you answer
    `retry`.
 
+**A verdict only from completed checks.** A landing is judged on CI only once every check at
+the gated sha has completed. A check that fails while others still run is no verdict yet: the
+run asks again, and if checks are still running after the stream's `ci_wait` it is yours as
+`ci_no_verdict` ("no verdict after <wait>: <n> checks still pending; failed so far: ..."),
+never `ci_red`. "The base itself is red" is said only from the base tip's completed checks;
+while they run the judgement says "base CI still running at its tip <sha>: <n> red so far".
+
+What each cause of a land judgement means:
+
+- `ci_red`: checks completed and at least one failed on its own. "failing" names those; checks
+  GitHub says were stopped are named apart as "stopped, not failed (no verdict)".
+- `ci_no_verdict`: CI said nothing about the code. Either every failing check was stopped
+  (killed, `exit code 137` or `143`; cancelled; timed out), with the first stopped check's
+  failing lines; or checks were still running after `ci_wait`. The sprint never runs CI again:
+  look at the runners and the load before blaming the card (the fix is that jobs are not
+  killed), then `retry` asks a new landing.
+- `ci_fault`: a check that never ran (a workflow that did not start, its checks unreadable).
+- `no-ci`: no check at all appeared within `ci_wait`.
+- `conflict`: a group's merge that conflicts on one card's head is that card's judgement alone,
+  naming its files and the cards landing again without it; the others need no answer, the next
+  tick lands them as a new group. A conflict GitHub reports on the group's PR, naming no card,
+  is one judgement per card.
+- `merge_refused`, `pr_unopenable`, `branch_failed`, `missing_head`, `head_moved`, `base_behind`,
+  `hand`, `fault`: what their names say, with the facts.
+
+A stopped check is read only from GitHub's own words, never from a fleet's: its conclusion
+(cancelled, timed out), or a stop line ("exit code 137" and the like) only when that is the
+check's one failure annotation. A check with any other failure annotation failed: a test that
+fails and then hangs until it is killed is `ci_red`, never "killed". A job killed at a runner's
+time limit, by the out-of-memory killer or by hand all read "killed (exit code 137)", and a run
+cancelled by a newer one reads as cancelled. "The base itself is red" is said only from the base
+tip's checks that failed on their own, by the same rule.
+
 **You stitch.** Cards that edit the same file run at the same time, so their heads can meet in
 a conflict. That is expected, not a fault of the cards: the group rung merges what merges
 cleanly, and what does not comes to you. Do the holistic merge yourself (by hand, below):
@@ -388,7 +446,16 @@ fix: merge it into the base yourself, push, and land it again (a head already on
 at once). Never land a card that is not merging, and never resolve a conflict on a card's branch,
 which no reader has read.
 
-A pending CI and a base that moved are asked again by the run on their own. A merging card with
+**A red base comes first.** When a stream's base is red, nothing on it lands by itself, and every
+card behind it waits. The run pushes one `base-red` judgement for it (section 2), and `check`'s
+`CHECK RED` line for the stream names it. Make the base green before anything else: your own
+child on the fix, or a blocker card onto the base; then answer `retry`. Do not answer the cards'
+`land` judgements one by one while the base is red.
+
+A pending CI, a base that moved and a rate-limited forge are asked again by the run on their
+own. A group whose CI is running is never rebuilt or pushed again while it runs, whatever the
+base does: it is judged on the base it was built on, and built again on the new tip only once it
+is green on a base that moved. A merging card with
 no land request and no land judgement is reported to you as an `engine` judgement: answer it
 `retry`, and take it to the project's own tracker.
 

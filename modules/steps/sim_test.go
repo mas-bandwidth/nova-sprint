@@ -37,6 +37,7 @@ func (s *sim) inputs() Inputs {
 	in.Inbox = slices.Clone(s.inbox)
 	in.Inflight = slices.Clone(s.inflight)
 	in.Refused = slices.Clone(s.refused)
+	in.Broken = s.last.Broken // layer 6 carries it, as run.Ticker does
 	return in
 }
 
