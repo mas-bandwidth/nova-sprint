@@ -86,7 +86,7 @@ func (w *BaseWatch) Watch(ctx context.Context, snap store.Snapshot, heads map[st
 			continue
 		}
 		if tip != b.tip {
-			b.absent = 0
+			b.absent, b.settled = 0, false
 		}
 		b.tip, b.asked, b.reading = tip, now, true
 		repo, base, _ := strings.Cut(about, "@")

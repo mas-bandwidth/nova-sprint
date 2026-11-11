@@ -62,9 +62,9 @@ func (f *checksForge) counts() (int, int) {
 func watchSnap() store.Snapshot {
 	return store.Snapshot{
 		Streams: map[string]store.Stream{
-			"s1": {Name: "s1", Repo: "o/r", Base: "main", Forge: "github"},
-			"s2": {Name: "s2", Repo: "o/r", Base: "main", Forge: "github"},
-			"s3": {Name: "s3", Repo: "o/r", Base: "main", Forge: "github"},
+			"s1":   {Name: "s1", Repo: "o/r", Base: "main", Forge: "github"},
+			"s2":   {Name: "s2", Repo: "o/r", Base: "main", Forge: "github"},
+			"s3":   {Name: "s3", Repo: "o/r", Base: "main", Forge: "github"},
 			"hand": {Name: "hand", Repo: "o/r", Base: "main"},
 			"done": {Name: "done", Repo: "o/q", Base: "main", Forge: "github"},
 		},

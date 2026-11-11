@@ -111,8 +111,8 @@ GreenNoneOpen == ticked /\ fact = "green" => Opens = {}
 \* Liveness: a green tip clears it.
 GreenClears == [](fact = "green" => <>(Opens = {} \/ fact # "green"))
 
-\* Reach (expected violated in BaseRedReach*.cfg): a judgement opens, and a
-\* changed red set opens a second episode.
+\* Reach (expected violated in BaseRedNever*.cfg): a judgement opens, and a
+\* second episode opens (a changed red set, or an escalation).
 NeverOpens == js = <<>>
 NeverReplaced == Len(js) < 2
 =============================================================================
