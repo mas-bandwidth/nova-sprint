@@ -2,8 +2,6 @@ package verbs
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"maps"
@@ -17,7 +15,9 @@ import (
 )
 
 // runHook is `hook` (Stella's rulings, 2026-11-06): the name on the bus
-// first; the sprint mints the session; one hook per name and one
+// first; the session is the bus hook's, the id nova-bus who shows for the
+// name (2026-11-11; the sprint minted its own before, bound to nothing);
+// one hook per name and one
 // coordinator per sprint; a worker only once the sprint has a commit
 // identity; the identity's two git config lines and where the role's
 // playbook is printed (help playbook: the hook is run after every
@@ -69,27 +69,32 @@ func (e *Engine) originsReadable(ctx context.Context, snap store.Snapshot) error
 	return nil
 }
 
-// hookAs records name's session and role on snap and prints the sprint's
+// hookAs records name's bus session and role on snap and prints the sprint's
 // commit identity (the two git config lines) and the command that prints
 // the role's playbook: the hook verb's, and up's and restore's for their
-// coordinator.
+// coordinator. A row whose recorded bus session is the live one is already
+// hooked in. One whose bus hook was started since is hooked again in place,
+// the write naming the session it replaces: nothing is unhooked, so the row
+// keeps its state, its hold and its hand, and a coordinator its seat (a
+// session back from a wrap-around loses nothing; tla/Hook.tla, HandKept).
 func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string) (string, error) {
-	if row := snap.Rows[name]; row.Session != "" {
-		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then hook again")
-	}
-	if c := coordinatorOf(snap); r == "coordinator" && c != "" {
-		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first; only when the operator says so, take the seat: "+takeOverCommand(name))
-	}
-	session, err := e.newSession()
+	live, err := e.busSession(ctx, name)
 	if err != nil {
 		return "", err
 	}
-	op := e.newOp("hook", name, snap, session, r)
-	op.Writes = []store.Write{store.PutRow{Name: name, Session: session, Role: r}}
+	row := snap.Rows[name]
+	if row.Session == live {
+		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then hook again")
+	}
+	if c := coordinatorOf(snap); r == "coordinator" && c != "" && c != name {
+		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first; only when the operator says so, take the seat: "+takeOverCommand(name))
+	}
+	op := e.newOp("hook", name, snap, live, r)
+	op.Writes = []store.Write{store.PutRow{Name: name, Session: live, Role: r, Replaces: row.Session}}
 	if r == "coordinator" { // one coordinator: no other hook may land between the read and this op
 		op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Hooks: true}}
 	}
-	if _, err := e.commit(ctx, op, "nova-sprint unhook --as "+name+", then hook again"); err != nil {
+	if _, err := e.commit(ctx, op, "nova-sprint hook --as "+name+" --role "+r+" again"); err != nil {
 		return "", err
 	}
 	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), identityLines(snap), playbookLine(r)), nil
@@ -105,13 +110,13 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 // (run.EventNotices). With no coordinator at all, this is the plain hook.
 func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason string) (string, error) {
 	old := coordinatorOf(snap)
-	if old == "" {
+	if old == "" || old == name { // name's own seat, its bus hook started since: the plain hook replaces it in place
 		return e.hookAs(ctx, snap, name, "coordinator")
 	}
 	if row := snap.Rows[name]; row.Session != "" {
 		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then up again")
 	}
-	session, err := e.newSession()
+	session, err := e.busSession(ctx, name)
 	if err != nil {
 		return "", err
 	}
@@ -134,17 +139,6 @@ func takeOverCommand(name string) string {
 // playbookLine is where role's playbook is: read it once, not on every hook.
 func playbookLine(role string) string {
 	return "playbook: nova-sprint help playbook " + role + " (read it once; every output names its next command)"
-}
-
-func (e *Engine) newSession() (string, error) {
-	if e.Session != nil {
-		return e.Session()
-	}
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", RefusalOr(err, broken("no randomness for a session ("+errText(err)+")", "run nova-sprint hook again"))
-	}
-	return hex.EncodeToString(b[:]), nil
 }
 
 // runUnhook is `unhook`: one's own hook needs the name on the bus (a

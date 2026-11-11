@@ -43,7 +43,7 @@ func TestUpTakesOverFromACoordinatorWhoIsGone(t *testing.T) {
 	if r := s.Rows["carol"]; r.Session != "" || r.Role != "" {
 		t.Fatalf("carol still hooked: %+v", r)
 	}
-	if r := s.Rows["dave"]; r.Session != "minted-1" || r.Role != "coordinator" {
+	if r := s.Rows["dave"]; r.Session != "s-dave" || r.Role != "coordinator" {
 		t.Fatalf("dave %+v", r)
 	}
 	if c := s.Cards["p1.w1"]; c.State != "fail" || c.Reason != card.ReleasedPrefix+card.Returned("carol", "unhooked by a take-over") {
@@ -145,7 +145,7 @@ func TestUpTakesOverFromACoordinatorOnTheBus(t *testing.T) {
 	if r := s.Rows["carol"]; r.Session != "" || r.Role != "" {
 		t.Fatalf("carol still hooked: %+v", r)
 	}
-	if r := s.Rows["dave"]; r.Session != "minted-1" || r.Role != "coordinator" {
+	if r := s.Rows["dave"]; r.Session != "s-dave" || r.Role != "coordinator" {
 		t.Fatalf("dave %+v", r)
 	}
 	events, err := w.f.Events(context.Background(), 10, 0)
@@ -175,7 +175,7 @@ func TestTakeOverTellsARehookedCoordinatorOnce(t *testing.T) {
 	s := w.snap(t)
 	rows := maps.Clone(s.Rows)
 	carol := rows["carol"]
-	carol.Session, carol.Role = "minted-9", "worker"
+	carol.Session, carol.Role = "s-other", "worker"
 	rows["carol"] = carol
 	s.Rows = rows
 	events, err := w.f.Events(context.Background(), 10, 0)

@@ -47,11 +47,10 @@ type Engine struct {
 	SetupObserver      func(SetupObservation)
 
 	Now     func() time.Time
-	Session func() (string, error) // a fresh hook session
-	Stdin   io.Reader              // wake's bus line
-	Actor   string                 // NOVA_SPRINT_AS
-	Version string                 // this build
-	ToolPin string                 // the lowest nova-tools it runs on
+	Stdin   io.Reader // wake's bus line
+	Actor   string    // NOVA_SPRINT_AS
+	Version string    // this build
+	ToolPin string    // the lowest nova-tools it runs on
 }
 
 // Presence is who is on the bus (edge/bus's Who).
