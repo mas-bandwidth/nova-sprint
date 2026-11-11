@@ -415,7 +415,7 @@ func buildPrompt_internal(j Job) string {
 	return b.String()
 }
 func classifyExitAndTail_internal(exit int, tail []byte) Outcome {
-	text := TailBytes(tail, MaxReasonBytes)
+	text := edge.RedactKeys(TailBytes(tail, MaxReasonBytes)) // the harness's own words, into a stored reason
 	if exit == 134 || exit == 137 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
 	}
@@ -452,7 +452,7 @@ func ClassifyJob(h Harness, j Job, exit int, elapsed, launchGrace time.Duration,
 }
 
 func classifyJob_internal(h Harness, j Job, exit int, elapsed, launchGrace time.Duration, tail []byte) Outcome {
-	text := TailBytes(tail, MaxReasonBytes)
+	text := edge.RedactKeys(TailBytes(tail, MaxReasonBytes)) // the harness's own words, into a stored reason
 	if exit == 134 || exit == 137 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
 	}

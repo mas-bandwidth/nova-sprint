@@ -63,27 +63,45 @@ func RedactN(text string, max int) string {
 		}
 		return name + "=<redacted>"
 	})
-	line = pgPass.ReplaceAllStringFunc(line, func(m string) string {
+	line = redactPasswords_internal(line)
+	line = absPath.ReplaceAllStringFunc(line, func(m string) string {
+		sub := absPath.FindStringSubmatch(m)
+		return sub[1] + ".../" + filepath.Base(sub[2])
+	})
+	line = redactKeyLike_internal(line)
+	if max > 0 && len(line) > max {
+		line = line[:max] + "..."
+	}
+	return line
+}
+
+// RedactKeys is text with RedactN's secret passes only (URL credentials,
+// password words, key-like tokens), its NAME=value pairs and paths kept:
+// for a program's own log lines, whose fields (error="...") are the
+// cause a reader needs, where a key in a value is still key-like.
+func RedactKeys(text string) string {
+	line := userinfo.ReplaceAllString(text, "://<redacted>@")
+	line = redactPasswords_internal(line)
+	return redactKeyLike_internal(line)
+}
+
+func redactPasswords_internal(line string) string {
+	return pgPass.ReplaceAllStringFunc(line, func(m string) string {
 		sub := pgPass.FindStringSubmatch(m)
 		if strings.HasPrefix(sub[3], "<redacted>") {
 			return m
 		}
 		return sub[1] + sub[2] + "<redacted>"
 	})
-	line = absPath.ReplaceAllStringFunc(line, func(m string) string {
-		sub := absPath.FindStringSubmatch(m)
-		return sub[1] + ".../" + filepath.Base(sub[2])
-	})
-	line = keyLike.ReplaceAllStringFunc(line, func(tok string) string {
+}
+
+func redactKeyLike_internal(line string) string {
+	return keyLike.ReplaceAllStringFunc(line, func(tok string) string {
 		if strings.HasPrefix(strings.ToUpper(tok), "AGE-SECRET-KEY-") || strings.ContainsAny(tok, "0123456789") {
 			return "<redacted>"
 		}
 		return tok
 	})
-	if max > 0 && len(line) > max {
-		line = line[:max] + "..."
-	}
-	return line
 }
 
 // Redact is RedactN bounded at RedactMax.

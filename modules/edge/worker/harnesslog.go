@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 )
 
 // The harness's own words on why it ended. On 2026-11-10, 181 work
@@ -123,7 +125,7 @@ func harnessLogErrors_internal(jobDir, logDir string) string {
 		}
 		for l := range strings.SplitSeq(string(b), "\n") {
 			if l = strings.TrimSpace(l); isErrorLine_internal(l) {
-				lines = append(lines, l)
+				lines = append(lines, edge.RedactKeys(l))
 			}
 		}
 	}
