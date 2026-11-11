@@ -23,30 +23,36 @@ import (
 // timeouts().consumer[tier], Forge the stream's, CommitName and CommitEmail
 // the sprint's; the worker holds none of its own.
 type takeReceipt struct {
-	Consumer  string   `json:"consumer"`
-	Producer  string   `json:"producer"`
-	Kind      string   `json:"kind"`
-	Stream    string   `json:"stream"`
-	Repo      string   `json:"repo"`
-	Base      string   `json:"base"`
-	Branch    string   `json:"branch"`
-	Head      string   `json:"head"`
-	Tier      string   `json:"tier"`
-	Brief     string   `json:"brief"`
-	Prose     string   `json:"prose"`
-	Finding   string   `json:"finding"`
-	StreamRef string   `json:"stream_ref"`
-	BaseSHA   string   `json:"base_sha"`
-	PriorHead string   `json:"prior_head"`
-	Paths     []string `json:"paths"`
-	DoneWhen  []string `json:"done_when"`
-	Epoch     int      `json:"epoch"`
-	Gen       int      `json:"gen"`
-	Attempt   int      `json:"attempt"`
-	Review    int      `json:"review"`
-	Model     string   `json:"model"`
-	Deadline  int      `json:"deadline"`
-	Forge     string   `json:"forge"`
+	Consumer  string `json:"consumer"`
+	Producer  string `json:"producer"`
+	Kind      string `json:"kind"`
+	Stream    string `json:"stream"`
+	Repo      string `json:"repo"`
+	Base      string `json:"base"`
+	Branch    string `json:"branch"`
+	Head      string `json:"head"`
+	Tier      string `json:"tier"`
+	Brief     string `json:"brief"`
+	Prose     string `json:"prose"`
+	Finding   string `json:"finding"`
+	StreamRef string `json:"stream_ref"`
+	BaseSHA   string `json:"base_sha"`
+	PriorHead string `json:"prior_head"`
+	// PriorFinished: a work attempt of the card reported ok at PriorHead
+	// (card.FinishedAt), so the card machine refuses it as this attempt's
+	// finish; false for a head an attempt pushed and then faulted, failed
+	// or was withdrawn at. A bench's worker decides from it what an ok that
+	// adds nothing to the prior head is.
+	PriorFinished bool     `json:"prior_finished"`
+	Paths         []string `json:"paths"`
+	DoneWhen      []string `json:"done_when"`
+	Epoch         int      `json:"epoch"`
+	Gen           int      `json:"gen"`
+	Attempt       int      `json:"attempt"`
+	Review        int      `json:"review"`
+	Model         string   `json:"model"`
+	Deadline      int      `json:"deadline"`
+	Forge         string   `json:"forge"`
 	// CommitName and CommitEmail are the sprint's commit identity
 	// (store.Identity): the worker writes them into the job's clone.
 	CommitName  string `json:"commit_name"`

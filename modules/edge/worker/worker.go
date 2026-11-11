@@ -114,6 +114,10 @@ type (
 		// from; an ok that adds nothing to it does nothing about the finding
 		// (rebaseAndTestStep_internal).
 		Fix bool `json:",omitempty"`
+		// PriorFinished is the receipt's: an attempt reported ok at PriorHead,
+		// so the card machine refuses that head as this attempt's finish, and
+		// an ok that adds nothing to it is a fail (rebaseAndTestStep_internal).
+		PriorFinished bool `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex

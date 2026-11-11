@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,11 +69,20 @@ func TestOkAtAnUnfinishedPriorHeadIsVerifiedAndFinishesThere(t *testing.T) {
 	if len(g.checkouts) != 1 || g.checkouts[0] != testCommitSHA {
 		t.Errorf("checkouts in the worker's clone %v, want the prior head: the seal found no commits, so nothing is checked out there to merge the stream into", g.checkouts)
 	}
-	if len(wall.tests) != 1 {
-		t.Errorf("%d done-whens ran, want 1: the prior head is verified, never taken on the harness's word", len(wall.tests))
+	// The seal commits only what is inside PATHS, so whatever the harness
+	// changed outside them (a test, a Makefile, untracked files) is still
+	// in the job's tree: it is put back at the prior head, in the wall,
+	// before the gate, or the gate passes on a tree that is not that head.
+	if len(wall.order) != 2 || !strings.HasPrefix(wall.order[0], "step ") || wall.order[1] != "test go test ./..." {
+		t.Fatalf("the wall ran %q, want the tree put back at the prior head, then the done-when", wall.order)
 	}
-	if len(wall.steps) != 0 {
-		t.Errorf("%d wall steps ran: there is no merged head to apply, the job's tree is at the prior head", len(wall.steps))
+	for _, want := range []string{"git checkout -q -f --detach", "git clean -q -f -d", testCommitSHA} {
+		if !strings.Contains(wall.order[0], want) {
+			t.Errorf("the step before the done-when is %q: it does not %q", wall.order[0], want)
+		}
+	}
+	if !strings.Contains(rec.Outcome.Reason, "this attempt added nothing") {
+		t.Errorf("the ok's reason is %q: a reader of this head is not told the attempt added nothing", rec.Outcome.Reason)
 	}
 	if p := g.pushes(); len(p) != 0 {
 		t.Errorf("pushes %v: the prior head is on origin already", p)
@@ -112,31 +122,41 @@ func TestOkAtAPriorHeadTheStreamMovedPastPushesTheMerge(t *testing.T) {
 	}
 }
 
-// A fix (the deal carries a finding) that adds nothing to its prior head
-// is the fail it was: that head was finished and sent back, and neither it
-// nor a merge of the stream into it does anything about the finding. No
-// checkout, no merge, no done-when.
-func TestOkAtThePriorHeadOfAFixIsAFailWithNoHead(t *testing.T) {
+// An ok that adds nothing to a prior head an attempt already finished at
+// (the receipt says so) is the fail it was: that head was read and sent
+// back, and neither it nor a merge of the stream into it answers the
+// finding. No checkout, no merge, no done-when, and no report the card
+// machine would refuse.
+func TestOkAtAFinishedPriorHeadIsAFailWithNoHead(t *testing.T) {
 	t.Parallel()
 	g, wall := newFakeGit_internal(), &gateWall_internal{}
 	g.rebasedSHA = testRebSHA // a merge would be a new head, and no answer to the finding
-	rec := priorStep_internal(t, g, wall, JobRecord{Fix: true})
+	rec := priorStep_internal(t, g, wall, JobRecord{PriorFinished: true})
 	if rec.Outcome.Result != "fail" || rec.Outcome.Head != "" || !strings.Contains(rec.Outcome.Reason, "committed nothing over the prior head") {
-		t.Fatalf("outcome %+v, want fail with no head: a fix that committed nothing over the prior head", rec.Outcome)
+		t.Fatalf("outcome %+v, want fail with no head: nothing committed over a finished prior head", rec.Outcome)
 	}
-	if len(g.checkouts)+len(wall.tests)+len(wall.steps)+len(g.pushes()) != 0 {
-		t.Errorf("a fix with nothing new ran %d checkouts, %d done-whens, %d steps, %d pushes; want none", len(g.checkouts), len(wall.tests), len(wall.steps), len(g.pushes()))
+	if len(g.checkouts)+len(wall.order)+len(g.pushes()) != 0 {
+		t.Errorf("it ran %d checkouts, wall commands %q, %d pushes; want none", len(g.checkouts), wall.order, len(g.pushes()))
 	}
 }
 
-// The record says whether its deal is a fix: the receipt's finding.
-func TestAFixDealIsMarkedOnTheJobRecord(t *testing.T) {
+// The record carries the receipt's word on the prior head, and nothing of
+// the finding: a deal with a finding and an unfinished prior head is
+// verified too. A finding is written against a finished head, so an
+// unfinished prior head was pushed after it by an attempt on that finding
+// that then died, and the read that follows judges it against the finding.
+func TestTheRecordCarriesTheReceiptsWordOnThePriorHead(t *testing.T) {
 	t.Parallel()
 	at := time.Unix(1000, 0)
-	for finding, want := range map[string]bool{"": false, "the table is not sorted (tables.go:41)": true} {
-		_, rec := buildJob_internal(NextResponse{Row: "vision.ds", Epoch: 3}, TakeInfo{Consumer: "p1.w3", Kind: "work", Finding: finding, Deadline: 900}, t.TempDir(), "", at)
-		if rec.Fix != want {
-			t.Errorf("finding %q: the record's Fix is %v, want %v", finding, rec.Fix, want)
+	for _, info := range []TakeInfo{
+		{PriorFinished: true, Finding: "the table is not sorted (tables.go:41)"},
+		{PriorFinished: false, Finding: "the table is not sorted (tables.go:41)"},
+		{PriorFinished: false},
+	} {
+		info.Consumer, info.Kind, info.Deadline = "p1.w3", "work", 900
+		_, rec := buildJob_internal(NextResponse{Row: "vision.ds", Epoch: 3}, info, t.TempDir(), "", at)
+		if rec.PriorFinished != info.PriorFinished {
+			t.Errorf("receipt prior_finished %v, finding %q: the record's is %v", info.PriorFinished, info.Finding, rec.PriorFinished)
 		}
 	}
 }
@@ -156,44 +176,48 @@ func (s *refusingSprint_internal) Report(ctx context.Context, req ReportRequest)
 	return store.Receipt{Reason: why}, fmt.Errorf("%w: nova-sprint report: exit 1: %s", ErrRefused, why)
 }
 
-// Only the card machine knows whether an attempt finished at the prior
-// head (a card held in review and unheld is dealt again with no finding).
-// When the sprint refuses an ok at the prior head, the attempt is the fail
-// it was before: sent once more as that, under the same result id, never
-// resent as ok until it is set aside. An ok at a new head that is refused
-// is not touched.
-func TestARefusedOkAtThePriorHeadIsReportedAsTheFail(t *testing.T) {
+// A refused report is never rewritten: ErrRefused is also a misuse, a
+// version skew and a sprint verb that was killed, and a record turned into
+// a fail before a re-send would make a worker stopped mid-report fail a
+// valid ok after its restart. The ok at the prior head is sent as it is,
+// kept on disk as it is, and its refusal counted like any other.
+func TestARefusedOkAtThePriorHeadIsNotRewritten(t *testing.T) {
 	t.Parallel()
-	for name, tc := range map[string]struct {
-		head string
-		want []string
-	}{
-		"at the prior head": {head: testCommitSHA, want: []string{"ok " + testCommitSHA, "fail "}},
-		"at a new head":     {head: testRebSHA, want: []string{"ok " + testRebSHA}},
-	} {
-		sp := &refusingSprint_internal{}
-		r, _ := warnRunner_internal(t, sp, &cr2Wall{})
-		rec := JobRecord{Epoch: 3, Consumer: "p1.w3", Kind: "work", Row: "vision.ds", Gen: 2, BaseSHA: testPriorSHA, PriorHead: testCommitSHA, State: JobRebased, Outcome: Outcome{Result: "ok", Head: tc.head}}
-		jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
-		if err := WriteJobRecord(jobDir, rec); err != nil {
-			t.Fatal(err)
-		}
-		err := r.sendReportAndClean_internal(context.Background(), jobDir, rec)
-		var got []string
-		for _, req := range sp.reported() {
-			got = append(got, req.Result+" "+req.Head)
-			if req.ResultID != resultID_internal(3, rec.Consumer, 2) {
-				t.Errorf("%s: a report went under result id %q, want the record's one id", name, req.ResultID)
-			}
-			if req.Result == "fail" && !strings.Contains(req.Reason, "committed nothing over the prior head") {
-				t.Errorf("%s: the fail's reason is %q", name, req.Reason)
-			}
-		}
-		if strings.Join(got, "; ") != strings.Join(tc.want, "; ") {
-			t.Errorf("%s: reports %q, want %q", name, got, tc.want)
-		}
-		if (err == nil) != (len(tc.want) == 2) {
-			t.Errorf("%s: err = %v", name, err)
-		}
+	sp := &refusingSprint_internal{}
+	r, _ := warnRunner_internal(t, sp, &cr2Wall{})
+	rec := JobRecord{Epoch: 3, Consumer: "p1.w3", Kind: "work", Row: "vision.ds", Gen: 2, BaseSHA: testPriorSHA, PriorHead: testCommitSHA, State: JobRebased, Outcome: Outcome{Result: "ok", Head: testCommitSHA}}
+	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
+	if err := WriteJobRecord(jobDir, rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sendReportAndClean_internal(context.Background(), jobDir, rec); !errors.Is(err, ErrRefused) {
+		t.Errorf("err = %v, want the sprint's refusal", err)
+	}
+	if got := sp.reported(); len(got) != 1 || got[0].Result != "ok" || got[0].Head != testCommitSHA {
+		t.Errorf("reports %+v, want the one ok at the prior head", got)
+	}
+	if kept, err := ReadJobRecord(jobDir); err != nil || kept.Outcome != rec.Outcome {
+		t.Errorf("the record on disk holds %+v (%v), want the ok it was sent as", kept.Outcome, err)
+	}
+}
+
+// A fail or a fault never names the prior head in its report: nothing new
+// was pushed, and the card machine refuses one that does (red done-whens at
+// a verified prior head keep the record's pushed head, which is that head).
+func TestAFailAtThePriorHeadIsReportedWithNoHead(t *testing.T) {
+	t.Parallel()
+	sp := &cr2Sprint{}
+	r, _ := warnRunner_internal(t, sp, &cr2Wall{})
+	rec := JobRecord{Epoch: 3, Consumer: "p1.w3", Kind: "work", Row: "vision.ds", Gen: 2, BaseSHA: testPriorSHA, PriorHead: testCommitSHA, State: JobHarvested,
+		Outcome: Outcome{Result: "fail", Head: testCommitSHA, Reason: "tests red (go test ./...): FAIL"}}
+	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
+	if err := WriteJobRecord(jobDir, rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sendReportAndClean_internal(context.Background(), jobDir, rec); err != nil {
+		t.Fatal(err)
+	}
+	if got := sp.reported(); len(got) != 1 || got[0].Result != "fail" || got[0].Head != "" {
+		t.Errorf("reports %+v, want the fail with no head", got)
 	}
 }
