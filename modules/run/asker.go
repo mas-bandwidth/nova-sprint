@@ -26,7 +26,9 @@ type asker struct {
 	failures []policy.Failure
 	answers  policy.Answers
 	asked    bool
-	stored   int // the newest stored policy version while none is active (noDeal's fix), else 0
+	stored   int             // the newest stored policy version while none is active (noDeal's fix), else 0
+	limits   policy.Limits   // the last answered tick's (Ticker.Limits), kept on a tick none answers
+	timeouts policy.Timeouts // likewise Ticker.Timeouts
 }
 
 func (t *Ticker) asker(ctx context.Context, ro roster.Roster) *asker {
@@ -37,7 +39,7 @@ func (t *Ticker) asker(ctx context.Context, ro roster.Roster) *asker {
 	if v, ok := t.policyVersion(ctx, t.prev); ok && t.prev != t.snap.Policy {
 		vs.Prev = &v
 	}
-	a := &asker{ctx: ctx, policy: t.policy, vs: vs, snap: t.snap, ro: ro}
+	a := &asker{ctx: ctx, policy: t.policy, vs: vs, snap: t.snap, ro: ro, limits: t.limits, timeouts: t.timeouts}
 	if vs.Active == nil {
 		a.stored = t.storedPolicy(ctx)
 	}
@@ -86,6 +88,9 @@ func (a *asker) Ask(q steps.Questions) steps.Answers {
 	a.answers, a.failures = a.policy.AnswerContext(a.ctx, a.vs, a.snap, a.ro, pq)
 	a.asked = a.answers.Version >= 0
 	out := stepsAnswers(a.answers, a.failures)
+	if !a.asked { // no version answered: the last answered tick's bounds stand (776-H1)
+		out.KeptLimits, out.KeptTimeouts = stepsLimits(a.limits), stepsTimeouts(a.timeouts)
+	}
 	out.NoDeal = noDeal(a.vs, a.answers, a.failures, a.stored)
 	return out
 }
@@ -119,7 +124,8 @@ func noDeal(vs policy.Versions, p policy.Answers, fs []policy.Failure, stored in
 }
 
 // stepsAnswers is policy's answers in steps' shape. Version -1 (no version
-// answered) is version 0 to steps: every default.
+// answered) is version 0 to steps: every default, but for the limits and
+// timeouts Ask keeps from the last answered tick.
 func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 	if p.Version < 0 {
 		return steps.Answers{Failed: map[string]string{"*": "no policy version answered"}}
@@ -140,19 +146,28 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 	for s, l := range p.Landing {
 		a.Landing[s] = steps.LandingAnswer{BackedUp: l.BackedUp, Flowing: l.Flowing, CIWait: l.CIWait}
 	}
-	l, d := p.Limits, steps.Engine.Limits
-	a.Limits = &steps.Limits{Bounces: l.Bounces, Faults: l.Faults, SameFinding: l.SameFinding, ReportsPerTick: l.ReportsPerTick,
-		RouteRestWindow: l.RouteRestWindow, RouteRestAfter: l.RouteRestAfter, EscalateAfter: l.EscalateAfter, FrontierAfter: l.FrontierAfter,
-		FlapLimit: l.FlapLimit, IdleFloor: l.IdleFloor, LandTarget: l.LandTarget, Budget: d.Budget, Pack: d.Pack}
-	tm := p.Timeouts
-	a.Timeouts = &steps.Timeouts{RowSilentGone: tm.RowSilentGone, RowSilentWithdraw: tm.RowSilentWithdraw, LandingStall: tm.LandingStall,
-		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, ReadyNag: tm.ReadyNag, ReadyTake: tm.ReadyTake, BaseRegate: tm.BaseRegate, Consumer: tm.Consumer}
+	a.Limits, a.Timeouts = stepsLimits(p.Limits), stepsTimeouts(p.Timeouts)
 	for _, f := range fs { // another version's failure is its own policy judgement (policy.Judgements), never this version's
 		if f.Question != "" && f.Version == p.Version {
 			a.Failed[f.Question] = f.Msg
 		}
 	}
 	return a
+}
+
+// stepsLimits is policy's limits in steps' shape; Budget and Pack are the
+// engine's.
+func stepsLimits(l policy.Limits) *steps.Limits {
+	d := steps.Engine.Limits
+	return &steps.Limits{Bounces: l.Bounces, Faults: l.Faults, SameFinding: l.SameFinding, ReportsPerTick: l.ReportsPerTick,
+		RouteRestWindow: l.RouteRestWindow, RouteRestAfter: l.RouteRestAfter, EscalateAfter: l.EscalateAfter, FrontierAfter: l.FrontierAfter,
+		FlapLimit: l.FlapLimit, IdleFloor: l.IdleFloor, LandTarget: l.LandTarget, Budget: d.Budget, Pack: d.Pack}
+}
+
+// stepsTimeouts is policy's timeouts in steps' shape.
+func stepsTimeouts(tm policy.Timeouts) *steps.Timeouts {
+	return &steps.Timeouts{RowSilentGone: tm.RowSilentGone, RowSilentWithdraw: tm.RowSilentWithdraw, LandingStall: tm.LandingStall,
+		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, ReadyNag: tm.ReadyNag, ReadyTake: tm.ReadyTake, BaseRegate: tm.BaseRegate, Consumer: tm.Consumer}
 }
 
 // orderTuple is policy's tuple (int64 or string) as steps takes it (int or

@@ -18,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 INVARIANTS = [
     "TypeOK", "ActiveStored", "AnsweredByUsable", "TickAlwaysAnswered", "ActivateMovesNoCard",
     "OneJudgementPerVersion", "WaitKeepsItsBound", "FallbackWasActive", "NoAnswerStartsNothing",
+    "NoAnswerKeepsTheBounds",
 ]
 
 CONSTANTS = "CONSTANT MaxVersion = 3\nSPECIFICATION Spec\n"
@@ -30,10 +31,11 @@ REACH = {
     "NeverNoAnswer": "a tick where the built-in fails too",
     "NeverRollback": "an older version is activated again",
     "NeverWaitAcrossActivate": "an activation while the card is working",
+    "NeverNoAnswerKeepsAVersion": "a tick no version answered after one a stored version answered",
 }
 
 # (name, target, fault, replacements): the design's six reversed witnesses
-# and one for WaitKeepsItsBound.
+# and one each for WaitKeepsItsBound and NoAnswerKeepsTheBounds.
 WITNESSES = [
     ("PolicyActivateUnstored", "ActiveStored",
      "Activate has no stored check: a version never set is activated.",
@@ -65,6 +67,9 @@ WITNESSES = [
     ("PolicyWaitRebound", "WaitKeepsItsBound",
      "Activate re-bounds a wait in progress by the new version's timeouts.",
      [("  /\\ waitBound' = waitBound\n", "  /\\ waitBound' = IF card = \"working\" THEN v ELSE waitBound   \\* FAULT\n", 1)]),
+    ("PolicyNoAnswerDefaultBounds", "NoAnswerKeepsTheBounds",
+     "A tick no version answered runs on the built-in's limits and\ntimeouts, not the last answered tick's (776-H1).",
+     [("  /\\ applied' = IF Pick = NoAnswer THEN kept ELSE Pick\n", "  /\\ applied' = IF Pick = NoAnswer THEN Default ELSE Pick   \\* FAULT: was kept\n", 1)]),
 ]
 
 

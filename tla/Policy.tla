@@ -30,6 +30,12 @@
 (* policy change never does, and a wait keeps the bound it started under. *)
 (* judgements[v] counts the open policy judgements of version v (group    *)
 (* key policy:v<n>).                                                      *)
+(* kept is the version whose limits and timeouts the last answered tick   *)
+(* had (run's Ticker.Limits and Timeouts; the built-in's before any);     *)
+(* applied is the version whose limits and timeouts the last tick ran on  *)
+(* (steps' oracle). A tick no version answered runs on kept, never on the *)
+(* built-in's (modules/run/asker.go Ask, steps.Answers KeptLimits and     *)
+(* KeptTimeouts): NoAnswerKeepsTheBounds.                                 *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -44,10 +50,12 @@ CardStates == {"ready", "working", "done"}
 Ops == {"up", "set", "activate", "drift", "tick"}
 
 VARIABLES stored, active, prev, everActive, breaks, answeredBy, tickBreaks,
-          judgements, card, cardBefore, waitBound, startBound, lastOp
+          judgements, card, cardBefore, waitBound, startBound, lastOp,
+          kept, applied
 
 vars == <<stored, active, prev, everActive, breaks, answeredBy, tickBreaks,
-          judgements, card, cardBefore, waitBound, startBound, lastOp>>
+          judgements, card, cardBefore, waitBound, startBound, lastOp,
+          kept, applied>>
 
 TypeOK ==
   /\ stored \subseteq Versions
@@ -62,6 +70,7 @@ TypeOK ==
   /\ waitBound \in Versions \cup {Default, None}
   /\ startBound \in Versions \cup {Default, None}
   /\ lastOp \in Ops
+  /\ kept \in Usable /\ applied \in Usable
 
 Init ==
   /\ stored = {1} /\ active = 1 /\ prev = None /\ everActive = {1}
@@ -70,6 +79,7 @@ Init ==
   /\ card = "ready" /\ cardBefore = "ready"
   /\ waitBound = None /\ startBound = None
   /\ lastOp = "up"
+  /\ kept = Default /\ applied = Default
 
 (* The card's next state when a tick moves it.                            *)
 Advance(c) == CASE c = "ready" -> "working" [] c = "working" -> "done" [] c = "done" -> "ready"
@@ -83,7 +93,7 @@ Set(v) ==
   /\ prev' = prev
   /\ cardBefore' = card
   /\ lastOp' = "set"
-  /\ UNCHANGED <<active, everActive, breaks, answeredBy, tickBreaks, judgements, card, waitBound, startBound>>
+  /\ UNCHANGED <<active, everActive, breaks, answeredBy, tickBreaks, judgements, card, waitBound, startBound, kept, applied>>
 
 (* policy activate: a stored version that runs clean on the current       *)
 (* snapshot; one op moves the active flag and answers the open policy     *)
@@ -100,14 +110,14 @@ Activate(v) ==
   /\ waitBound' = waitBound
   /\ cardBefore' = card
   /\ lastOp' = "activate"
-  /\ UNCHANGED <<stored, breaks, answeredBy, tickBreaks, startBound>>
+  /\ UNCHANGED <<stored, breaks, answeredBy, tickBreaks, startBound, kept, applied>>
 
 (* The snapshot moves: any set of versions may now fail, the built-in too. *)
 Drift ==
   /\ \E b \in SUBSET Usable : b # breaks /\ breaks' = b
   /\ cardBefore' = card
   /\ lastOp' = "drift"
-  /\ UNCHANGED <<stored, active, prev, everActive, answeredBy, tickBreaks, judgements, card, waitBound, startBound>>
+  /\ UNCHANGED <<stored, active, prev, everActive, answeredBy, tickBreaks, judgements, card, waitBound, startBound, kept, applied>>
 
 (* The version that answers a tick: active, else the previous active,     *)
 (* else the built-in (modules/policy/answer.go Versions.tried), else NoAnswer     *)
@@ -128,9 +138,13 @@ Failing ==
 
 (* A tick: answered by Pick; opens a judgement for each failing version   *)
 (* with none open; may move the card. A wait records the bound of the     *)
-(* version that answered the tick that started it.                        *)
+(* version that answered the tick that started it. An answered tick runs  *)
+(* on its version's limits and timeouts and keeps them; one no version    *)
+(* answered runs on those kept.                                           *)
 Tick ==
   /\ answeredBy' = Pick
+  /\ kept' = IF Pick = NoAnswer THEN kept ELSE Pick
+  /\ applied' = IF Pick = NoAnswer THEN kept ELSE Pick
   /\ tickBreaks' = breaks
   /\ judgements' = [u \in Usable |-> IF u \in Failing /\ judgements[u] = 0 THEN 1 ELSE judgements[u]]
   /\ \E c \in {card, Advance(card)} :
@@ -174,6 +188,11 @@ WaitKeepsItsBound == card = "working" => waitBound = startBound
 
 FallbackWasActive == answeredBy \in everActive \cup {Default, None, NoAnswer}
 
+(* A tick no version answered never changes the bounds a wait or a count  *)
+(* is held to: it runs on the last answered tick's (776-H1, a custom      *)
+(* policy's bounces 16 and pro 14400 fell to the built-in's 12 and 7200). *)
+NoAnswerKeepsTheBounds == applied = kept
+
 (* Reachability: each must be violated (tla/reach/Policy*.cfg), or the    *)
 (* model never reaches the case the invariants above are about.           *)
 NeverPrevAnswers == ~(lastOp = "tick" /\ answeredBy \notin {active, Default})
@@ -182,5 +201,6 @@ NeverJudged == \A v \in Usable : judgements[v] = 0
 NeverNoAnswer == ~(lastOp = "tick" /\ answeredBy = NoAnswer)
 NeverRollback == ~(lastOp = "activate" /\ active < prev)
 NeverWaitAcrossActivate == ~(lastOp = "activate" /\ card = "working")
+NeverNoAnswerKeepsAVersion == ~(lastOp = "tick" /\ answeredBy = NoAnswer /\ kept # Default)
 
 =============================================================================

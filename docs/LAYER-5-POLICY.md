@@ -310,7 +310,9 @@ lookahead, one card, one row.
 
 - Variables: `stored` (set of versions), `active`, `prev`, `breaks` (the
   versions that fail on the current snapshot), `answeredBy`, `judgements`,
-  `cards` (the card's state, for invariant 1), `waitBound`.
+  `cards` (the card's state, for invariant 1), `waitBound`; `kept` (the
+  version whose limits and timeouts the last answered tick had) and
+  `applied` (those the last tick ran on).
 - Actions: `Set(v)` (adds v to stored); `Activate(v)` (v stored and not in
   `breaks`; `prev' = active`); `Drift` (the snapshot moves: `breaks` changes
   arbitrarily, `Default` never in it); `Tick` (answered by the first of
@@ -319,11 +321,14 @@ lookahead, one card, one row.
   clean answers the open judgement).
 - Invariants: `ActiveStored`; `AnsweredByUsable` (never a breaking
   version); `TickAlwaysAnswered`; `ActivateMovesNoCard`; `OneJudgementPer
-  Version`; `WaitKeepsItsBound`.
+  Version`; `WaitKeepsItsBound`; `NoAnswerKeepsTheBounds` (a tick no
+  version answered runs on `kept`, never the built-in's).
 - Reversed witnesses, each a required violation, run by `tla/ci-tlc.sh`:
   an activation of an unstored version; no fallback when active breaks
   (the stall); an activation that moves the card; a breaking version used;
-  a fallback to a never-active version; a judgement opened every tick.
+  a fallback to a never-active version; a judgement opened every tick; a
+  tick no version answered run on the built-in's bounds
+  (`PolicyNoAnswerDefaultBounds`, reached by `NeverNoAnswerKeepsAVersion`).
 
 ## How it is checked
 

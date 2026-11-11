@@ -202,6 +202,12 @@ func newOracle(a Answers, d Defaults) *oracle {
 	o := &oracle{a: a, d: d, miss: map[string]string{}}
 	if a.Failed["*"] != "" {
 		o.miss["*"] = a.Failed["*"]
+		if a.KeptLimits != nil && limitsOK(*a.KeptLimits) {
+			o.d.Limits = *a.KeptLimits
+		}
+		if a.KeptTimeouts != nil && timeoutsOK(*a.KeptTimeouts) {
+			o.d.Timeouts = *a.KeptTimeouts
+		}
 	}
 	return o
 }

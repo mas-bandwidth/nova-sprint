@@ -526,7 +526,12 @@ tests take as that verb would (`roomToTake`); one line for rowan.
 `pack` are layer 3's keys in `limits`. Absent, failed (`Failed[q]`, or `*`
 for the budget spent), out-of-domain or not-offered answers are the default
 for the subject with one `policy` judgement per question and version; no
-policy (version 0) is every default and no judgement. Every limit layer 5
+policy (version 0) is every default and no judgement. A tick no version
+answered (`*`; layer 5's `Version` -1, a tick timeout) runs on the last
+answered tick's `limits` and `timeouts` (`KeptLimits`, `KeptTimeouts`, run's
+`Ticker.Limits` and `Timeouts`), not `Engine`'s, so one timeout never fails a
+wait or holds a producer under bounds the policy did not set; before any
+tick answered they are the engine's (`Policy.NoAnswerKeepsTheBounds`). Every limit layer 5
 validates is read from policy's `limits` answer, the steering numbers
 (`escalate_after`, `frontier_after`, `flap_limit`, `idle_floor`,
 `land_target`) included; `Engine.Limits` is the built-in default for a
