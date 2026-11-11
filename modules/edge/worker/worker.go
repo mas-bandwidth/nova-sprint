@@ -109,6 +109,10 @@ type (
 		// ("": absent). Every push leases from PushedHead, the head this job
 		// last pushed, or else from StartTip (defect 78).
 		StartTip string `json:",omitempty"`
+		// PriorFinished is the receipt's: an attempt reported ok at PriorHead,
+		// so the card machine refuses that head as this attempt's finish, and
+		// an ok that adds nothing to it is a fail (rebaseAndTestStep_internal).
+		PriorFinished bool `json:",omitempty"`
 		// StreamGates are the stream's gates from the take receipt, run after
 		// DoneWhen at the same head (streamGates_internal).
 		StreamGates []string `json:",omitempty"`

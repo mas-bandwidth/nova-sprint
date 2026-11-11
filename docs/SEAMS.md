@@ -174,7 +174,8 @@ The worker (`nova-worker`, layer 4) talks to the sprint only through verbs:
 `nova-sprint hook --as <row> --role worker`, `next --json`, `take --json`,
 `report`. The take receipt (`take <card>@<gen> --as <row> --json`) is the
 seam: `{consumer, producer, kind, stream, repo, base, branch, head, tier,
-brief, prose, finding, stream_ref (the stream's base branch), base_sha, prior_head, paths, done_when,
+brief, prose, finding, stream_ref (the stream's base branch), base_sha, prior_head, prior_finished (a work
+attempt reported ok at prior_head: the card machine refuses it as this attempt's finish), paths, done_when,
 epoch, gen, attempt, review, model, deadline, forge, commit_name, commit_email}`, `deadline` in
 seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream,
 `commit_name` and `commit_email` the sprint's commit identity (`Snapshot.Identity`,

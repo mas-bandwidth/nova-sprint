@@ -192,7 +192,9 @@ func e2eRedis(t *testing.T) string {
 }
 
 // busHook keeps name on the bus, each message it gets appended to inbox.
-func busHook(t *testing.T, tr *transcript, env []string, name, inbox string) {
+// The stop it returns ends the hook as a session's end does (SIGINT: the
+// hook frees the name), so the next busHook is a new bus session at once.
+func busHook(t *testing.T, tr *transcript, env []string, name, inbox string) (stop func()) {
 	t.Helper()
 	handler := `printf '%s\t%s\n' "$NOVA_BUS_FROM" "$NOVA_BUS_BODY" >> ` + "'" + inbox + "'"
 	cmd := exec.Command("nova-bus", "hook", "--as", name, "--exec", handler)
@@ -208,11 +210,12 @@ func busHook(t *testing.T, tr *transcript, env []string, name, inbox string) {
 		who.Env = env
 		if out, err := who.Output(); err == nil && strings.Contains(string(out), name+"\t") {
 			tr.record("nova-bus hook --as "+name+" --exec <append to inbox> (background)", 0, "on the bus\n")
-			return
+			return func() { _ = cmd.Process.Signal(os.Interrupt); _ = cmd.Wait() }
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("%s never showed in nova-bus who", name)
+	return nil
 }
 
 // fakeGH is a `gh` for the binary's forge edge: auth status names a bot

@@ -250,6 +250,27 @@ func TestFunctionalSealCommitsOnlyPaths(t *testing.T) {
 			}
 			require.Contains(t, string(out), "wire-compat/target/", "the seal names what it left out")
 			require.Contains(t, string(out), "README.md")
+
+			// The gates run on the head and on nothing else: what the seal
+			// left out is put back (a tracked edit) or removed (untracked),
+			// whether the head is a new one, applied from its bundle, or the
+			// one the job started from; ignored build output stays.
+			tree := resetArgv_internal(base)
+			if kase == "mixed" {
+				bundle := filepath.Join(jobDir, RebasedBundle)
+				runGitCmd_internal(t, wt, "bundle", "create", "-q", bundle, base+"..HEAD")
+				tree = applyArgv_internal(bundle)
+			}
+			cmd = exec.Command(tree[0], tree[1:]...)
+			cmd.Dir = wt
+			out, err = cmd.CombinedOutput()
+			require.NoError(t, err, "%s", out)
+			readme, err := os.ReadFile(filepath.Join(wt, "README.md"))
+			require.NoError(t, err)
+			require.Equal(t, "readme\n", string(readme), "an edit outside PATHS does not reach the gates")
+			require.NoDirExists(t, filepath.Join(wt, "wire-compat/target"), "untracked files outside PATHS do not reach the gates")
+			require.FileExists(t, filepath.Join(wt, "target/debug/ignored.o"), "ignored build output stays")
+			require.Empty(t, runGitCmd_internal(t, wt, "status", "--porcelain"))
 		})
 	}
 }

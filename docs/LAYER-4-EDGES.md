@@ -328,7 +328,21 @@ Deal to report:
 Results, classified by the adapter. `ok`: the result file says ok and a head
 past `base_sha` and `prior_head` is pushed (a harness that said ok and left
 its changes uncommitted has its changes inside the card's PATHS committed by
-the worker; anything outside PATHS is logged, never committed). `fail`: the
+the worker; anything outside PATHS is logged, never committed, and never
+reaches the done-whens: before them the job's tree is put at the head under
+test in the wall, a forced checkout and a `git clean -f -d`, ignored files
+kept). A harness that says ok and commits nothing over its prior head: the
+take receipt says whether an attempt finished at that head
+(`prior_finished`, the card machine's FinishedHeads). An unfinished one is
+work an attempt pushed before it faulted, failed or was withdrawn, and is
+verified like any head (checked out in the worker's clone, the stream
+merged in, the done-whens run); it is the job's `ok` head when they pass,
+with a reason saying this attempt added nothing. A finished one was read
+and sent back: adding nothing to it is a `fail`, "committed nothing over
+the prior head", with no report for the card machine to refuse
+(`tla/Runner.tla` Rebase, NothingNew). A finding on the deal does not
+decide: it was written against a finished head, so an unfinished prior head
+is an attempt's work on it. `fail`: the
 result file says broken, no result file ("fail: no verdict" with the
 harness's last output), a merge conflict with the stream, the card's tests red
 (the reason keeps the lines that say what failed, make's `***`, `FAIL`,

@@ -135,7 +135,7 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if ok && old.Session != "" && v.Session != "" && old.Session != v.Session {
+	if ok && old.Session != "" && v.Session != "" && old.Session != v.Session && old.Session != v.Replaces {
 		return fmt.Sprintf("row %s is hooked by session %s; unhook it first", v.Name, old.Session), nil
 	}
 	next := Row{Name: v.Name, Session: v.Session, Role: v.Role, State: "down"}

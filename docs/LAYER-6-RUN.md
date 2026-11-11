@@ -34,7 +34,7 @@ show run`. Then it hooks in as `sprint`, which nova-bus requires before `sprint`
 wake-up: run never parses a message body; the sprint's pushes are receipts, so a reply to
 `sprint` is never answered, nor is any other message: one log line each (verbs.BusAnswer,
 directive item 45: answering a REPLY with a REPLY made a loop).
-Then one cold `Snapshot`, and the ticks.
+Then one cold `Snapshot`, the first read of every stream's base tip (no tick before it is done; it reads 8 repositories at once, each bounded by the git edge's timeouts, and a repository it cannot read is an `EDGE FAULT heads` and its streams tick with no head), and the ticks.
 
 **Reports are ordinary ops.** A row's `report` (nova-worker's form), `finish` and `read` run
 their prerequisite table, build the card machine's plan for the consumer and its producer
@@ -171,7 +171,18 @@ item 25): `help playbook <role>` prints modules/playbooks/PLAYBOOK-WORKER.md for
 modules/playbooks/PLAYBOOK-WORKER.md followed by modules/playbooks/PLAYBOOK-COORDINATOR.md for the coordinator, who is a
 worker too ("so they get both playbooks!", Glenn 2026-11-06), compiled into the binary from those
 files. Until the hook has run, every acting verb refuses with `hook in first: nova-sprint hook
---as <name> --role worker` (or `coordinator` for a coordinator verb). `TestPlaybookCommandsParse`
+--as <name> --role worker` (or `coordinator` for a coordinator verb). The hook records the
+session id `nova-bus who` shows for the name's bus hook (the row's `Session`; before 2026-11-11
+an id the sprint minted, compared with nothing), and the hooked check compares it with who's on
+every verb: after the bus hook is started again the refusal is the same `hook in first`, naming
+the role the row has, and the hook replaces the old one in place (`PutRow` with `Replaces`:
+seat, hold and hand kept) instead of refusing `already hooked in`; a name hooked in on its
+live bus hook is told `next`, and a hook in another role than the row has is refused (the role
+changes only through `unhook`, where the run tells of a freed seat). Model: `tla/Hook.tla`
+(`NoStaleVerb`, `HandKept`, `RoleKept`; witnesses `HookAnySession`, `HookReplaceUnhooks`,
+`HookReplaceChangesRole`), bound to the
+verbs by the walk in `modules/verbs/hook_trace_test.go` (`tla/make-traces.sh check hook`).
+`TestPlaybookCommandsParse`
 holds every `nova-sprint` command in the playbooks, CORRECT-USE, SETUP and CARD-CONTRACT to a
 verb and its flags (LESSONS 6.7).
 

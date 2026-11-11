@@ -279,13 +279,18 @@ func (e *Engine) prepareHandoff(ctx context.Context, lease SetupLease, s SetupIn
 }
 
 // upHook hooks the caller in as coordinator once the store exists, unless
-// it already is; with --take-over, from the recorded coordinator.
+// it already is, on the bus hook it has now; with --take-over, from the
+// recorded coordinator.
 func (e *Engine) upHook(ctx context.Context, lease SetupLease, s SetupInput, out *strings.Builder) error {
+	live, err := e.busSession(ctx, s.Actor)
+	if err != nil {
+		return err
+	}
 	snap, err := e.snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	if row := snap.Rows[s.Actor]; row.Session != "" && row.Role == "coordinator" {
+	if row := snap.Rows[s.Actor]; row.Session == live && row.Role == "coordinator" {
 		return nil
 	}
 	hook := e.hookAs
