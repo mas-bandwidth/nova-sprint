@@ -140,11 +140,14 @@ func (w *infraWall_internal) RunStep(context.Context, Job, []string, time.Durati
 }
 
 // runner.go rebaseAndTestStep_internal: every done-when error or non-zero
-// exit was "fail: tests red", a missing binary (127), a refused sandbox
-// and a timeout too, so correct work was bounced. As the harness run's
+// exit was "fail: tests red", a missing binary (127) and a refused sandbox
+// too, so correct work was bounced. As the harness run's
 // (isInfraFault_internal), the wall's or the machine's failure is a fault
 // naming it; and a rebase or the rebased head's checkout that fails for
-// anything but a conflict is the worker's, never the card's.
+// anything but a conflict is the worker's, never the card's. A done-when
+// the wall's own timeout killed is the card's now: its bound is the card's
+// own deadline, no longer the worker's two minutes. A timeout of anything
+// before the gate (the SDK environment script) is still a fault.
 func TestColdread3InfraFailureAfterTheHarnessIsAFaultNotAFail(t *testing.T) {
 	t.Parallel()
 	timeout := &edge.ExecError{Program: "nova-reserve", Kind: edge.ErrTimeout, Reason: "timed out after 10m"}
@@ -157,7 +160,8 @@ func TestColdread3InfraFailureAfterTheHarnessIsAFaultNotAFail(t *testing.T) {
 		"test 127":        {wall: &infraWall_internal{test: WallRunResult{ExitCode: 127, Output: []byte("sh: go: command not found")}}, want: "fault"},
 		"test missing":    {wall: &infraWall_internal{test: WallRunResult{ExitCode: 2, Output: []byte("/bin/sh: 1: sbcl: not found\nmake: *** [Makefile:10: roadmap] Error 127")}}, want: "fault"},
 		"test sandbox":    {wall: &infraWall_internal{test: WallRunResult{ExitCode: 1, Output: []byte("SANDBOX REFUSED --write /x: not a directory")}}, want: "fault"},
-		"test timeout":    {wall: &infraWall_internal{test: WallRunResult{ExitCode: -1}, testErr: timeout}, want: "fault"},
+		"test timeout":    {wall: &infraWall_internal{test: WallRunResult{ExitCode: -1}, testErr: &WallTimeoutError{Err: timeout}}, want: "fail"}, // it ran to its bound, the card's deadline (donewhen_test.go)
+		"setup timeout":   {wall: &infraWall_internal{test: WallRunResult{ExitCode: -1}, testErr: fmt.Errorf("the SDK environment failed: %w", timeout)}, want: "fault"},
 		"test red":        {wall: &infraWall_internal{test: WallRunResult{ExitCode: 1, Output: []byte("--- FAIL: TestX")}}, want: "fail"},
 		"rebase broke":    {wall: &infraWall_internal{}, rebaseErr: errors.New("git rebase: exit 128: fatal: index.lock exists"), stream: "sprint/s1", want: "fault"},
 		"apply 126":       {wall: &infraWall_internal{step: WallRunResult{ExitCode: 126, Output: []byte("git: permission denied")}}, stream: "sprint/s1", want: "fault"},

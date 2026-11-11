@@ -280,9 +280,17 @@ Deal to report:
    last pushed or the tip it found at stage), never a plain force, and none
    once the consumer is final or a newer generation holds it: a withdrawn
    job pushes nothing (defect 78).
-6. **Merge the stream** head as it is now in (never rebase) and re-run the
-   card's test command, inside a slot, bounded by the two-minute rule; push. A conflict
-   is a `fail` naming the files.
+6. **Merge the stream** head as it is now in (never rebase), bounded by the
+   two-minute step bound, and run the card's done-when gates, inside a slot,
+   each until the card's deadline (what is left of it, less the push's 60 s
+   kept for the push and the report; the step bound is never a gate's);
+   push. A job restarted from taken or staged keeps the deadline its record
+   holds. A conflict is a `fail` naming the files; a gate still running at
+   its bound (the wall's own timeout of the gate, never of a setup step
+   before it, which is a `fault`) is a `fail` saying how long it ran; one
+   not started because no time was left is a `fault` that says so (no limit
+   counts it: the card is dealt again and continues from the pushed head).
+   A red gate's reason names the gates not run after it.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
    CI is read by the landing on the group sha, not by the worker.
 8. **Report** with a result id written to `job.json` before the first try;
@@ -296,7 +304,10 @@ past `base_sha` and `prior_head` is pushed (a harness that said ok and left
 its changes uncommitted has its changes inside the card's PATHS committed by
 the worker; anything outside PATHS is logged, never committed). `fail`: the
 result file says broken, no result file ("fail: no verdict" with the
-harness's last output), a merge conflict with the stream, the card's tests red. `fault`:
+harness's last output), a merge conflict with the stream, the card's tests red
+(the reason keeps the lines that say what failed, make's `***`, `FAIL`,
+`--- FAIL`, `error:`, then the output's end, in 4096 bytes) or still
+running at the card's deadline. `fault`:
 exit 134 or 137; no result file after a provider failure the harness did
 not get past ("provider HTTP N": a 402, 429 or 5xx, an upstream that could
 not be reached or a response cut mid-body as 502, and no request sent after
@@ -352,8 +363,10 @@ Timeouts, each a policy number. From v1, measured: stage 120 s (copies ran
 73 to 79 s median under load); launch grace 15 s, three launches, 5 to 20 s
 then 30 to 60 s jittered (9 of 40 launches died on a provider 5xx);
 terminate grace 3 s. From nova-config: the card's deadline per tier.
-Unmeasured until the first dogfood sprint: rebase and re-test 2 min; push
-60 s; `gh` 30 s; bus send 5 s; ssh connect 10 s; CI wait, the repository's
+Unmeasured until the first dogfood sprint: the stream merge, the seal and
+the apply of the merged head 2 min each (a done-when gate has no bound of
+its own: it runs until the card's deadline, less the push's bound; one
+measured 524 s); push 60 s; `gh` 30 s; bus send 5 s; ssh connect 10 s; CI wait, the repository's
 job timeout plus 10 min (v1's land deadline). No silence kill: v1's
 silence heuristic once deleted a running card's home and temp directory.
 
@@ -566,7 +579,7 @@ An estimate from the interfaces and v1's runner, lines of Go without tests:
 | `TerminateGrace` | `3s` | **measured** | Process-group `SIGTERM` -> `SIGKILL` grace |
 | `MaxMessageBytes` / `MaxFieldBytes` | `4096 B` / `300 B` | **measured** | v1 bus size discipline (`Guarantee 3`) |
 | `MaxLogTailBytes` | `4096 B` | **measured** | Harness failure tail carried in report reason |
-| `RebaseTestBound` | `2m` | **guess** | Unmeasured until the first dogfood sprint |
+| `RebaseTestBound` | `2m` | **guess** | The stream merge, the seal and the apply of the merged head, each; never a done-when gate, which runs until the card's deadline less `PushTimeout` (a gate measured 524 s) |
 | `PushTimeout` | `60s` | **guess** | Unmeasured until the first dogfood sprint |
 | `ForgeTimeout` (`gh`) | `30s` | **guess** | Unmeasured until the first dogfood sprint |
 | `BusSendTimeout` | `5s` | **guess** | Unmeasured until the first dogfood sprint |
