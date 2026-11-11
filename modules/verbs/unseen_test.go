@@ -84,12 +84,19 @@ func TestUnseenClearsWhenAnswered(t *testing.T) {
 }
 
 // TestUnseenOf is the report alone: no open judgement, an answered one, the
-// threshold exact, and the policy's own threshold.
+// threshold exact, and the policy's own threshold; one without a deadline
+// (held) never counts, and the count is of the judgements past the
+// threshold, not of every one open.
 func TestUnseenOf(t *testing.T) {
 	t.Parallel()
 	at := time.Unix(1000, 0)
 	open := store.Snapshot{Judgements: map[string]store.Judgement{"j": judgement("j", "stall", "s", at)}}
 	answered := store.Snapshot{Judgements: map[string]store.Judgement{"j": {ID: "j", State: "answered", OpenedAt: at}}}
+	young := judgement("y", "stall", "s", time.Unix(1200, 0))
+	held := store.Snapshot{Judgements: map[string]store.Judgement{"h": heldJudgement("h", "p1", at)}}
+	heldAndYoung := store.Snapshot{Judgements: map[string]store.Judgement{"h": heldJudgement("h", "p1", time.Unix(100, 0)), "y": young}}
+	heldAndOld := store.Snapshot{Judgements: map[string]store.Judgement{"h": heldJudgement("h", "p1", time.Unix(100, 0)), "j": judgement("j", "stall", "s", at)}}
+	oldAndYoung := store.Snapshot{Judgements: map[string]store.Judgement{"j": judgement("j", "stall", "s", at), "y": young}}
 	for _, c := range []struct {
 		snap  store.Snapshot
 		now   int64
@@ -103,9 +110,43 @@ func TestUnseenOf(t *testing.T) {
 		{open, 1301, 0, "UNSEEN 1 judgements open, oldest 5m1s"}, // 0: the default
 		{open, 1301, 600, ""},
 		{open, 1601, 600, "UNSEEN 1 judgements open, oldest 10m1s"},
+		{held, 99999, 300, ""},
+		{heldAndYoung, 1301, 300, ""},
+		{heldAndOld, 1301, 300, "UNSEEN 1 judgements open, oldest 5m1s"},
+		{oldAndYoung, 1301, 300, "UNSEEN 1 judgements open, oldest 5m1s"},
 	} {
 		if got := unseenOf(c.snap, time.Unix(c.now, 0), c.limit); got != c.want {
 			t.Errorf("now %d limit %d: %q, want %q", c.now, c.limit, got, c.want)
 		}
+	}
+}
+
+// TestUnseenSkipsJudgementsWithoutADeadline (2026-11-10): a held card's
+// judgement, a land judgement and the no-policy gate have no deadline; they
+// sit until answered, by design, so their age says nothing about the
+// coordinator's wake. One open for an hour is still listed by judge and
+// check (its own red line, its command), and never raises UNSEEN, nor says
+// the pushes are not waking anyone.
+func TestUnseenSkipsJudgementsWithoutADeadline(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	for _, k := range [][3]string{{"h1", "held", "p1"}, {"l1", "land", "s"}, {"np", "no-policy", "sprint"}} {
+		j := judgement(k[0], k[1], k[2], time.Unix(1000, 0))
+		j.Deadline = time.Time{}
+		s.Judgements[j.ID] = j
+	}
+	w := worldFrom(t, s)
+	healthy(t, w)
+	w.e.Now = func() time.Time { return time.Unix(1000+3725, 0) }
+	for _, args := range [][]string{{"next"}, {"judge"}, {"show"}} {
+		if r := w.do("carol", args...); strings.Contains(r.Output, "UNSEEN") || strings.Contains(r.Output, unseenFix) {
+			t.Fatalf("%v:\n%s", args, r.Output)
+		}
+	}
+	want(t, w.do("carol", "judge"), 0, "JUDGEMENT h1 kind=held", "JUDGEMENT l1 kind=land", "JUDGEMENT np kind=no-policy")
+	r := w.do("carol", "check")
+	want(t, r, 1, "CHECK RED judgement h1 is open: q h1: nova-sprint judge h1", "CHECK RED judgement l1 is open", "CHECK RED judgement np is open")
+	if strings.Contains(r.Output, "UNSEEN") || strings.Contains(r.Output, unseenFix) {
+		t.Fatalf("check:\n%s", r.Output)
 	}
 }
