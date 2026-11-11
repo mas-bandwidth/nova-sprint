@@ -65,7 +65,7 @@ func TestFleetRowsCarryTheCPUPeakFriendsNone(t *testing.T) {
 		"w": {Name: "w", State: "up", Load1Centi: 900, CPUPeakDeci: 412, Cores: 8},
 		"k": {Name: "k", State: "up", Load1Centi: 900, CPUPeakDeci: 1000, Cores: 4},
 	}}
-	d := mapSnapshot(snap, ros, time.Time{})
+	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	for table, want := range map[string]map[string]string{"fleet": {"w": "41.2%"}, "friends": {"k": ""}} {
 		body, err := json.Marshal(d.Tables[table])
 		if err != nil {

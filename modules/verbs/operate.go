@@ -36,6 +36,24 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	return done(next, fmt.Sprintf("%s applied at seq %d", label, r.Seq)), nil
 }
 
+// runStatsReset is `stats reset`: the dashboard's stats mark (the cursor
+// store.StatsCursor) moved to the seq read, one write; the board counts its
+// Fleet and Friends done, ok, failed and ok% from there.
+func runStatsReset(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	reason := in.str("reason")
+	if reason == "" {
+		return "", refuse("a stats reset needs its reason", "add --reason \"<why>\"")
+	}
+	op := e.newOp("stats-reset", in.actor, snap, reason)
+	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Hooks: true}} // the caller still the coordinator it was read as
+	op.Writes, op.Note = []store.Write{store.SetCursor{Name: store.StatsCursor, Seq: snap.Seq}}, reason
+	r, err := e.commit(ctx, op, "nova-sprint stats reset --as "+in.actor+" --reason \"<why>\" again")
+	if err != nil {
+		return "", err
+	}
+	return done(waitNext, fmt.Sprintf("STATS RESET applied at seq %d: the board's fleet and friends done, ok, failed and ok%% count from here", r.Seq)), nil
+}
+
 // alreadyStopped is stop on a stopped sprint, or start on a running one: a
 // success that changes nothing, saying the state and the next verb (defect
 // 23: start on a running sprint printed "STARTED already").

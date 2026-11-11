@@ -37,7 +37,7 @@ func TestCostSummaryAPIOnlyWithSeatTokens(t *testing.T) {
 	}
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: cards,
 		Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}, "stella": {Name: "stella", State: "up"}, "alex": {Name: "alex", State: "up"}, "r": {Name: "r", State: "up"}, "w": {Name: "w", State: "up"}}}
-	env := mapSnapshot(s, testRoster, time.Time{})
+	env := mapSnapshot(s, testRoster, time.Time{}, nil)
 	c := env.Cost
 	want := costSummary{Total: "$0.01", PerCard: "$0.0050", ByTier: map[string]string{"flash": "$0.01", "pro": "$0.00"}, Priced: 2, Unpriced: 3, NoTokens: 1, NoPrice: 2,
 		Missing: []string{"inception/mercury-3", "openai/sol"}, Landed: 2, PricedCards: 2, APITokens: "56.6K", SeatRuns: 2, SeatTokens: "1.2M"}
@@ -65,7 +65,7 @@ func TestCostSummarySeatsOnlyIsNoDollar(t *testing.T) {
 		"p1":    {ID: "p1", Kind: "producer", Stream: "s", State: "working", Tier: "pro"},
 		"p1.w1": {ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s", State: "done", Holder: "alex", Tier: "pro", Priced: true, Usage: "input=900 output=100 billing=subscription charged=-"},
 	}}
-	c := mapSnapshot(s, testRoster, time.Time{}).Cost
+	c := mapSnapshot(s, testRoster, time.Time{}, nil).Cost
 	if c.Total != "-" || c.PerCard != "-" || c.Priced != 0 || c.SeatRuns != 1 || c.SeatTokens != "1K" || c.Unpriced != 0 {
 		t.Fatalf("seats only: %+v", c)
 	}

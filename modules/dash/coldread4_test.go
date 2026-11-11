@@ -111,7 +111,7 @@ func TestColdread4StreamCostsAreRoundedStrings(t *testing.T) {
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", Tier: "pro", State: "done", Cost: 1000, Priced: true},
 		"u": {ID: "u", Kind: "work", Of: "p", Stream: "s", Tier: "pro", State: "fail"},
 	}}
-	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}), at: t1000, now: at1000}
+	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}, nil), at: t1000, now: at1000}
 	b, err := json.Marshal(cache.pageSnapshot())
 	if err != nil {
 		t.Fatal(err)

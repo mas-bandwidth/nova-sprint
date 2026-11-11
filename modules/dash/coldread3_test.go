@@ -68,7 +68,7 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "review", Tier: "pro"},
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", State: "waiting", Tier: "pro"},
 	}}
-	readers := mapSnapshot(s, testRoster, time.Time{}).Tables["readers"].(map[string]numberCells)
+	readers := mapSnapshot(s, testRoster, time.Time{}, nil).Tables["readers"].(map[string]numberCells)
 	if _, ok := readers[""]; ok {
 		t.Errorf("readers table has an unnamed row: %v", readers)
 	}
@@ -79,7 +79,7 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	t.Parallel()
 	s := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"alex": {Name: "alex", State: "down"}}}
-	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}).Tables["friends"])
+	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}, nil).Tables["friends"])
 	if err != nil {
 		t.Fatal(err)
 	}

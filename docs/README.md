@@ -686,6 +686,7 @@ a repair for an ordinary refused command.
 | `drop` | Fail work that should not be done, with explicit treatment of its dependants. | `nova-sprint help drop` |
 | `relink` | Redirect a dependant's failed need to another producer. | `nova-sprint help relink` |
 | `stream set` | Change a stream's landing mode or forge. | `nova-sprint help stream set` |
+| `stats reset` | Count the dashboard's Fleet and Friends done, ok, failed and ok% again from now, with a reason, so a change's effect shows at once; their heads then say `since <time>`. Tokens and cost are not reset. | `nova-sprint help stats reset` |
 | `wake` | Consume a bus message on stdin and acknowledge each dealt card before printing its receipt or refusal. | `nova-sprint help wake` |
 
 For a Monitor-based bus hook that acknowledges deals before waking the session,

@@ -24,7 +24,7 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
 		"a-bench": {Name: "a-bench", State: "up"}, "amy": {Name: "amy", State: "up", Held: true}, "gone": {Name: "gone", State: "up"},
 	}}
-	d := mapSnapshot(snap, ros, time.Time{})
+	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	fleet := d.Tables["fleet"].(map[string]*fleetRow)
 	friends := d.Tables["friends"].(map[string]*fleetRow)
 	want := map[string]fleetRow{
@@ -47,7 +47,7 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 		t.Fatal(err)
 	}
 	var again []byte
-	if again, err = json.Marshal(mapSnapshot(snap, ros, time.Time{}).Tables["fleet"]); err != nil || string(again) != string(body) {
+	if again, err = json.Marshal(mapSnapshot(snap, ros, time.Time{}, nil).Tables["fleet"]); err != nil || string(again) != string(body) {
 		t.Fatalf("the order is not stable: %v\n%s\n%s", err, body, again)
 	}
 }
@@ -68,7 +68,7 @@ func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 		"w7": card("w7", "work", "bob", "bob", ""), "w8": card("w8", "work", "bob", "bob", "released"),
 		"r1": card("r1", "read", "emma", "alex", "fix"), "r2": card("r2", "read", "alex", "emma", "ok"),
 	}}
-	d := mapSnapshot(snap, ros, time.Time{})
+	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	friends := d.Tables["friends"].(map[string]*fleetRow)
 	if e := friends["emma"]; e.OK != 1 || e.Failed != 1 || e.OKPct != 50 || e.Done != 3 {
 		t.Errorf("emma = %+v: ok and fix work count, her read is her done and nothing else", e)
@@ -103,7 +103,7 @@ func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 		"b": {Name: "b", State: "down", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
 		"c": {Name: "c", State: "up"},
 	}}
-	body, err := json.Marshal(mapSnapshot(snap, ros, time.Time{}).Tables["fleet"])
+	body, err := json.Marshal(mapSnapshot(snap, ros, time.Time{}, nil).Tables["fleet"])
 	if err != nil {
 		t.Fatal(err)
 	}
