@@ -50,13 +50,14 @@ func (t *tick) overloads() {
 
 func centi(n int) string { return fmt.Sprintf("%d.%02d", n/100, n%100) }
 
-// overloadQuestion is the judgement's text, the instruction first.
+// overloadQuestion is the judgement's text, the instruction first and the
+// card work inside the 300 bytes a push shows (it tells sprint load from
+// other load, such as CI).
 func (t *tick) overloadQuestion(name string, o Overload) string {
-	return fmt.Sprintf("OVERLOAD row %s: this machine is overloaded: find what is loading it and fix it now (runner count or per-job parallelism for CI, width for card work); "+
-		"load %s on %d cores now (%.1fx), %s to %s over the last %s, the bound is %.1fx (%s) for %s; "+
-		"card work: %d consumers working of width %d, nova-reserve slots %d of %d in use; "+
+	return fmt.Sprintf("OVERLOAD row %s (%d cores): this machine is overloaded: find what is loading it and fix it now (runner count or per-job parallelism for CI, width for card work); "+
+		"load %s now (%.1fx), %s-%s over %s, bound %.1fx (%s) for %s; cards: %d working of width %d, nova-reserve slots %d/%d; "+
 		"answer retry once fixed: it clears by itself when the load stays under the bound for %s",
-		name, centi(o.Load1Centi), o.Cores, float64(o.Load1Centi)/100/float64(o.Cores), centi(o.LowCenti), centi(o.PeakCenti), o.For.Truncate(time.Second),
+		name, o.Cores, centi(o.Load1Centi), float64(o.Load1Centi)/100/float64(o.Cores), centi(o.LowCenti), centi(o.PeakCenti), o.For.Truncate(time.Second),
 		o.Factor, centi(int(o.Factor*float64(o.Cores)*100)), o.Span, t.v.Working(name), t.width(name), o.SlotsUsed, o.SlotsTotal, o.Span)
 }
 

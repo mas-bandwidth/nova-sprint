@@ -36,9 +36,8 @@ func TestOverloadWakesTheCoordinator(t *testing.T) {
 	s.run(2)
 	require.Equal(t, []string{"overload.r1.1"}, s.openJudgements("overload"), "one per bench row, none for a friend")
 	j := s.snap().Judgements["overload.r1.1"]
-	assert.Equal(t, "OVERLOAD row r1: this machine is overloaded: find what is loading it and fix it now (runner count or per-job parallelism for CI, width for card work); "+
-		"load 512.00 on 64 cores now (8.0x), 350.12 to 830.55 over the last 5m10s, the bound is 2.0x (128.00) for 5m0s; "+
-		"card work: 0 consumers working of width 2, nova-reserve slots 3 of 16 in use; "+
+	assert.Equal(t, "OVERLOAD row r1 (64 cores): this machine is overloaded: find what is loading it and fix it now (runner count or per-job parallelism for CI, width for card work); "+
+		"load 512.00 now (8.0x), 350.12-830.55 over 5m10s, bound 2.0x (128.00) for 5m0s; cards: 0 working of width 2, nova-reserve slots 3/16; "+
 		"answer retry once fixed: it clears by itself when the load stays under the bound for 5m0s", j.Question)
 	assert.Equal(t, "nova-sprint judge overload.r1.1 <choice> --reason <why>   choices: retry", j.Command)
 	assert.False(t, j.Deadline.IsZero(), "it escalates unanswered, as the other watch kinds do")
@@ -78,7 +77,7 @@ func TestOverloadEscalatesAndWaitsOnAnAnswer(t *testing.T) {
 	s.now = answered.ClosedAt.Add(6 * time.Minute)
 	s.tick()
 	require.Equal(t, []string{"overload.r1.3"}, s.openJudgements("overload"))
-	assert.True(t, strings.HasPrefix(s.snap().Judgements["overload.r1.3"].Question, "OVERLOAD row r1: this machine is overloaded"))
+	assert.True(t, strings.HasPrefix(s.snap().Judgements["overload.r1.3"].Question, "OVERLOAD row r1 (64 cores): this machine is overloaded"))
 
 	q := newSim(t)
 	q.row("r2", 2, "pro")
