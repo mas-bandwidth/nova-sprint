@@ -2,6 +2,7 @@ package worker
 
 import (
 	"cmp"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
@@ -37,7 +38,8 @@ type (
 	}
 )
 
-// RecordStatus keeps code as job's last provider status.
+// RecordStatus keeps code as job's last provider status: a failure (402,
+// 429, 5xx, a response cut short as 502), or 0 once a request is answered.
 func (p *KeyProxy) RecordStatus(job string, code int) {
 	if p != nil {
 		p.mu.Lock()
@@ -278,29 +280,75 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 		http.Error(w, "proxy refused: invalid request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Accept-Encoding stays the transport's own: it asks for what it decodes
+	// itself, so the harness is sent plain bytes; the harness's forwarded, a
+	// cut body is a decompression error inside the harness.
 	for k, vals := range r.Header {
-		if !slices.Contains([]string{"AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST"}, strings.ToUpper(k)) {
+		if !slices.Contains([]string{"AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST", "ACCEPT-ENCODING"}, strings.ToUpper(k)) {
 			outReq.Header[k] = slices.Clone(vals)
 		}
 	}
 	outReq.Header.Set("Authorization", "Bearer "+apiKey)
 	outReq.Host = target.Host
-	resp, err := cmp.Or[http.RoundTripper](p.Transport, http.DefaultTransport).RoundTrip(outReq)
+	resp, err := cmp.Or(p.Transport, upstream_internal).RoundTrip(outReq)
 	if err != nil {
 		p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
 		http.Error(w, "proxy upstream fault: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
+	status := 0 // answered: a failure before this request is one the harness got past
 	if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-		p.RecordStatus(jobOf_internal(r), resp.StatusCode)
+		status = resp.StatusCode
 	}
+	p.RecordStatus(jobOf_internal(r), status)
 	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
-	if _, err := io.Copy(w, io.LimitReader(resp.Body, 16<<20)); err != nil {
-		// the status is sent: the harness sees a cut body; the worker's log says why
-		reportTo(nil, "key proxy: response body cut short", err)
+	body, buf := io.LimitReader(resp.Body, 16<<20), make([]byte, 32<<10)
+	for {
+		n, readErr := body.Read(buf)
+		if n > 0 {
+			if _, err := w.Write(buf[:n]); err != nil {
+				reportTo(nil, "key proxy: the harness stopped reading its response", err)
+				return
+			}
+			// sent as it arrives: unflushed, a stream's event waits in the
+			// server's buffer for 4 KiB or the end
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+		if readErr == io.EOF {
+			return
+		}
+		if readErr != nil {
+			// The upstream cut the body with the status already sent. The
+			// worker's log says why; the job's provider status says it to the
+			// classifier (ClassifyJob: a fault, "provider HTTP 502", never the
+			// card's fail), unless the harness itself hung up; and the harness
+			// gets a broken connection, never a short body that ends cleanly.
+			reportTo(nil, "key proxy: response body cut short", readErr)
+			if r.Context().Err() == nil {
+				p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
+			}
+			panic(http.ErrAbortHandler)
+		}
 	}
+}
+
+// upstream_internal is the transport of a proxy given none: HTTP/1.1 only,
+// so each request has a connection of its own and an upstream's reset cuts
+// one job's request. HTTP/2 puts every job of the bench on one connection
+// per provider, and one reset ends them all (2026-11-11, four jobs).
+var upstream_internal http.RoundTripper = newUpstream_internal()
+
+func newUpstream_internal() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Protocols = new(http.Protocols)
+	t.Protocols.SetHTTP1(true)
+	// the clone's config still offers h2 in ALPN
+	t.TLSClientConfig = &tls.Config{NextProtos: []string{"http/1.1"}}
+	return t
 }
 func CheckLoopbackAddr(addr string) error {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(addr))

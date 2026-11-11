@@ -262,7 +262,7 @@ func TestFunctionalKeyProxyUpstreamResetCutsOneJobOnly(t *testing.T) {
 	defer up.Close()
 
 	// the transport the proxy uses when given none, trusting the test's upstream
-	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr := newUpstream_internal()
 	tr.TLSClientConfig.RootCAs = up.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
 	defer tr.CloseIdleConnections()
 	p := &KeyProxy{Transport: tr, Routes: map[string]ProxyRoute{"up": {Name: "up", UpstreamURL: up.URL, AllowedHosts: []string{"127.0.0.1"}, Key: func() (string, error) { return "sk-x", nil }}}}
