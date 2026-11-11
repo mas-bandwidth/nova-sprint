@@ -22,8 +22,8 @@
 #   RowAlive.tla with RowAlive.cfg (every row up on its hook, down off it,
 #     its hand returned and dealt again: docs/README.md "Hard requirements" 1, 2)
 #                                      must pass            (TLC exit 0);
-#     its witnesses RowAlive{ManualUp,NoGone,GoneKeeps,HoldKeeps,NoRedeal}
-#     and reach checks RowAliveNever{Down,Back}, each a cfg on RowAlive.tla,
+#     its witnesses RowAlive{ManualUp,NoGone,GoneKeeps,HoldKeeps,NoSweep,NoRedeal}
+#     and reach checks RowAliveNever{Down,Back,Owed}, each a cfg on RowAlive.tla,
 #     must be violated
 #   VerbFence.tla with VerbFence.cfg and VerbFenceCoarse.cfg (a verb on a store others write)
 #                                      must pass            (TLC exit 0);
@@ -274,10 +274,10 @@ run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg Answ
 # RowAlive's reversed witnesses (one per requirement it holds) and reach
 # checks (a row goes down, and comes back up by itself), each a cfg on
 # RowAlive.tla.
-for m in ManualUp NoGone GoneKeeps HoldKeeps NoRedeal; do
+for m in ManualUp NoGone GoneKeeps HoldKeeps NoSweep NoRedeal; do
     run "witness-RowAlive$m" violate . "RowAlive$m.cfg" RowAlive.tla 1
 done
-for m in NeverDown NeverBack; do
+for m in NeverDown NeverBack NeverOwed; do
     run "reach-RowAlive$m" violate . "RowAlive$m.cfg" RowAlive.tla 1
 done
 

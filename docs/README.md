@@ -104,7 +104,8 @@ when their producers land, not when a worker finishes them.
 
 The sprint always does these three things, for friend rows and bench rows
 alike. Each is held by a TLA+ property in `tla/RowAlive.tla` (checked with a
-reversed witness that breaks it, `tla/ci-tlc.sh`) and by a test.
+reversed witness that breaks it, `tla/ci-tlc.sh`) and by a test. The model is
+not yet trace-bound to the code (owed).
 
 1. **Up and down are automatic.** A row is up while its bus hook is on
    nova-bus and goes down after `row_silent_gone` (10 minutes by default) off
@@ -112,17 +113,32 @@ reversed witness that breaks it, `tla/ci-tlc.sh`) and by a test.
    Held by `RowAlive.AutoUp` and `RowAlive.HookedWhileUp` (witnesses
    `RowAliveManualUp`, `RowAliveNoGone`) and `TestRowUpWhileHookOnBus`,
    `TestRowStaysUpWhileHookOnBus`, `TestRowDownWhenHookGoneAndHandDealtAgain`
-   (`modules/run/rowalive_test.go`).
+   (`modules/run/rowalive_test.go`). Two exceptions, on purpose, both in the
+   model (`UnreadAdvance`, `Restart`):
+   - A tick whose `nova-bus who` read fails is no evidence of silence: every
+     row's last-seen moves forward with the clock, so no row goes down while
+     the bus cannot be read (`modules/run/tick.go` Tick, `o.Unread`).
+   - Last-seen lives in the run's memory: a restarted run counts every row's
+     silence afresh from its start (a row not yet seen counts from the run's
+     first view), so a restart delays a down by up to `row_silent_gone`.
 2. **A row that goes down or is held gives its cards back, and they are dealt
-   again.** Every card in its hand, taken or not, returns to the queue in the
-   same operation (branches and heads kept) and is dealt to a row that is up.
-   Held by `RowAlive.HandEmptyWhenClosed` and `RowAlive.Redealt` (witnesses
-   `RowAliveGoneKeeps`, `RowAliveHoldKeeps`, `RowAliveNoRedeal`) and
-   `TestRowDownWhenHookGoneAndHandDealtAgain`, `TestHeldRowHandDealtAgain`.
+   again.** The operation that puts the row down or holds it returns every
+   card in its hand, taken or not, to the queue (branches and heads kept),
+   and each is dealt to a row that is up. The cards that operation cannot
+   touch this tick (claimed by an earlier step of the tick, its producer not
+   free, its withdraw refused, or dealt between the read the close was planned
+   on and its commit) are returned by the next tick that can touch them
+   (`modules/steps/holds.go` holds). Held by `RowAlive.HandEmptyWhenClosed`,
+   `RowAlive.ReturnedByNextTick` and `RowAlive.Redealt` (witnesses
+   `RowAliveGoneKeeps`, `RowAliveHoldKeeps`, `RowAliveNoSweep`,
+   `RowAliveNoRedeal`) and `TestRowDownWhenHookGoneAndHandDealtAgain`,
+   `TestHeldRowHandDealtAgain`, which read the closing operation from the log.
 3. **Bench-only checks never judge a friend row.** A friend row is never read
    as a worker bench, so a bench failure (an unreadable machine inventory, a
-   worker unit's log) never lands on it. Held by
-   `TestShowFriendRowIsNeverABench` (`modules/verbs/check_test.go`).
+   worker unit's log) never lands on it; with the roster itself unreadable,
+   `show` applies no bench check to any row and says the roster could not be
+   read. Held by `TestShowFriendRowIsNeverABench` and
+   `TestShowRowWithTheRosterUnreadable` (`modules/verbs/check_test.go`).
 
 Every dealt attempt has an id and generation, written `<card>@<gen>`, and a
 sprint epoch. Copy these from the latest receipt. They prevent an old session

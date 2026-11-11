@@ -27,12 +27,20 @@ Every change keeps all three, for friend rows and bench rows alike
 1. A row is up while its bus hook is on nova-bus and down after
    `row_silent_gone` off it, with nothing manual (no pong, no command):
    `tla/RowAlive.tla` AutoUp and HookedWhileUp; `modules/run/rowalive_test.go`.
+   Two exceptions, on purpose and in the model: a tick whose `nova-bus who`
+   read fails is no evidence of silence (no row goes down while the bus cannot
+   be read), and last-seen lives in the run's memory (a restarted run counts
+   every row's silence afresh).
 2. A row that goes down or is held returns every card it holds to the queue in
-   the same op, and they are dealt again: `tla/RowAlive.tla`
-   HandEmptyWhenClosed and Redealt; `TestRowDownWhenHookGoneAndHandDealtAgain`,
-   `TestHeldRowHandDealtAgain`.
-3. Bench-only checks never judge a friend row:
-   `TestShowFriendRowIsNeverABench` (`modules/verbs/check_test.go`).
+   the op that closes it, except cards that op cannot touch this tick, which
+   the next tick that can touch them returns; all are dealt again:
+   `tla/RowAlive.tla` HandEmptyWhenClosed, ReturnedByNextTick and Redealt;
+   `TestRowDownWhenHookGoneAndHandDealtAgain`, `TestHeldRowHandDealtAgain`.
+3. Bench-only checks never judge a friend row, and with the roster unreadable
+   no row is judged as a bench: `TestShowFriendRowIsNeverABench`,
+   `TestShowRowWithTheRosterUnreadable` (`modules/verbs/check_test.go`).
+
+`tla/RowAlive.tla` is not yet trace-bound to the code (owed).
 
 A change that needs to break one of them is Glenn's decision, asked first.
 

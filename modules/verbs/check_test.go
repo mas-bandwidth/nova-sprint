@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -392,6 +393,27 @@ func TestShowFriendRowIsNeverABench(t *testing.T) {
 	w.doctor.unitsErr = errBroken
 	if out := w.ok(t, "carol", "show", "dave"); strings.Contains(out, `"worker"`) || strings.Contains(out, "unread") {
 		t.Fatalf("friend dave was judged as a bench:\n%s", out)
+	}
+}
+
+// With the roster unreadable too, show cannot tell a friend from a bench, so
+// it applies no bench check to any row: the row alone, and a line saying the
+// roster could not be read (as check's width line does), never the bench
+// list's error.
+func TestShowRowWithTheRosterUnreadable(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.doctor.unitsErr = errors.New("bench list unreadable")
+	w.doctor.units = []WorkerUnit{{Machine: "alice", Service: "sprint-worker-alice"}}
+	w.roster.err = errors.New("roster unreadable")
+	for _, name := range []string{"dave", "alice"} { // a friend, and a bench
+		out := w.ok(t, "carol", "show", name)
+		if strings.Contains(out, `"worker": {`) || strings.Contains(out, "bench list unreadable") {
+			t.Fatalf("show %s applied a bench check with the roster unreadable:\n%s", name, out)
+		}
+		if !strings.Contains(out, `"roster_unread": "roster unreadable"`) {
+			t.Fatalf("show %s does not say the roster was unreadable:\n%s", name, out)
+		}
 	}
 }
 

@@ -100,14 +100,19 @@ func producersOf(tk *Ticker, row string) []string {
 }
 
 // dealBob ticks with bob alone on the bus (amy down, off it) until bob
-// holds a card, and returns the time and the producers bob works for.
-func dealBob(t *testing.T, tk *Ticker, ro roster.Roster) (time.Time, []string) {
+// holds a card, takes what it holds (as bob's take verb writes it, so no
+// take window returns it), and returns the time and the producers bob works
+// for.
+func dealBob(t *testing.T, f store.Store, tk *Ticker, ro roster.Roster) (time.Time, []string) {
 	t.Helper()
 	now := rt0
 	for i := 0; i < 10; i++ {
 		now = now.Add(time.Second)
 		rowTick(t, tk, ro, now, "bob")
 		if got := producersOf(tk, "bob"); len(got) > 0 {
+			for _, id := range heldBy(tk, "bob") {
+				rowMust(t, f, "take-"+id, store.SetCursor{Name: steps.AckCursor(tk.Snapshot().Epoch, id), Seq: max(tk.Snapshot().Seq, 1)})
+			}
 			return now, got
 		}
 	}
@@ -159,8 +164,8 @@ func TestRowStaysUpWhileHookOnBus(t *testing.T) {
 	for _, kind := range bothKinds {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
-			_, ro, tk := rowSeeded(t, kind)
-			start, _ := dealBob(t, tk, ro)
+			f, ro, tk := rowSeeded(t, kind)
+			start, _ := dealBob(t, f, tk, ro)
 			for at := start; at.Before(start.Add(3 * gone)); at = at.Add(30 * time.Second) {
 				rowTick(t, tk, ro, at, "bob", "amy")
 			}
@@ -178,8 +183,8 @@ func TestRowDownWhenHookGoneAndHandDealtAgain(t *testing.T) {
 	for _, kind := range bothKinds {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
-			_, ro, tk := rowSeeded(t, kind)
-			start, had := dealBob(t, tk, ro)
+			f, ro, tk := rowSeeded(t, kind)
+			start, had := dealBob(t, f, tk, ro)
 			at := start
 			for ; at.Before(start.Add(gone - 30*time.Second)); at = at.Add(30 * time.Second) {
 				rowTick(t, tk, ro, at, "amy")
@@ -187,15 +192,23 @@ func TestRowDownWhenHookGoneAndHandDealtAgain(t *testing.T) {
 			if st := tk.Snapshot().Rows["bob"].State; st != "up" {
 				t.Fatalf("%s row bob went %s before RowSilentGone", kind, st)
 			}
-			for i := 0; i < 6; i++ {
+			hand := heldBy(tk, "bob")
+			for i := 0; i < 6 && tk.Snapshot().Rows["bob"].State == "up"; i++ {
 				at = at.Add(30 * time.Second)
 				rowTick(t, tk, ro, at, "amy")
 			}
 			if st := tk.Snapshot().Rows["bob"].State; st != "down" {
 				t.Fatalf("%s row bob, off the bus past RowSilentGone, is %s; want down", kind, st)
 			}
+			// The tick that put bob down returned its hand in the same op: no
+			// later tick has run (holds.go handMoves).
 			if got := heldBy(tk, "bob"); len(got) != 0 {
-				t.Fatalf("%s row bob is down and still holds %v", kind, got)
+				t.Fatalf("%s row bob went down still holding %v: the Gone did not return its hand in the same op", kind, got)
+			}
+			returnedInClosingOp(t, f, "bob", hand)
+			for i := 0; i < 5; i++ {
+				at = at.Add(time.Second)
+				rowTick(t, tk, ro, at, "amy")
 			}
 			if got := producersOf(tk, "amy"); !containsAll(got, had) {
 				t.Fatalf("bob's cards were not dealt again: amy works for %v, want at least %v", got, had)
@@ -212,8 +225,17 @@ func TestHeldRowHandDealtAgain(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			f, ro, tk := rowSeeded(t, kind)
-			at, had := dealBob(t, tk, ro)
+			at, had := dealBob(t, f, tk, ro)
+			hand := heldBy(tk, "bob")
 			hold(t, f, tk, "bob", at)
+			returnedInClosingOp(t, f, "bob", hand)
+			// The hold op returned the hand itself: read before any tick.
+			if err := tk.Fold(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if got := heldBy(tk, "bob"); len(got) != 0 {
+				t.Fatalf("%s row bob is held and still holds %v: the hold did not return its hand in the same op", kind, got)
+			}
 			for i := 0; i < 5; i++ {
 				at = at.Add(time.Second)
 				rowTick(t, tk, ro, at, "bob", "amy")
@@ -236,4 +258,36 @@ func containsAll(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+// returnedInClosingOp asserts that the one op that closed row (put it down,
+// or held it) also moved every card of hand out of row's hand: requirement 2's
+// "in the same op", read from the store's log, not from a later tick.
+func returnedInClosingOp(t *testing.T, st store.Store, row string, hand []string) {
+	t.Helper()
+	if len(hand) == 0 {
+		t.Fatalf("%s held nothing before it closed: the test proves nothing", row)
+	}
+	events, err := st.Events(context.Background(), 0, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if !e.Accepted || e.Before == nil || e.After == nil {
+			continue
+		}
+		b, okB := e.Before.Rows[row]
+		a, okA := e.After.Rows[row]
+		if !okB || !okA || !(b.State == "up" && !b.Held) || (a.State == "up" && !a.Held) {
+			continue
+		}
+		for _, id := range hand {
+			c, ok := e.After.Cards[id]
+			if !ok || c.Holder == row && (c.State == "working" || c.State == "ready") {
+				t.Fatalf("op %s (seq %d) closed %s but left %s in its hand: %+v", e.Op, e.Seq, row, id, c)
+			}
+		}
+		return
+	}
+	t.Fatalf("no op closed %s", row)
 }
