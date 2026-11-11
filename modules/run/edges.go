@@ -55,11 +55,15 @@ type Edges struct {
 // landing(stream).ci_wait): GitHub queues a workflow's jobs as checks within
 // seconds of a push, so a sha with no check at all after this long has no
 // CI coming, and the landing is a judgement instead of a wait for ever. 10
-// minutes is a guess, not measured.
+// minutes is a guess, not measured. HeadsAtOnce is how many repositories
+// the first heads pass reads at once (run does not tick before it ends, so
+// unreachable repositories cost a timeout per HeadsAtOnce of them, not one
+// each); 8 is a guess, not measured. Later passes read one at a time.
 const (
-	LandPoll   = 30 * time.Second
-	HeadsEvery = 10 * time.Second
-	CIWait     = 10 * time.Minute
+	LandPoll    = 30 * time.Second
+	HeadsEvery  = 10 * time.Second
+	CIWait      = 10 * time.Minute
+	HeadsAtOnce = 8
 )
 
 // Results drains the results that finished since the last call.

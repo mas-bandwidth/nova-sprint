@@ -3,7 +3,9 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -147,4 +149,72 @@ func TestServeUnreadableHeadsStillTick(t *testing.T) {
 	if got := headless(t, f); len(got) != 1 {
 		t.Fatalf("s, unreadable, has %v no-head judgements, want one\n%s", got, out)
 	}
+}
+
+// slowGit is repositories whose ls-remote each waits on gate, as one that
+// runs to the git edge's timeout does; it counts how many are read at once.
+type slowGit struct {
+	stillGit
+	gate      chan struct{}
+	mu        sync.Mutex
+	now, most int
+}
+
+func (g *slowGit) LsRemote(ctx context.Context, dir, ref string) (string, bool, error) {
+	g.mu.Lock()
+	g.now++
+	g.most = max(g.most, g.now)
+	gate := g.gate
+	g.mu.Unlock()
+	<-gate
+	g.mu.Lock()
+	g.now--
+	g.mu.Unlock()
+	return g.stillGit.LsRemote(ctx, dir, ref)
+}
+
+// TestFirstHeadsPassReadsRepositoriesAtOnce: the run waits for the first
+// heads pass before its first tick, so that pass reads up to HeadsAtOnce
+// repositories at once: ten slow repositories hold the first tick for two
+// timeouts, not ten. Later passes read one repository at a time, as before.
+func TestFirstHeadsPassReadsRepositoriesAtOnce(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		streams := map[string]store.Stream{}
+		for i := range 10 {
+			name := fmt.Sprint("s", i)
+			streams[name] = store.Stream{Name: name, Repo: fmt.Sprintf("https://example.invalid/r%d.git", i), Base: "main", Forge: "github"}
+		}
+		g := &slowGit{gate: make(chan struct{})}
+		e := &Edges{Git: g, ReposDir: t.TempDir()}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		read := make(chan struct{})
+		go e.WatchHeads(ctx, &beats{now: t0}, func() map[string]store.Stream { return streams }, read)
+		most := func() int {
+			g.mu.Lock()
+			defer g.mu.Unlock()
+			return g.most
+		}
+		synctest.Wait() // the first pass's reads are all waiting on the gate
+		if got := most(); got != HeadsAtOnce {
+			t.Errorf("the first pass read %d repositories at once, want %d", got, HeadsAtOnce)
+		}
+		close(g.gate)
+		<-read
+		if got := len(e.Heads()); got != len(streams) {
+			t.Fatalf("the first pass read %d heads, want %d", got, len(streams))
+		}
+		later := make(chan struct{})
+		g.mu.Lock()
+		g.most, g.gate = 0, later
+		g.mu.Unlock()
+		e.Stale()
+		synctest.Wait() // the second pass's one read waits on the gate
+		if got := most(); got != 1 {
+			t.Errorf("a later pass read %d repositories at once, want 1", got)
+		}
+		close(later)
+		cancel()
+	})
 }
