@@ -294,6 +294,14 @@ A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base 
 [--mode auto|group|hand] [--forge github]` prints `STREAM <s> repo=... base=... mode=...
 forge=... applied at seq <n>`; give `--forge github` when the repo requires PRs and CI, and only
 then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either later).
+Land a stream into a branch that does not move (a stream branch, promoted into main by the
+sprint), never into a main that direct fixes merge into one at a time under the landing group.
+`nova-sprint stream set <s> --base <branch>` moves a live stream onto such a branch. Push the
+branch first. The command is refused while cards merged onto the old base wait for their
+promotion; let the promotion land them, then set the base again. Its receipt names the cards:
+merging ones have any gate built on the old base let go, and their group is built on the new
+base at the landing's next pass. Working ones finish their attempt on the old base and land
+onto the new one. Cards taken from now on, and every retry, start from the new base.
 
 A rule every card of a stream must keep (the committed generated tree is current, the lint is
 clean) is a stream gate, never a line each brief has to remember: `--gate "<command>"` on

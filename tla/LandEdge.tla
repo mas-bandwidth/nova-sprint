@@ -27,7 +27,10 @@
 (* the gate (an outside commit) asks the pass again; GitHub may refuse   *)
 (* the merge. Answer is the coordinator's (rung 3): land merges by hand  *)
 (* (no gate: the coordinator looked), fix sends the card to fix, retry   *)
-(* asks a new landing.                                                    *)
+(* asks a new landing. Switch is stream set --base: the stream lands    *)
+(* into another branch from now on, its tip a tree no gate was built on *)
+(* (the same cards: the branch was cut from base); a gate in flight is  *)
+(* let go at once and the next pass builds on the new tip.              *)
 (*                                                                         *)
 (* CI takes time (CIStep): a gate's checks run, may fail or be stopped   *)
 (* while others still run (partial), and complete green, red or stopped  *)
@@ -77,7 +80,7 @@ NoReq  == [cards |-> {}, st |-> "none", out |-> "none", rung |-> 0,
            odd |-> {}]
 
 VARIABLES
-  base,    \* Seq of [tree, how ("init", "auto", "hand", "ext"), gated]
+  base,    \* Seq of [tree, how ("init", "auto", "hand", "ext", "switch"), gated]
   cs,      \* each card: "merging", "landed" or "fix"
   req,     \* each stream's land request in flight, or NoReq
   js,      \* the cards under an open land judgement
@@ -240,6 +243,16 @@ BaseMoves ==
   /\ ticked' = FALSE
   /\ UNCHANGED <<cs, req, js, jc, held, passes>>
 
+\* stream set --base: s lands into another branch from now on. Its gate in
+\* flight, built on the old base, is let go (edges.go land reads the
+\* stream's base before each pass); nothing built on the old base lands.
+Switch(s) ==
+  /\ Tip.ext < K
+  /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> "switch", gated |-> NoTree])
+  /\ req' = [req EXCEPT ![s] = IF Kept(s) THEN LetGo(@) ELSE @]
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<cs, js, jc, held, passes>>
+
 -----------------------------------------------------------------------------
 (* The coordinator (rung 3)                                                *)
 
@@ -260,6 +273,7 @@ Next ==
   \/ Tick
   \/ \E s \in Streams : Pass(s) \/ CIStep(s) \/ Late(s)
   \/ BaseMoves
+  \/ \E s \in Streams : Switch(s)
   \/ \E c \in Cards, choice \in {"land", "fix", "retry"} : Answer(c, choice)
 
 Spec == Init /\ [][Next]_vars
@@ -293,7 +307,7 @@ BaseNeverRed ==
 NothingLandsUnpassed ==
   /\ \A i \in 2..Len(base) :
        /\ base[i].how = "auto" => base[i].tree = base[i].gated
-       /\ base[i].how = "ext" => base[i].tree.cards = base[i - 1].tree.cards
+       /\ base[i].how \in {"ext", "switch"} => base[i].tree.cards = base[i - 1].tree.cards
   /\ \A c \in Cards : cs[c] = "landed" => c \in Tip.cards
 
 \* No merging card without a request or a judgement after a tick: each is
@@ -324,18 +338,20 @@ ConflictJudgesItsCard == jc \subseteq Conflicting
 
 \* One group in flight per stream, kept to its verdict: a gate whose CI
 \* still runs is never replaced (rebuilt, pushed again) while its request
-\* is in flight, whatever the base does.
+\* is in flight, whatever the base does; a base switch lets it go first.
 GateKept ==
   [][\A s \in Streams :
        req[s].st = "sent" /\ req[s].ci \in {"running", "partial"}
          => req'[s].gate = req[s].gate /\ req'[s].gbase = req[s].gbase]_vars
 
 \* A gate in flight reaches a verdict (its checks complete) or its request
-\* an outcome, the same gate (LiveSpec: CI that runs completes).
+\* an outcome, the same gate (LiveSpec: CI that runs completes), unless the
+\* stream's base was switched under it (stream set --base lets it go).
 GateReachesVerdict ==
   \A s \in Streams, n \in 1..8 :
     (req[s].st = "sent" /\ req[s].ci \in {"running", "partial"} /\ req[s].gbase = n)
-      ~> (req[s].gbase = n /\ (req[s].ci = "done" \/ req[s].st = "done"))
+      ~> \/ req[s].gbase = n /\ (req[s].ci = "done" \/ req[s].st = "done")
+         \/ \E i \in (n + 1)..Len(base) : base[i].how = "switch"
 
 -----------------------------------------------------------------------------
 (* Reachability: each expected VIOLATED (a run that shows the path).       *)
@@ -348,5 +364,6 @@ NeverNoVerdict == \A s \in Streams : req[s].out # "noverdict"
 NeverRerun     == \A s \in Streams : ~req[s].reran
 NeverLate      == \A s \in Streams : ~(req[s].out = "noverdict" /\ req[s].ci = "partial")
 NeverKeptMoved == \A s \in Streams : ~(req[s].st = "sent" /\ req[s].ci = "running" /\ req[s].gbase # Len(base))
+NeverSwitchInFlight == \A i \in 1..Len(base) : base[i].how # "switch" \/ \A s \in Streams : req[s].gbase # i - 1
 NeverOddAlone  == \A s \in Streams : ~(req[s].out = "conflict" /\ req[s].odd # {} /\ req[s].odd # req[s].cards)
 =============================================================================

@@ -214,6 +214,34 @@ same path.
   under `sprint-group/<stream>/`), branches it cannot list, and a creation
   that fails (push access for this host's gh identity).
 
+### A stream's base changed (2026-11-11)
+
+A stream lands into a branch that does not move: a stream branch
+that nothing else merges into, promoted into main by the sprint.
+`nova-sprint stream set <s> --base <branch>` moves a live stream onto
+one. The branch is admitted as `stream add` admits a base: it must be at
+origin, and must not be `sprint` or `sprint/<s>`. The command is refused
+while cards merged onto the old base wait for their promotion to main,
+because a promotion looks for their merges on the stream's base. Otherwise
+it is one write, and the receipt names the old base and what happens to
+the cards:
+
+- **Cards merging.** The landing reads the stream's base before each pass
+  (`Edges.Streams`, run's folded streams). A gate built on the old base
+  is let go, and the group is built on the new base at the next pass.
+  Nothing built on the old base lands: a merge also needs the base tip
+  it was gated on.
+- **Cards working.** Each finishes its attempt on the old base (its job
+  record names the base it was taken on, and its rebase step fetches that
+  branch). Its head then lands onto the new base, merged by the landing.
+- **Cards ready, and every retry,** start from the new base.
+
+In `LandEdge.tla` this is `Switch(s)`. The base's tip becomes a tree no
+gate was built on, and a gate in flight is let go. `NothingLandsUnpassed`
+covers it, and `GateReachesVerdict` allows a gate that was let go by a
+switch. The reach check `NeverSwitchInFlight` shows a switch under a
+gate. The card machine has no base, so a switch changes no card state.
+
 ### Requests rebuilt, nothing unexplained
 
 Land requests are rebuilt from the store's state every tick (and so at run

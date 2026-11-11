@@ -28,6 +28,7 @@ REACH = {
     "LandEdgeNeverLate": "the wait passes on a failure while checks still run: no verdict",
     "LandEdgeNeverKeptMoved": "a gate whose CI runs is kept while base moves under it",
     "LandEdgeNeverOddAlone": "a group's conflict names one card of the group",
+    "LandEdgeNeverSwitchInFlight": "stream set --base switches the base under a gate in flight",
 }
 
 # The rerun of a gate whose every failing check was stopped (the text the
