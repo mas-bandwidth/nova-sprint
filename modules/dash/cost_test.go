@@ -27,7 +27,7 @@ func TestTierCentsLargestRemainder(t *testing.T) {
 func TestExactStreamTotalSeparateFromDisplay(t *testing.T) {
 	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "flash", Cost: 1000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Cost: 1000, Priced: true}, "c": {ID: "c", Kind: "work", Stream: "s", Tier: "heavy", Cost: 1000, Priced: true}}}
-	d := mapSnapshot(s, testRoster, time.Time{})
+	d := mapSnapshot(s, testRoster, time.Time{}, nil)
 	w := d.Tables["work"].(map[string]*workRow)["s"]
 	if d.StreamCosts["s"].amounts["total_cost"].Int64() != 3000 || w.Cost == nil || w.Cost.Int64() != 1 {
 		t.Fatalf("raw=%v display=%v", d.StreamCosts["s"].amounts["total_cost"], w.Cost)

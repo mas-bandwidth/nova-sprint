@@ -47,7 +47,10 @@ these thresholds.
 4. You are told by push. From the moment you hook in to the sprint, every deal, read ask,
    withdraw and landing result for you reaches you as one bus message, and each message carries
    the command that answers it. Before you hook in, nothing of the sprint's reaches you and
-   nothing is dealt to you.
+   nothing is dealt to you. A friend's session also gets a `CHALLENGE` line every 5 minutes:
+   run the `nova-sprint pong` command it prints, from your session, at once. A row that answers
+   none for 10 minutes is down, its hand goes back to the queue, and it comes back up on its
+   next answer (a bench is not challenged; `nova-sprint help pong`).
 5. Push, not pull. You can look whenever you want (`nova-sprint next`, `nova-sprint show`, the
    dashboard), and nothing depends on you looking. You never poll, never sleep and check, and
    never have to remember to read anything: when you are needed, a message wakes you.

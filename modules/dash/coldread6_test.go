@@ -48,7 +48,7 @@ func TestColdread6UnknownStateAlarmsOnce(t *testing.T) { // unitlint: serial, it
 	defer log.SetOutput(old)
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"cr6-p9": {ID: "cr6-p9", Kind: "producer", Stream: "s", State: "bogus"}}}
 	for range 3 {
-		mapSnapshot(s, testRoster, time.Time{})
+		mapSnapshot(s, testRoster, time.Time{}, nil)
 	}
 	if n := strings.Count(logs.String(), "ALARM"); n != 1 {
 		t.Errorf("%d ALARM lines for one card's unknown state over three polls, want 1: %q", n, logs.String())
@@ -68,7 +68,7 @@ func TestColdread6StreamUnpricedCountsFinishedAPIRunsOnly(t *testing.T) {
 		"w3": {ID: "w3", Kind: "work", Of: "p", Stream: "s", Tier: "pro", State: "working"},
 		"r1": {ID: "r1", Kind: "read", Of: "p", Stream: "s", Tier: "pro", State: "done", Usage: "input=5 billing=subscription"},
 	}}
-	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}), at: t1000, now: at1000}
+	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}, nil), at: t1000, now: at1000}
 	b, err := json.Marshal(cache.pageSnapshot())
 	if err != nil {
 		t.Fatal(err)

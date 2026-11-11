@@ -496,7 +496,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
 
 function renderFleet(d) {
   var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d), false, sharedDigits(d));
-  setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
+  setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null) + sinceWord(d));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
 }
@@ -505,7 +505,7 @@ function renderFriends(d) {
   var box = $("friends"), table = d.tables.friends;
   if (!table || typeof table !== "object") table = {};
   var r = fleetLike(box, table, "friend", sharedScale(d), true, sharedDigits(d));
-  setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.friends_work, d.friends_tiers));
+  setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.friends_work, d.friends_tiers) + sinceWord(d));
   setSideOff(box.closest("section"), d.friends_work);
 }
 // A side (fleet, friends) can be switched off or limited to some tiers (set --fleet on|off,
@@ -516,6 +516,14 @@ function sideWord(work, tiers) {
   var w = "";
   if (String(work || "on") === "off") w += " · off";
   return w;
+}
+// After a stats reset (nova-sprint stats reset) the done, ok, failed and ok% of Fleet and Friends count
+// from its mark: the head says "· since 7:12 PM", a day or more back with the weekday.
+function sinceWord(d) {
+  var at = d.stats_since ? new Date(d.stats_since) : null;
+  if (!at || isNaN(at.getTime()) || at.getTime() <= 0) return "";
+  var day = Date.now() - at.getTime() >= 86400000 ? at.toLocaleDateString("en-US", { weekday: "short" }) + " " : "";
+  return " · since " + day + clockShort(at);
 }
 function setSideOff(sec, work) { if (sec) sec.classList.toggle("off", String(work || "on") === "off"); }
 

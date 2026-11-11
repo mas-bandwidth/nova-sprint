@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -130,12 +131,23 @@ func (t *tick) hasLive(p string) bool {
 // A working consumer past its tier's deadline (timeouts consumer, counted
 // from the deal plus the take window, so never before the take receipt's
 // deadline) with no report is withdrawn.
+//
+// A kin row's silence is its time since its last evidence of life
+// (Inputs.Alive: a pong to the run's challenge), not the bus: its hook can
+// stay present with no session behind it. With none for two challenge
+// windows it goes down, its hand returned, and a down judgement tells the
+// coordinator.
 func (t *tick) rowLimits(n string) {
 	r := t.v.Rows[n]
 	if r.Flaps >= t.lim.FlapLimit {
 		t.judgeAt("flap", n, r.Flaps, fmt.Sprintf("row %s has flapped %d times (down and up); the limit is %d", n, r.Flaps, t.lim.FlapLimit))
 	}
 	seen, known := t.in.Seen[n]
+	gone, kin := seconds(t.tmo.RowSilentGone), t.kind(n) == roster.KindKin
+	if kin {
+		seen, known = t.in.Alive[n]
+		gone = 2 * seconds(Engine.ChallengeEvery)
+	}
 	if !known {
 		seen = t.v.Since
 	}
@@ -152,8 +164,11 @@ func (t *tick) rowLimits(n string) {
 			t.group("withdraw", id, t.withdraw(id, fmt.Sprintf("row %s silent for %s; branch %s is kept", n, silent.Truncate(time.Second), c.Branch)))
 		}
 	}
-	if r.State == "up" && silent >= seconds(t.tmo.RowSilentGone) && t.unclaimed(n) {
-		t.group("gone", "", t.handMoves(n, "down", card.Gone{})...)
+	if r.State == "up" && silent >= gone && t.unclaimed(n) {
+		g := t.group("gone", "", t.handMoves(n, "down", card.Gone{})...)
+		if g != nil && kin {
+			g.judge = t.riding("down", n, fmt.Sprintf("kin row %s answered no challenge for %s and is down; its hand went back to the queue, branches kept. It comes back when its session answers one (nova-sprint pong); if it is gone for good, nova-sprint unhook %s", n, silent.Truncate(time.Second), n))
+		}
 	}
 }
 

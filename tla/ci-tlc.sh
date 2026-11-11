@@ -13,6 +13,10 @@
 #     StepsBurst.cfg (its scenarios, invariants and the liveness property)
 #                                      must pass            (TLC exit 0)
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
+#   KinAlive.tla with KinAlive.cfg (kin liveness by challenge)
+#                                      must pass            (TLC exit 0);
+#     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
+#     checks KinAliveNever{Down,Back}, beside it, must be violated
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
 #     Setup.tla, SetupWalk.tla, SetupRun.tla, SetupChoices.tla (SetupChoices.cfg and
@@ -191,6 +195,7 @@ run StepsBurst pass . StepsBurst.cfg Steps.tla 4
 run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
+run KinAlive pass . KinAlive.cfg KinAlive.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
 run Run pass . Run.cfg Run.tla 2
@@ -225,8 +230,14 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffOldProbe SetupHandoffParentSecret SetupHandoffRefusedEffect \
          SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
          SetupHandoffWrongType \
-         SetupRunFreshRunning; do
+         SetupRunFreshRunning \
+         KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
+done
+
+# KinAlive's reach checks (a kin row goes down, and comes back on a pong).
+for m in NeverDown NeverBack; do
+    run "reach-KinAlive$m" violate . "KinAlive$m.cfg" KinAlive.tla 1
 done
 
 # SetupRun's reach checks (the run up on a fresh store, a stop and a move,

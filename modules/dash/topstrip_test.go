@@ -120,7 +120,7 @@ func TestCoordinatorName(t *testing.T) {
 	if got := coordinatorOf(map[string]store.Row{"w": {Role: "worker"}}); got != "" {
 		t.Fatalf("no coordinator is blank, got %q", got)
 	}
-	d := mapSnapshot(store.Snapshot{Rows: rows}, testRoster, time.Time{})
+	d := mapSnapshot(store.Snapshot{Rows: rows}, testRoster, time.Time{}, nil)
 	if d.Coordinator != "rowan" {
 		t.Fatalf("envelope coordinator %q", d.Coordinator)
 	}
@@ -130,7 +130,7 @@ func TestVersionRidesTheEnvelope(t *testing.T) {
 	t.Parallel()
 	// Version is the build's (main sets it once); the test reads it, never
 	// writes it, so it runs beside the others.
-	if d := mapSnapshot(store.Snapshot{}, testRoster, time.Time{}); Version == "" || d.ServerVersion != Version {
+	if d := mapSnapshot(store.Snapshot{}, testRoster, time.Time{}, nil); Version == "" || d.ServerVersion != Version {
 		t.Fatalf("version %q, the build's %q", d.ServerVersion, Version)
 	}
 }
@@ -151,7 +151,7 @@ func TestCostSummaryPricedAndUnpriced(t *testing.T) {
 	if c.Total != "$1.00" || c.PerCard != "$0.50" || c.Landed != 2 || c.PricedCards != 2 || c.Priced != 3 || c.Unpriced != 1 || c.ByTier["flash"] != "$0.40" || c.ByTier["pro"] != "$0.60" {
 		t.Fatalf("%+v", c)
 	}
-	d := mapSnapshot(s, testRoster, time.Time{})
+	d := mapSnapshot(s, testRoster, time.Time{}, nil)
 	if got := d.StreamCosts["s"].amounts["read_cost"].Int64(); got != 100000 {
 		t.Fatalf("read consumers' cost reaches the stream's read_cost: %d", got)
 	}
