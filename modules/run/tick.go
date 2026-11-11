@@ -49,6 +49,9 @@ type Ticker struct {
 	push       *Pusher
 	landings   []time.Time // the epoch's landings (not the v1 import's), from the events run folds
 	landingsOK bool
+	statsMark  int64           // the stats cursor (store.StatsCursor) in the folded snapshot, 0 when unset
+	stats      store.StatsMark // the consumers done after it (StatsSince), while statsOK
+	statsOK    bool
 	limits     policy.Limits
 	timeouts   policy.Timeouts
 }
@@ -137,6 +140,8 @@ func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time
 			t.landings, t.landingsOK = append([]time.Time{}, at...), true
 		}
 	}
+	t.statsMark = snap.Cursors[store.StatsCursor]
+	t.readStats(ctx)
 	return t, nil
 }
 
@@ -196,6 +201,33 @@ func (t *Ticker) Landings() []time.Time {
 	return append([]time.Time{}, t.landings...)
 }
 
+// readStats reads the stats mark at statsMark from the store's events (none
+// when 0); a store that cannot answer leaves it unread, and the next fold
+// reads again. Until then the board counts the epoch's.
+func (t *Ticker) readStats(ctx context.Context) {
+	t.statsOK = false
+	r, ok := t.store.(interface {
+		StatsSince(ctx context.Context, mark int64) (store.StatsMark, error)
+	})
+	if t.statsMark == 0 || !ok {
+		return
+	}
+	if m, err := r.StatsSince(ctx, t.statsMark); err == nil {
+		t.stats, t.statsOK = m, true
+	}
+}
+
+// Stats is the stats reset mark as run has folded it, the caller's to keep;
+// nil when none is set or it is not read yet.
+func (t *Ticker) Stats() *store.StatsMark {
+	if t.statsMark == 0 || !t.statsOK {
+		return nil
+	}
+	m := t.stats
+	m.Done = maps.Clone(t.stats.Done)
+	return &m
+}
+
 // Snapshot is run's folded copy, the caller's to keep.
 func (t *Ticker) Snapshot() store.Snapshot { return snapshotCopy(t.snap) }
 
@@ -227,10 +259,18 @@ func (t *Ticker) Fold(ctx context.Context) error {
 				}
 			}
 			t.snap = store.Fold(t.snap, []store.Event{e})
+			if m := t.snap.Cursors[store.StatsCursor]; m != t.statsMark {
+				t.statsMark, t.statsOK = m, false
+			} else if t.statsOK {
+				t.stats.Add(e)
+			}
 			t.push.Observe(e, t.snap)
 			if p, ok := policy.PrevOf(e); ok {
 				t.prev = p
 			}
+		}
+		if !t.statsOK {
+			t.readStats(ctx) // a new mark, or one the last read could not give: from the store, to the log's end
 		}
 		if t.snap.Epoch != epoch {
 			t.inbox, t.refused, t.inflight = nil, nil, map[string]steps.EdgeRequest{}

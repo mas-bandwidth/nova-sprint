@@ -133,7 +133,7 @@ func TestColdreadDefectThroughputNeverComputed(t *testing.T) {
 func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
 	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
-	d := mapSnapshot(s, testRoster, time.Time{})
+	d := mapSnapshot(s, testRoster, time.Time{}, nil)
 	w := d.Tables["work"].(map[string]*workRow)["s"]
 	if w.Cost == nil || w.Cost.Int64() != 120 {
 		t.Fatalf("priced sum lost: %+v", w)

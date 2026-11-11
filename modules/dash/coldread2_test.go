@@ -23,7 +23,7 @@ func TestColdread2DefectTierCentsNotPartitioned(t *testing.T) {
 		"b": {ID: "b", Kind: "work", Of: "p", Stream: "s", Tier: "pro", Cost: 1000, Priced: true},
 		"c": {ID: "c", Kind: "work", Of: "p", Stream: "s", Tier: "heavy", Cost: 1000, Priced: true},
 	}}
-	w := mapSnapshot(s, testRoster, time.Time{}).Tables["work"].(map[string]*workRow)["s"]
+	w := mapSnapshot(s, testRoster, time.Time{}, nil).Tables["work"].(map[string]*workRow)["s"]
 	total, tiers := w.Cost.Int64(), int64(0)
 	for _, d := range w.ByTier {
 		tiers += d.Int64()

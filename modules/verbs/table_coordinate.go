@@ -57,6 +57,8 @@ func operateVerbs() []*verb {
 			about: "stops the tick: nothing is dealt, read or landed until start; verbs still work"},
 		{name: "start", group: "operate", role: roleCoordinator, usage: "[--reason <why>]", flags: "reason=", max: 0, run: runStop,
 			about: "starts the tick again"},
+		{name: "stats reset", group: "operate", role: roleCoordinator, usage: "--reason <why>", flags: "reason=", max: 0, run: runStatsReset,
+			about: "starts the dashboard's Fleet and Friends done, ok, failed and ok% again from now, so a change shows at once (tokens and cost keep counting everything); their heads say since when. Each reset moves the mark to now"},
 		{name: "identity", group: "operate", role: roleCoordinator, usage: "[--name <git user.name> --email <git user.email> --reason <why>]", flags: "name= email= reason=", max: 0, run: runIdentity,
 			about: "sets the one git identity every commit of the sprint is made as (an account on the repositories' contributor-agreement allowlist, typically its noreply address); with no flags, prints it",
 			needs: []string{"no identity set and none given: " + identityFix, "a quote, backslash, $, backtick or angle bracket in either, or an email that is not one address: " + identityFix}},

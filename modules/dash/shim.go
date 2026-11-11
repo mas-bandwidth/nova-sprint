@@ -69,14 +69,17 @@ type envelope struct {
 	EtaLandings   int                    `json:"eta_landings"`       // landings inside that window
 	Left          int                    `json:"left"`               // cards not yet landed (waiting, ready, working, review, fix, merging)
 	Cost          *costSummary           `json:"cost"`
+	StatsSince    *time.Time             `json:"stats_since,omitempty"` // the stats reset mark's time: Fleet and Friends done, ok, failed and ok% count from it; absent, the epoch's
 	OK            bool                   `json:"ok"`
 	Error         string                 `json:"error,omitempty"`
 }
 
 // mapSnapshot is the page's view of s. A row's kind and width are the
 // roster's (round 22: the store keeps neither); a row the roster does not
-// name is shown in the fleet at width 0.
-func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
+// name is shown in the fleet at width 0. stats is the stats reset mark, nil
+// for none: with it, Fleet and Friends done, ok and failed count only the
+// consumers done after it.
+func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time, stats *store.StatsMark) envelope {
 	work := map[string]*workRow{}
 	fleet := map[string]*fleetRow{}
 	friends := map[string]*fleetRow{}
@@ -108,7 +111,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 				}
 			}
 		} else if c.Kind == "work" || c.Kind == "read" {
-			countConsumer(c, s.Cards, work, fleet, friends, costs)
+			countConsumer(c, s.Cards, stats, work, fleet, friends, costs)
 			if c.Kind == "read" {
 				countRead(readers, c)
 			}
@@ -131,7 +134,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{StatsSince: markTime(stats), Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 
 // coordinatorOf is the name of the row whose role is coordinator; the first
@@ -262,7 +265,7 @@ func countWork(w *workRow, c store.Card) {
 // maps every poll, and a card's ALARM is said once, not once a second.
 var unknownStates sync.Map
 
-func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]*streamCost) {
+func countConsumer(c store.Card, cards map[string]store.Card, stats *store.StatsMark, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]*streamCost) {
 	if w := work[c.Stream]; w != nil {
 		countCost(w, c, costs[c.Stream])
 	}
@@ -279,10 +282,12 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 			f.Working++
 			countTrack(f, c, cards[c.Of])
 		case "done":
-			f.Done++
+			if sinceMark(c, stats) {
+				f.Done++
+			}
 		}
 	}
-	if c.State == "done" {
+	if c.State == "done" && sinceMark(c, stats) {
 		countResult(c, fleet, friends)
 	}
 }
@@ -309,6 +314,26 @@ func countResult(c store.Card, fleet, friends map[string]*fleetRow) {
 		f.Failed++
 	}
 }
+
+// markTime is the stats mark's time as the board carries it, nil for no mark.
+func markTime(stats *store.StatsMark) *time.Time {
+	if stats == nil {
+		return nil
+	}
+	at := stats.At
+	return &at
+}
+
+// sinceMark is whether a done consumer counts in the stats: always with no
+// mark, else only when it was done after it.
+func sinceMark(c store.Card, stats *store.StatsMark) bool {
+	if stats == nil {
+		return true
+	}
+	_, after := stats.Done[c.ID]
+	return after
+}
+
 func countCost(w *workRow, c store.Card, costs *streamCost) {
 	if !c.Priced {
 		// summarizeCost's count, per stream: a finished API run with no

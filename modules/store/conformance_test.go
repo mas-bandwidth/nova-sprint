@@ -70,6 +70,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"check order":             checkOrder,
 		"judgements":              judgements,
 		"cursors":                 cursors,
+		"stats since":             statsSince,
 		"tiers":                   tiers,
 		"card contract":           cardContract,
 		"event policy":            eventPolicy,
