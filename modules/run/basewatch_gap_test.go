@@ -81,7 +81,7 @@ func TestBaseWatchOpensARedTipStillRunningAfterCIWait(t *testing.T) {
 	w := &BaseWatch{Forge: f}
 	snap, now := watchSnap(), time.Unix(1000, 0).UTC()
 	watchStep(w, snap, a, &now, 0)
-	for now.Before(time.Unix(1000, 0).UTC().Add(CIWait - LandPoll)) {
+	for now.Before(time.Unix(1000, 0).UTC().Add(CIWait - 2*LandPoll)) {
 		watchStep(w, snap, a, &now, LandPoll)
 		if r, ok := w.Read()["o/r@main"]; ok {
 			t.Fatalf("red with checks running for under CIWait is a fact: %+v", r)

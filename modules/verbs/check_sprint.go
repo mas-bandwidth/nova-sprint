@@ -107,7 +107,7 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 // base, which the run pushed to the coordinator (steps.baseRed), or says
 // none is open yet (the run has not seen the tip's checks complete red).
 func baseRedJudged(snap store.Snapshot, s store.Stream) string {
-	about := steps.BaseAbout(s.Repo, s.Base)
+	about := run.BaseAboutOf(s)
 	for _, j := range snap.Judgements {
 		if j.Kind == "base-red" && j.About == about && j.State == "open" {
 			return "; judgement " + j.ID + " is open: fix the base first, then answer it"

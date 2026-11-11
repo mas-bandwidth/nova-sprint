@@ -36,6 +36,7 @@ type BaseCI struct {
 	Lines           []string  // red: "<check>: <its first failing lines>", at most three failing jobs
 	FirstRed        string    // red: the first red tip the run saw in this red stretch
 	Since           time.Time // red: when the run first saw it red
+	SinceWatch      bool      // red: the first read the watch took of the base was red: it may be red for longer
 }
 
 // BaseAbout is what a base-red judgement is about: <repo>@<base>.
@@ -135,6 +136,9 @@ func baseRedQuestion(f BaseCI, merging, others int) string {
 		shortSHA(f.Tip), redSet(f), streams, firstIDs(f.Streams), merging, others)
 	if f.FirstRed != "" {
 		q += fmt.Sprintf("; red since %s, first seen %s", shortSHA(f.FirstRed), f.Since.UTC().Format("2006-01-02 15:04 UTC"))
+		if f.SinceWatch {
+			q += " (the first read since the run began watching this base: it may be red for longer)"
+		}
 	}
 	if len(f.Lines) > 0 {
 		q += "; first failing lines: " + strings.Join(f.Lines, " || ")

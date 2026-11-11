@@ -128,6 +128,7 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 	l.edges.Fault = l.log.EdgeFault
 	l.admit = &Admission{Admit: cfg.Admit, Fault: l.log.EdgeFault}
 	l.bases = &BaseWatch{Forge: cfg.Forge, Fault: l.log.EdgeFault}
+	l.edges.BaseRed = l.bases.LandSawRed
 	l.setStreams(t.snap.Streams)
 	return l, nil
 }

@@ -40,6 +40,10 @@ type Edges struct {
 	// Fault is told every edge failure, with its cause (the run log's EDGE
 	// FAULT line); nil drops nothing that layer 3 reads, only the line.
 	Fault func(what string, err error)
+	// BaseRed is told each land pass that read its base tip red (the
+	// stream's repository and base, and that tip): BaseWatch reads a tip it
+	// had settled again (LandSawRed). nil tells no one.
+	BaseRed func(repo, base, tip string)
 
 	mu      sync.Mutex
 	results []steps.InboxItem
@@ -154,6 +158,9 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	absent, rested := time.Duration(0), false
 	for {
 		res, err := e.pass(ctx, dir, pass)
+		if err == nil {
+			e.sawBaseRed(s, res)
+		}
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			if res.Outcome != git.OutcomeRested {
 				rested = false
@@ -177,6 +184,13 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 			e.Stale()
 		}
 		return
+	}
+}
+
+// sawBaseRed tells BaseRed when a pass read its base tip red.
+func (e *Edges) sawBaseRed(s store.Stream, res git.LandResult) {
+	if len(res.BaseFailing) > 0 && e.BaseRed != nil {
+		e.BaseRed(s.Repo, s.Base, res.BaseTip)
 	}
 }
 
