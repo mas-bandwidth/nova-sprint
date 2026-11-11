@@ -147,13 +147,15 @@ jobs:
     runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 2
     # Shards as the unit job's: every functional test starts its own
-    # PostgreSQL, so the three longest packages have a shard each.
+    # PostgreSQL, so the three longest packages have a shard each, and store,
+    # the longest, two (its tests split by name).
     strategy:
       fail-fast: false
       matrix:
         include:
           - { shard: cmd, pkgs: ./cmd/..., run: Functional }
-          - { shard: store, pkgs: ./modules/store, run: Functional }
+          - { shard: store-a, pkgs: ./modules/store, run: '^TestFunctional[A-L]' }
+          - { shard: store-rest, pkgs: ./modules/store, run: Functional, skip: '^TestFunctional[A-L]' }
           - { shard: verbs, pkgs: ./modules/verbs, run: Functional }
           - { shard: rest, pkgs: rest, others: ./cmd/... ./modules/store ./modules/verbs, run: Functional }
     name: functional (${{ matrix.shard }})
