@@ -117,7 +117,7 @@ func TestCoordinatorVerbsFencedOnTheirHook(t *testing.T) {
 		t.Run(args[0]+" "+args[1]+": its hook replaced between", func(t *testing.T) {
 			t.Parallel()
 			w := newWorld(t)
-			kind := map[string]string{"stream add": "stream-add", "stream set": "stream-set"}[args[0]+" "+args[1]]
+			kind := map[string]string{"stream add": "stream-add", "stream set": "stream-set", "stats reset": "stats-reset"}[args[0]+" "+args[1]]
 			before := w.snap(t)
 			w.e.Store = between(w, cmp.Or(kind, args[0]), store.PutRow{Name: "carol", Session: "bus-2", Role: "coordinator", Replaces: "s-carol"})
 			want(t, w.do("carol", args...), 1, "the store changed since seq", "wrote row carol's hook")
