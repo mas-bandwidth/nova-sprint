@@ -95,6 +95,7 @@ func (r *Runner) retireJob_internal(jobDir string, rec JobRecord, why string) {
 	r.markGone_internal(rec.Epoch, rec.Consumer, rec.Gen+1)
 	rec.State = JobCleaned
 	r.report("the retired record of "+rec.Consumer+" (its removal may be tried again next pass)", WriteJobRecord(keep, rec))
+	r.endJobTree_internal(jobDir, rec, "retire")
 	if err := r.removeDir_internal(jobDir); err != nil {
 		r.setAside_internal(jobDir, rec, fmt.Sprintf("retired (%s), its job directory could not be removed (%v)", why, err))
 		return
