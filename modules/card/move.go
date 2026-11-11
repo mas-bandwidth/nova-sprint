@@ -856,11 +856,7 @@ func (m *mover) replace(e Replace) *Refusal {
 		return no("card %s is a %s; Replace needs a producer or a sentinel that is not final", e.By, kindName(by.Kind))
 	case final(by.Kind, by.State):
 		return no("%s %s is %s; Replace needs a producer or a sentinel that is not final", by.Kind, e.By, by.State)
-	case by.State == Waiting && HeldReason(by.Reason):
-		return no("%s %s is held (%s); Replace needs a card the deal can take: unhold it first", by.Kind, e.By, by.Reason)
 	}
-	// The gen fence keeps by as it was read (not final, not held) until the
-	// commit; a deal moves it, and the verb reads again (verbs.fenced).
 	m.expect(store.CardGen{Card: e.By, Gen: by.Gen})
 	return m.fail("replaced by " + e.By + ": " + e.Reason)
 }

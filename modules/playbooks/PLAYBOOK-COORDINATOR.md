@@ -346,8 +346,8 @@ To correct a brief, add the corrected brief under a new id and replace the old c
 follow the new one. A card a row holds is replaced too: its live consumer is released with the
 replace's reason (the branch kept), so tell the holder on the bus first. Run it right after
 `add`: the new card may already be dealt or taken, and that is fine, replace follows it. A new
-card that is landed, failed or held is refused (unhold a held one first), and so is the old card
-changing while replace runs: the refusal names what changed; read `show <old>` and decide again.
+card that is landed or failed is refused, and so is the old card changing while replace runs: the
+refusal names what changed; read `show <old>` and decide again.
 
 ## 5. Priorities, landing and reds
 

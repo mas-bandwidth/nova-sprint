@@ -323,9 +323,6 @@ func TestProducerRefusals(t *testing.T) {
 	_, sentResolve := Move(sentinel, nil, rows(), Stream{Name: "s1"}, needs(LandedState), Resolve{})
 	sentinel.State = Ready
 	_, sentStart := Move(sentinel, nil, rows(), Stream{Name: "s1"}, needs(LandedState), Start{Row: "r1", Branch: "b", Base: base})
-	heldBy := needs(LandedState)
-	heldBy["p9"] = Card{ID: "p9", Kind: "producer", State: Waiting, Reason: HeldPrefix + "wrong base"}
-	_, replaceByHeld := Move(pr(Ready), nil, rows(), Stream{Name: "s1"}, heldBy, Replace{By: "p9"})
 	_, onConsumer := Move(wk(Ready, "", ""), nil, rows(), Stream{Name: "s1"}, nil, Resolve{})
 	_, wrongStream := Move(pr(Waiting), nil, rows(), Stream{Name: "s2"}, needs(LandedState), Resolve{})
 	_, missingNeed := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, nil, Resolve{})
@@ -384,7 +381,6 @@ func TestProducerRefusals(t *testing.T) {
 		{mv(Ready, nil, Replace{}), "Replace of producer p1 needs the card it is replaced by"},
 		{mv(Ready, nil, Replace{By: "p1"}), "producer p1 cannot be replaced by itself"},
 		{mv(Ready, nil, Replace{By: "nope"}), "card nope does not exist (Replace takes the card it is replaced by among the cards passed)"},
-		{replaceByHeld, "producer p9 is held (held: wrong base); Replace needs a card the deal can take: unhold it first"},
 		{mv(Working, live, HoldCard{Reason: "held: x"}), liveReason},
 		{mv(Waiting, nil, NeedFailed{Need: "n9"}), "n9 is not a need of producer p1"},
 		{mv(Waiting, nil, NeedFailed{Need: "n1"}), "need n1 of producer p1 is landed, not fail"},

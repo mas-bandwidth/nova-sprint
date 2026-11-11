@@ -5,7 +5,7 @@
 (* `nova-sprint replace old --by new` fails the old card and relinks its   *)
 (* dependant to the new one, in one op planned on the verb's read and      *)
 (* fenced on the gens of the cards it read (card.Replace fences new's gen  *)
-(* so that it is still not final, and not held, at the commit; the         *)
+(* so that it is still not final (a held card is live) at the commit; the  *)
 (* dependant's Relink fences its own and new's).                           *)
 (*                                                                         *)
 (* Other writers move the store between the verb's read and its commit:    *)
@@ -19,8 +19,8 @@
 (* The rule: a refused op is planned again on a fresh read, up to Tries    *)
 (* applies in all, while the verb's own record (old, as first read) is as  *)
 (* it was (OwnCheck); a change to it, or the plan refusing on the fresh    *)
-(* read (new final or held), is the refusal. Tries 1 is the old rule: the *)
-(* first refusal is the verb's (witnesses VerbFenceOneTry*.cfg).          *)
+(* read (new landed or failed), is the refusal. Tries 1 is the old rule:   *)
+(* the first refusal is the verb's (witnesses VerbFenceOneTry*.cfg).       *)
 (***************************************************************************)
 EXTENDS Naturals
 
@@ -32,8 +32,8 @@ CONSTANTS
   OwnCheck   \* a re-read refuses when the verb's own record changed
 
 WriterNames == {"deal", "land", "hold", "old", "touch"}
-Targets     == {"waiting", "ready", "working"}   \* a live card the deal can take
-NewStates   == Targets \cup {"held", "landed", "fail"}
+Targets     == {"waiting", "ready", "working", "held"}   \* a card not final
+NewStates   == Targets \cup {"landed", "fail"}
 OldStates   == {"ready", "working", "fail"}
 
 VARIABLES
@@ -127,8 +127,8 @@ Follows == pc = "done" => old.st = "fail" /\ dep.need = "new"
 \* moves to the new one.
 NoOrphan == dep.need = "old" => old.st # "fail"
 
-\* The new card was a live card the deal can take at the commit, never a
-\* final or held one.
+\* The new card was not final at the commit: never a landed or failed
+\* one.
 TargetLive == pc = "done" => at.new \in Targets
 
 \* The commit is of the old card as the verb first read it.

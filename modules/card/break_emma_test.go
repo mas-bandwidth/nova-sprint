@@ -27,7 +27,7 @@ import (
 // store.Apply accept the plan, leaving pReady ready inside held stream s1.
 func TestBreakNestedMergeLeavesReadyProducerInHeldStream(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, producer("pReady"), producer("p1"), producer("p2"), producer("p3"))
+	w := newWorld(t, producer("pReady"), producer("p1"), producer("p2"))
 	w.move("pReady", Resolve{})
 	w.move("p2", Resolve{})
 	w.move("p2", HoldCard{Reason: "held: bounced"})
@@ -35,12 +35,10 @@ func TestBreakNestedMergeLeavesReadyProducerInHeldStream(t *testing.T) {
 	s1 := StreamFromStore(w.snap().Streams["s1"])
 	p1 := w.card("p1")
 	p2 := w.card("p2")
-	p3 := w.card("p3")
 	pReady := w.card("pReady")
 
-	// planReplace only reads p1 and p3 (not pReady); p3, since a held card
-	// (p2) is no card to replace by.
-	planReplace, r := Move(p1, nil, nil, s1, map[string]Card{"p3": p3}, Replace{By: "p3", Reason: "dup"})
+	// planReplace only reads p1 and p2 (not pReady).
+	planReplace, r := Move(p1, nil, nil, s1, map[string]Card{"p2": p2}, Replace{By: "p2", Reason: "dup"})
 	require.Nil(t, r)
 	planUnhold, r := Move(p2, nil, nil, s1, nil, UnholdCard{Reason: "thaw"})
 	require.Nil(t, r)

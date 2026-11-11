@@ -33,7 +33,7 @@ func coordinateVerbs() []*verb {
 			about: "points a dependant's failed need at another card"},
 		{name: "replace", group: "coordinate", role: roleCoordinator, usage: "<card> --by <card> --reason <why> [--waive <dependant>]... [--relink <dependant>=<card>]... [--dry-run]", flags: "by= reason= waive=* relink=* dry-run", min: 1, max: 1, run: runDrop,
 			about: "fails a producer in favour of another; its dependants follow the other, which may already be dealt or taken (a write the verb did not read between its read and its commit: it reads again, up to 5 tries)",
-			needs: []string{"--by a card landed, failed or held: unhold a held one first", "the replaced card changed while it ran: names what changed"}},
+			needs: []string{"--by a card landed or failed", "the replaced card changed while it ran: names what changed"}},
 		{name: "policy set", group: "coordinate", role: roleCoordinator, usage: "<file> --reason <why>", flags: "reason=", min: 1, max: 1, run: runPolicy,
 			about: "checks and stores a policy file as the next version, not active"},
 		{name: "policy activate", group: "coordinate", role: roleCoordinator, usage: "<version> --reason <why>", flags: "reason=", min: 1, max: 1, run: runPolicy,

@@ -781,7 +781,6 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardRelinkAfterCycle` | deps | Relink walks needs only | OrderAcyclic |
 | `witnesses/CardReadReportsFail` | life | a read may report fail | ResultsByKind |
 | `witnesses/CardReplaceByFinal` | life | Replace by a final card | ReplaceByLive |
-| `witnesses/CardReplaceByHeld` | life | Replace by a held card | ReplaceByLive |
 | `witnesses/CardTwoReadsOneRow` | life | AskRead takes a row holding a live read of the head | OneLiveReadPerRow |
 | `witnesses/CardPriorRepeated` | life | an ok report repeats the prior head | HeadNeverRepeats |
 | `witnesses/CardWaiveRedWithoutRed` | redw | WaiveRed without the red check | WaiveRedNeedsRed |
@@ -868,7 +867,6 @@ invariant violated (60 runs).
 | `CardRedAdvances` | RedNeverAdvances violated | 408537 / 130809 | 11 | 1min 18s |
 | `CardRelinkAfterCycle` | OrderAcyclic violated | 7380 / 3256 | 4 | 27s |
 | `CardReplaceByFinal` | ReplaceByLive violated | 22 / 20 | 3 | 9s |
-| `CardReplaceByHeld` | ReplaceByLive violated | 66 / 54 | 3 | <1s (2026-11-11, amd-1) |
 | `CardStaleReport` | OldAttemptNeverMoves violated | 30764 / 10902 | 8 | 34s |
 | `CardTwoReadsOneRow` | OneLiveReadPerRow violated | 31941 / 11338 | 8 | 34s |
 | `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 439 / 229 | 4 | 19s |
@@ -924,7 +922,6 @@ round 4, each move the fault lets through is one card/ at 4a085774 refuses:
   relinked to a: p2 needs a, a after s, s needs p2.
 - **CardReadReportsFail:** a read of head 1 on r1 reports fail.
 - **CardReplaceByFinal:** s is cancelled; p1 is replaced by s.
-- **CardReplaceByHeld:** p1 is held (HoldCard); s is replaced by p1, a card the deal never takes.
 - **CardTwoReadsOneRow:** two live reads of head 1 cut to r1.
 - **CardPriorRepeated:** attempt 1 is withdrawn with head 1, attempt 2 is
   cut with prior 1 and reports ok with head 1.
@@ -1591,11 +1588,11 @@ or write a card the verb names nowhere (`x`); `Coarse` fences the op on every
 card too, as a stream's hold is. The rule: a refused op is planned again on a
 fresh read, up to `Tries` applies, while the verb's own record (the old card as
 first read) is unchanged; a change to it, or the plan refusing on the fresh
-read (the new card final or held), is the refusal.
+read (the new card landed or failed), is the refusal.
 
 Invariants: `Follows` (done: the old card failed, its dependant follows the
 new), `NoOrphan` (the old card fails only in the step its dependant moves),
-`TargetLive` (the new card was a card the deal can take at the commit),
+`TargetLive` (the new card was not final at the commit; a held one is live),
 `OwnKept` (the commit is of the old card as first read), `NeverStuck` (a
 refusal is the verb's own, while `Tries > MaxEnv`); liveness `Ends`.
 
