@@ -65,6 +65,7 @@ type loop struct {
 	ticker  *Ticker
 	edges   *Edges
 	admit   *Admission
+	bases   *BaseWatch
 	board   *dash.Cache
 	log     *WriterLogger
 	mu      sync.Mutex
@@ -126,6 +127,7 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Landings: t.Landings(), Stats: t.Stats(), At: now}, cfg.Clock.Now)}
 	l.edges.Fault = l.log.EdgeFault
 	l.admit = &Admission{Admit: cfg.Admit, Fault: l.log.EdgeFault}
+	l.bases = &BaseWatch{Forge: cfg.Forge, Fault: l.log.EdgeFault}
 	l.setStreams(t.snap.Streams)
 	return l, nil
 }
@@ -168,7 +170,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	} else {
 		var reqs []steps.EdgeRequest
 		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Unread: werr != nil, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version,
-			Unadmitted: l.admit.Unadmitted()})
+			Unadmitted: l.admit.Unadmitted(), Bases: l.bases.Read()})
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
 	cancel()
@@ -182,6 +184,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
 	l.admit.Prove(ctx, snap, l.edges.Heads())
+	l.bases.Watch(ctx, snap, l.edges.Heads(), start)
 	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows, ""), RosterErr: rerr, Landings: l.ticker.Landings(), Stats: l.ticker.Stats(), At: start}); perr != nil && err == nil {
 		err = perr
 	}

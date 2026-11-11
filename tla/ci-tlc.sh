@@ -13,6 +13,9 @@
 #     StepsBurst.cfg (its scenarios, invariants and the liveness property)
 #                                      must pass            (TLC exit 0)
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
+#   BaseRed.tla with BaseRed.cfg (the base-red judgement) must pass;
+#     its witness BaseRedNoPush and reach checks BaseRedNever{Opens,Replaced}
+#     must be violated
 #   KinAlive.tla with KinAlive.cfg (kin liveness by challenge)
 #                                      must pass            (TLC exit 0);
 #     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
@@ -196,6 +199,7 @@ run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run KinAlive pass . KinAlive.cfg KinAlive.tla 2
+run BaseRed pass . BaseRed.cfg BaseRed.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
 run Run pass . Run.cfg Run.tla 2
@@ -231,8 +235,14 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
-         KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence; do
+         KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
+         BaseRedNoPush; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
+done
+
+# BaseRed's reach checks (a judgement opens; a changed red set opens the next).
+for m in NeverOpens NeverReplaced; do
+    run "reach-BaseRed$m" violate . "BaseRed$m.cfg" BaseRed.tla 1
 done
 
 # KinAlive's reach checks (a kin row goes down, and comes back on a pong).

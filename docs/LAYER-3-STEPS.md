@@ -301,8 +301,9 @@ for each candidate, and the engine refuses one below the card's tier.
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `no-model`,
-  `no-policy`, `undealt`, `admission` (`conflict`, `base-red`,
-  `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
+  `no-policy`, `undealt`, `admission`, `base-red` (`conflict`,
+  `no-ci` and `forge` went with intent rule 32, 2026-11-07; `base-red`
+  came back 2026-11-10 as a push only, below). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
   the tick (LESSONS 3.17).
 - Alarms: `stall`, nothing landed in the bound while producers wait in
@@ -310,6 +311,21 @@ for each candidate, and the engine refuses one below the card's tier.
   width while producers wait, causes by count, closed back over three
   quarters (LESSONS 3.18); `land-rate`, a stream's or model's landed with no
   bounce over landed, under target over a sample (LESSONS 3.21).
+- `base-red` (`modules/steps/basered.go`; 2026-11-10, a base red for
+  eleven days with no push): layer 6 reads each watched base tip's checks
+  (`run.BaseWatch`) and passes the last completed read per repository and
+  base in `Inputs.Bases`. A red read (a check failed, none still running)
+  with live producers on its streams has one open `base-red` about
+  `<repo>@<base>`, choice `retry`: the tip, the red checks, the first
+  failing lines of up to three jobs, the first red tip of the stretch and
+  when it was seen, the streams with their merging and other live cards,
+  and "the base is red: fix it now, before anything else". The same red set
+  at another tip is the same judgement; a changed red set expires it naming
+  the next episode, opened in the same op; a green read clears it; no read
+  (pending, rested, failed) neither opens nor clears. Answered, the same red
+  set stays quiet for the judgement timeout, then opens `STILL RED`.
+  Nothing is held, stopped or dealt differently: the push only (v1's
+  TickBaseCI; `tla/BaseRed.tla`).
 - Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 

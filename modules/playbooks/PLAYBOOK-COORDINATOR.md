@@ -120,6 +120,16 @@ present or has a named reason (held, away, broken) that you are repairing.
 
 What each judgement kind asks of you, and where to look before you choose:
 
+- `base-red`: a base the streams land on is red: its tip's checks completed with failures. One
+  per repository and base (`about` is `<repo>@<base>`), however many streams share it, and it
+  comes first in `next`. It names the tip, the red checks, the first failing lines of up to
+  three failing jobs, since when it has been red, and the streams and their cards behind it.
+  Fix the base now, before anything else: start your own child on it, or add a blocker card
+  onto the base's stream with the failing lines as its brief. Nothing on those streams lands by
+  itself until the base is green. Then answer `retry`: the run reads the tip's checks again. It
+  clears by itself when a later tip is green; a different red (other checks, other jobs) is
+  pushed again as its next episode; unanswered, it escalates like the others. The sprint holds,
+  stops and deals nothing differently because of it: the fix is yours (section 5).
 - `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unhold`, or `drop`. An unhold gives the card a full fresh bounce budget (the limit
@@ -348,6 +358,12 @@ one without. `--head <sha>` makes sure it is the head you read. A conflict is re
 fix: merge it into the base yourself, push, and land it again (a head already on the base records
 at once). Never land a card that is not merging, and never resolve a conflict on a card's branch,
 which no reader has read.
+
+**A red base comes first.** When a stream's base is red, nothing on it lands by itself, and every
+card behind it waits. The run pushes one `base-red` judgement for it (section 2), and `check`'s
+`CHECK RED` line for the stream names it. Make the base green before anything else: your own
+child on the fix, or a blocker card onto the base; then answer `retry`. Do not answer the cards'
+`land` judgements one by one while the base is red.
 
 A pending CI and a base that moved are asked again by the run on their own. A merging card with
 no land request and no land judgement is reported to you as an `engine` judgement: answer it

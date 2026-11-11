@@ -26,6 +26,10 @@ type Inputs struct {
 	// re-proof) when layer 6 last proved its stream, at the base it has now,
 	// and the refusal with its fix: it is never dealt (admission.go).
 	Unadmitted map[string]string
+	// Bases is each watched repository and base's last completed CI read, by
+	// BaseAbout: red or green at a tip. One with no completed read has no
+	// entry, and neither opens nor clears a base-red judgement (basered.go).
+	Bases map[string]BaseCI
 }
 
 // InboxItem is one thing that arrived for the tick: a row's report or take

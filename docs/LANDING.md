@@ -91,6 +91,15 @@ A base tip whose checks cannot be read is said in the reason. Red never
 lands by itself (`BaseNeverRed`); `LandEdge.tla` is unchanged, since every
 non-green, non-absent gate is one judgement (`red`) in the model.
 
+The landing does nothing else on a red base, but the coordinator is told
+once for the base itself (2026-11-10): the run reads each watched base tip's
+checks (one read per repository and base and tip, only while its streams
+have live cards; a running tip on the landing's cadence) and a tip that
+completed red is one `base-red` judgement pushed as NEEDS YOU, naming the
+streams and cards behind it and saying to fix the base before anything
+else. It clears when a later tip completes green (LAYER-3-STEPS
+"Judgements"; `tla/BaseRed.tla`).
+
 ### land: the hand merge
 
 `nova-sprint land <card> --reason <why> [--head <sha>]` is the coordinator's
