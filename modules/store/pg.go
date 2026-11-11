@@ -117,12 +117,6 @@ const round29Hash = "1a911dc3cf8cac36666a06784e9ddb54ebeeb91a12ee2b3123b6ad556a7
 // stream's gates), then the new hash is recorded.
 const round30Hash = "c5bc4eca91743d1afeb6e00ab61db4247910ef04d887235c124c701f2a5d7f07"
 
-// round31Hash is the schema hash of round 31's schema.sql
-// (testdata/schema-round31.sql): its policy versions have no index on
-// name. Running schema.sql on it adds policy_name (round 32: a version
-// read by its name), then the new hash is recorded.
-const round31Hash = "c66a2c0674ff709923dcca09806a832982353c50726adbf85e7ab4305db1246c"
-
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.
@@ -738,11 +732,13 @@ func (p *PG) Policy(ctx context.Context, version int) (PolicyVersion, error) {
 	return v, nil
 }
 
-// policiesNamedSQL is PoliciesNamed's one read, by policy_name.
+// policiesNamedSQL is PoliciesNamed's one read: sprint.policy grows with
+// operator acts (setup answers, continuations, policy sets), never with
+// benches or events, so a scan of it reads no log.
 const policiesNamedSQL = "SELECT " + policyCols + " FROM sprint.policy WHERE name = $1 AND kind = $2 ORDER BY version DESC LIMIT $3"
 
 // PoliciesNamed reads the newest max versions of kind under name, newest
-// first, by policy_name (name, version).
+// first.
 func (p *PG) PoliciesNamed(ctx context.Context, kind, name string, max int) ([]PolicyVersion, error) {
 	rows, err := p.pool.Query(ctx, policiesNamedSQL, name, kind, max)
 	if err != nil {

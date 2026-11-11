@@ -345,9 +345,6 @@ CREATE TABLE IF NOT EXISTS sprint.policy (
     at      timestamptz NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS policy_one_active ON sprint.policy (active) WHERE active;
--- Round 32: a version is read by its name (a setup answer, a continuation:
--- Store.PoliciesNamed), newest first, never by reading the log.
-CREATE INDEX IF NOT EXISTS policy_name ON sprint.policy (name, version);
 
 -- A policy version is immutable once added: only active may change, and a
 -- version is never removed (an event names the version it was decided under).

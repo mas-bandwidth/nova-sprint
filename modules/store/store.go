@@ -49,7 +49,7 @@ type Store interface {
 	// Policy returns one policy version; ErrNotFound when there is none.
 	Policy(ctx context.Context, version int) (PolicyVersion, error)
 	// PoliciesNamed returns the newest max versions of kind stored under
-	// name, newest first (none is an empty list), by the index on name: a
+	// name, newest first (none is an empty list), from the policy table: a
 	// setup answer or a continuation, read without the log.
 	PoliciesNamed(ctx context.Context, kind, name string, max int) ([]PolicyVersion, error)
 }
