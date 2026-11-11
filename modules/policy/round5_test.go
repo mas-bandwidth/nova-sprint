@@ -38,7 +38,7 @@ func TestDefaultBodyIsTheBuiltIn(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, defaultBody, DefaultBody())
 	assert.True(t, strings.HasPrefix(DefaultBody(), "# nova-sprint default policy."))
-	for _, key := range []string{`"ready_nag": 30,`, `"ready_take": 180,`, `"judgement_unseen": 300,`, `"chain_limit": 3,`} { // named, not the older-version fallback (checkTimeouts)
+	for _, key := range []string{`"ready_nag": 30,`, `"ready_take": 180,`, `"judgement_unseen": 300,`, `"chain_limit": 3,`, `"overload_factor": 2,`, `"overload_span": 300,`} { // named, not the older-version fallback (checkTimeouts)
 		assert.Contains(t, DefaultBody(), key)
 	}
 	w := fakeWorld(t)
@@ -217,4 +217,22 @@ func TestChainLimitDefaultsForAnOlderVersion(t *testing.T) {
 	require.Empty(t, fs)
 	assert.Equal(t, 2, a.Version)
 	assert.Equal(t, 3, a.Limits.ChainLimit)
+}
+
+// TestOverloadLimitsDefaultForAnOlderVersion: limits() and timeouts()
+// without overload_factor and overload_span (a version stored before them)
+// answer the defaults, 2 and 300 s (unmeasured guesses); the default policy
+// names them with the same values.
+func TestOverloadLimitsDefaultForAnOlderVersion(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	for _, body := range []string{defaultBody, strings.Replace(strings.Replace(defaultBody, `"overload_factor": 2,`, "", 1), `"overload_span": 300,`, "", 1)} {
+		a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+		require.Empty(t, fs)
+		assert.Equal(t, DefaultOverloadFactor, a.Limits.OverloadFactor)
+		assert.Equal(t, DefaultOverloadSpan, a.Timeouts.OverloadSpan)
+	}
+	assert.Equal(t, 2.0, Limits{}.OverloadFactorOr(), "a zero Limits (before the first answer) reads the default")
+	assert.Equal(t, 300, Timeouts{}.OverloadSpanOr())
+	assert.Equal(t, 3.5, Limits{OverloadFactor: 3.5}.OverloadFactorOr())
 }

@@ -91,6 +91,9 @@ func TestCheckRedLines(t *testing.T) {
 			want: []string{"CHECK RED 6 engine judgements are open (engine.a.1, engine.b.1, engine.c.1, engine.d.1, engine.e.1 and 1 more); the oldest: q engine.a.1: nova-sprint judge <id> <choice> --reason <why>   choices: retry (each id; nova-sprint next lists them)",
 				"CHECK RED judgement flap.alice.1 is open: q flap.alice.1: nova-sprint judge flap.alice.1 <choice>",
 				"CHECK RED UNSEEN 7 judgements open, oldest 1h0m0s: " + unseenFix, "SPRINT REFUSED check: 3 lines are red"}},
+		{name: "an overloaded bench", args: []string{"check"}, exit: 1, prep: healthy,
+			snap: func(s *store.Snapshot) { s.Judgements["overload.vision.1"] = judgement("overload.vision.1", "overload", "vision", t0) },
+			want: []string{"CHECK RED judgement overload.vision.1 is open: q overload.vision.1: nova-sprint judge overload.vision.1 <choice>"}},
 		{name: "nothing runs", args: []string{"check"}, exit: 1, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.run = run.ChooserStatus{} }),
 			want: []string{"CHECK RED nothing runs the sprint: the chooser lock is free"}},
 		{name: "a restore holds the lock", args: []string{"check"}, exit: 1, prep: then(healthy, func(_ *testing.T, w *world) {
