@@ -139,12 +139,13 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault", Reason: "the clone of " + s.Repo + " failed: " + err.Error()})
 		return
 	}
+	reran := false // the stopped jobs were run again once (OutcomeRerun)
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Reran: reran})
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
-			return git.PromotePass(ctx, e.Git, e.Forge, git.PromoteRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Merges: r.Merges})
+			return git.PromotePass(ctx, e.Git, e.Forge, git.PromoteRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Merges: r.Merges, Reran: reran})
 		}
 	}
 	wait := time.Duration(r.Wait) * time.Second
@@ -161,6 +162,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 				rested = true
 				e.fault("land "+r.ID+" stream "+r.Stream+" waits", errors.New(res.Reason))
 			}
+			reran = reran || res.Outcome == git.OutcomeRerun
 			absent = waited
 			if e.Pause(ctx, LandPoll) != nil {
 				return
@@ -181,19 +183,20 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 }
 
 // askAgain_internal says whether a pass is asked again after LandPoll, and
-// how long the gated sha has had no check at all. Pending CI, a base that
-// moved after the gate and a forge GitHub rate-limited are asked again (a
+// how long the gated sha has had no check at all, or a failed check while
+// others still run. Pending CI, a base that moved after the gate, stopped
+// jobs just run again and a forge GitHub rate-limited are asked again (a
 // resting forge refuses its calls without making them, so those passes
-// spend nothing); an absent CI only until wait, after which the pass goes
-// to layer 3 as no-ci.
+// spend nothing); an absent CI and an unfinished one only until wait, after
+// which the pass goes to layer 3 as no-ci and as ci_no_verdict.
 func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, 0
 	}
 	switch res.Outcome {
-	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested:
+	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested, git.OutcomeRerun:
 		return true, 0
-	case git.OutcomeAbsent:
+	case git.OutcomeAbsent, git.OutcomeUnfinished:
 		absent += LandPoll
 		return absent < wait, absent
 	}
@@ -215,6 +218,11 @@ func landItem(id string, res git.LandResult, err error, wait time.Duration) step
 	case res.Outcome == git.OutcomeAbsent:
 		it.Outcome = "no-ci"
 		res.Reason = fmt.Sprintf("no check was reported on %s within %s", res.GatedSHA, wait)
+	case res.Outcome == git.OutcomeUnfinished:
+		it.Outcome = string(git.OutcomeNoVerdict)
+		// failed so far, and named so: never as the failing checks of a red
+		res.Reason = fmt.Sprintf("no verdict after %s: %d checks still pending; failed so far: %s", wait, res.Pending, strings.Join(res.FailingCI, ", "))
+		res.FailingCI, res.CIURL = nil, ""
 	}
 	it.Reason = landFacts(res)
 	return it
@@ -224,8 +232,9 @@ func landItem(id string, res git.LandResult, err error, wait time.Duration) step
 // first that the base itself is red at its tip and on which checks, and
 // which checks the card's head is red on, so the coordinator weighs the two
 // together; then the rung, the base and its tip, the group tip, the gated
-// sha, the PR, the failing checks with the first one's URL and its first
-// failing lines, the conflicting files, and the pass's own reason.
+// sha, the PR, the failing checks, the checks stopped rather than failed,
+// the first own failure's URL and its first failing lines, the conflicting
+// files, and the pass's own reason.
 func landFacts(res git.LandResult) string {
 	var parts []string
 	add := func(label, v string) {
@@ -243,6 +252,7 @@ func landFacts(res git.LandResult) string {
 	add("gated", res.GatedSHA)
 	add("PR", res.PR)
 	add("failing", strings.Join(res.FailingCI, ", "))
+	add("stopped, not failed (no verdict):", strings.Join(res.Stopped, ", "))
 	add("at", res.CIURL)
 	add("first failing lines:", strings.Join(res.FailingLines, " | "))
 	add("conflicts:", strings.Join(res.Conflicts, ", "))

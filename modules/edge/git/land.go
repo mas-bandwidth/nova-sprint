@@ -13,18 +13,23 @@ import (
 )
 
 // LandOutcome is what one landing pass found (LANDING.md). landed is the
-// only automatic move; pending, absent, base-moved and forge-rested are asked
-// again by the caller; every other outcome is a judgement for the coordinator.
+// only automatic move; pending, unfinished, absent, rerun, base-moved and
+// forge-rested are asked again by the caller (unfinished and absent only
+// until the request's wait); every other outcome is a judgement for the
+// coordinator.
 type LandOutcome string
 
 const (
 	OutcomeLanded     LandOutcome = "landed"
 	OutcomePending    LandOutcome = "ci_pending"    // checks queued or running
+	OutcomeUnfinished LandOutcome = "ci_unfinished" // a check failed while others still run: no verdict yet; the caller bounds the wait
+	OutcomeNoVerdict  LandOutcome = "ci_no_verdict" // every failing check was stopped (killed, cancelled, timed out), not failed
+	OutcomeRerun      LandOutcome = "ci_rerun"      // the stopped jobs were asked to run again: the pass runs again
 	OutcomeAbsent     LandOutcome = "ci_absent"     // no check reported yet: the caller bounds the wait
 	OutcomeBaseMoved  LandOutcome = "base_moved"    // base moved after the gate: the pass runs again
 	OutcomeRested     LandOutcome = "forge_rested"  // GitHub rate-limited the forge's identity: the pass runs again
 	OutcomeRed        LandOutcome = "ci_red"        // a check failed
-	OutcomeCIFault    LandOutcome = "ci_fault"      // a check was cancelled, timed out or never started
+	OutcomeCIFault    LandOutcome = "ci_fault"      // a check faulted with no stop GitHub names (e.g. never started)
 	OutcomeConflict   LandOutcome = "conflict"      // the heads do not merge onto base
 	OutcomeRefused    LandOutcome = "merge_refused" // GitHub refused the merge
 	OutcomeUnopenable LandOutcome = "pr_unopenable" // the PR could not be opened or read
@@ -36,20 +41,26 @@ const (
 
 // LandRequest is one landing: the stream's heads (in landing order) and the
 // card branches they are the tips of. One head is rung 1, more is rung 2.
+// Reran says the stopped jobs of this landing were already run again once
+// (OutcomeRerun): a second no-verdict is the coordinator's.
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base string
 	Heads, Branches             []string
+	Reran                       bool
 }
 
 // LandResult is one pass's outcome with the facts a judgement shows. A red
 // one carries BaseFailing, the base tip's own failing checks when the base
-// is red too: a red base is the coordinator's whole-picture judgement, never
-// classified here (LANDING.md "A red base").
+// is red too, read from the base's completed checks only: a red base is the
+// coordinator's whole-picture judgement, never classified here (LANDING.md
+// "A red base"). Stopped names the failing checks GitHub says were stopped
+// (killed, cancelled, timed out), apart from FailingCI, the ones that failed
+// on their own; Pending is how many checks were still running.
 type LandResult struct {
-	Outcome                                                      LandOutcome
-	Rung                                                         int
-	BaseTip, GroupTip, GatedSHA, MergeSHA, PR, CIURL, Reason     string
-	LandedHeads, Conflicts, FailingCI, FailingLines, BaseFailing []string
+	Outcome                                                               LandOutcome
+	Rung, Pending                                                         int
+	BaseTip, GroupTip, GatedSHA, MergeSHA, PR, CIURL, Reason              string
+	LandedHeads, Conflicts, FailingCI, FailingLines, BaseFailing, Stopped []string
 }
 
 // LandPass is one pass of the landing (LANDING.md, "The ladder"). Heads all
@@ -98,6 +109,7 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 type PromoteRequest struct {
 	RepoDir, Repo, Stream, Base string
 	Merges                      []string
+	Reran                       bool // as LandRequest.Reran
 }
 
 // PromotePass is one pass of a promotion. Merges already on main's tip are
@@ -159,7 +171,7 @@ func PromotePass(ctx context.Context, g Git, fg forge.Forge, req PromoteRequest)
 		return res, nil
 	}
 	res.GatedSHA = baseTip
-	return gateAndMerge_internal(ctx, g, fg, LandRequest{RepoDir: req.RepoDir, Repo: req.Repo, Stream: req.Stream, Base: main, Heads: onBase, Branches: []string{req.Base}}, req.Base, res)
+	return gateAndMerge_internal(ctx, g, fg, LandRequest{RepoDir: req.RepoDir, Repo: req.Repo, Stream: req.Stream, Base: main, Heads: onBase, Branches: []string{req.Base}, Reran: req.Reran}, req.Base, res)
 }
 
 // onTip_internal is the shas that are tip or its ancestors.
@@ -333,7 +345,10 @@ func rested_internal(err error, res *LandResult) bool {
 }
 
 // readChecks_internal reads the gated sha's checks into res: true (with
-// res's outcome) unless they are green.
+// res's outcome) unless they are green. A verdict is taken only from checks
+// that have all completed (LANDING.md "A verdict only from completed
+// checks"): a failure while others still run is unfinished, asked again
+// until the request's wait, and no log is read until its run completed.
 func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) bool {
 	rollups, err := fg.Checks(ctx, req.Repo, []string{res.GatedSHA})
 	if err != nil {
@@ -352,25 +367,123 @@ func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, r
 		res.Outcome = OutcomePending
 	case forge.CheckAbsent, "":
 		res.Outcome = OutcomeAbsent
-	case forge.CheckFault:
-		res.Outcome = OutcomeCIFault
 	default:
-		res.Outcome = OutcomeRed
-		res.FailingLines = failedLines_internal(ctx, fg, req.Repo, r.URL)
-		baseRed_internal(ctx, fg, req, res)
+		if r.Waiting {
+			res.Outcome, res.Pending = OutcomeUnfinished, r.Pending
+			res.Reason = fmt.Sprintf("%d checks still pending; failing so far: %s", r.Pending, strings.Join(r.Failing, ", "))
+			return true
+		}
+		verdict_internal(ctx, fg, req, res, r)
 	}
 	return true
 }
 
+// verdict_internal judges the gated sha's completed checks that did not
+// pass, read once with how GitHub says each stopped (forge.Failures). A
+// stopped check (killed, cancelled, timed out) is no verdict about the code
+// and is named apart. Every one stopped is no verdict: the stopped jobs are
+// run again once (OutcomeRerun) unless req.Reran, and then it is the
+// coordinator's. Otherwise red (a fault when none of the own failures is a
+// failed check) with the first own failure's lines and, on red, the base
+// tip's own completed red beside it.
+func verdict_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult, r forge.CheckRollup) {
+	fails, err := fg.Failures(ctx, req.Repo, res.GatedSHA)
+	if err != nil {
+		if rested_internal(err, res) {
+			return
+		}
+		res.Reason += "; how each failing check stopped was not read: " + edge.RedactN(err.Error(), edge.FailureMax)
+		fails = nil
+	}
+	var own, stopped []forge.Failure
+	for _, f := range fails {
+		if f.Stop != "" {
+			stopped = append(stopped, f)
+			res.Stopped = append(res.Stopped, f.Name+" "+f.Stop)
+		} else {
+			own = append(own, f)
+		}
+	}
+	if len(fails) == 0 { // nothing read: the rollup's own list (maybe none), each failed on its own
+		own = []forge.Failure{{URL: r.URL}}
+		for i, n := range r.Failing {
+			if i == 0 {
+				own[0].Name = n
+			} else {
+				own = append(own, forge.Failure{Name: n})
+			}
+		}
+	}
+	if len(own) == 0 {
+		res.Outcome, res.FailingCI, res.CIURL = OutcomeNoVerdict, nil, stopped[0].URL
+		res.Reason = "every failing check was stopped, not failed (no verdict about the code): " + strings.Join(res.Stopped, ", ")
+		if !req.Reran {
+			rerun_internal(ctx, fg, req, res, stopped)
+		} else {
+			res.Reason += "; its stopped jobs were already run again once"
+		}
+		return
+	}
+	res.FailingCI, res.CIURL = nil, own[0].URL
+	for _, f := range own {
+		if f.Name != "" {
+			res.FailingCI = append(res.FailingCI, f.Name)
+		}
+	}
+	if r.State == forge.CheckFault {
+		res.Outcome = OutcomeCIFault
+		return
+	}
+	res.Outcome = OutcomeRed
+	res.FailingLines = failedLines_internal(ctx, fg, req.Repo, own[0].URL)
+	baseRed_internal(ctx, fg, req, res)
+}
+
+// rerun_internal runs the stopped jobs again, once per Actions run they are
+// in (gh run rerun --failed): OutcomeRerun when every run was asked; a run
+// that cannot be asked leaves the no-verdict judgement, saying why.
+func rerun_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult, stopped []forge.Failure) {
+	var runs []string
+	for _, f := range stopped {
+		if run := forge.RunOf(f.URL); run != "" && !slices.Contains(runs, run) {
+			runs = append(runs, run)
+			if err := fg.Rerun(ctx, req.Repo, f.URL); err != nil {
+				if !rested_internal(err, res) {
+					res.Reason += "; run " + run + " could not be run again: " + edge.RedactN(err.Error(), edge.FailureMax)
+				}
+				return
+			}
+		}
+	}
+	if len(runs) == 0 {
+		res.Reason += "; none of them is in an Actions run, so none was run again"
+		return
+	}
+	res.Outcome = OutcomeRerun
+	res.Reason += "; asked GitHub to run its stopped jobs again (run " + strings.Join(runs, ", ") + ")"
+}
+
 // baseRed_internal reads the base tip's checks into res.BaseFailing when
-// the base is red too; one that cannot be read is said in the reason.
+// the base is red too and its checks have all completed; a base whose
+// checks still run is said as such, with what is red so far, and never
+// compared; one that cannot be read is said in the reason.
 func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) {
 	base, err := fg.Checks(ctx, req.Repo, []string{res.BaseTip})
 	if err != nil {
 		res.Reason += "; the checks of the base tip " + res.BaseTip + " could not be read: " + edge.RedactN(err.Error(), edge.FailureMax)
 		return
 	}
-	if b := base[res.BaseTip]; b.State == forge.CheckRed {
+	switch b := base[res.BaseTip]; {
+	case b.State == forge.CheckPending || b.Waiting:
+		red := []string{}
+		if b.State == forge.CheckRed {
+			red = b.Failing
+		}
+		res.Reason += fmt.Sprintf("; base CI still running at its tip %s: %d red so far", res.BaseTip, len(red))
+		if len(red) > 0 {
+			res.Reason += " (" + strings.Join(red, ", ") + ")"
+		}
+	case b.State == forge.CheckRed:
 		res.BaseFailing = b.Failing
 	}
 }

@@ -15,12 +15,13 @@ import (
 )
 
 type fakeForgeWorld_internal struct {
-	mu     sync.Mutex
-	checks map[string]forge.CheckRollup
+	mu       sync.Mutex
+	checks   map[string]forge.CheckRollup
+	failures map[string][]forge.Failure
 }
 
 func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
-	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup)}
+	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{}}
 }
 
 type fakeForge_internal struct {
@@ -34,7 +35,9 @@ type fakeForge_internal struct {
 	OpenErr   error  // OpenPR fails with it
 	ChecksErr error  // Checks fails with it
 	Mergeable string // the PR's mergeable state ("" is MERGEABLE)
+	RerunErr  error  // Rerun fails with it
 	prs       []forge.PRInfo
+	reruns    []string // the urls Rerun was asked
 }
 
 func (f *fakeForge_internal) calls_internal() []string { return f.calls }
@@ -126,10 +129,48 @@ func (f *fakeForge_internal) Merge(_ context.Context, _ string, pr int, sha stri
 }
 
 func (f *fakeForge_internal) FailedLines(_ context.Context, _, url string) ([]string, error) {
+	f.call_internal("FailedLines")
 	if url == "" {
 		return nil, fmt.Errorf("forge: the check's url names no Actions job, so its log cannot be read")
 	}
 	return []string{"--- FAIL: TestX", "FAIL"}, nil
+}
+
+// Failures is the failures set for sha (SetFailures), else the rollup's
+// failing checks, each failed on its own, the first at the rollup's url.
+func (f *fakeForge_internal) Failures(_ context.Context, repo, sha string) ([]forge.Failure, error) {
+	f.call_internal("Failures")
+	if f.world == nil {
+		return nil, nil
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	if fs, ok := f.world.failures[repo+"\x00"+sha]; ok {
+		return slices.Clone(fs), nil
+	}
+	var out []forge.Failure
+	r := f.world.checks[repo+"\x00"+sha]
+	for i, n := range r.Failing {
+		out = append(out, forge.Failure{Name: n, URL: map[bool]string{true: r.URL}[i == 0]})
+	}
+	return out, nil
+}
+
+// SetFailures sets what Failures answers for sha.
+func (f *fakeForge_internal) SetFailures(repo, sha string, fs []forge.Failure) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.failures[repo+"\x00"+sha] = fs
+}
+
+// Rerun records the url run again; RerunErr fails it.
+func (f *fakeForge_internal) Rerun(_ context.Context, _, url string) error {
+	f.call_internal("Rerun")
+	if f.RerunErr != nil {
+		return f.RerunErr
+	}
+	f.reruns = append(f.reruns, url)
+	return nil
 }
 
 type FakeCommit struct {
