@@ -119,8 +119,8 @@ type Landing struct{ BackedUp, Flowing, CIWait int }
 // is run's budget for one tick (drift row 26); ReadyNag is how often run
 // nags a row holding ready cards (optional, default 1); ReadyTake is how
 // long a work consumer may sit ready before it is dealt elsewhere (optional,
-// default 180); JudgementUnseen is the age at which an open judgement counts
-// as unseen, its push having woken nobody (optional, default
+// default 180); JudgementUnseen is the age at which an open judgement with a
+// deadline counts as unseen, its push having woken nobody (optional, default
 // DefaultJudgementUnseen; the verbs' UNSEEN line); Consumer is the deadline of a
 // consumer by its tier, every tier of store.Tiers named (drift row 15: the
 // worker reads it from the take receipt, never a Go literal).

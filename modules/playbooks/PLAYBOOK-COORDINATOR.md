@@ -18,9 +18,12 @@ Muse Code run it as the Monitor tool's command; Grok and Antigravity pass `--har
 file: the pushes still arrive, but they wake nobody, and a push you do not see is a judgement
 nobody answers (2026-11-08: 60 judgements sat unanswered for over an hour behind a hook writing
 to a log file, and nothing landed). A harness's watch can expire (Claude Code's Monitor lasts
-at most 30 minutes): re-arm it the moment it ends. When an open judgement has waited longer
-than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every verb you run
-print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answer them.
+at most 30 minutes): re-arm it the moment it ends. When an open judgement with a deadline has
+waited longer than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every
+verb you run print `UNSEEN <n> judgements open, oldest <age>` first, counting those: fix the
+hook, then answer them. A judgement with no deadline (a held card, a land judgement, the
+no-policy gate) waits for you by design and never raises UNSEEN; `judge`, `next` and `check`
+still list it, and `check` reds it on its own line.
 
 Every 5 minutes the run sends each friend's session, yours included, a `CHALLENGE` line: run
 the `nova-sprint pong` command it prints. A friend that answers none for 10 minutes is down:
