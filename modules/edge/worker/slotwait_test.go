@@ -2,9 +2,13 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 )
 
 // reserveWaitOf is the --wait value of the one nova-reserve run in argv.
@@ -21,65 +25,103 @@ func reserveWaitOf(t *testing.T, argv []string) time.Duration {
 	return d
 }
 
-// A step after the harness (the seal, the apply of the rebased head, a
-// done-when gate, a stream gate) that finds every nova-reserve slot held
-// waits for one within its own bound: refused after 5 s, the attempt's
-// work was thrown away as a wall execution fault (8 attempts on 11-10,
-// all "no slot within 5s" in the apply step). The harness's own run keeps
-// the short wait: a job with no slot for it is staged and run again on a
-// later pass, holding nothing.
-func TestStepsAfterTheHarnessWaitForASlotWithinTheirBound(t *testing.T) {
-	t.Parallel()
+// slotAfter_internal is nova-reserve on a busy bench, on no clock: a slot
+// is held slot after the run starts (never, when slot is past the --wait),
+// then the command runs for need. The run is killed at its Timeout: before
+// the slot, nova-reserve has printed nothing; after it, its HELD line.
+func slotAfter_internal(t *testing.T, slot, need time.Duration) *edge.FakeExec {
+	t.Helper()
+	fx := edge.NewFakeExec()
+	fx.On("nova-reserve", func(c edge.FakeCall) edge.FakeOutcome {
+		wait := reserveWaitOf(t, c.Cmd.Argv)
+		switch {
+		case slot > wait:
+			return edge.FakeOutcome{ExitCode: 1, Stderr: "nova-reserve: no slot within " + wait.String() + "\n", Duration: wait}
+		case c.Cmd.Timeout < slot:
+			return edge.FakeOutcome{Timeout: true, Duration: c.Cmd.Timeout}
+		case c.Cmd.Timeout < slot+need:
+			return edge.FakeOutcome{Timeout: true, Stderr: "nova-reserve: HELD mode=shared slot=1/4\n", Duration: c.Cmd.Timeout}
+		}
+		return edge.FakeOutcome{Stderr: "nova-reserve: HELD mode=shared slot=1/4\n", Stdout: "ok\n", Duration: slot + need}
+	})
+	return fx
+}
+
+func slotWaitRunner_internal(t *testing.T, fx *edge.FakeExec) (*Runner, Job) {
+	t.Helper()
 	dir := t.TempDir()
-	j := Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}
-	bound := 20 * time.Minute
-	for _, tc := range []struct {
-		name string
-		run  func(w *OSReserveWall) error
-	}{
-		{"done-when gate", func(w *OSReserveWall) error {
-			_, err := w.RunTest(context.Background(), j, "go test ./...", bound)
-			return err
-		}},
-		{"step", func(w *OSReserveWall) error {
-			_, err := w.RunStep(context.Background(), j, []string{"true"}, bound)
-			return err
-		}},
-	} {
-		fx := cr2OKExec_internal()
-		w := &OSReserveWall{Exec: fx, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: 5 * time.Second}}
-		if err := tc.run(w); err != nil {
-			t.Fatalf("%s: %v", tc.name, err)
-		}
-		calls := fx.Calls()
-		if len(calls) != 1 {
-			t.Fatalf("%s: want one exec, got %d", tc.name, len(calls))
-		}
-		wait := reserveWaitOf(t, calls[0].Cmd.Argv)
-		if wait <= 5*time.Second || wait >= bound {
-			t.Errorf("%s: waits %s for a slot under a %s bound: want more than the harness's 5s and less than the bound, so nova-reserve's own refusal (a fault, dealt again) comes before the step's timeout (a fail)", tc.name, wait, bound)
-		}
+	r, err := NewRunner(Runner{Host: "b1", RootDir: dir, Now: func() time.Time { return time.Unix(1000, 0) }, Sleep: func(time.Duration) {},
+		Wall: &OSReserveWall{Exec: fx, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: 5 * time.Second}}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	return r, Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}
+}
+
+// A gate whose slot comes at the last moment of its wait still has its
+// whole bound to run in: the wait and the run are timed apart (11-11: a
+// late slot left a gate seconds, and it was failed "timed out", a bounce
+// spent on the card for the bench's queue).
+func TestAGateWithALateSlotHasItsWholeBound(t *testing.T) {
+	t.Parallel()
+	bound := 20 * time.Minute
+	wait := stepReserveWait_internal(5*time.Second, bound)
+	r, j := slotWaitRunner_internal(t, slotAfter_internal(t, wait, bound))
+	if res, err := r.Wall.RunTest(context.Background(), j, "go test ./...", bound); err != nil || res.ExitCode != 0 {
+		t.Errorf("a gate held at the end of its %s wait, needing its whole %s bound: exit %d, %v; want it to pass", wait, bound, res.ExitCode, err)
+	}
+	r2, j2 := slotWaitRunner_internal(t, slotAfter_internal(t, wait, bound))
+	if res, err := r2.Wall.RunStep(context.Background(), j2, []string{"true"}, bound); err != nil || res.ExitCode != 0 {
+		t.Errorf("a step held at the end of its %s wait, needing its whole %s bound: exit %d, %v; want it to pass", wait, bound, res.ExitCode, err)
+	}
+}
+
+// No slot within the wait is a fault that blames no one, and says how long
+// it waited.
+func TestNoSlotWithinTheWaitIsAFaultSayingHowLong(t *testing.T) {
+	t.Parallel()
+	r, j := slotWaitRunner_internal(t, slotAfter_internal(t, 24*time.Hour, time.Second))
+	bound, _, _ := r.doneWhenBound_internal(JobRecord{})
+	out, red, testsRed := r.doneWhen_internal(context.Background(), j, JobRecord{}, doneWhenGate, "go test ./...")
+	if !red || testsRed || out.Result != "fault" {
+		t.Errorf("no slot: %+v red=%v testsRed=%v, want a fault, no tests red", out, red, testsRed)
+	}
+	if want := "waited " + stepReserveWait_internal(5*time.Second, bound).String(); !strings.Contains(out.Reason, want) {
+		t.Errorf("reason %q does not say %q", out.Reason, want)
+	}
+	// A run killed before its slot was held is the same fault.
+	fx := edge.NewFakeExec()
+	fx.On("nova-reserve", func(c edge.FakeCall) edge.FakeOutcome {
+		return edge.FakeOutcome{Timeout: true, Duration: c.Cmd.Timeout}
+	})
+	r2, j2 := slotWaitRunner_internal(t, fx)
+	if _, err := r2.Wall.RunTest(context.Background(), j2, "go test ./...", time.Minute); !errors.Is(err, ErrNoSlot) {
+		t.Errorf("a run timed out with no slot held: %v, want ErrNoSlot", err)
+	}
+}
+
+// A gate that holds its slot and then runs past its bound is the timeout
+// fail, as before.
+func TestAGateThatOverrunsItsBoundIsTheTimeoutFail(t *testing.T) {
+	t.Parallel()
+	r, j := slotWaitRunner_internal(t, slotAfter_internal(t, time.Second, 48*time.Hour))
+	out, red, _ := r.doneWhen_internal(context.Background(), j, JobRecord{}, doneWhenGate, "go test ./...")
+	if !red || out.Result != "fail" || !strings.Contains(out.Reason, "timed out after") {
+		t.Errorf("an overrun after the slot: %+v, want the timeout fail", out)
+	}
+}
+
+// The harness's own run keeps the short wait: a job with no slot for it is
+// staged and run again on a later pass, holding nothing.
+func TestTheHarnessKeepsTheShortWait(t *testing.T) {
+	t.Parallel()
 	fx := cr2OKExec_internal()
+	dir := t.TempDir()
 	w := &OSReserveWall{Exec: fx, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: 5 * time.Second}}
-	if _, err := w.RunHarness(context.Background(), j, []string{"opencode", "run"}, nil, bound); err != nil {
+	if _, err := w.RunHarness(context.Background(), Job{Consumer: "c1", JobDir: dir, WorktreeDir: dir}, []string{"opencode", "run"}, nil, 20*time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if wait := reserveWaitOf(t, fx.Calls()[0].Cmd.Argv); wait != 5*time.Second {
 		t.Errorf("the harness's run waits %s for a slot, want the configured 5s", wait)
-	}
-}
-
-func TestStepReserveWait(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct{ conf, bound, want time.Duration }{
-		{5 * time.Second, 20 * time.Minute, 20*time.Minute - 30*time.Second},
-		{5 * time.Second, 2 * time.Minute, 2*time.Minute - 12*time.Second},
-		{5 * time.Second, 4 * time.Second, 5 * time.Second},
-		{0, 0, 5 * time.Second},
-	} {
-		if got := stepReserveWait_internal(tc.conf, tc.bound); got != tc.want {
-			t.Errorf("stepReserveWait(%s, %s) = %s, want %s", tc.conf, tc.bound, got, tc.want)
-		}
 	}
 }
