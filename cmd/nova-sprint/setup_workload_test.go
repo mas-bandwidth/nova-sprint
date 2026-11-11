@@ -127,6 +127,37 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 	}
 }
 
+// A worker hooked and up on an older release than this build (its beat's
+// version, what the run deals by) is not verified: up --version installs
+// the binary on disk, and only a restart puts the worker on it. The act
+// is the same one play, naming that worker's record to restart.
+func TestWorkersBehindThisBuildAreRestartedByThePlay(t *testing.T) {
+	t.Parallel()
+	f := &fleetFake{machines: workloadMachines, rows: 3}
+	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Role: "worker", Version: "v2.0.37"}, "amd-2": {Name: "amd-2", State: "up", Role: "worker", Version: "v2.0.36"}}
+	w := testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
+	w.release = "v2.0.37"
+	ok, err := w.WorkersReady(context.Background())
+	var nr *verbs.WorkloadNotReady
+	if ok || !errors.As(err, &nr) || !strings.Contains(nr.Why, "amd-2 runs v2.0.36 (its beat), below this build's v2.0.37") || strings.Contains(nr.Why, "amd-1 runs") || !strings.Contains(nr.Fix, "nova-sprint up again") {
+		t.Fatal(ok, err)
+	}
+	if err = w.InstallWorkers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	play := []string{"nova-fleet", "services", "--", "-l", "amd-1,amd-2", "-e", "nova_service_only=sprint-worker-amd-1,sprint-worker-amd-2", "-e", "nova_service_restart=sprint-worker-amd-2"}
+	if last := f.calls[len(f.calls)-1]; !slices.Equal(last, play) {
+		t.Fatalf("play %q, want %q", last, play)
+	}
+	rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Role: "worker", Version: "v2.0.37"}
+	if ok, err = w.WorkersReady(context.Background()); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	if err = w.InstallWorkers(context.Background()); err != nil || slices.Contains(f.calls[len(f.calls)-1], "nova_service_restart=sprint-worker-amd-2") {
+		t.Fatal(err, f.calls[len(f.calls)-1])
+	}
+}
+
 // A failed play is a refusal naming the benches and nova-fleet's cause; a
 // record that differs is the record's own refusal, before any play.
 func TestInstallWorkersRefusals(t *testing.T) {

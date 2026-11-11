@@ -16,6 +16,7 @@ import (
 // nothing: nova-fleet installs nova-sprint, and Apply names that command.
 type VersionAdoption struct {
 	Binary      string
+	Running     string // the build running up (versionString)
 	Command     CommandOutput
 	ResolvePath func() (string, error)
 	Secrets     NovaSecrets

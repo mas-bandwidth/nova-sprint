@@ -11,39 +11,39 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-func TestVersionAdoptionRequiresCheck(t *testing.T) {
+// up --version judges the build, not the workload: the release on PATH that
+// is the build running up is ready whatever the sprint's own health (open
+// judgements, workers still on the old release, which up's workers step
+// restarts), so it runs nothing but the installed binary's version. A
+// release on PATH that is not the build running up is a refusal naming
+// the one to run; one not on PATH is not ready (Apply names the install).
+func TestVersionAdoptionJudgesTheBuild(t *testing.T) {
 	t.Parallel()
 	calls := []string{}
 	installed := "v2.0.0"
-	checkErr := false
-	a := VersionAdoption{Binary: "/bin/nova-sprint", ResolvePath: func() (string, error) { return "/bin/nova-sprint", nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+	a := VersionAdoption{Binary: "/bin/nova-sprint", Running: "v2.0.0", ResolvePath: func() (string, error) { return "/bin/nova-sprint", nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, strings.Join(append([]string{name}, args...), " "))
 		if args[0] == "version" {
 			return versionOutput(t, installed), nil
 		}
-		if name == "nova-secrets" && args[len(args)-1] == "check" && checkErr {
-			return nil, errors.New("failed")
-		}
-		return nil, nil
+		return nil, errors.New("CHECK RED 13 judgements open; CHECK RED worker amd-1: binary v1.9.9 below run's v2.0.0")
 	}}
 	ok, err := a.Ready(context.Background(), "v2.0.0")
-	if err != nil || !ok || len(calls) != 2 {
+	if err != nil || !ok || !slices.Equal(calls, []string{"/bin/nova-sprint version"}) {
 		t.Fatal(ok, err, calls)
 	}
 	installed = "dev+0123456789ab"
-	ok, err = a.Ready(context.Background(), "v2.0.0")
-	if err != nil || ok {
+	if ok, err = a.Ready(context.Background(), "v2.0.0"); err != nil || ok {
 		t.Fatal(ok, err)
 	}
 	installed = "v1.0.0"
-	ok, err = a.Ready(context.Background(), "v2.0.0")
-	if err != nil || ok {
+	if ok, err = a.Ready(context.Background(), "v2.0.0"); err != nil || ok {
 		t.Fatal(ok, err)
 	}
-	installed = "v2.0.0"
-	checkErr = true
+	installed, a.Running = "v2.0.0", "v1.0.0"
 	ok, err = a.Ready(context.Background(), "v2.0.0")
-	if err == nil || ok {
+	var op *OperationError
+	if ok || !errors.As(err, &op) || !strings.Contains(op.Problem, "up is running nova-sprint v1.0.0, not v2.0.0") || !strings.Contains(op.Fix, "/bin/nova-sprint up --as <coordinator> --version v2.0.0") {
 		t.Fatal(ok, err)
 	}
 }
@@ -55,7 +55,7 @@ func TestAdoptionCommandsAreAllParseable(t *testing.T) {
 	t.Parallel()
 	const binary = "/bin/nova-sprint"
 	var argvs [][]string
-	a := VersionAdoption{Binary: binary, ResolvePath: func() (string, error) { return binary, nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+	a := VersionAdoption{Binary: binary, Running: "v2.0.0", ResolvePath: func() (string, error) { return binary, nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch {
 		case name == binary:
 			argvs = append(argvs, args)

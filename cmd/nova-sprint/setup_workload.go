@@ -114,6 +114,7 @@ type productionWorkload struct {
 	present  func(context.Context) (map[string]bool, error)
 	lastLine func(ctx context.Context, machine, service string) string
 	version  func(ctx context.Context, machine string) error // nil: this bench runs this binary's version
+	release  string // this build's release: a worker beating an older one is restarted
 }
 
 // ServicesReady is true: the services step's keys are proven by their model probe
