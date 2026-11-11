@@ -35,7 +35,8 @@
 (* the code, and any tree can be stopped). A verdict is taken only from  *)
 (* completed checks: a partial gate is asked again until the request's  *)
 (* wait passes (Late), then it is no verdict, never red; a stopped gate  *)
-(* is run again once (reran), then no verdict. A gate is the tree pushed *)
+(* is no verdict at once (the sprint never runs CI again: LESSONS W19).  *)
+(* A gate is the tree pushed                                             *)
 (* for the request on base's tip as it was (gbase); a pass on a base     *)
 (* that moved since rebuilds it and its CI starts again.                 *)
 (***************************************************************************)
@@ -57,11 +58,10 @@ Conflict(cs) == {"c2", "c3"} \subseteq cs
 NoTree == [cards |-> {}, ext |-> 0]
 \* A request: its cards, state and outcome, the rung, and its gate: the
 \* tree pushed (gate), the length of base when it was (gbase), its CI
-\* (ci: none, running, partial, done; res: the completed result), whether
-\* its stopped jobs were run again (reran) and whether the wait passed on a
-\* partial CI (late).
+\* (ci: none, running, partial, done; res: the completed result) and
+\* whether the wait passed on a partial CI (late).
 NoReq  == [cards |-> {}, st |-> "none", out |-> "none", rung |-> 0,
-           gate |-> NoTree, gbase |-> 0, ci |-> "none", res |-> "none", reran |-> FALSE, late |-> FALSE]
+           gate |-> NoTree, gbase |-> 0, ci |-> "none", res |-> "none", late |-> FALSE]
 
 VARIABLES
   base,    \* Seq of [tree, how ("init", "auto", "hand", "ext"), gated]
@@ -160,10 +160,7 @@ Pass(s) ==
            \/ /\ r.ci = "done" /\ r.res = "red"
               /\ Done(s, r, "red")
               /\ UNCHANGED base
-           \/ /\ r.ci = "done" /\ r.res = "stopped" /\ ~r.reran   \* run again once: asked again
-              /\ req' = [req EXCEPT ![s] = [r EXCEPT !.ci = "running", !.res = "none", !.reran = TRUE, !.late = FALSE]]
-              /\ UNCHANGED base
-           \/ /\ r.ci = "done" /\ r.res = "stopped" /\ r.reran
+           \/ /\ r.ci = "done" /\ r.res = "stopped"   \* every failing check stopped: no verdict
               /\ Done(s, r, "noverdict")
               /\ UNCHANGED base
            \/ /\ r.ci = "done" /\ r.res = "green"
@@ -241,7 +238,7 @@ TypeOK ==
   /\ \A s \in Streams : req[s].st \in {"none", "sent", "done"}
   /\ \A s \in Streams : req[s].ci \in {"none", "running", "partial", "done"}
   /\ \A s \in Streams : req[s].res \in {"none", "green", "red", "stopped"}
-  /\ \A s \in Streams : req[s].reran \in BOOLEAN /\ req[s].late \in BOOLEAN
+  /\ \A s \in Streams : req[s].late \in BOOLEAN
 
 \* Base is never red from a landing: every tree the landing put on base
 \* is one CI passed green.
@@ -275,10 +272,6 @@ VerdictOnlyCompleted ==
 RedIsReal ==
   \A s \in Streams : req[s].out = "red" => Red(req[s].gate.cards)
 
-\* Stopped checks are run again once before they are the coordinator's.
-StoppedRunAgainOnce ==
-  \A s \in Streams : req[s].out = "noverdict" /\ req[s].ci = "done" => req[s].reran
-
 -----------------------------------------------------------------------------
 (* Reachability: each expected VIOLATED (a run that shows the path).       *)
 
@@ -287,6 +280,5 @@ NeverJudged    == js = {}
 NeverHandLand  == \A i \in 1..Len(base) : base[i].how # "hand"
 NeverRedGated  == \A s \in Streams : req[s].out # "red"
 NeverNoVerdict == \A s \in Streams : req[s].out # "noverdict"
-NeverRerun     == \A s \in Streams : ~req[s].reran
 NeverLate      == \A s \in Streams : ~(req[s].out = "noverdict" /\ req[s].ci = "partial")
 =============================================================================
