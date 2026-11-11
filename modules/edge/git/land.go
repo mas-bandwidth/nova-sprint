@@ -21,6 +21,7 @@ const (
 	OutcomePending    LandOutcome = "ci_pending"    // checks queued or running
 	OutcomeAbsent     LandOutcome = "ci_absent"     // no check reported yet: the caller bounds the wait
 	OutcomeBaseMoved  LandOutcome = "base_moved"    // base moved after the gate: the pass runs again
+	OutcomeRested     LandOutcome = "forge_rested"  // GitHub rate-limited the forge's identity: the pass runs again
 	OutcomeRed        LandOutcome = "ci_red"        // a check failed
 	OutcomeCIFault    LandOutcome = "ci_fault"      // a check was cancelled, timed out or never started
 	OutcomeConflict   LandOutcome = "conflict"      // the heads do not merge onto base
