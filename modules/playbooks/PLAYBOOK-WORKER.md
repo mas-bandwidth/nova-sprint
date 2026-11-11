@@ -156,7 +156,8 @@ Each message is a wake. Handle it, then wait for the bus again.
    the dealt branch holds earlier work (a fix, a withdraw, a release or a fault), the next
    line is `continue from <40 hex>, never from the base: ...`: the branch's tip at origin,
    which `take` reads, and the finding when there is one. The brief follows:
-   its tier, PATHS, NEEDS, TEST and DONE-WHEN lines and its prose. Then `How this card finishes:`,
+   its tier, PATHS, NEEDS, TEST and DONE-WHEN lines and its prose, then one `STREAM GATE: <command>`
+   line for each gate of the card's stream (below). Then `How this card finishes:`,
    the commit identity and the exact finish lines for this card. The last line is
    `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. `take` does not
    change the generation, and a repeat changes nothing; it prints the same unless the branch
@@ -215,6 +216,13 @@ Each message is a wake. Handle it, then wait for the bus again.
     `--cost <usd>` (dollars, at most six decimals: `--cost 0.42`) when you know what the run
     cost; the board's Cost breakdown sums it by tier and stream.
 
+A stream gate (`STREAM GATE: <command>`) is a gate every card of the stream must pass, set on the
+stream by the coordinator so no brief has to repeat it. Run each like a DONE-WHEN, after them, at
+the same head; each must be green. One that is red at the base the card started from as well is
+the base's fault, not yours: do not fix it on this card and do not fail for it; finish with
+`--reason "stream gate <command> is red at base <sha>"` beside `--head`. A bench's worker runs the
+stream gates itself under the same rule.
+
 Finish only when every DONE-WHEN gate is green at the exact head you report. If it is not, say
 so honestly with one of these, never with a finish of a head that does not meet the brief:
 
@@ -252,8 +260,10 @@ your own head.
    the exact answer lines), then `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
 2. Check out that exact head detached in a fresh directory of your own. Do not edit it, commit
    on it or push from it.
-3. Read the diff against the base and the brief. Run the DONE-WHEN gates at that head, and keep
-   each gate's command, exit code and log.
+3. Read the diff against the base and the brief. Run the DONE-WHEN gates, then the stream gates
+   (`STREAM GATE:` lines), at that head, and keep each gate's command, exit code and log. A
+   stream gate red at the base as well is the base's, not this head's: name it in a yes's
+   `--finding`, never as a fix.
 4. Say yes only when every DONE-WHEN item is met at this head. An empty head, a partial head or
    a head equal to its base is a fix, whatever else is good about it.
 5. Say fix only for a real defect: an unmet DONE-WHEN item, a regression, a broken ruling, a

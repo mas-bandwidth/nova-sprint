@@ -38,6 +38,9 @@ func writeJobMD_internal(j Job) error {
 	for _, d := range j.DoneWhen {
 		fmt.Fprintf(&b, "done-when: %s\n", d)
 	}
+	for _, g := range j.StreamGates {
+		fmt.Fprintf(&b, "stream gate: %s\n", g)
+	}
 	if body := strings.TrimSpace(cmp.Or(j.Prose, j.Brief)); body != "" {
 		fmt.Fprintf(&b, "\n## The card\n\n%s\n", body)
 	}
@@ -88,6 +91,7 @@ func finishRules(j Job, k *KinFinish) string {
 	if k == nil {
 		if j.Kind == "read" {
 			return "1. Read the head checked out in " + j.WorktreeDir + " against the card. Edit no tracked file, commit nothing, run no git push and no gh.\n" +
+				streamGatesRule_internal(j, false) +
 				"2. Write " + res + ", then exit 0. Its forms:\n" +
 				"   {\"result\":\"ok\"}: the head meets the card as written.\n" +
 				"   {\"result\":\"fix\",\"finding\":\"<path>:<line>: <the defect and its repair>\"}: it does not; name every defect.\n" +
@@ -101,6 +105,7 @@ func finishRules(j Job, k *KinFinish) string {
 			"   The wall has no network: cargo builds offline from the bench's registry, so a crate the bench lacks fails at once; report that as fail, naming the crate.\n" +
 			commitIdentity_internal(j) +
 			"2. Run every done-when command in the checkout; each must exit 0.\n" +
+			streamGatesRule_internal(j, false) +
 			"3. Write " + res + ", then exit 0. Its forms:\n" +
 			"   {\"result\":\"ok\"}: the work is committed and every done-when command is green.\n" +
 			"   {\"result\":\"fail\",\"reason\":\"<what is not done, and why>\"}: you could not finish it; say what you found.\n" +
@@ -112,6 +117,7 @@ func finishRules(j Job, k *KinFinish) string {
 	if j.Kind == "read" {
 		return "1. Check out " + j.Head + " detached in a fresh directory of your own and read it against the card. Edit no tracked file, commit nothing, push nothing.\n" +
 			"2. Run every done-when command at that head; keep each command, exit code and log.\n" +
+			streamGatesRule_internal(j, true) +
 			"3. Answer with one of:\n" +
 			"   nova-sprint read " + k.Ref + " yes" + tail + ": the head meets the card as written.\n" +
 			"   nova-sprint read " + k.Ref + " fix --finding \"<path>:<line>: <the defect and its repair>\"" + tail + ": it does not; name every defect.\n" +
@@ -121,11 +127,32 @@ func finishRules(j Job, k *KinFinish) string {
 		"   To take in a newer base (a merge conflict), merge it into the branch, never rebase, so the earlier attempts' work and history stay.\n" +
 		kinIdentity(j) +
 		"2. Run every done-when command at the head you pushed; each must exit 0.\n" +
+		streamGatesRule_internal(j, true) +
 		"3. Report with one of:\n" +
 		"   nova-sprint finish " + k.Ref + " --head <sha>" + tail + ": the work is pushed at <sha> and every done-when command is green.\n" +
 		"   nova-sprint finish " + k.Ref + " --failed --reason \"<what is not done, and why>\"" + tail + ": you could not finish it; say what you found.\n" +
 		refuted_internal("nova-sprint finish "+k.Ref+" --failed --reason \"refuted: <what you tried, and what it showed>\""+tail) +
 		fault
+}
+
+// streamGatesRule_internal is the finish rule for the stream's gates
+// (j.StreamGates), "" for a stream with none: run each at the same head
+// after the done-when commands; one red at the base as well is the base's,
+// not the card's. kin: a kin row says so in its report's reason or finding;
+// a bench's worker says it in the report itself (streamGates_internal).
+func streamGatesRule_internal(j Job, kin bool) string {
+	if len(j.StreamGates) == 0 {
+		return ""
+	}
+	base := cmp.Or(j.BaseSHA, "the base")
+	rule := "   Run every stream gate (the stream gate lines: every card of stream " + j.Stream + " passes them) at the same head; each must exit 0, except one that is red at the base the card started from (" + base + "), or at the stream tip merged into it, as well: that is the base's fault, not this card's, and is no reason to fail the work or answer fix.\n"
+	if !kin {
+		return rule
+	}
+	if j.Kind == "read" {
+		return rule + "   Name such a gate in the yes's --finding: \"stream gate <command> is red at base " + base + "\".\n"
+	}
+	return rule + "   Name such a gate in the finish: --head <sha> --reason \"stream gate <command> is red at base " + base + "\".\n"
 }
 
 // refuted_internal is the finish rule for a brief the work refutes, in the
