@@ -173,6 +173,10 @@ Each message is a wake. Handle it, then wait for the bus again.
    finding in hand; never restart from the base and never throw the earlier work away. If the
    finding is a merge conflict, fetch the base, merge it into your branch and resolve the
    conflicts; never rebase: keep the prior head's history, so your next head descends from it.
+   A repository's `SIBLINGS` file names the checkouts it builds against, one line each:
+   `../<name> <clone-url> <tag> <sha>`. A bench's worker stages them for you beside the
+   worktree, read-only at that sha; briefs carry no sibling paths. In a clone of your own,
+   clone each `<clone-url>` to `../<name>` and check out `<sha>`.
 3. Before you change anything, run the brief's DONE-WHEN gates once at the commit you start
    from (the base, or the earlier attempt's head), so you know what was already red. A red the
    brief's base-reds table already lists is cited, never fixed on this card and never re-run

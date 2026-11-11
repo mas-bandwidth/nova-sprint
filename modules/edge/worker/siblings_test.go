@@ -158,7 +158,7 @@ func sibJob_internal(t *testing.T, fx *edge.FakeExec) (*OSGitOps, Job, string) {
 	roots := t.TempDir()
 	t.Cleanup(func() { writable_internal(t, roots) })
 	jobDir := filepath.Join(roots, "jobs", "c1")
-	g := &OSGitOps{WorkRoot: filepath.Join(roots, "clones"), MirrorRoot: filepath.Join(roots, "nova-bench", "mirror"), Exec: fx}
+	g := &OSGitOps{WorkRoot: filepath.Join(roots, "clones"), MirrorRoot: filepath.Join(roots, "nova-bench", "mirror"), SiblingsRoot: filepath.Join(roots, "nova-bench", "siblings"), Exec: fx}
 	j := Job{Repo: "o/r", Forge: "github", Kind: "work", Base: "main", Branch: "sprint/s/c1", BaseSHA: jobSHA40, Consumer: "c1",
 		JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
 	return g, j, roots
@@ -203,7 +203,7 @@ func TestStageWorktreeStagesTheSiblingsFileAtTheBase(t *testing.T) {
 				t.Fatalf("%q ran in %s, not the worker's work clone", a, dirs[i])
 			}
 		}
-		if strings.Contains(a, "serialize.rs") || strings.Contains(a, sibSHA) || strings.HasPrefix(a, "ls-tree") || strings.HasPrefix(a, "cat-file") {
+		if strings.Contains(a+" "+dirs[i], "serialize.rs") || strings.HasPrefix(a, "ls-tree") || strings.HasPrefix(a, "cat-file") {
 			sib = append(sib, a)
 			if network := strings.Contains(a, sibURL); remote[i] != network {
 				t.Fatalf("%q: credential %t, reaches the clone URL %t", a, remote[i], network)
@@ -215,13 +215,15 @@ func TestStageWorktreeStagesTheSiblingsFileAtTheBase(t *testing.T) {
 		"ls-tree " + jobSHA40 + " -- SIBLINGS",
 		"cat-file blob 5ib5ib5ib5ib5ib5ib5ib5ib5ib5ib5ib5ib5ib5",
 		"init --quiet --bare " + mirror,
+		"for-each-ref --count=1 --format=%(refname)",
 		fetchFlags + " --depth=1 " + sibURL + " +refs/tags/v5.0.0:refs/tags/v5.0.0",
 		"rev-parse --verify --quiet refs/tags/v5.0.0^{commit}",
 		"init --quiet " + tmp,
 		fetchFlags + " --depth=1 " + mirror + " " + sibSHA,
 		"checkout --quiet --detach " + sibSHA,
+		"rev-parse HEAD",
 	}
-	if strings.Join(sib[:len(want)], "\n") != strings.Join(want, "\n") {
+	if strings.Join(sib, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("sibling staging ran\n%s\nwant first\n%s", strings.Join(sib, "\n"), strings.Join(want, "\n"))
 	}
 	if got, err := os.Readlink(filepath.Join(j.JobDir, "serialize.rs")); err != nil || got != tree {
@@ -256,8 +258,9 @@ func TestStageWorktreeStagesTheSiblingsFileAtTheBase(t *testing.T) {
 			t.Fatalf("a staged tree was fetched again: %q in %s", a, dirs2[i])
 		}
 	}
-	if !slices.ContainsFunc(argv2, func(a string) bool { return a == "rev-parse HEAD" }) {
-		t.Fatalf("the reused tree was not checked: %q", argv2)
+	treeDir := filepath.Join(roots, "nova-bench", "siblings", "serialize.rs", sibSHA)
+	if i := slices.Index(dirs2, treeDir); i < 0 || argv2[i] != "rev-parse HEAD" {
+		t.Fatalf("the reused tree was not checked at its sha: %q in %q", argv2, dirs2)
 	}
 	if got, err := os.Readlink(filepath.Join(j2.JobDir, "serialize.rs")); err != nil || got != tree {
 		t.Fatalf("the second job links to %q (%v)", got, err)

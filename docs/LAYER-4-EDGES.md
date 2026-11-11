@@ -257,8 +257,23 @@ Deal to report:
    work clone, which borrows the mirror's objects and fetches from the
    mirror, never the network; never from the mirror itself, whose pruning
    fetch would delete branch refs. The worktree's commit identity is the
-   row's, never the machine's (LESSONS 4.21). Siblings the card reads are
-   staged read-only the same way. A staging failure or timeout is a `fault`
+   row's, never the machine's (LESSONS 4.21). Siblings are named by the
+   repo's own `SIBLINGS` file, one line each, `<path> <clone-url> <tag>
+   <40-hex-sha>` with the path `../<name>` (blank lines and `#` comments
+   allowed; no file, no siblings). The worker reads it at the stream's base
+   in its own work clone, never at a card's head, and checks every line
+   before any fetch: the name is letters, digits, `.`, `_` and `-` (no
+   `..`), neither the job's repo nor a job directory entry; the URL is on
+   the stream's own scheme and host (a local stream: a path or `file://`),
+   so the credential reaches no other host; the tag is a ref name; the sha
+   is 40 lowercase hex. Each sibling's tag is fetched into the bench mirror
+   `<name>.git` and its tree made once per sha at
+   `~/nova-bench/siblings/<name>/<sha>` (no alternates, checked at the sha,
+   read-only, shared), linked as `<root>/jobs/<consumer>/<name>` and
+   granted to the wall `--read`. A malformed file, or a sibling that cannot
+   be fetched, is not at its pin or cannot be placed, is a staging `fault`
+   naming it (`sibling ../<name> <url>@<tag>: <why>`); briefs carry no
+   sibling paths. A staging failure or timeout is a `fault`
    (LESSONS 4.14). A job directory that exists is refused, so none is
    reused (LESSONS 4.15). Each repo a pass stages from is fetched once per
    pass, before its jobs stage (defect 72). The worker writes `JOB.md` in the
