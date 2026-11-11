@@ -565,6 +565,20 @@ MayMove(V, x, r) == IF x.kind = "work" THEN StartOK(V, x.p, r) ELSE ReadOK(V, x.
 \* pickRows, TestTickRowsMissNamesNoRoom). With room on another row it is.
 Offered(V, x, r) == V.up[r] /\ bus[r] /\ Serves(r, x.p) /\ (x.kind = "read" => r # V.ps[x.p].author)
 FullAnswer(V, x, ar, t) == ar \in Rows /\ Offered(V, x, ar) /\ DefaultRow(V, x, t) = NoR
+\* What layer 5 hands a version as rows' third argument for x: the deal's
+\* own list, row for row (layer 6 passes layer 3's candidates through, the
+\* code's Questions.Candidates). Until 2026-11-11 layer 5 built the list
+\* itself from the store's up, with no bus: a row up and off the bus was
+\* offered, a correct policy named it, and the whole answer was a miss.
+\* OfferedIsAccepted: every row a rows question offers is one the deal
+\* accepts for it in that tick.
+PolicyOffered(V, x, r) == Offered(V, x, r)
+\* The rows questions a tick asks, before any step claims a card: work for
+\* a ready producer, a read for a review owed one (the code's questions()).
+RowsAsked(V) == {[p |-> p, kind |-> "work"] : p \in {p \in Prods : V.ps[p].st = "ready"}}
+                  \cup {[p |-> p, kind |-> "read"] : p \in {p \in Prods : ReadOwed(V, p)}}
+\* Every row offered, as <<producer, kind, row>>: what the trace logs.
+OfferedTo(V) == {<<y[1].p, y[1].kind, y[2]>> : y \in {y \in RowsAsked(V) \X Rows : PolicyOffered(V, y[1], y[2])}}
 
 \* acc: [gs, t (in-tick tally per row), miss, uns, cr]. useAns FALSE is the
 \* no-policy reference the policy check compares with.
@@ -698,7 +712,7 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl
              "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
              "NoDealWithoutPolicy", "ResolveFromState",
              "VerdictHasItsRead", "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown",
-             "ExpiryNeverSilent", "LapsedReleased"} :
+             "ExpiryNeverSilent", "LapsedReleased", "OfferedIsAccepted"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -763,7 +777,9 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl
              jnew \subseteq jsn
         [] n = "LapsedReleased" ->
              \A c \in lapsed : (V.cs[c].st = "working" /\ Free(c[1], cl3))
-                              => \E i \in 1..Len(E) : E[i].kind = "release" /\ E[i].c = c}
+                              => \E i \in 1..Len(E) : E[i].kind = "release" /\ E[i].c = c
+        [] n = "OfferedIsAccepted" ->
+             \A x \in RowsAsked(V) : \A r \in Rows : PolicyOffered(V, x, r) => Offered(V, x, r)}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
@@ -1160,7 +1176,10 @@ LandedOnMain == \A p \in Prods : w.ps[p].st = "landed" => p \in onmain
 (* ResolveFromState (section 64b: every producer the view's state makes   *)
 (* ready is resolved, whatever landed its needs);                         *)
 (* VerdictHasItsRead (a yes has a done ok read of the review and no fix  *)
-(* read, a fix has a done fix read: a faulted read is neither).          *)
+(* read, a fix has a done fix read: a faulted read is neither);          *)
+(* OfferedIsAccepted (every row a rows question offers a version is one  *)
+(* the deal accepts for that card in the tick: layer 5 is handed the     *)
+(* deal's own list, so naming an offered row is never "not a candidate").*)
 OneGroupPerCard          == "OneGroupPerCard" \notin last.bad
 GroupWhole               == "GroupWhole" \notin last.bad
 NeverHalfApplied         == "NeverHalfApplied" \notin last.bad
@@ -1181,6 +1200,7 @@ NeverDealtUnadmitted     == "NeverDealtUnadmitted" \notin last.bad
 AdmissionShown           == "AdmissionShown" \notin last.bad
 ExpiryNeverSilent        == "ExpiryNeverSilent" \notin last.bad
 LapsedReleased           == "LapsedReleased" \notin last.bad
+OfferedIsAccepted        == "OfferedIsAccepted" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width) is     *)
