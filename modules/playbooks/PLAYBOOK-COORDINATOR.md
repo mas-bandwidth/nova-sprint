@@ -22,6 +22,12 @@ at most 30 minutes): re-arm it the moment it ends. When an open judgement has wa
 than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every verb you run
 print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answer them.
 
+Every 5 minutes the run sends each friend's session, yours included, a `CHALLENGE` line: run
+the `nova-sprint pong` command it prints. A friend that answers none for 10 minutes is down:
+its hand goes back to the queue, the deal skips it, and a `down` judgement names it. It comes
+back up on its next answer; bus presence alone never brings it back. Benches are not
+challenged (`nova-sprint help pong`).
+
 ## Who you are now
 
 1. You are the coordinator: the one name `up` recorded, the only name that may answer a

@@ -155,16 +155,22 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // (more than one one-second tick; LAYER-3 "Undealt"). PresentGrace is the
 // seconds a row last seen on nova-bus still counts present: one failed
 // `nova-bus who` read is not every row gone (30, a guess at how long who
-// takes to drop a crashed hook; unmeasured).
+// takes to drop a crashed hook; unmeasured). ChallengeEvery is the seconds
+// between the run's challenges to a kin row, which only the session's model
+// answers (`nova-sprint pong`); a kin row with no answer for two of them is
+// down and its hand goes back to the queue. v1 challenged once a minute
+// (nova-hook serve, two misses down); 300 keeps a model turn every five
+// minutes, down within ten (a choice, not measured).
 type Defaults struct {
-	UndealtAfter int
-	PresentGrace int
-	Reads        int
-	IdleCeiling  float64
-	LandSample   int
-	Limits       Limits
-	Timeouts     Timeouts
-	Landing      LandingAnswer
+	UndealtAfter   int
+	PresentGrace   int
+	ChallengeEvery int
+	Reads          int
+	IdleCeiling    float64
+	LandSample     int
+	Limits         Limits
+	Timeouts       Timeouts
+	Landing        LandingAnswer
 }
 
 // Engine is the defaults as the designs give them. Budget 250 and Pack 50
@@ -173,7 +179,7 @@ type Defaults struct {
 // section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
 // guesses, marked there.
 var Engine = Defaults{
-	UndealtAfter: 2, PresentGrace: 30, Reads: 1, IdleCeiling: 0.75, LandSample: 20,
+	UndealtAfter: 2, PresentGrace: 30, ChallengeEvery: 300, Reads: 1, IdleCeiling: 0.75, LandSample: 20,
 	Limits: Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
 		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 250, Pack: 50},
 	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300},
