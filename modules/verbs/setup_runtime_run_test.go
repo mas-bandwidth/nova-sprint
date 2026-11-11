@@ -202,6 +202,10 @@ func TestSetupRunOfAnOlderBuildIsBehind(t *testing.T) {
 	if ok, err := r.Ready(context.Background(), "bench-a", "sprint-run"); !ok || err != nil {
 		t.Fatal(ok, err)
 	}
+	status.Version = run.VersionUnknown // a lock name cut at run.NameMax: never behind, so up never restarts the run in a loop
+	if ok, err := r.Ready(context.Background(), "bench-a", "sprint-run"); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
 	status.Version, r.Release = "v2.0.36", "dev+0123456789ab"
 	if ok, err := r.Ready(context.Background(), "bench-a", "sprint-run"); !ok || err != nil {
 		t.Fatal(ok, err)
