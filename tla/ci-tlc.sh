@@ -21,6 +21,10 @@
 #                                      must pass            (TLC exit 0);
 #     its witnesses VerbFence{OneTry,OneTryCoarse,NoOwn} and reach checks
 #     VerbFenceNever{Retried,Dealt}, beside it, must be violated
+#   Hook.tla with Hook.cfg (the sprint hook bound to the bus hook)
+#                                      must pass            (TLC exit 0);
+#     its witnesses Hook{AnySession,ReplaceUnhooks,ReplaceChangesRole} and reach checks
+#     HookNever{Replaced,ActsAgain}, beside it, must be violated
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
 #     Setup.tla, SetupWalk.tla, SetupRun.tla, SetupChoices.tla (SetupChoices.cfg and
@@ -202,6 +206,7 @@ run Runner pass . Runner.cfg Runner.tla 2
 run KinAlive pass . KinAlive.cfg KinAlive.tla 2
 run VerbFence pass . VerbFence.cfg VerbFence.tla 2
 run VerbFenceCoarse pass . VerbFenceCoarse.cfg VerbFence.tla 2
+run Hook pass . Hook.cfg Hook.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
 run Run pass . Run.cfg Run.tla 2
@@ -237,7 +242,8 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
-         KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence; do
+         KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
+         HookAnySession HookReplaceUnhooks HookReplaceChangesRole; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
@@ -252,6 +258,12 @@ done
 # KinAlive's reach checks (a kin row goes down, and comes back on a pong).
 for m in NeverDown NeverBack; do
     run "reach-KinAlive$m" violate . "KinAlive$m.cfg" KinAlive.tla 1
+done
+
+# Hook's reach checks (a stale hook is replaced with a hand held, and a name
+# acts again on a later bus session).
+for m in NeverReplaced NeverActsAgain; do
+    run "reach-Hook$m" violate . "Hook$m.cfg" Hook.tla 1
 done
 
 # SetupRun's reach checks (the run up on a fresh store, a stop and a move,

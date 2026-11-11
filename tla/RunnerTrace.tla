@@ -45,6 +45,7 @@ TraceAction(k) ==
        [] a = "Die"       -> Die(c)
        [] a = "Harvest"   -> Harvest(c)
        [] a = "Rebase"    -> Rebase(c)
+       [] a = "NothingNew" -> NothingNew(c)
        [] a = "Conflict"  -> Conflict(c)
        [] a = "Push"      -> Push(c)
        [] a = "Report"    -> Report(c)

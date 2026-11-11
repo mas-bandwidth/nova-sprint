@@ -18,7 +18,10 @@ Muse Code run it as the Monitor tool's command; Grok and Antigravity pass `--har
 file: the pushes still arrive, but they wake nobody, and a push you do not see is a judgement
 nobody answers (2026-11-08: 60 judgements sat unanswered for over an hour behind a hook writing
 to a log file, and nothing landed). A harness's watch can expire (Claude Code's Monitor lasts
-at most 30 minutes): re-arm it the moment it ends. When an open judgement with a deadline has
+at most 30 minutes): re-arm it the moment it ends, then run `nova-sprint hook --as <you> --role
+coordinator` again; it replaces the hook in place and keeps the seat. The sprint hook is bound
+to the bus hook it was made on, so every restart of the bus hook, a re-armed watch included,
+costs one `hook in first` until you have hooked again. When an open judgement with a deadline has
 waited longer than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every
 verb you run print `UNSEEN <n> judgements open, oldest <age>` first, counting those: fix the
 hook, then answer them. A judgement with no deadline (a held card, a land judgement, the
@@ -65,6 +68,18 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role
    while another row holds the seat, naming that row. Both refusals are the tool enforcing the
    order. Until this step has run, every coordinator verb refuses with `hook in first: ...`.
+   The sprint hook is bound to the bus hook of step 1 (`nova-bus who` shows its session id, new
+   each time the hook is started): once a new session has started the bus hook, the old sprint
+   hook is no longer yours, your verbs refuse with `hook in first: nova-sprint hook --as <you>
+   --role coordinator`, and this step replaces the old hook in place. You keep the seat and your
+   hand; never `unhook` first, which frees the seat and returns your hand. If it says `<you> is
+   already hooked in as coordinator: nova-sprint next --as <you>`, your bus hook is the one you
+   hooked in on: go on. A hook never changes your role: `--role worker` here is refused (`<you>
+   is hooked in as coordinator; unhook first to change role`), so the seat is given up only by
+   `unhook`. Known limit: a bus hook that runs as a service (`nova-bus hook ... --service`) is
+   not started again by a new session (run again with the same flags it changes nothing, so its
+   id stays), so a new Codex, Grok or Antigravity session on a service hook is not refused; it
+   still runs this step for its playbook line.
    Take the seat only when the operator says so (its holder is gone, or the seat was handed to
    you): `nova-sprint up --as <you> --take-over --reason "<why>"` (section 7, item 8).
 3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per

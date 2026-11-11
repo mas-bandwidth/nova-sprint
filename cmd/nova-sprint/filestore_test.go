@@ -84,13 +84,14 @@ func (s *fileStore) Clear(ctx context.Context, op store.Op) (store.Receipt, erro
 	return r, err
 }
 
-// present is a bus where the names given are on it.
+// present is a bus where the names given are on it, each hook's session
+// id "bus-<name>".
 type present []string
 
 func (p present) Who(context.Context) (map[string]bus.Presence, error) {
 	out := map[string]bus.Presence{}
 	for _, n := range p {
-		out[n] = bus.Presence{Name: n}
+		out[n] = bus.Presence{Name: n, Session: "bus-" + n}
 	}
 	return out, nil
 }

@@ -88,6 +88,15 @@ func TestRestore(t *testing.T) {
 	}
 	w.e.Store = restored{w.f, "d1"}
 	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "(as restored)")
+	// on a new bus session the same dump again hooks dave in again, in
+	// place: "as restored" is said only of a hook on the live bus session
+	w.bus.session = map[string]string{"dave": "bus-2"}
+	if r := w.do("dave", "restore", "/b/1.dump"); r.Exit != 0 || !strings.Contains(r.Output, "HOOKED dave role=coordinator\n") || strings.Contains(r.Output, "(as restored)") {
+		t.Fatalf("restore on a new bus session, exit %d:\n%s", r.Exit, r.Output)
+	}
+	if row := w.snap(t).Rows["dave"]; row.Session != "bus-2" || row.Role != "coordinator" {
+		t.Fatalf("row %+v", row)
+	}
 }
 
 // TestRestoreHoldsCardsToAdmission: a restored producer not yet dealt is

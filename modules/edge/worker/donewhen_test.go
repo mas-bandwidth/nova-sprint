@@ -29,12 +29,14 @@ type gateWall_internal struct {
 	cr2Wall
 	mu           sync.Mutex
 	tests, steps []time.Duration
+	order        []string // every wall command in order: "step <argv>" or "test <cmd>"
 	run          func(cmd string, timeout time.Duration) (WallRunResult, error)
 }
 
 func (w *gateWall_internal) RunTest(_ context.Context, _ Job, cmd string, timeout time.Duration) (WallRunResult, error) {
 	w.mu.Lock()
 	w.tests = append(w.tests, timeout)
+	w.order = append(w.order, "test "+cmd)
 	run := w.run
 	w.mu.Unlock()
 	if run == nil {
@@ -43,9 +45,10 @@ func (w *gateWall_internal) RunTest(_ context.Context, _ Job, cmd string, timeou
 	return run(cmd, timeout)
 }
 
-func (w *gateWall_internal) RunStep(_ context.Context, _ Job, _ []string, timeout time.Duration) (WallRunResult, error) {
+func (w *gateWall_internal) RunStep(_ context.Context, _ Job, argv []string, timeout time.Duration) (WallRunResult, error) {
 	w.mu.Lock()
 	w.steps = append(w.steps, timeout)
+	w.order = append(w.order, "step "+strings.Join(argv, " "))
 	w.mu.Unlock()
 	return WallRunResult{}, nil
 }

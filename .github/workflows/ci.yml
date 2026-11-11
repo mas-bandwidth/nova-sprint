@@ -105,6 +105,17 @@ jobs:
     if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && github.ref == 'refs/heads/main')
     runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 2
+    # One job per package group, each on its own runner: the whole set in one
+    # job ran 66 s on a quiet runner and past 2 minutes on a loaded one (every
+    # test starts its own PostgreSQL, so the job is CPU bound). The three
+    # longest packages have a job each; rest is every other package, so a new
+    # package always runs somewhere. A group added here is added to the step's
+    # case and to its own list, which rest leaves out.
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [cmd, store, verbs, rest]
+    name: functional (${{ matrix.group }})
     steps:
       - *clean
       - *checkout
@@ -131,8 +142,19 @@ jobs:
       # that gate. Under CI a missing tool a functional test needs (redis-server,
       # nova-bus, pg_ctl, pg_dump, go) fails the test, it does not skip.
       - name: functional tests
-        run: go test -count=1 -race -timeout 100s -run Functional ./...
+        shell: bash
+        run: |
+          own="./cmd/... ./modules/store ./modules/verbs"
+          case "$GROUP" in
+            cmd) pkgs="./cmd/..." ;;
+            store) pkgs="./modules/store" ;;
+            verbs) pkgs="./modules/verbs" ;;
+            rest) pkgs=$(go list ./... | grep -vxF "$(go list $own)") ;;
+            *) echo "unknown group $GROUP" >&2; exit 1 ;;
+          esac
+          go test -count=1 -race -timeout 100s -run Functional $pkgs
         env:
+          GROUP: ${{ matrix.group }}
           NOVA_FUNCTIONAL: "1"
 
   # Trace validation (tla/README.md, "Trace validation"), short: the store's
@@ -150,7 +172,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [store, card, policy, steps-pre, steps-deal, steps-land, steps-burst, steps-fixtures, edge, verbs]
+        group: [store, card, policy, steps-pre, steps-deal, steps-land, steps-burst, steps-fixtures, edge, hook, verbs]
     name: trace (${{ matrix.group }})
     steps:
       - *clean
