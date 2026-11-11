@@ -34,20 +34,28 @@ type (
 		Routes     map[string]ProxyRoute
 		Transport  http.RoundTripper
 		mu         sync.Mutex
-		lastStatus map[string]int // per job (ProxyKey's consumer)
+		tick       int                        // numbers each request sent and each status recorded, in the order they happen
+		lastStatus map[string]status_internal // per job (ProxyKey's consumer)
 	}
+	// status_internal is a job's provider status and the tick it was recorded at.
+	status_internal struct{ code, at int }
 )
 
+// maxBody_internal is the most of one response body the proxy passes on.
+const maxBody_internal = 16 << 20
+
 // RecordStatus keeps code as job's last provider status: a failure (402,
-// 429, 5xx, a response cut short as 502), or 0 once a request is answered.
+// 429, 5xx, a response cut short as 502). An answered request ends it only
+// when that request was sent after it (answered_internal).
 func (p *KeyProxy) RecordStatus(job string, code int) {
 	if p != nil {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if p.lastStatus == nil {
-			p.lastStatus = map[string]int{}
+			p.lastStatus = map[string]status_internal{}
 		}
-		p.lastStatus[job] = code
+		p.tick++
+		p.lastStatus[job] = status_internal{code, p.tick}
 	}
 }
 
@@ -56,11 +64,32 @@ func (p *KeyProxy) ConsumeStatus(job string) int {
 	if p != nil {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		code := p.lastStatus[job]
+		code := p.lastStatus[job].code
 		delete(p.lastStatus, job)
 		return code
 	}
 	return 0
+}
+
+// sent_internal numbers a request as it is sent upstream.
+func (p *KeyProxy) sent_internal() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.tick++
+	return p.tick
+}
+
+// answered_internal ends job's failure when the request now answered was
+// sent after the failure was recorded: the harness got past it. A request
+// sent before the failure and answered after it says nothing of the kind
+// (two requests in flight: one is cut and the harness dies, the other's
+// answer arrives), and the failure stands.
+func (p *KeyProxy) answered_internal(job string, sent int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if s, ok := p.lastStatus[job]; ok && s.at < sent {
+		delete(p.lastStatus, job)
+	}
 }
 
 // jobOf_internal is the job a request's placeholder key names ("" for the
@@ -290,23 +319,32 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 	}
 	outReq.Header.Set("Authorization", "Bearer "+apiKey)
 	outReq.Host = target.Host
+	sent := p.sent_internal()
 	resp, err := cmp.Or(p.Transport, upstream_internal).RoundTrip(outReq)
 	if err != nil {
-		p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
+		// a harness that hung up before the answer is no provider failure
+		if r.Context().Err() == nil {
+			p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
+		}
 		http.Error(w, "proxy upstream fault: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
-	status := 0 // answered: a failure before this request is one the harness got past
 	if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-		status = resp.StatusCode
+		p.RecordStatus(jobOf_internal(r), resp.StatusCode)
+	} else {
+		p.answered_internal(jobOf_internal(r), sent)
 	}
-	p.RecordStatus(jobOf_internal(r), status)
 	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
-	body, buf := io.LimitReader(resp.Body, 16<<20), make([]byte, 32<<10)
+	buf, left := make([]byte, 32<<10), maxBody_internal
 	for {
-		n, readErr := body.Read(buf)
+		n, readErr := resp.Body.Read(buf)
+		over := n > left
+		if over {
+			n = left
+		}
+		left -= n
 		if n > 0 {
 			if _, err := w.Write(buf[:n]); err != nil {
 				reportTo(nil, "key proxy: the harness stopped reading its response", err)
@@ -317,6 +355,12 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
 			}
+		}
+		if over {
+			// the cap is the proxy's cut, and said as one: the harness gets
+			// a broken connection, never the cap's bytes ending cleanly
+			reportTo(nil, "key proxy: response body cut at the cap", fmt.Errorf("the upstream sent more than %d bytes", maxBody_internal))
+			panic(http.ErrAbortHandler)
 		}
 		if readErr == io.EOF {
 			return
@@ -348,6 +392,10 @@ func newUpstream_internal() *http.Transport {
 	t.Protocols.SetHTTP1(true)
 	// the clone's config still offers h2 in ALPN
 	t.TLSClientConfig = &tls.Config{NextProtos: []string{"http/1.1"}}
+	// net/http keeps 2 idle connections per host, and every request past
+	// them pays a TLS handshake. 32 is two for each job of a 16-wide row:
+	// a number from the row's width, not a measured one.
+	t.MaxIdleConnsPerHost = 32
 	return t
 }
 func CheckLoopbackAddr(addr string) error {
