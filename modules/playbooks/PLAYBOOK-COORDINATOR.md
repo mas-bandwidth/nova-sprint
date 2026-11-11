@@ -21,12 +21,11 @@ to a log file, and nothing landed). A harness's watch can expire (Claude Code's 
 at most 30 minutes): re-arm it the moment it ends, then run `nova-sprint hook --as <you> --role
 coordinator` again; it replaces the hook in place and keeps the seat. The sprint hook is bound
 to the bus hook it was made on, so every restart of the bus hook, a re-armed watch included,
-costs one `hook in first` until you have hooked again. When an open judgement with a deadline has
-waited longer than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every
+costs one `hook in first` until you have hooked again. When an open judgement has waited
+longer than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every
 verb you run print `UNSEEN <n> judgements open, oldest <age>` first, counting those: fix the
-hook, then answer them. A judgement with no deadline (a held card, a land judgement, the
-no-policy gate) waits for you by design and never raises UNSEEN; `judge`, `next` and `check`
-still list it, and `check` reds it on its own line.
+hook, then answer them. A held card's judgement waits for you by design and never raises
+UNSEEN; `judge`, `next` and `check` still list it, and `check` reds it on its own line.
 
 Every 5 minutes the run sends each friend's session, yours included, a `CHALLENGE` line: run
 the `nova-sprint pong` command it prints. A friend that answers none for 10 minutes is down:
@@ -454,10 +453,11 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    when its needs have landed. A consumer id is refused with its producer's id.
    A busy sprint writes while a verb runs (deals, reports, hooks). `hold`, `unhold`, `replace`,
    `drop`, `judge`, `priority`, `relink`, `land`, `stream add`, `stream set`, `stop`, `start`,
-   `stats reset`, `identity` and `policy activate` read again by themselves when the write was not
-   to their own row, stream, card, judgement or your hook, up to 5 tries; each is refused only
-   when its own record changed, and the refusal names what changed. "refused 5 times ... the
-   store moves faster than it can plan" means five writes landed in a row: run it again.
+   `stats reset`, `identity`, `policy set` and `policy activate` read again by themselves when
+   the write was not to their own row, stream, card, judgement, policy or your hook, up to 5
+   tries; each is refused only when its own record changed, and the refusal names what changed.
+   "refused 5 times ... the store moves faster than it can plan" means five writes landed in a
+   row: run it again.
 6. Coach for first-pass acceptance. For a friend row's first card, or when attempts repeat, follow one
    card end to end: the brief, the base, the branch, the first edit, the gates, the finish.
    Classify a failure as tool or version, access or route, brief or scope, gate or bench, report,

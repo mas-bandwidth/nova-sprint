@@ -16,19 +16,18 @@ import (
 const unseenFix = "your pushes are not waking you: run your bus hook under your harness's wake tool (nova-sprint help playbook coordinator)"
 
 // unseenOf is the UNSEEN report of snap at now: how many open judgements
-// with a deadline have waited longer than timeouts judgement_unseen, and
-// the oldest's age; "" when none has. A judgement with no deadline (a held
-// card, a land judgement, the no-policy gate: steps' put) sits until
-// answered by design, so its age says nothing about the coordinator's wake
-// and it never counts; judge, next and check still list it. A read-only
-// report: it moves nothing.
+// have waited longer than timeouts judgement_unseen, and the oldest's age;
+// "" when none has. A held card's judgement sits until answered by design,
+// so its age says nothing about the coordinator's wake and it never counts;
+// judge, next and check still list it. A read-only report: it moves
+// nothing.
 func unseenOf(snap store.Snapshot, now time.Time, limit int) string {
 	if limit <= 0 {
 		limit = policy.DefaultJudgementUnseen
 	}
 	n, oldest := 0, now
 	for _, j := range snap.Judgements {
-		if j.State != "open" || j.Deadline.IsZero() || now.Sub(j.OpenedAt) <= time.Duration(limit)*time.Second {
+		if j.State != "open" || j.Kind == "held" || now.Sub(j.OpenedAt) <= time.Duration(limit)*time.Second {
 			continue
 		}
 		n++
