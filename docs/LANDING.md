@@ -66,7 +66,10 @@ Pending CI and a base that moved after the gate are not judgements: run
 asks the pass again every `LandPoll` (30 s), the first as long as CI runs,
 the second at once on the new tip (rung 2 then, since the head no longer
 contains base's tip). A CI that stays pending for ever is met by the stall
-judgement (layer 3), not by the landing.
+judgement (layer 3), not by the landing. A PR or checks read that GitHub
+rate-limited (`forge_rested`) is asked again the same way, said once in the
+run log as an edge fault; the identity rests meanwhile, so those passes make
+no call.
 
 ### A red base
 

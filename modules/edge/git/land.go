@@ -3,6 +3,7 @@ package git
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,8 +13,8 @@ import (
 )
 
 // LandOutcome is what one landing pass found (LANDING.md). landed is the
-// only automatic move; pending, absent and base-moved are asked again by the
-// caller; every other outcome is a judgement for the coordinator.
+// only automatic move; pending, absent, base-moved and forge-rested are asked
+// again by the caller; every other outcome is a judgement for the coordinator.
 type LandOutcome string
 
 const (
@@ -282,7 +283,9 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 		pr, err = fg.OpenPR(ctx, req.Repo, prHead, req.Base, fmt.Sprintf("%s: land %d card(s)", req.Stream, len(req.Heads)), "Opened by nova-sprint's landing. "+strings.Join(req.Branches, ", "))
 	}
 	if err != nil {
-		res.Outcome, res.Reason = OutcomeUnopenable, fmt.Sprintf("the PR %s -> %s could not be opened or read: %s", prHead, req.Base, edge.RedactN(err.Error(), edge.FailureMax))
+		if !rested_internal(err, &res) {
+			res.Outcome, res.Reason = OutcomeUnopenable, fmt.Sprintf("the PR %s -> %s could not be opened or read: %s", prHead, req.Base, edge.RedactN(err.Error(), edge.FailureMax))
+		}
 		return res, nil
 	}
 	res.PR = cmp.Or(pr.URL, fmt.Sprintf("#%d", pr.Number))
@@ -314,12 +317,29 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 	return res, nil
 }
 
+// rested_internal is whether err is GitHub rate-limiting the forge's
+// identity (forge.FaultRateLimit), and if so makes res forge_rested: no
+// fact about the landing, so the run asks the pass again as it does a
+// pending CI (LAYER-4-EDGES "Rate limits": a fault that spends nothing),
+// never a judgement per card. Only the reads before the merge come here: a
+// merge GitHub did not answer stays merge_refused, the coordinator's.
+func rested_internal(err error, res *LandResult) bool {
+	var fe *forge.FaultError
+	if !errors.As(err, &fe) || fe.Kind != forge.FaultRateLimit {
+		return false
+	}
+	res.Outcome, res.Reason = OutcomeRested, "GitHub rate-limited the forge's identity: "+edge.RedactN(err.Error(), edge.FailureMax)
+	return true
+}
+
 // readChecks_internal reads the gated sha's checks into res: true (with
 // res's outcome) unless they are green.
 func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) bool {
 	rollups, err := fg.Checks(ctx, req.Repo, []string{res.GatedSHA})
 	if err != nil {
-		res.Outcome, res.Reason = OutcomeCIFault, "the checks of "+res.GatedSHA+" could not be read: "+edge.RedactN(err.Error(), edge.FailureMax)
+		if !rested_internal(err, res) {
+			res.Outcome, res.Reason = OutcomeCIFault, "the checks of "+res.GatedSHA+" could not be read: "+edge.RedactN(err.Error(), edge.FailureMax)
+		}
 		return true
 	}
 	r := rollups[res.GatedSHA]
