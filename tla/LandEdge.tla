@@ -119,6 +119,9 @@ Pass(s) ==
         /\ Conflict(Gated(s).cards)
         /\ Finish(s, "conflict")
         /\ UNCHANGED base
+     \/ /\ ~(req[s].cards \subseteq Tip.cards)   \* GitHub rate-limited the forge (forge_rested):
+        /\ ~Conflict(Gated(s).cards)              \* no CI read, asked again, nothing changed
+        /\ UNCHANGED <<base, req>>
      \/ /\ ~(req[s].cards \subseteq Tip.cards)
         /\ ~Conflict(Gated(s).cards)
         /\ \E ci \in CIOf(Gated(s)) :

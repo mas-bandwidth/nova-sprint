@@ -67,12 +67,15 @@ type landWalk_internal struct {
 // green read may move base under the gate (an outside commit).
 type walkForge_internal struct {
 	*fakeForge_internal
-	w            *landWalk_internal
-	absent, move bool
+	w                    *landWalk_internal
+	absent, move, rested bool
 }
 
 func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
 	f.call_internal("Checks")
+	if f.rested {
+		return nil, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, Reason: "HTTP 403: API rate limit exceeded"}
+	}
 	out := make(map[string]forge.CheckRollup, len(shas))
 	for _, sha := range shas {
 		cards, _ := f.w.project_internal(sha)
@@ -228,6 +231,7 @@ func (w *landWalk_internal) pass_internal(s string) {
 		req.Branches = append(req.Branches, "sprint/"+s+"/"+c)
 	}
 	w.ff.absent = w.rng.Intn(4) == 0
+	w.ff.rested = w.rng.Intn(8) == 0
 	w.ff.move = w.extCount_internal() < walkK && w.rng.Intn(6) == 0
 	refuse := w.rng.Intn(6) == 0
 	w.ff.OnMerge = func(sha string) (string, error) {
@@ -242,8 +246,8 @@ func (w *landWalk_internal) pass_internal(s string) {
 	if err != nil {
 		w.t.Fatalf("LandPass %s: %v", s, err)
 	}
-	if res.Outcome == OutcomeBaseMoved {
-		return // asked again: the request stays in flight
+	if res.Outcome == OutcomeBaseMoved || res.Outcome == OutcomeRested {
+		return // asked again (a moved base, a rate-limited forge): the request stays in flight
 	}
 	out, ok := walkOutcomes[res.Outcome]
 	if !ok {
