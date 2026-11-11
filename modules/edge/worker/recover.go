@@ -146,7 +146,13 @@ func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal)
 	default:
 		p.rec.State, p.rec.PID, p.rec.Nonce = JobStaged, 0, ""
 	}
-	p.rec.DeadlineAt = r.Now().Unix() + int64(info.Deadline)
+	// The record's deadline stands: the sprint counts the card's from the
+	// deal, whatever the worker's restarts, and the done-when gates run
+	// until it (doneWhenBound_internal). Only a record without one (from
+	// before deadlines were recorded) counts from the restart.
+	if p.rec.DeadlineAt == 0 {
+		p.rec.DeadlineAt = r.Now().Unix() + int64(info.Deadline)
+	}
 	r.modelFor_internal(p, info)
 }
 

@@ -224,7 +224,11 @@ sense; they need a public endpoint and are deferred to layer 6.
 
 Rate limits: GitHub's own answer is the limit. A 403 or 429 with a retry
 time rests that identity until then: a fault to its caller that spends
-nothing. Rung 2's one PR per group keeps a backlog inside GitHub's documented
+nothing. The landing asks a pass whose PR or checks read was rate-limited
+again, as it does a pending CI (`forge_rested`): never a land judgement.
+A checks read pages past a commit's first 100 checks only when GitHub's
+per-state counts show a failed or faulted check (or do not account for
+every check), so a poll of a commit with nothing failed is one call. Rung 2's one PR per group keeps a backlog inside GitHub's documented
 limits (5,000 requests an hour; PR opens far fewer).
 
 ## The runner: nova-worker
@@ -278,10 +282,15 @@ Deal to report:
    job pushes nothing (defect 78).
 6. **Merge the stream** head as it is now in (never rebase), bounded by the
    two-minute step bound, and run the card's done-when gates, inside a slot,
-   each until the card's deadline (what is left of it; the step bound is
-   never a gate's); push. A conflict is a `fail` naming the files; a gate
-   still running at the deadline is a `fail` saying how long it ran, and
-   one not started because the deadline had passed is a `fault`.
+   each until the card's deadline (what is left of it, less the push's 60 s
+   kept for the push and the report; the step bound is never a gate's);
+   push. A job restarted from taken or staged keeps the deadline its record
+   holds. A conflict is a `fail` naming the files; a gate still running at
+   its bound (the wall's own timeout of the gate, never of a setup step
+   before it, which is a `fault`) is a `fail` saying how long it ran; one
+   not started because no time was left is a `fault` that says so (no limit
+   counts it: the card is dealt again and continues from the pushed head).
+   A red gate's reason names the gates not run after it.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
    CI is read by the landing on the group sha, not by the worker.
 8. **Report** with a result id written to `job.json` before the first try;
@@ -308,8 +317,11 @@ harness's last output), a merge conflict with the stream, the card's tests red
 (the reason keeps the lines that say what failed, make's `***`, `FAIL`,
 `--- FAIL`, `error:`, then the output's end, in 4096 bytes) or still
 running at the card's deadline. `fault`:
-exit 134 or 137; a launch that died inside the 15 s grace on a provider 5xx,
-three times; a rate-limit or credit refusal; a staging failure. A read
+exit 134 or 137; no result file after a provider failure the harness did
+not get past ("provider HTTP N": a 402, 429 or 5xx, an upstream that could
+not be reached or a response cut mid-body as 502, and no request sent after
+it answered); a launch that died of a 5xx inside the 15 s grace is launched
+again, three times in all; a rate-limit or credit refusal; a staging failure. A read
 reports `ok`, `fix` with its finding, or `fault` (no result file is a
 fault), never `fail`; a read's provider failure is a fault and spends no
 reader (LPM T30). A job the worker's own stop cuts short is "runner
@@ -362,8 +374,8 @@ then 30 to 60 s jittered (9 of 40 launches died on a provider 5xx);
 terminate grace 3 s. From nova-config: the card's deadline per tier.
 Unmeasured until the first dogfood sprint: the stream merge, the seal and
 the apply of the merged head 2 min each (a done-when gate has no bound of
-its own: it runs until the card's deadline; one measured 524 s,
-2026-11-11); push 60 s; `gh` 30 s; bus send 5 s; ssh connect 10 s; CI wait, the repository's
+its own: it runs until the card's deadline, less the push's bound; one
+measured 524 s); push 60 s; `gh` 30 s; bus send 5 s; ssh connect 10 s; CI wait, the repository's
 job timeout plus 10 min (v1's land deadline). No silence kill: v1's
 silence heuristic once deleted a running card's home and temp directory.
 
@@ -550,7 +562,7 @@ An estimate from the interfaces and v1's runner, lines of Go without tests:
 - `modules/edge/worker` (`modules/edge/worker/worker.go`, `modules/edge/worker/harness.go`, `modules/edge/worker/proxy.go`, `modules/edge/worker/verbs.go`, `modules/edge/worker/runner.go`, `modules/edge/worker/verbs_test.go`, `modules/edge/worker/worker_test.go`, `modules/edge/worker/runner_guarantees_test.go`, `modules/edge/worker/coldread2_test.go`, `modules/edge/worker/break_test.go`, `modules/edge/worker/functional_test.go`, `modules/edge/worker/trace_test.go`), served by `nova-sprint worker` (one binary):
   - No host refusal: nova-config's bench role is the only word on where a worker runs, the coordinator's machine included (2026-11-07; `CheckHost` and `--coordinator-hosts` are gone, below). `--as <row>` is the one mandatory flag.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`; `ScriptHarness` in the tests only) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `--harness` defaults to `claude`. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
-  - Loopback API key proxy (`KeyProxy` in `modules/edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses per job (`RecordStatus` / `ConsumeStatus`, keyed by the job the request's placeholder names), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only its job's placeholder `nova-proxy-placeholder-<consumer>` (`ProxyKey`; opencode: as each provider's `apiKey` in `OPENCODE_CONFIG_CONTENT`) (`Guarantee 12`).
+  - Loopback API key proxy (`KeyProxy` in `modules/edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), keeps each job's last provider failure (`RecordStatus` / `ConsumeStatus`, keyed by the job the request's placeholder names: an upstream 402/429/5xx, or 502 for an upstream that could not be reached or a response cut mid-body; never a request the harness itself hung up on; ended only by an answer to a request sent after it; the runner's launch loop hands the last launch's status to the harvest), sends the upstream its own `Accept-Encoding` so the harness gets plain bytes, flushes each chunk of a response as it arrives, aborts a response the upstream cut or that passes 16 MiB (the harness sees a broken connection, never a short body that ends cleanly), reaches the upstream over HTTP/1.1 when given no transport (a connection per request, so an upstream reset cuts one job's request; 32 idle connections kept per provider), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only its job's placeholder `nova-proxy-placeholder-<consumer>` (`ProxyKey`; opencode: as each provider's `apiKey` in `OPENCODE_CONFIG_CONTENT`) (`Guarantee 12`).
   - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which runs each `DoneWhen` line as the argv `edge.ParseGate` gives (the one parser admission uses too; a line with shell syntax outside quotes is an error and is never run)) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_CONTENT` only when it is exactly an `OpenCodeConfig` (one `@ai-sdk/openai-compatible` provider per routed provider name, `baseURL` that provider's route on one loopback proxy, `apiKey` a placeholder (`ProxyKey`), models `{}`), plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
   - 9-step runner lifecycle (`ServeRow`, `StepRow`, `ProbeRow` in `modules/edge/worker/runner.go`, recovery in `recover.go`):
     * `store.ConsumerOpID(kind, epoch, consumer, gen)` is the one op id of a take or report, derived by the verb; a report the store refused is retried under the next link of that id's chain (`store.ConsumerRetryID`), and the worker checks its report's receipt against the id or a link of its chain (`store.IsConsumerOp`).
@@ -576,7 +588,7 @@ An estimate from the interfaces and v1's runner, lines of Go without tests:
 | `TerminateGrace` | `3s` | **measured** | Process-group `SIGTERM` -> `SIGKILL` grace |
 | `MaxMessageBytes` / `MaxFieldBytes` | `4096 B` / `300 B` | **measured** | v1 bus size discipline (`Guarantee 3`) |
 | `MaxLogTailBytes` | `4096 B` | **measured** | Harness failure tail carried in report reason |
-| `RebaseTestBound` | `2m` | **guess** | The stream merge, the seal and the apply of the merged head, each; never a done-when gate, which runs until the card's deadline (a gate measured 524 s, 2026-11-11) |
+| `RebaseTestBound` | `2m` | **guess** | The stream merge, the seal and the apply of the merged head, each; never a done-when gate, which runs until the card's deadline less `PushTimeout` (a gate measured 524 s) |
 | `PushTimeout` | `60s` | **guess** | Unmeasured until the first dogfood sprint |
 | `ForgeTimeout` (`gh`) | `30s` | **guess** | Unmeasured until the first dogfood sprint |
 | `BusSendTimeout` | `5s` | **guess** | Unmeasured until the first dogfood sprint |

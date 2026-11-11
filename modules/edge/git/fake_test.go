@@ -32,6 +32,7 @@ type fakeForge_internal struct {
 	// advances base in the git fake); nil merges to a fixed sha.
 	OnMerge   func(sha string) (string, error)
 	OpenErr   error  // OpenPR fails with it
+	ChecksErr error  // Checks fails with it
 	Mergeable string // the PR's mergeable state ("" is MERGEABLE)
 	prs       []forge.PRInfo
 }
@@ -83,6 +84,9 @@ func (f *fakeForge_internal) OpenPR(_ context.Context, _, head, base, _, _ strin
 
 func (f *fakeForge_internal) Checks(_ context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error) {
 	f.call_internal("Checks")
+	if f.ChecksErr != nil {
+		return nil, f.ChecksErr
+	}
 	out := make(map[string]forge.CheckRollup, len(shas))
 	if f.world == nil {
 		st := forge.CheckPending

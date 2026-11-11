@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,12 +10,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 )
 
-// The done-when gates of a work job (runner.go rebaseAndTestStep_internal),
-// 2026-11-11: each ran under the worker's two-minute step bound, which the
+// The done-when gates of a work job (runner.go rebaseAndTestStep_internal):
+// each ran under the worker's two-minute step bound, which the
 // card contract never stated, so a gate of 524 s was killed on every bench,
 // reported as a fault that "did not run", and dealt again. A gate runs until
 // the card's deadline, the one the deal carries; and a red gate's reason
@@ -98,7 +100,41 @@ func gateStep_internal(t *testing.T, wall ReserveWall, clock *gateClock_internal
 // gateTimeout_internal is the wall's error for a command its timeout
 // killed, as runWallCmd_internal returns it.
 func gateTimeout_internal(timeout time.Duration) error {
-	return edge.Failure([]string{"nova-reserve", "run"}, nil, -1, "", "", &edge.ExecError{Program: "nova-reserve", Kind: edge.ErrTimeout, Reason: fmt.Sprintf("timed out after %s", timeout)})
+	return &WallTimeoutError{Err: edge.Failure([]string{"nova-reserve", "run"}, nil, -1, "", "", &edge.ExecError{Program: "nova-reserve", Kind: edge.ErrTimeout, Reason: fmt.Sprintf("timed out after %s", timeout)})}
+}
+
+// hangExec_internal times out the command at index hang (with an SDK
+// environment: 0 its shell, 1 the wall) and passes the rest.
+type hangExec_internal struct{ n, hang int }
+
+func (x *hangExec_internal) Run(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+	x.n++
+	if x.n-1 != x.hang {
+		return edge.Result{}, nil
+	}
+	return edge.Result{ExitCode: -1}, &edge.ExecError{Program: filepath.Base(cmd.Argv[0]), Kind: edge.ErrTimeout, Reason: "timed out after " + cmd.Timeout.String()}
+}
+
+// The wall marks its own command's timeout where it happens
+// (WallTimeoutError); the SDK environment script's, the same exec timeout
+// underneath, is not marked and names the script.
+func TestWallMarksOnlyItsOwnCommandsTimeout(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		hang int
+		own  bool
+	}{"the gate": {hang: 1, own: true}, "the SDK environment": {hang: 0}} {
+		dir := t.TempDir()
+		w := &OSReserveWall{Exec: &hangExec_internal{hang: tc.hang}, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", SDKEnv: "/b/sdk/env.sh"}}
+		_, err := w.RunTest(context.Background(), Job{Consumer: "c1", Row: "r1", JobDir: dir, WorktreeDir: dir}, "make test", time.Hour)
+		var own *WallTimeoutError
+		if err == nil || errors.As(err, &own) != tc.own {
+			t.Errorf("%s timed out: err = %v, marked the wall's own %v, want %v", name, err, !tc.own, tc.own)
+		}
+		if !tc.own && !strings.Contains(fmt.Sprint(err), "/b/sdk/env.sh") {
+			t.Errorf("%s timed out: err = %v does not name the script", name, err)
+		}
+	}
 }
 
 // A done-when runs until the card's deadline, each gate with what is left
@@ -108,16 +144,19 @@ func TestDoneWhenRunsUntilTheCardsDeadline(t *testing.T) {
 	clock := &gateClock_internal{sec: 1600} // the harness took ten minutes of a 90-minute deadline
 	wall := &gateWall_internal{}
 	wall.run = func(string, time.Duration) (WallRunResult, error) {
-		clock.add(524 * time.Second) // the gate measured on 2026-11-11
+		clock.add(524 * time.Second) // a gate as measured
 		return WallRunResult{}, nil
 	}
 	rec := gateStep_internal(t, wall, clock, JobRecord{StreamRef: "sprint/s1", DeadlineAt: 1000 + 5400, DoneWhen: []string{"make test", "go test -timeout 600s ./..."}})
 	if rec.Outcome.Result != "ok" || rec.State != JobRebased {
 		t.Fatalf("outcome %+v at %s, want ok: two gates of 524 s inside the deadline", rec.Outcome, rec.State)
 	}
-	want := []time.Duration{4800 * time.Second, (4800 - 524) * time.Second}
+	// Less the push's bound: the head is pushed and reported after the
+	// gates, and the sprint withdraws a card that has not reported by then.
+	left := 4800*time.Second - DefaultTimeouts().Push
+	want := []time.Duration{left, left - 524*time.Second}
 	if len(wall.tests) != 2 || wall.tests[0] != want[0] || wall.tests[1] != want[1] {
-		t.Errorf("done-when timeouts %v, want %v: what is left of the card's deadline", wall.tests, want)
+		t.Errorf("done-when timeouts %v, want %v: what is left of the card's deadline, less the time kept for the push and the report", wall.tests, want)
 	}
 	if len(wall.steps) == 0 {
 		t.Fatalf("no wall step ran: the merged head is applied in the wall before the gates")
@@ -144,28 +183,95 @@ func TestDoneWhenThatTimesOutSaysSoAndIsAFail(t *testing.T) {
 	if rec.Outcome.Result != "fail" || rec.Outcome.Head != testCommitSHA {
 		t.Errorf("outcome %+v, want a fail keeping the pushed head", rec.Outcome)
 	}
-	for _, want := range []string{"go test ./...", "timed out after 1h20m0s", "deadline", "=== RUN   TestSlow"} {
+	for _, want := range []string{"go test ./...", "timed out after 1h19m0s", "deadline", "=== RUN   TestSlow"} {
 		if !strings.Contains(rec.Outcome.Reason, want) {
 			t.Errorf("reason %q does not say %q", rec.Outcome.Reason, want)
 		}
 	}
 	if strings.Contains(rec.Outcome.Reason, "did not run") {
-		t.Errorf("reason %q says the gate did not run; it ran for 1h20m", rec.Outcome.Reason)
+		t.Errorf("reason %q says the gate did not run; it ran for 1h19m", rec.Outcome.Reason)
+	}
+}
+
+// The wall runs the bench's SDK environment script before the gate, with a
+// bound of its own (sdkWallEnv_internal). That script hanging is a timeout
+// too, but not the gate's: the gate never ran. A fault naming the script,
+// never a fail that bounces correct work with "timed out after 1h19m".
+func TestDoneWhenSetupTimeoutIsAFaultNotTheGatesTimeout(t *testing.T) {
+	t.Parallel()
+	wall := &gateWall_internal{}
+	wall.run = func(string, time.Duration) (WallRunResult, error) {
+		env := edge.Failure([]string{"/bin/sh", "-c", ". \"$1\""}, nil, -1, "", "", &edge.ExecError{Program: "sh", Kind: edge.ErrTimeout, Reason: "timed out after 30s"})
+		return WallRunResult{}, fmt.Errorf("worker: the bench's SDK environment %s failed: %w", "/home/nova/sdk/env.sh", env)
+	}
+	rec := gateStep_internal(t, wall, &gateClock_internal{sec: 1600}, JobRecord{DeadlineAt: 1000 + 5400, DoneWhen: []string{"go test ./..."}})
+	if rec.Outcome.Result != "fault" {
+		t.Errorf("outcome %+v, want a fault: the gate never ran", rec.Outcome)
+	}
+	for _, want := range []string{"did not run", "/home/nova/sdk/env.sh", "timed out after 30s"} {
+		if !strings.Contains(rec.Outcome.Reason, want) {
+			t.Errorf("reason %q does not say %q", rec.Outcome.Reason, want)
+		}
+	}
+	if strings.Contains(rec.Outcome.Reason, "1h19m") {
+		t.Errorf("reason %q gives the gate's bound as the time it ran", rec.Outcome.Reason)
 	}
 }
 
 // With the deadline already past, no done-when is started (the wall's exec
 // reads a zero timeout as its default and a negative one as expired): that
 // one truly did not run, a fault saying so.
+// The same with less left than the push and the report are kept: a gate
+// that used it would finish after the sprint's withdraw.
 func TestDoneWhenPastTheCardsDeadlineIsNotStarted(t *testing.T) {
 	t.Parallel()
-	wall := &gateWall_internal{}
-	rec := gateStep_internal(t, wall, &gateClock_internal{sec: 6400}, JobRecord{DeadlineAt: 6400, DoneWhen: []string{"go test ./..."}})
-	if len(wall.tests) != 0 {
-		t.Errorf("a done-when was started with %v left of a deadline already past", wall.tests)
+	for name, now := range map[string]int64{"past": 6400, "inside the time kept for the push": 6370} {
+		wall := &gateWall_internal{}
+		rec := gateStep_internal(t, wall, &gateClock_internal{sec: now}, JobRecord{DeadlineAt: 6400, DoneWhen: []string{"go test ./...", "make lint"}})
+		if len(wall.tests) != 0 {
+			t.Errorf("%s: a done-when was started with %v", name, wall.tests)
+		}
+		if rec.Outcome.Result != "fault" {
+			t.Errorf("%s: outcome %+v, want a fault", name, rec.Outcome)
+		}
+		for _, want := range []string{"did not run", "deadline", "dealt again", "make lint"} {
+			if !strings.Contains(rec.Outcome.Reason, want) {
+				t.Errorf("%s: reason %q does not say %q", name, rec.Outcome.Reason, want)
+			}
+		}
 	}
-	if rec.Outcome.Result != "fault" || !strings.Contains(rec.Outcome.Reason, "did not run") || !strings.Contains(rec.Outcome.Reason, "deadline") {
-		t.Errorf("outcome %+v, want a fault saying the gate did not run and why", rec.Outcome)
+}
+
+// A job restarted from taken or staged keeps the deadline its record
+// holds: the sprint counts the card's deadline from the deal, and a fresh
+// one let a gate run long past the sprint's withdraw.
+func TestResumedJobKeepsItsRecordedDeadline(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ recorded, want int64 }{
+		"recorded":      {recorded: 2400, want: 2400},
+		"none recorded": {recorded: 0, want: 1600 + 900}, // a record from before deadlines: counted from the restart
+	} {
+		clock := &gateClock_internal{sec: 1600}
+		r, err := NewRunner(Runner{Now: clock.now, Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: &cr2Sprint{}, Wall: &gateWall_internal{}, DefaultHarness: &ScriptHarness{}, Warn: func(string) {}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := JobRecord{Epoch: 3, Consumer: "p1.w1", Kind: "work", Row: "vision.ds", Gen: 2, State: JobStaged, StartedAt: 1500, DeadlineAt: tc.recorded}
+		jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
+		if err := os.MkdirAll(filepath.Join(jobDir, "repo"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeReceipt_internal(jobDir, TakeInfo{Consumer: rec.Consumer, Kind: "work", Model: "m1", Deadline: 900, CommitName: testCommitName, CommitEmail: testCommitEmail, Gen: 2, Epoch: 3}); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteJobRecord(jobDir, rec); err != nil {
+			t.Fatal(err)
+		}
+		p := prepared_internal{launch_internal: launch_internal{ctx: context.Background(), c: ConsumerSummary{ID: rec.Consumer, Gen: 2}, resume: &rec}}
+		r.prepareResume_internal(NextResponse{Epoch: 3, Row: "vision.ds"}, &p)
+		if p.end || p.rec.State != JobStaged || p.rec.DeadlineAt != tc.want {
+			t.Errorf("%s: resumed at %s (end %v) with deadline %d, want staged with %d", name, p.rec.State, p.end, p.rec.DeadlineAt, tc.want)
+		}
 	}
 }
 
@@ -251,6 +357,44 @@ func TestDoneWhenRedReasonCountsTheFailingLinesItCut(t *testing.T) {
 	}
 	if len(reason) > bound {
 		t.Errorf("the reason is %d bytes, over its bound of %d", len(reason), bound)
+	}
+}
+
+// The gates after a red one are not run, and the reason says which: a
+// reader of "tests red (make test)" must not take the others for green.
+func TestDoneWhenRedReasonNamesTheGatesNotRun(t *testing.T) {
+	t.Parallel()
+	wall := &gateWall_internal{}
+	wall.run = func(string, time.Duration) (WallRunResult, error) {
+		return WallRunResult{ExitCode: 1, Output: []byte("FAIL")}, nil
+	}
+	rec := gateStep_internal(t, wall, &gateClock_internal{sec: 1600}, JobRecord{DeadlineAt: 6400, DoneWhen: []string{"make test", "go vet ./...", " ", "make lint"}})
+	if want := "tests red (make test): FAIL\ndone-whens not run after it: go vet ./...; make lint"; rec.Outcome.Reason != want {
+		t.Errorf("reason %q, want %q", rec.Outcome.Reason, want)
+	}
+	if len(wall.tests) != 1 {
+		t.Errorf("%d gates ran after the red one", len(wall.tests)-1)
+	}
+}
+
+// Text of several bytes a character across both cuts (the failing lines'
+// half, the end's first byte) stays valid UTF-8 and inside the bound.
+func TestDoneWhenRedReasonCutsMultiByteTextWhole(t *testing.T) {
+	t.Parallel()
+	var b strings.Builder
+	b.WriteString("テスト/表.java:12: error: シンボルを見つけられません\n")
+	for i := 0; i < 400; i++ {
+		fmt.Fprintf(&b, "警告 %03d: 統計キャッシュを書き込めません — アクセスが拒否されました\n", i)
+	}
+	for pad := 0; pad < 4; pad++ { // each pad moves the end's cut one byte through a character
+		out := strings.Repeat("x", pad) + b.String()
+		reason, bound := redGate_internal(t, "make -k all", out)
+		if !utf8.ValidString(reason) || strings.ContainsRune(reason, utf8.RuneError) {
+			t.Errorf("pad %d: the reason is not valid UTF-8", pad)
+		}
+		if len(reason) > bound || !strings.Contains(reason, "error: シンボルを見つけられません") || !strings.HasSuffix(reason, "アクセスが拒否されました") {
+			t.Errorf("pad %d: the reason (%d bytes, bound %d) lost its failing line or its end", pad, len(reason), bound)
+		}
 	}
 }
 
