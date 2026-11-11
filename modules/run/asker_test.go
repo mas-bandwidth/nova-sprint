@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/assert"
@@ -69,6 +70,38 @@ func TestJudgementOpLeavesTheAnsweringVersionToSteps(t *testing.T) {
 	a.answers.Timeouts.Judgement = 600
 	op, _ = judgementOp(a, Observed{Now: now})
 	assert.Equal(t, now.Add(600*time.Second), op.Writes[0].(store.PutJudgement).Deadline, "the answering version's judgement timeout")
+}
+
+// unanswered is a policy whose every version fails the tick (Version -1, as
+// at a tick timeout).
+type unanswered struct{}
+
+func (unanswered) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
+	return policy.Answers{Version: -1}, []policy.Failure{{Version: 2, Label: "v2", Line: 1, Msg: "over the tick's time budget"}}
+}
+
+// TestNoAnswerKeepsTheLastAnsweredBounds (776-H1): a tick no version
+// answered gives the steps the last answered tick's limits and timeouts (a
+// custom policy's bounces 16 and pro 14400), so one tick timeout neither
+// fails a live pro worker at the engine's 7200 s nor holds a producer at its
+// 12 bounces.
+func TestNoAnswerKeepsTheLastAnsweredBounds(t *testing.T) {
+	t.Parallel()
+	f := store.NewFake()
+	tk, err := NewTicker(context.Background(), f, &healthy{}, unanswered{}, t0)
+	require.NoError(t, err)
+	tk.limits = policy.Limits{Bounces: 16, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
+		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.3}
+	tk.timeouts = policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 1200, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 30, ReadyTake: 180,
+		BaseRegate: []int{120, 300}, Consumer: map[string]int{"flash": 3600, "pro": 14400, "heavy": 7200, "frontier": 7200}}
+	a := tk.asker(context.Background(), roster.Roster{})
+	out := a.Ask(steps.Questions{})
+	assert.False(t, a.asked, "no version answered")
+	assert.Equal(t, "no policy version answered", out.Failed["*"])
+	require.NotNil(t, out.KeptLimits)
+	require.NotNil(t, out.KeptTimeouts)
+	assert.Equal(t, 16, out.KeptLimits.Bounces)
+	assert.Equal(t, 14400, out.KeptTimeouts.Consumer["pro"])
 }
 
 // TestStepsAnswersCarryEveryLimit: every limit policy validates reaches the

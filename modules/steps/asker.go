@@ -93,6 +93,13 @@ type Answers struct {
 	// across the fleet at once (the catalog's concurrency key); none: unlimited.
 	Concurrency map[string]int
 	NoDeal      string // layer 6's gate: why nothing is dealt this tick ("" deals; model.go)
+	// KeptLimits and KeptTimeouts are the last answered tick's limits and
+	// timeouts, read only on a tick no version answered (Failed "*"): they
+	// stand for the defaults' there, so one tick timeout never applies
+	// bounds the policy did not set (776-H1). Outside their ranges (none
+	// answered yet) the defaults stand whole.
+	KeptLimits   *Limits
+	KeptTimeouts *Timeouts
 }
 
 // WidthAnswer is width(row): how many the row works at once, at most its

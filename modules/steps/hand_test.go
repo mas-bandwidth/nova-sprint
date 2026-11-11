@@ -443,4 +443,23 @@ func TestLimitsReleaseLostCards(t *testing.T) {
 		assert.Equal(t, "working 7381 s with no report, past tier pro's deadline of 7200 s after the take window; branch sprint/s1/p1 is kept", s.card("p1.w1").Reason)
 		s.requireState("p1", "ready")
 	})
+	t.Run("a tick no version answered keeps the policy's deadline", func(t *testing.T) { // 776-H1
+		t.Parallel()
+		s := dealOne(t)
+		s.ack("p1.w1")
+		s.fold()
+		dealt, ok := s.v.TakenAt["p1.w1"]
+		require.True(t, ok, "the fold witnessed the deal")
+		tmo := Engine.Timeouts
+		tmo.Consumer = map[string]int{"flash": 3600, "pro": 14400, "heavy": 7200, "frontier": 7200}
+		s.ask = scripted{Answers{Failed: map[string]string{"*": "no policy version answered"}, KeptTimeouts: &tmo}}
+		s.now = dealt.Add(seconds(tmo.ReadyTake + 8000))
+		s.tick()
+		s.requireState("p1.w1", "working")
+		s.now = dealt.Add(seconds(tmo.ReadyTake + 14400))
+		s.tick()
+		require.Empty(t, s.rejected)
+		s.requireState("p1.w1", "fail")
+		assert.Contains(t, s.card("p1.w1").Reason, "past tier pro's deadline of 14400 s")
+	})
 }

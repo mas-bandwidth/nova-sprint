@@ -62,6 +62,27 @@ func TestAskerSlow(t *testing.T) {
 	assert.Equal(t, []string{"*"}, o.missed())
 }
 
+// TestAskerNoAnswerKeepsTheLastBounds (776-H1): a tick no version answered
+// runs on the last answered tick's limits and timeouts, not the engine's,
+// so a policy's longer bounds survive one tick timeout; kept bounds outside
+// their ranges (none answered yet: zero) are the engine's whole.
+func TestAskerNoAnswerKeepsTheLastBounds(t *testing.T) {
+	t.Parallel()
+	l := Engine.Limits
+	l.Bounces = 16
+	tmo := Engine.Timeouts
+	tmo.Consumer = map[string]int{"flash": 3600, "pro": 14400, "heavy": 7200, "frontier": 7200}
+	o := newOracle(Answers{Failed: map[string]string{"*": "no policy version answered"}, KeptLimits: &l, KeptTimeouts: &tmo}, Engine)
+	assert.Equal(t, l, o.limits())
+	assert.Equal(t, tmo, o.timeouts())
+	assert.Equal(t, []string{"*"}, o.missed(), "still one judgement for the spent budget")
+	o = newOracle(Answers{Failed: map[string]string{"*": "no policy version answered"}, KeptLimits: &Limits{}, KeptTimeouts: &Timeouts{}}, Engine)
+	assert.Equal(t, Engine.Limits, o.limits())
+	assert.Equal(t, Engine.Timeouts, o.timeouts())
+	o = newOracle(Answers{Version: 3, KeptLimits: &l, KeptTimeouts: &tmo}, Engine)
+	assert.Equal(t, Engine.Limits, o.limits(), "kept bounds stand only on a tick no version answered")
+}
+
 // TestAskerOutOfRange: every answer outside its domain is the default and a
 // judgement, and the valid ones stand.
 func TestAskerOutOfRange(t *testing.T) {
