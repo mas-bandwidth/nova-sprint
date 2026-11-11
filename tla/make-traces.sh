@@ -24,8 +24,10 @@
 #   store-breaker, card-breaker, policy-breaker, hook-breaker   the divergence breakers (committed fixtures,
 #                       rewritten here; each must be refused at its last record)
 #   runner-walk-<seed>  modules/edge/worker/trace_test.go TestRunnerTraceRefinementWalk
-#   runner-breaker      TestRunnerTraceRefusesAResume: a restart that kept its hand to
-#                       resume it, refused at its Restart record (written here, not committed)
+#   runner-restart      TestRunnerTraceRefusesAResume: a crash while a harness runs, the
+#                       restart's return of the hand, the first pass killing the old harness
+#   runner-breaker      the same test: a restart that kept its hand to resume it, refused
+#                       at its Restart record (both written here, not committed)
 # Run it on a bench host (hetzner2 for the TLC half), never on the working machine.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -45,7 +47,7 @@ on() {
         { [ "$1" = steps ] && [ "${GROUP#steps-}" != "$GROUP" ]; }
 }
 
-find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' -o -name 'runner-breaker' -o -name 'hook-walk-*' \) -exec rm -rf {} +
+find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' -o -name 'runner-breaker' -o -name 'runner-restart' -o -name 'hook-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
 # The walks write disjoint trace dirs, so they run in parallel; each one's
 # exit code is kept and any failure fails the script after all have ended.
