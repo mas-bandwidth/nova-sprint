@@ -124,7 +124,9 @@ func TestBaseRedEscalatesAndWaitsOnAnAnswer(t *testing.T) {
 	s.bases = greenBase(strings.Repeat("b", 40))
 	s.run(1)
 	s.bases = redBase(strings.Repeat("c", 40), "unit")
-	s.bases["o/r@main"] = func(f BaseCI) BaseCI { f.FirstRed, f.Since = strings.Repeat("c", 40), again.ClosedAt.Add(time.Minute); return f }(s.bases["o/r@main"])
+	stretch := s.bases["o/r@main"]
+	stretch.FirstRed, stretch.Since = strings.Repeat("c", 40), again.ClosedAt.Add(time.Minute)
+	s.bases["o/r@main"] = stretch
 	s.run(1)
 	require.Equal(t, []string{"base-red.o/r@main.4"}, s.openJudgements("base-red"), "green then red again inside the quiet: pushed at once")
 	assert.True(t, strings.HasPrefix(s.snap().Judgements["base-red.o/r@main.4"].Question, "BASE RED at cccccccccccc"), s.snap().Judgements["base-red.o/r@main.4"].Question)
