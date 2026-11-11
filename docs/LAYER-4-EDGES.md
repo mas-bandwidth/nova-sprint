@@ -828,6 +828,15 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   `home/.cargo/registry` and sets
   `CARGO_NET_OFFLINE=true`, so cargo builds from the bench's crates under
   `--net-deny` and a crate the bench lacks fails at once, named.
+- **The bench's SDK environment.** When `~/sdk` is granted and
+  `~/sdk/env.sh` is there (the fleet's sdk-toolchain role writes it), the
+  worker says so at start, and before every wall command
+  (`sdkWallEnv_internal`) sources it outside the wall in the command's own
+  environment, the job's `HOME` included, and passes what it exports with
+  `--env`: its `PATH`, the make variables and the toolchains' homes, as a
+  make run on the bench gets them. `HOME`, `TMPDIR`, `XDG_DATA_HOME`,
+  `DOTNET_CLI_HOME` and the `NOVA_WORKER_` names keep the wall's values. An
+  env.sh that fails refuses the command, naming the file.
 - **A FIFO jobserver for every gate.** cargo's own pipe jobserver adds a
   `pre_exec`, so Rust's std forks through `socketpair(AF_UNIX,
   SOCK_SEQPACKET)`, which the wall's seccomp refuses: rustc is never
