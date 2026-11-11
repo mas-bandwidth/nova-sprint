@@ -2,6 +2,7 @@ package worker
 
 import (
 	"cmp"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
@@ -33,19 +34,28 @@ type (
 		Routes     map[string]ProxyRoute
 		Transport  http.RoundTripper
 		mu         sync.Mutex
-		lastStatus map[string]int // per job (ProxyKey's consumer)
+		tick       int                        // numbers each request sent and each status recorded, in the order they happen
+		lastStatus map[string]status_internal // per job (ProxyKey's consumer)
 	}
+	// status_internal is a job's provider status and the tick it was recorded at.
+	status_internal struct{ code, at int }
 )
 
-// RecordStatus keeps code as job's last provider status.
+// maxBody_internal is the most of one response body the proxy passes on.
+const maxBody_internal = 16 << 20
+
+// RecordStatus keeps code as job's last provider status: a failure (402,
+// 429, 5xx, a response cut short as 502). An answered request ends it only
+// when that request was sent after it (answered_internal).
 func (p *KeyProxy) RecordStatus(job string, code int) {
 	if p != nil {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if p.lastStatus == nil {
-			p.lastStatus = map[string]int{}
+			p.lastStatus = map[string]status_internal{}
 		}
-		p.lastStatus[job] = code
+		p.tick++
+		p.lastStatus[job] = status_internal{code, p.tick}
 	}
 }
 
@@ -54,11 +64,32 @@ func (p *KeyProxy) ConsumeStatus(job string) int {
 	if p != nil {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		code := p.lastStatus[job]
+		code := p.lastStatus[job].code
 		delete(p.lastStatus, job)
 		return code
 	}
 	return 0
+}
+
+// sent_internal numbers a request as it is sent upstream.
+func (p *KeyProxy) sent_internal() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.tick++
+	return p.tick
+}
+
+// answered_internal ends job's failure when the request now answered was
+// sent after the failure was recorded: the harness got past it. A request
+// sent before the failure and answered after it says nothing of the kind
+// (two requests in flight: one is cut and the harness dies, the other's
+// answer arrives), and the failure stands.
+func (p *KeyProxy) answered_internal(job string, sent int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if s, ok := p.lastStatus[job]; ok && s.at < sent {
+		delete(p.lastStatus, job)
+	}
 }
 
 // jobOf_internal is the job a request's placeholder key names ("" for the
@@ -278,29 +309,94 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 		http.Error(w, "proxy refused: invalid request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Accept-Encoding stays the transport's own: it asks for what it decodes
+	// itself, so the harness is sent plain bytes; the harness's forwarded, a
+	// cut body is a decompression error inside the harness.
 	for k, vals := range r.Header {
-		if !slices.Contains([]string{"AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST"}, strings.ToUpper(k)) {
+		if !slices.Contains([]string{"AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST", "ACCEPT-ENCODING"}, strings.ToUpper(k)) {
 			outReq.Header[k] = slices.Clone(vals)
 		}
 	}
 	outReq.Header.Set("Authorization", "Bearer "+apiKey)
 	outReq.Host = target.Host
-	resp, err := cmp.Or[http.RoundTripper](p.Transport, http.DefaultTransport).RoundTrip(outReq)
+	sent := p.sent_internal()
+	resp, err := cmp.Or(p.Transport, upstream_internal).RoundTrip(outReq)
 	if err != nil {
-		p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
+		// a harness that hung up before the answer is no provider failure
+		if r.Context().Err() == nil {
+			p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
+		}
 		http.Error(w, "proxy upstream fault: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 		p.RecordStatus(jobOf_internal(r), resp.StatusCode)
+	} else {
+		p.answered_internal(jobOf_internal(r), sent)
 	}
 	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
-	if _, err := io.Copy(w, io.LimitReader(resp.Body, 16<<20)); err != nil {
-		// the status is sent: the harness sees a cut body; the worker's log says why
-		reportTo(nil, "key proxy: response body cut short", err)
+	buf, left := make([]byte, 32<<10), maxBody_internal
+	for {
+		n, readErr := resp.Body.Read(buf)
+		over := n > left
+		if over {
+			n = left
+		}
+		left -= n
+		if n > 0 {
+			if _, err := w.Write(buf[:n]); err != nil {
+				reportTo(nil, "key proxy: the harness stopped reading its response", err)
+				return
+			}
+			// sent as it arrives: unflushed, a stream's event waits in the
+			// server's buffer for 4 KiB or the end
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+		if over {
+			// the cap is the proxy's cut, and said as one: the harness gets
+			// a broken connection, never the cap's bytes ending cleanly
+			reportTo(nil, "key proxy: response body cut at the cap", fmt.Errorf("the upstream sent more than %d bytes", maxBody_internal))
+			panic(http.ErrAbortHandler)
+		}
+		if readErr == io.EOF {
+			return
+		}
+		if readErr != nil {
+			// The upstream cut the body with the status already sent. The
+			// worker's log says why; the job's provider status says it to the
+			// classifier (ClassifyJob: a fault, "provider HTTP 502", never the
+			// card's fail), unless the harness itself hung up; and the harness
+			// gets a broken connection, never a short body that ends cleanly.
+			reportTo(nil, "key proxy: response body cut short", readErr)
+			if r.Context().Err() == nil {
+				p.RecordStatus(jobOf_internal(r), http.StatusBadGateway)
+			}
+			panic(http.ErrAbortHandler)
+		}
 	}
+}
+
+// upstream_internal is the transport of a proxy given none: HTTP/1.1 only,
+// so each request has a connection of its own and an upstream's reset cuts
+// one job's request. HTTP/2 puts every job of the bench on one connection
+// per provider, and one reset ends them all (2026-11-11, four jobs).
+var upstream_internal http.RoundTripper = newUpstream_internal()
+
+func newUpstream_internal() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Protocols = new(http.Protocols)
+	t.Protocols.SetHTTP1(true)
+	// the clone's config still offers h2 in ALPN
+	t.TLSClientConfig = &tls.Config{NextProtos: []string{"http/1.1"}}
+	// net/http keeps 2 idle connections per host, and every request past
+	// them pays a TLS handshake. 32 is two for each job of a 16-wide row:
+	// a number from the row's width, not a measured one.
+	t.MaxIdleConnsPerHost = 32
+	return t
 }
 func CheckLoopbackAddr(addr string) error {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(addr))

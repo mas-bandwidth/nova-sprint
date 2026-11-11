@@ -554,6 +554,7 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 	var last WallRunResult
 	var runErr error
+	r.Proxy.ConsumeStatus(job.Consumer) // a provider status from before this run is not this run's
 	for attempt := 1; attempt <= r.Timeouts.LaunchTries; attempt++ {
 		// a verdict is this run's: an earlier run's is never read as it
 		if err := os.Remove(filepath.Join(job.JobDir, "result.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -574,6 +575,9 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus(job.Consumer))
 		out := ClassifyJob(h, job, last.ExitCode, last.Elapsed, r.Timeouts.LaunchGrace, last.Output)
 		if !out.Retryable5xx || attempt == r.Timeouts.LaunchTries {
+			// the harvest classifies this launch from the same status: read
+			// here it was forgotten, and the harvest saw none
+			r.Proxy.RecordStatus(job.Consumer, job.ProxyStatus)
 			break
 		}
 		job.ProxyStatus = 0

@@ -151,10 +151,16 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	if wait <= 0 {
 		wait = CIWait
 	}
-	absent := time.Duration(0)
+	absent, rested := time.Duration(0), false
 	for {
 		res, err := e.pass(ctx, dir, pass)
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
+			if res.Outcome != git.OutcomeRested {
+				rested = false
+			} else if !rested { // said when the wait starts, not every pass
+				rested = true
+				e.fault("land "+r.ID+" stream "+r.Stream+" waits", errors.New(res.Reason))
+			}
 			absent = waited
 			if e.Pause(ctx, LandPoll) != nil {
 				return
@@ -175,15 +181,17 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 }
 
 // askAgain_internal says whether a pass is asked again after LandPoll, and
-// how long the gated sha has had no check at all. Pending CI and a base
-// that moved after the gate are asked again; an absent CI only until wait,
-// after which the pass goes to layer 3 as no-ci.
+// how long the gated sha has had no check at all. Pending CI, a base that
+// moved after the gate and a forge GitHub rate-limited are asked again (a
+// resting forge refuses its calls without making them, so those passes
+// spend nothing); an absent CI only until wait, after which the pass goes
+// to layer 3 as no-ci.
 func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, 0
 	}
 	switch res.Outcome {
-	case git.OutcomePending, git.OutcomeBaseMoved:
+	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested:
 		return true, 0
 	case git.OutcomeAbsent:
 		absent += LandPoll
