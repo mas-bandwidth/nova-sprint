@@ -30,6 +30,11 @@ type Inputs struct {
 	// BaseAbout: red or green at a tip. One with no completed read has no
 	// entry, and neither opens nor clears a base-red judgement (basered.go).
 	Bases map[string]BaseCI
+	// Broken is the answered watch judgements, by id, whose cause a tick
+	// has seen not holding since the answer: the last tick's Plan.Broken
+	// (layer 6 keeps it; none after a restart, when an answer from before
+	// the view began is no quiet at all). Their quiet is over (judge.go).
+	Broken map[string]bool
 }
 
 // InboxItem is one thing that arrived for the tick: a row's report or take
@@ -102,7 +107,8 @@ type Plan struct {
 	Edges   []EdgeRequest
 	Answers []RowAnswer
 	Carry   []InboxItem
-	Nudges  []Nudge // this tick's nudges: run pushes each to its row, outside the log
+	Nudges  []Nudge         // this tick's nudges: run pushes each to its row, outside the log
+	Broken  map[string]bool // the next tick's Inputs.Broken
 }
 
 // RowAnswer is what a row is told about its report or take: an ack from the

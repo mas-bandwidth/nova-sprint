@@ -74,8 +74,10 @@ func redSet(f BaseCI) string {
 // with the same red set is detected again (so its deadline reopens it,
 // escalated, never closes it); one whose red set changed is replaced by its
 // next episode. One the coordinator answered stays quiet for the judgement
-// timeout at the same red set (the answer says it is being fixed, and layer
-// 6 reads the tip's checks again), then opens again saying so.
+// timeout at the same red set in the same red stretch (the answer says it
+// is being fixed, and layer 6 reads the tip's checks again), then opens
+// again saying so; a red stretch that began after the answer (the watch
+// read green between) opens at once, plain.
 func (t *tick) baseRed() {
 	for _, about := range sortedKeys(t.in.Bases) {
 		f := t.in.Bases[about]
@@ -96,6 +98,9 @@ func (t *tick) baseRed() {
 		case last.State == "open":
 			t.expires[last.ID] = fmt.Sprintf("the red set changed (%s at %s): reopened as base-red.%s.%d", RedChecks(f.Failing), shortSHA(f.Tip), about, n+1)
 		case last.State == "answered" && same:
+			if f.Since.After(last.ClosedAt) || last.ClosedAt.Before(t.v.Since) {
+				break // a red stretch the watch began after the answer (green between, or the base watched again), or an answer this run did not watch from: news, said plain
+			}
 			if t.in.Now.Before(last.ClosedAt.Add(seconds(t.tmo.Judgement))) {
 				continue
 			}
