@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
@@ -230,6 +231,13 @@ func TestNextGuides(t *testing.T) {
 		{name: "nothing owed", as: "carol", args: []string{"next"}, prep: activePolicy, want: []string{"nothing needs you", "next: " + waitNext}},
 		{name: "a judgement owed", as: "carol", args: []string{"next"}, snap: withJudgement("held.p1.1", "", "held", "p1", "unhold | drop"),
 			want: []string{"judgement held.p1.1 needs you", "next: nova-sprint judge held.p1.1"}},
+		{name: "a red base before an older judgement", as: "carol", args: []string{"next"}, snap: func(s *store.Snapshot) {
+			withJudgement("held.p1.1", "", "held", "p1", "unhold | drop")(s)
+			withJudgement("base-red.o/r@main.1", "", "base-red", "o/r@main", "retry")(s)
+			j := s.Judgements["base-red.o/r@main.1"]
+			j.OpenedAt = t0.Add(time.Hour)
+			s.Judgements[j.ID] = j
+		}, want: []string{"judgement base-red.o/r@main.1 needs you (1 more", "next: nova-sprint judge base-red.o/r@main.1"}},
 		{name: "no stream", as: "carol", args: []string{"next"}, prep: activePolicy, snap: func(s *store.Snapshot) { s.Streams = map[string]store.Stream{}; s.Cards = map[string]store.Card{} },
 			want: []string{"no stream exists", "next: nova-sprint stream add"}},
 		{name: "an empty stream", as: "carol", args: []string{"next"}, prep: activePolicy, snap: func(s *store.Snapshot) { s.Cards = map[string]store.Card{} },

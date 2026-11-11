@@ -103,8 +103,8 @@ func TestChecksReadsEveryPageOnlyForAFailingCommit(t *testing.T) {
 		if err != nil || r.State != c.want || calls() != c.calls {
 			t.Errorf("%s: %s in %d gh calls (err %v), want %s in %d", c.name, r.State, calls(), err, c.want, c.calls)
 		}
-		if c.want == CheckRed && (!slices.Equal(r.Failing, []string{"job-325"}) || r.URL != "https://ci.example/325") {
-			t.Errorf("%s: failing %v at %q, want job-325 with its url", c.name, r.Failing, r.URL)
+		if c.want == CheckRed && (!slices.Equal(r.Failing, []string{"job-325"}) || r.URL != "https://ci.example/325" || !slices.Equal(r.URLs, []string{"https://ci.example/325"})) {
+			t.Errorf("%s: failing %v at %q (each at %q), want job-325 with its url", c.name, r.Failing, r.URL, r.URLs)
 		}
 	}
 }

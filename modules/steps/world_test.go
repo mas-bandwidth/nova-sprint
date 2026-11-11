@@ -28,6 +28,7 @@ type world struct {
 	away       set               // rows the inputs do not see on the bus this tick (their hook is down)
 	lapse      time.Duration     // how long ago the last good who read saw the rest (0: this tick)
 	unadmitted map[string]string // producers layer 6's admission re-proof refuses, and why (Inputs.Unadmitted)
+	bases      map[string]BaseCI // each watched base's last completed CI read (Inputs.Bases)
 }
 
 var t0 = time.Unix(1000, 0).UTC()
@@ -185,7 +186,7 @@ func (w *world) reportPlan(c, result, head, reason string) (card.Plan, *card.Ref
 // inputs is the tick's inputs at the world's clock: every row seen now but
 // the away ones, every stream at base.
 func (w *world) inputs() Inputs {
-	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}, Roster: w.roster, Unadmitted: w.unadmitted}
+	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}, Roster: w.roster, Unadmitted: w.unadmitted, Bases: w.bases}
 	for s := range w.v.Streams {
 		if _, no := w.headless[s]; !no {
 			in.Heads[s] = base
