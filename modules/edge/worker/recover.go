@@ -256,6 +256,7 @@ func (r *Runner) quarantineChanged_internal(jobDir, consumer string, cause error
 // removes the worker's own state for it (removeJobState_internal) and
 // raises why.
 func (r *Runner) setAside_internal(jobDir string, rec JobRecord, why string) {
+	r.endJobTree_internal(jobDir, rec, "quarantine")
 	dst := r.quarantineDir_internal(rec.Consumer, rec.Gen)
 	if fileExists_internal(dst) {
 		dst += fmt.Sprintf("-%d", r.Now().Unix())
