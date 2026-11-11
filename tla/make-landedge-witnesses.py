@@ -39,7 +39,7 @@ WITNESSES = [
     ("LandEdgeRedLands", "BaseNeverRed",
      "The merge does not read the gate: a red tree is merged as green.",
      [('CIOf(t) == IF Red(t.cards) THEN {"red", "stopped"} ELSE {"green", "stopped"}',
-       'CIOf(t) == {"green", "red", "stopped"}   \\* FAULT: was the truthful CI')]),
+       'CIOf(t) == {"green", "stopped"}   \\* FAULT: a red tree reads as green')]),
     ("LandEdgeStaleGate", "NothingLandsUnpassed",
      "Base moves under the gate and the pass merges anyway: what lands is\n"
      "the heads on the new tip, not the tree CI passed.",
