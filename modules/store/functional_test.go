@@ -8,9 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,76 +27,15 @@ import (
 
 const wait = 30 * time.Second
 
-func freePort(t *testing.T) string {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
-	require.NoError(t, l.Close())
-	return port
-}
-
 // pgBin is the directory holding initdb and the other PostgreSQL programs.
 func pgBin(t *testing.T) string { return pgbin.Dir(t) }
 
-// startPG starts a PostgreSQL of this test's own and returns the dsn of its
+// startPG starts a PostgreSQL of this test's own (pgbin.Start: its own data
+// directory and port, stopped with -m fast) and returns the dsn of its
 // postgres database. Unix sockets are off: a macOS temp path is too long for one.
 func startPG(t *testing.T) string {
 	t.Helper()
-	bin, dir := pgBin(t), t.TempDir()
-	// LC_ALL=C: PostgreSQL 18 on macOS refuses to start under a shell with no valid locale ("postmaster became multithreaded during startup").
-	init := exec.Command(filepath.Join(bin, "initdb"), "-D", filepath.Join(dir, "data"), "-U", "nova", "--auth=trust", "-E", "UTF8", "--no-locale")
-	init.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := init.CombinedOutput()
-	require.NoError(t, err, "%s", out)
-	// pg_ctl starts it and stops it (-m fast: a clean shutdown; the postmaster stops its
-	// children and frees its SysV shared memory before it exits).
-	ctl := filepath.Join(bin, "pg_ctl")
-	// Stop is registered before start: a start that fails or times out can
-	// leave a postmaster running, and t.Fatalf must not orphan it.
-	t.Cleanup(func() {
-		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "fast", "-w", "stop")
-		stop.Env = append(os.Environ(), "LC_ALL=C")
-		if out, err := stop.CombinedOutput(); err != nil {
-			t.Logf("pg_ctl stop: %v\n%s", err, out)
-		}
-	})
-	port := startOnFreePort(t, ctl, dir)
-	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
-	require.Eventually(t, func() bool {
-		c, err := pgx.Connect(context.Background(), dsn)
-		if err == nil {
-			_ = c.Close(context.Background()) // ignored: only probing
-		}
-		return err == nil
-	}, wait, 50*time.Millisecond)
-	return dsn
-}
-
-// startOnFreePort starts the server in dir on a free port and returns the
-// port. A port free when looked up can be taken before the postmaster binds
-// it (by another test's server, or a client connection's local port, on the
-// same host), and the postmaster then exits at start; a start whose log says
-// so is tried again on a new port. Any other failed start fails t, with the
-// server's log.
-func startOnFreePort(t *testing.T, ctl, dir string) string {
-	t.Helper()
-	for try := 1; ; try++ {
-		port := freePort(t)
-		logf := filepath.Join(dir, "postgres-"+strconv.Itoa(try)+".log")
-		start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", logf, "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
-		start.Env = append(os.Environ(), "LC_ALL=C")
-		out, err := start.CombinedOutput()
-		if err == nil {
-			return port
-		}
-		log, _ := os.ReadFile(logf) // ignored: an unreadable log is reported empty
-		if try < 5 && strings.Contains(string(log), "could not bind") {
-			t.Logf("pg_ctl start: port %s was taken; trying another\n%s", port, log)
-			continue
-		}
-		t.Fatalf("pg_ctl start: %v\n%s\npostgres log:\n%s", err, out, log)
-	}
+	return pgbin.Start(t, pgbin.Options{}).DSN
 }
 
 // openPG opens the store at dsn and applies the schema.
