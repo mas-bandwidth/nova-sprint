@@ -175,3 +175,85 @@ func TestBaseWatchSaysAFailingReadOnce(t *testing.T) {
 		t.Fatalf("a new stretch of failures said %d times in all, want 2", faults)
 	}
 }
+
+// TestBaseWatchReadsARedThatCompletesAfterCIWait (the second cold read of
+// #793): a tip whose checks still run at CIWait is not settled. It is read
+// again every CIWait until every check is done, so a red that completes
+// after CIWait is a fact within one CIWait, with no card merging.
+func TestBaseWatchReadsARedThatCompletesAfterCIWait(t *testing.T) {
+	t.Parallel()
+	a := strings.Repeat("a", 40)
+	f := &checksForge{rollups: map[string]forge.CheckRollup{a: {SHA: a, State: forge.CheckPending}}}
+	w := &BaseWatch{Forge: f}
+	snap, now := watchSnap(), time.Unix(1000, 0).UTC()
+	watchStep(w, snap, a, &now, 0)
+	for range 30 { // fifteen minutes running
+		watchStep(w, snap, a, &now, LandPoll)
+	}
+	f.set(a, forge.CheckRollup{SHA: a, State: forge.CheckRed, Failing: []string{"unit"}, URLs: []string{"https://x/job/1"}}, nil)
+	for range int(CIWait / LandPoll) {
+		watchStep(w, snap, a, &now, LandPoll)
+	}
+	if r := w.Read()["o/r@main"]; !r.Red || r.Tip != a {
+		t.Fatalf("a red that completed after CIWait is no fact one CIWait later: %+v", r)
+	}
+}
+
+// TestBaseWatchRereadsASettledTipSlowly (the second cold read of #793): a
+// completed tip is read again every CIWait, so a re-run or a nightly that
+// turns a green tip red at the same sha is a fact within one CIWait. A base
+// whose tip does not move costs one read per CIWait: six an hour. A red tip
+// read again keeps its red stretch and does not read its logs again.
+func TestBaseWatchRereadsASettledTipSlowly(t *testing.T) {
+	t.Parallel()
+	a := strings.Repeat("a", 40)
+	f := &checksForge{rollups: map[string]forge.CheckRollup{a: {SHA: a, State: forge.CheckGreen}}}
+	w := &BaseWatch{Forge: f}
+	snap, now := watchSnap(), time.Unix(1000, 0).UTC()
+	watchStep(w, snap, a, &now, 0)
+	for range int(time.Hour / LandPoll) {
+		watchStep(w, snap, a, &now, LandPoll)
+	}
+	if n, _ := f.counts(); n != 1+int(time.Hour/CIWait) {
+		t.Fatalf("a green tip read %d times in its first hour, want %d", n, 1+int(time.Hour/CIWait))
+	}
+	f.set(a, forge.CheckRollup{SHA: a, State: forge.CheckRed, Failing: []string{"nightly"}, URLs: []string{"https://x/job/7"}}, nil)
+	watchStep(w, snap, a, &now, CIWait)
+	r := w.Read()["o/r@main"]
+	if !r.Red || r.Tip != a {
+		t.Fatalf("a green tip that went red at the same sha is no fact a CIWait later: %+v", r)
+	}
+	watchStep(w, snap, a, &now, CIWait)
+	if again := w.Read()["o/r@main"]; !again.Since.Equal(r.Since) || again.FirstRed != r.FirstRed {
+		t.Fatalf("a red tip read again lost its stretch: %+v, was %+v", again, r)
+	}
+	if _, logs := f.counts(); logs != 1 {
+		t.Fatalf("a red tip read again read its log %d times, want once", logs)
+	}
+}
+
+// TestBaseWatchAnswerReadsAPendingTipOnce (the second cold read of #793):
+// after the coordinator's answer, a tip whose reads keep coming back pending
+// is read once for the answer and then at the watch's own cadence, not every
+// LandPoll for good.
+func TestBaseWatchAnswerReadsAPendingTipOnce(t *testing.T) {
+	t.Parallel()
+	a, b := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	f := &checksForge{rollups: map[string]forge.CheckRollup{
+		a: {SHA: a, State: forge.CheckRed, Failing: []string{"unit"}, URLs: []string{"https://x/job/1"}},
+		b: {SHA: b, State: forge.CheckPending},
+	}}
+	w := &BaseWatch{Forge: f}
+	snap, now := watchSnap(), time.Unix(1000, 0).UTC()
+	watchStep(w, snap, a, &now, 0)
+	snap.Judgements["base-red.o/r@main.1"] = store.Judgement{ID: "base-red.o/r@main.1", Kind: "base-red", About: "o/r@main", State: "answered", ClosedAt: now.Add(time.Second)}
+	n0, _ := f.counts()
+	watchStep(w, snap, b, &now, LandPoll)
+	for range int(time.Hour / LandPoll) {
+		watchStep(w, snap, b, &now, LandPoll)
+	}
+	want := int(CIWait/LandPoll) + int((time.Hour-CIWait)/CIWait) + 2
+	if n, _ := f.counts(); n-n0 > want {
+		t.Fatalf("a pending tip after an answer read %d times in an hour, want at most %d", n-n0, want)
+	}
+}

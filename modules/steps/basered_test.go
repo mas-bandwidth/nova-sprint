@@ -114,6 +114,21 @@ func TestBaseRedEscalatesAndWaitsOnAnAnswer(t *testing.T) {
 	require.Equal(t, []string{"base-red.o/r@main.3"}, s.openJudgements("base-red"))
 	assert.True(t, strings.HasPrefix(s.snap().Judgements["base-red.o/r@main.3"].Question, "STILL RED 48h0m"), s.snap().Judgements["base-red.o/r@main.3"].Question)
 
+	// Answered, then a green tip, then the same checks red again: a new red
+	// stretch (the watch dates it after the answer) opens at once, with no
+	// STILL RED, whether or not a tick saw the green between.
+	s.must("judge", store.AnswerJudgement{ID: "base-red.o/r@main.3", Answer: "retry", Actor: "rowan"})
+	again := s.snap().Judgements["base-red.o/r@main.3"]
+	s.run(1)
+	require.Empty(t, s.openJudgements("base-red"))
+	s.bases = greenBase(strings.Repeat("b", 40))
+	s.run(1)
+	s.bases = redBase(strings.Repeat("c", 40), "unit")
+	s.bases["o/r@main"] = func(f BaseCI) BaseCI { f.FirstRed, f.Since = strings.Repeat("c", 40), again.ClosedAt.Add(time.Minute); return f }(s.bases["o/r@main"])
+	s.run(1)
+	require.Equal(t, []string{"base-red.o/r@main.4"}, s.openJudgements("base-red"), "green then red again inside the quiet: pushed at once")
+	assert.True(t, strings.HasPrefix(s.snap().Judgements["base-red.o/r@main.4"].Question, "BASE RED at cccccccccccc"), s.snap().Judgements["base-red.o/r@main.4"].Question)
+
 	q := newSim(t)
 	q.row("r1", 2, "pro")
 	q.stream("s1")
