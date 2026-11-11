@@ -63,7 +63,7 @@ func (t Timeouts) WithDefaults() Timeouts {
 type (
 	Job struct {
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, Head, Tier, Model, HarnessName, Brief, Prose, Finding string
-		Paths, DoneWhen, Siblings                                                                                                                       []string
+		Paths, DoneWhen, StreamGates, Siblings                                                                                                          []string
 		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
 		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, Forge                                                                                  string
 		Deadline                                                                                                                                        time.Duration
@@ -113,6 +113,9 @@ type (
 		// so the card machine refuses that head as this attempt's finish, and
 		// an ok that adds nothing to it is a fail (rebaseAndTestStep_internal).
 		PriorFinished bool `json:",omitempty"`
+		// StreamGates are the stream's gates from the take receipt, run after
+		// DoneWhen at the same head (streamGates_internal).
+		StreamGates []string `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex

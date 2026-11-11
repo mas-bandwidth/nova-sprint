@@ -46,13 +46,16 @@ type takeReceipt struct {
 	PriorFinished bool     `json:"prior_finished"`
 	Paths         []string `json:"paths"`
 	DoneWhen      []string `json:"done_when"`
-	Epoch         int      `json:"epoch"`
-	Gen           int      `json:"gen"`
-	Attempt       int      `json:"attempt"`
-	Review        int      `json:"review"`
-	Model         string   `json:"model"`
-	Deadline      int      `json:"deadline"`
-	Forge         string   `json:"forge"`
+	// StreamGates are the stream's gates (store.Stream.Gates): every card
+	// of the stream passes them at its finished head, after its DONE-WHENs.
+	StreamGates []string `json:"stream_gates"`
+	Epoch       int      `json:"epoch"`
+	Gen         int      `json:"gen"`
+	Attempt     int      `json:"attempt"`
+	Review      int      `json:"review"`
+	Model       string   `json:"model"`
+	Deadline    int      `json:"deadline"`
+	Forge       string   `json:"forge"`
 	// CommitName and CommitEmail are the sprint's commit identity
 	// (store.Identity): the worker writes them into the job's clone.
 	CommitName  string `json:"commit_name"`
@@ -173,7 +176,7 @@ func (e *Engine) takenOutput(ctx context.Context, in *input, snap store.Snapshot
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
 		PriorHead: prior, PriorFinished: c.Kind == "work" && prior != "" && card.FinishedAt(consumersOf(snap, c.Of), prior),
-		Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
+		Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), StreamGates: nonNil(s.Gates), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
 		Review: c.Review, Model: c.Model, Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge,
 		CommitName: snap.Identity.Name, CommitEmail: snap.Identity.Email}
 	if in.has("json") {
@@ -188,11 +191,15 @@ func (e *Engine) takenOutput(ctx context.Context, in *input, snap store.Snapshot
 func takenText(t takeReceipt, row string) string {
 	ref := fmtCard(t.Consumer, t.Gen)
 	terms := fmt.Sprintf("deadline=%ds forge=%s", t.Deadline, orWord(t.Forge, "none"))
-	rules := "How this card finishes:\n" + strings.TrimRight(worker.KinFinishRules(worker.Job{Kind: t.Kind, Branch: t.Branch, Head: t.Head,
-		CommitName: t.CommitName, CommitEmail: t.CommitEmail}, worker.KinFinish{Ref: ref, Row: row, Epoch: t.Epoch}), "\n")
+	rules := "How this card finishes:\n" + strings.TrimRight(worker.KinFinishRules(worker.Job{Kind: t.Kind, Branch: t.Branch, Head: t.Head, Stream: t.Stream, BaseSHA: t.BaseSHA,
+		StreamGates: t.StreamGates, CommitName: t.CommitName, CommitEmail: t.CommitEmail}, worker.KinFinish{Ref: ref, Row: row, Epoch: t.Epoch}), "\n")
+	brief := t.Brief
+	for _, g := range t.StreamGates { // the stream's, after the card's own DONE-WHEN lines
+		brief = strings.TrimRight(brief, "\n") + "\nSTREAM GATE: " + g
+	}
 	if t.Kind == "read" {
 		return done(fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, t.Epoch),
-			fmt.Sprintf("TAKEN %s repo=%s head=%s %s", t.Consumer, t.Repo, t.Head, terms), t.Brief, rules)
+			fmt.Sprintf("TAKEN %s repo=%s head=%s %s", t.Consumer, t.Repo, t.Head, terms), brief, rules)
 	}
 	lines := []string{fmt.Sprintf("TAKEN %s repo=%s base=%s branch=%s %s", t.Consumer, t.Repo, t.BaseSHA, t.Branch, terms)}
 	if t.PriorHead != "" {
@@ -203,7 +210,7 @@ func takenText(t takeReceipt, row string) string {
 		}
 		lines = append(lines, start)
 	}
-	lines = append(lines, t.Brief, rules)
+	lines = append(lines, brief, rules)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
 }
 

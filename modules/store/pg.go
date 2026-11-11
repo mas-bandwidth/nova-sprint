@@ -111,6 +111,12 @@ const round28Hash = "45e961bd30f7a3497cc42ffa132adca022ee48703a9b218369e6c7fbae7
 // recorded.
 const round29Hash = "1a911dc3cf8cac36666a06784e9ddb54ebeeb91a12ee2b3123b6ad556a7c02d7"
 
+// round30Hash is the schema hash of round 30's schema.sql
+// (testdata/schema-round30.sql): its streams have no gates. Running
+// schema.sql on it adds streams.gates, none on every stream (round 31: a
+// stream's gates), then the new hash is recorded.
+const round30Hash = "c5bc4eca91743d1afeb6e00ab61db4247910ef04d887235c124c701f2a5d7f07"
+
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.

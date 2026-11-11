@@ -125,6 +125,31 @@ func TestFunctionalShallowStage(t *testing.T) {
 			out, err = cmd.CombinedOutput()
 			require.NoError(t, err, "%s", out)
 			require.Equal(t, rebased, runGitCmd_internal(t, wt, "rev-parse", "HEAD"))
+
+			// A stream gate red at the head is judged at the tip the merge
+			// used, in a worktree of its own that leaves the job's tree at
+			// the head, and is dropped after; a stale one is replaced.
+			tipUsed, err := g.StreamTip(ctx, clone)
+			require.NoError(t, err)
+			require.Equal(t, newMain, tipUsed)
+			baseDir := filepath.Join(jobDir, BaseTreeDir)
+			require.NoError(t, os.MkdirAll(filepath.Join(baseDir, "stale"), 0o755))
+			for _, argv := range [][]string{baseArgv_internal(tipUsed, baseDir), dropBaseArgv_internal(baseDir)} {
+				cmd = exec.Command(argv[0], argv[1:]...)
+				cmd.Dir = wt
+				out, err = cmd.CombinedOutput()
+				require.NoError(t, err, "%s", out)
+				if argv[3] == "base" {
+					require.Equal(t, newMain, runGitCmd_internal(t, baseDir, "rev-parse", "HEAD"))
+					require.Equal(t, "late.txt\nmain.txt", runGitCmd_internal(t, baseDir, "ls-files"), "the base's tree is the tip, without the card's work")
+					require.NoFileExists(t, filepath.Join(baseDir, "stale"))
+					require.NoError(t, os.WriteFile(filepath.Join(baseDir, "built.o"), []byte("x"), 0o644))
+				}
+			}
+			require.NoDirExists(t, baseDir)
+			require.Equal(t, rebased, runGitCmd_internal(t, wt, "rev-parse", "HEAD"))
+			require.Empty(t, runGitCmd_internal(t, wt, "status", "--porcelain"))
+			require.NotContains(t, runGitCmd_internal(t, wt, "worktree", "list"), baseDir)
 		})
 	}
 }

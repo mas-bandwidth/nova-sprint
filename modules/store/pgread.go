@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	streamCols = "name, repo, base, held, pos, mode, forge"
+	streamCols = "name, repo, base, held, pos, mode, forge, gates"
 	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding, red, model, usage, bounce_base`
 	rowCols    = "name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version"
 	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
@@ -23,7 +23,8 @@ const (
 
 func scanStream(r pgx.Row) (Stream, error) {
 	var s Stream
-	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos, &s.Mode, &s.Forge)
+	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos, &s.Mode, &s.Forge, &s.Gates)
+	s.Gates = normList(s.Gates)
 	return s, err
 }
 
@@ -319,10 +320,10 @@ func (t *pgTx) open() error {
 }
 
 func (t *pgTx) putStream(s Stream) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos, mode, forge) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos, mode, forge, gates) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (epoch, name) DO UPDATE SET repo = EXCLUDED.repo, base = EXCLUDED.base, held = EXCLUDED.held, pos = EXCLUDED.pos,
-		mode = EXCLUDED.mode, forge = EXCLUDED.forge`,
-		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos, s.Mode, s.Forge)
+		mode = EXCLUDED.mode, forge = EXCLUDED.forge, gates = EXCLUDED.gates`,
+		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos, s.Mode, s.Forge, list0(s.Gates))
 	return err
 }
 

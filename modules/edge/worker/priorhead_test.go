@@ -90,6 +90,55 @@ func TestOkAtAnUnfinishedPriorHeadIsVerifiedAndFinishesThere(t *testing.T) {
 	}
 }
 
+// The stream's gates run at a verified prior head too, after its
+// done-whens and after the one step that puts the job's tree at that head.
+// A stream gate red there is judged at the base in a tree of its own beside
+// the job's (<job>/base, outside what that step's clean reaches), made
+// after the step and removed again before the job goes on; red at the base
+// too, it is the base's, and the ok says both that and that this attempt
+// added nothing.
+func TestStreamGatesRunAtAVerifiedPriorHeadAfterTheTreeStep(t *testing.T) {
+	t.Parallel()
+	g, wall := newFakeGit_internal(), &gateWall_internal{}
+	g.streamTip = testPriorSHA
+	wall.run = func(cmd string, _ time.Duration) (WallRunResult, error) {
+		if cmd == "make gen-check" {
+			return WallRunResult{ExitCode: 1, Output: []byte("FAIL")}, nil
+		}
+		return WallRunResult{}, nil
+	}
+	rec := priorStep_internal(t, g, wall, JobRecord{StreamGates: []string{"make gen-check"}})
+	if rec.Outcome.Result != "ok" || rec.Outcome.Head != testCommitSHA || rec.State != JobRebased {
+		t.Fatalf("outcome %+v at %s, want ok at the prior head: its stream gate is red at the base too", rec.Outcome, rec.State)
+	}
+	for _, want := range []string{"this attempt added nothing", "stream gate make gen-check is red at base " + testPriorSHA} {
+		if !strings.Contains(rec.Outcome.Reason, want) {
+			t.Errorf("the ok's reason %q does not say %q", rec.Outcome.Reason, want)
+		}
+	}
+	base := filepath.Join("jobs", "p1.w3", BaseTreeDir)
+	if len(wall.order) != 6 {
+		t.Fatalf("the wall ran %q, want the tree step, the done-when, the stream gate, then the base's tree, its gate and its removal", wall.order)
+	}
+	for i, want := range [][]string{
+		{"step ", "git checkout -q -f --detach", "git clean -q -f -d", testCommitSHA},
+		{"test go test ./..."},
+		{"test make gen-check"},
+		{"step ", "git worktree add", testPriorSHA, base},
+		{"test make gen-check"},
+		{"step ", "rm -rf", "git worktree prune", base},
+	} {
+		for _, w := range want {
+			if !strings.Contains(wall.order[i], w) {
+				t.Errorf("wall command %d is %q: it does not hold %q", i, wall.order[i], w)
+			}
+		}
+	}
+	if strings.Contains(wall.order[0], base) || strings.Contains(wall.order[3], filepath.Join("repo", BaseTreeDir)) {
+		t.Errorf("the tree step %q touches the base's tree, or the base's tree %q is inside the job's", wall.order[0], wall.order[3])
+	}
+}
+
 // Verified means its done-whens decide: red at the prior head is the
 // tests' fail with what failed, never "committed nothing".
 func TestOkAtAnUnfinishedPriorHeadWithRedDoneWhensIsTheirFail(t *testing.T) {

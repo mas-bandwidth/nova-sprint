@@ -55,6 +55,7 @@ type (
 		PriorFinished                                                                           bool     `json:"prior_finished"` // an attempt reported ok at PriorHead (the card machine's FinishedHeads)
 		Paths                                                                                   []string `json:"paths"`
 		DoneWhen                                                                                []string `json:"done_when"`
+		StreamGates                                                                             []string `json:"stream_gates"` // the stream's gates: run after the DONE-WHENs at the same head
 		Epoch, Gen, Attempt, Review                                                             int
 		Model, Forge                                                                            string
 		Deadline                                                                                int    // seconds, from policy's timeouts().consumer[tier]
