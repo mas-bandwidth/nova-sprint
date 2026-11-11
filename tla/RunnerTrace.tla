@@ -42,6 +42,7 @@ TraceAction(k) ==
        [] a = "Stage"     -> Stage(c)
        [] a = "StageFail" -> StageFail(c)
        [] a = "Run"       -> Run(c)
+       [] a = "Spawn"     -> Spawn(c)
        [] a = "Die"       -> Die(c)
        [] a = "Harvest"   -> Harvest(c)
        [] a = "Rebase"    -> Rebase(c)
