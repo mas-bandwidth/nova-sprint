@@ -272,7 +272,7 @@ func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[st
 	var b strings.Builder
 	fmt.Fprintf(&b, "query { repository(owner: %q, name: %q) {", owner, name)
 	for i, sha := range shas {
-		fmt.Fprintf(&b, ` c%d: object(oid: %q) { ... on Commit { oid statusCheckRollup { state contexts(first: 100) { pageInfo { hasNextPage endCursor } nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } }`, i, sha)
+		fmt.Fprintf(&b, ` c%d: object(oid: %q) { ... on Commit { oid statusCheckRollup { state contexts(first: 100) { totalCount checkRunCountsByState { state count } statusContextCountsByState { state count } pageInfo { hasNextPage endCursor } nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } }`, i, sha)
 	}
 	b.WriteString(" } }")
 	stdout, _, err := c.runGH_internal(ctx, "api", "graphql", "-f", "query="+b.String())
@@ -291,19 +291,56 @@ type gqlPageInfo struct {
 	HasNextPage bool
 	EndCursor   string
 }
+type gqlStateCount struct {
+	State string
+	Count int
+}
+type gqlContexts struct {
+	TotalCount                                        int
+	CheckRunCountsByState, StatusContextCountsByState []gqlStateCount
+	PageInfo                                          gqlPageInfo
+	Nodes                                             []gqlNode
+}
 type gqlChecksEnvelope struct {
 	Data struct {
 		Repository map[string]*struct {
 			OID               string
 			StatusCheckRollup *struct {
 				State    string
-				Contexts struct {
-					PageInfo gqlPageInfo
-					Nodes    []gqlNode
-				}
+				Contexts gqlContexts
 			}
 		}
 	}
+}
+
+// The states of GitHub's per-state counts that classifyNode_internal reads
+// as green and as pending; any other (failed, faulted, or one this build
+// does not know) is read from the checks themselves.
+var (
+	countGreen   = []string{"SUCCESS", "NEUTRAL", "SKIPPED"}
+	countPending = []string{"IN_PROGRESS", "QUEUED", "PENDING", "WAITING", "COMPLETED", "EXPECTED"}
+)
+
+// settled_internal is whether GitHub's counts alone classify a commit whose
+// checks run past the first page: they account for every check and none
+// failed or faulted, so no later page changes the answer or names a check.
+// pending is whether any is still queued or running. The landing asks a
+// pending CI again every poll, so this keeps one read of a commit with
+// nothing failed at one gh call however many checks it has.
+func settled_internal(c gqlContexts) (pending, ok bool) {
+	sum := 0
+	for _, sc := range slices.Concat(c.CheckRunCountsByState, c.StatusContextCountsByState) {
+		st := strings.ToUpper(sc.State)
+		switch {
+		case sc.Count == 0:
+		case slices.Contains(countPending, st):
+			pending = true
+		case !slices.Contains(countGreen, st):
+			return false, false
+		}
+		sum += sc.Count
+	}
+	return pending, sum > 0 && sum == c.TotalCount
 }
 
 func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, raw string, shas []string) (map[string]CheckRollup, error) {
@@ -323,6 +360,12 @@ func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, r
 			continue
 		}
 		nodes, pi := commit.StatusCheckRollup.Contexts.Nodes, commit.StatusCheckRollup.Contexts.PageInfo
+		if pending, ok := settled_internal(commit.StatusCheckRollup.Contexts); ok && pi.HasNextPage {
+			pi = gqlPageInfo{} // the pages not read hold only green and pending checks
+			if pending {
+				nodes = append(slices.Clone(nodes), gqlNode{Typename: "CheckRun", Status: "IN_PROGRESS"})
+			}
+		}
 		for pi.HasNextPage && pi.EndCursor != "" {
 			more, nextPI, err := c.fetchMoreContexts_internal(ctx, owner, name, sha, pi.EndCursor)
 			if err != nil {

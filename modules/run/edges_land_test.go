@@ -3,10 +3,12 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -140,5 +142,64 @@ func TestLandSaysWhetherTheMergeIsOnMain(t *testing.T) {
 		if len(got) != 1 || got[0].Outcome != "landed" || got[0].Main != c.main || len(got[0].Landed) != 1 {
 			t.Fatalf("%s onto %s: results %+v, want landed with main %v", c.kind, c.base, got, c.main)
 		}
+	}
+}
+
+// restGit is a repository whose card branch (at a...) holds main's tip
+// (b...) and is on main only once landed is set: a rung-1 landing that
+// reaches the forge until then.
+type restGit struct {
+	onGit
+	landed *bool
+}
+
+func (restGit) LsRemote(_ context.Context, _, ref string) (string, bool, error) {
+	if strings.HasPrefix(ref, "refs/heads/sprint/") {
+		return strings.Repeat("a", 40), true, nil
+	}
+	return strings.Repeat("b", 40), true, nil
+}
+
+func (g restGit) IsAncestor(_ context.Context, _, ancestor, _ string) (bool, error) {
+	return *g.landed || ancestor != strings.Repeat("a", 40), nil
+}
+
+// limitedForge is a forge GitHub rate-limits on every call.
+type limitedForge struct{ forge.Forge }
+
+func (limitedForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
+	return forge.PRInfo{}, false, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, RetryAfter: 1060, Reason: "HTTP 403: API rate limit exceeded"}
+}
+
+// A landing whose forge GitHub rate-limits waits: it is asked again every
+// LandPoll like a pending CI, said once as an edge fault when the wait
+// starts, and answers layer 3 only with what the landing itself came to
+// (here landed, after two rate-limited passes). It is never a land
+// judgement per card (LAYER-4-EDGES "Rate limits": a fault that spends
+// nothing).
+func TestLandWaitsOutARateLimitedForge(t *testing.T) {
+	t.Parallel()
+	if again, _ := askAgain_internal(git.LandResult{Outcome: git.OutcomeRested}, nil, 0, time.Minute); !again {
+		t.Fatal("a rate-limited pass is not asked again")
+	}
+	landed, pauses := false, 0
+	var said []string
+	e := &Edges{Git: restGit{landed: &landed}, Forge: limitedForge{}, ReposDir: t.TempDir(),
+		Fault: func(what string, err error) { said = append(said, what+": "+err.Error()) },
+		Pause: func(_ context.Context, d time.Duration) error {
+			if pauses++; d != LandPoll || pauses > 2 {
+				return fmt.Errorf("pause %d of %s", pauses, d)
+			}
+			landed = pauses == 2
+			return nil
+		}}
+	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{strings.Repeat("a", 40)}, Branches: []string{"sprint/s1/x"}},
+		store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
+	got := e.Results()
+	if len(got) != 1 || got[0].Outcome != "landed" || pauses != 2 {
+		t.Fatalf("results %+v after %d pauses, want landed after 2", got, pauses)
+	}
+	if len(said) != 1 || !strings.Contains(said[0], "land.s1.x") || !strings.Contains(said[0], "rate limit") {
+		t.Fatalf("said %q, want the rate limit said once for land.s1.x", said)
 	}
 }
