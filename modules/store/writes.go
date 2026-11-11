@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -90,8 +91,26 @@ func (w *work) writePutStream(v PutStream) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := Stream{Name: v.Name, Repo: v.Repo, Base: v.Base, Pos: v.Pos, Held: ok && old.Held, Mode: cmp.Or(v.Mode, StreamAuto), Forge: v.Forge}
+	next := Stream{Name: v.Name, Repo: v.Repo, Base: v.Base, Pos: v.Pos, Held: ok && old.Held, Mode: cmp.Or(v.Mode, StreamAuto), Forge: v.Forge, Gates: normList(old.Gates)}
 	return "", w.putStream(old, ok, next)
+}
+
+// setStreamGates sets a stream's gates, refused when it has them already.
+func (w *work) setStreamGates(v SetStreamGates) (string, error) {
+	s, r, err := w.mustStream(v.Stream)
+	if r != "" || err != nil {
+		return r, err
+	}
+	gates := normList(v.Gates)
+	switch {
+	case len(gates) == 0 && len(s.Gates) == 0:
+		return fmt.Sprintf("stream %s already has no gates", v.Stream), nil
+	case slices.Equal(s.Gates, gates):
+		return fmt.Sprintf("stream %s's gates are already %q", v.Stream, gates), nil
+	}
+	next := s
+	next.Gates = gates
+	return "", w.putStream(s, true, next)
 }
 
 // setRowLoad is the heartbeat write: the row's load columns and nothing else,

@@ -15,8 +15,10 @@ import (
 // on the tick's snapshot, roster and versions. It turns steps' facts per
 // subject into policy's ids per subject, and policy's answers back into
 // steps' shape; policy computes the facts itself from the same snapshot and
-// roster, so the two never disagree about a card or a row. A version that
-// fails is in the failures, whose judgements the tick applies.
+// roster, so the two never disagree about a card or a row. Which rows a rows
+// question offers is not such a fact (the bus is in neither): each question
+// carries the deal's own candidates, by name. A version that fails is in the
+// failures, whose judgements the tick applies.
 type asker struct {
 	ctx      context.Context
 	policy   Asking
@@ -67,12 +69,16 @@ func (t *Ticker) policyVersion(ctx context.Context, v int) (store.PolicyVersion,
 
 // Ask is steps.Asker.
 func (a *asker) Ask(q steps.Questions) steps.Answers {
-	pq := policy.Questions{}
+	pq := policy.Questions{Candidates: map[policy.RowsQuestion][]string{}}
 	for _, c := range q.Order {
 		pq.Order = append(pq.Order, c.ID)
 	}
 	for _, r := range q.Rows {
-		pq.Rows = append(pq.Rows, policy.RowsQuestion{Card: r.Card.ID, Kind: r.Kind})
+		rq, names := policy.RowsQuestion{Card: r.Card.ID, Kind: r.Kind}, make([]string, len(r.Candidates))
+		for i, c := range r.Candidates {
+			names[i] = c.Name
+		}
+		pq.Rows, pq.Candidates[rq] = append(pq.Rows, rq), names
 	}
 	for _, c := range q.Reads {
 		pq.Reads = append(pq.Reads, c.ID)

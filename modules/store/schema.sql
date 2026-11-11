@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS sprint.streams (
 -- through ('' for none).
 ALTER TABLE sprint.streams ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto', 'group', 'hand')),
     ADD COLUMN IF NOT EXISTS forge text NOT NULL DEFAULT '';
+-- Round 31: a stream's gates, the commands every card of the stream passes
+-- at its finished head beside its own DONE-WHENs ('{}' for none). Added
+-- after forge, so a store Migrate upgrades and a new store have the columns
+-- in the same order.
+ALTER TABLE sprint.streams ADD COLUMN IF NOT EXISTS gates text[] NOT NULL DEFAULT '{}';
 
 -- A row is sprint state only (round 22): what a worker or kin is (kind,
 -- width, tiers, model, harness) is configuration, nova-config's, read

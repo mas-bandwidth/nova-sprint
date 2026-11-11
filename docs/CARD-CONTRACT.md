@@ -63,6 +63,43 @@ hetzner2" (LESSONS C.11). Every gate keeps its command, exit code and full
 log; a finding names the path, and a read verdict without a file:line
 finding is refused (LESSONS C.16).
 
+## Stream gates
+
+A rule every card of a stream must keep is declared once, on the stream,
+never left to each brief to remember: on 2026-11-10 cards changed code
+emitters without regenerating the committed generated tree three times in
+one night, though every brief said to, and each was caught only at landing.
+`nova-sprint stream set <s> --gate "<command>"` (and `stream add` with the
+same flag; repeatable; given, it replaces the whole list, and a lone
+`--gate none` clears it) stores the stream's gates
+on its record (`sprint.streams.gates`, round 31). Each is parsed by
+`edge.ParseGate` as a DONE-WHEN is, and refused at `stream add` and
+`stream set` in the same words; `check` re-parses and prints each; `show
+<s>` lists them; take carries them (`stream_gates`, and a `STREAM GATE:`
+line per gate in its text).
+
+A bench's worker runs the stream's gates after the card's DONE-WHENs, at the
+same head, with the same bound and reason rules; a red one fails the
+attempt, its reason naming the stream gate and keeping the lines that say
+what failed. A stream gate that ran red at the head (it exited non-zero by
+itself) is run at its base: the stream tip the head was merged with (the
+consumer's base sha when nothing was merged), in a worktree of its own that
+is removed after, so the job's tree stays at the head. Red there too, it is
+the base's fault, not the card's, and the attempt is not failed for it; its
+report's reason says `stream gate <command> is red at base <sha>`, and
+`check` counts the cards each such base excused (`CHECK RED stream <s>:
+stream gate <command> is red at base <sha> (N cards excused)`). Green
+there, it is the card's `fail`; a green answer is kept per repository, base
+and gate for the life of the worker, a red one is asked again each time. A
+base the worker cannot judge (no tip, no checkout, a sandbox refusal, a
+timeout, a kill signal, a stop) is a `fault`: the worker's, not the card's.
+A stream gate that timed out, was killed or did not run at the head fails
+or faults as a DONE-WHEN does, whatever the base. A worker below
+v2.0.37 ignores `stream_gates`: `stream add`, `stream set` and `check` warn,
+naming those bench rows. Friend rows and reads run the stream gates
+themselves under the same rule, as they run DONE-WHENs: no program checks
+a friend's finish.
+
 ## What the brief tells the worker
 
 The brief tells the worker to cite the base-reds table instead of

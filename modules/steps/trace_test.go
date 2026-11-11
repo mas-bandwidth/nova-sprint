@@ -49,10 +49,11 @@ type traceWalk struct {
 	records  []string
 	stamp    map[string]int
 	reqID    map[string]string
-	phase    string // idle or snapped
-	pref     string // the asker's preferred row, "" for failed
-	raced    bool   // a move came after the fold
-	truth    *View  // the store as it is, for the records; the tick's view (w.v) is folded only at Snap
+	phase    string   // idle or snapped
+	pref     string   // the asker's preferred row, "" for failed
+	offered  []string // every row the last tick's rows questions offered, as <<producer, kind, row>>
+	raced    bool     // a move came after the fold
+	truth    *View    // the store as it is, for the records; the tick's view (w.v) is folded only at Snap
 	tcursor  int64
 	counting bool // picks count toward the depth: a producer is not final
 	picked   int
@@ -95,7 +96,11 @@ func (a traceAsker) Ask(q Questions) Answers {
 		// above the scenario's producers: the model's requests are rung 1's
 		out.Landing[s.Name] = LandingAnswer{BackedUp: 1000, Flowing: 1, CIWait: 600}
 	}
+	w.offered = nil
 	for _, r := range q.Rows {
+		for _, c := range r.Candidates { // the model's OfferedTo: policy is offered the deal's own list
+			w.offered = append(w.offered, fmt.Sprintf("<<%q, %q, %q>>", r.Card.ID, r.Kind, c.Name))
+		}
 		if w.pref == "" {
 			out.Failed["rows"] = "the walk's policy failed"
 		} else {
@@ -269,7 +274,7 @@ func (w *traceWalk) tickOnce() {
 		w.reqID[e.ID] = ReqID(w.v, e)
 	}
 	w.phase = "idle"
-	w.record("Tick", []string{fmt.Sprintf("answer |-> [rows |-> %q]", answer)})
+	w.record("Tick", []string{fmt.Sprintf("answer |-> [rows |-> %q]", answer), "offered |-> {" + strings.Join(w.offered, ", ") + "}"})
 	w.pref = []string{"r1", "r2", ""}[w.rng.Intn(3)]
 }
 

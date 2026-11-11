@@ -90,7 +90,9 @@ func policy.PrevOf(e store.Event) (int, bool)                    // run folds it
 
 `run.asker` implements `steps.Asker` over one tick's snapshot, roster and
 versions: it turns `steps.Questions` (facts per subject) into
-`policy.Questions` (ids per subject), calls `AnswerContext` under the tick's
+`policy.Questions` (ids per subject, and each rows question's candidates by
+name: the deal's own list, so policy offers no row the deal would refuse),
+calls `AnswerContext` under the tick's
 budget, and turns `policy.Answers` into `steps.Answers` (Rows keyed by card
 id for `kind work`, `card#read` for reads; `Limits` and `Timeouts` copied
 field by field; `Failed` from the failures). The failures' judgements

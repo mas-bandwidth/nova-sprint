@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"strings"
 	"testing"
@@ -173,6 +175,45 @@ func TestSeatMoveLeavesNoCandidate(t *testing.T) {
 	assert.Empty(t, Judgements(snap, w.ro, fs))
 	assert.Contains(t, a.Rows[RowsQuestion{"p1", KindWork}], "k2", "the coordinator who holds the seat now")
 	assert.NotContains(t, a.Rows[RowsQuestion{"p1", KindWork}], "k1", "the coordinator who left the seat")
+}
+
+// TestRowsAreOfferedTheDealsCandidates: in a tick a rows question's
+// candidates are the deal's own list (Questions.Candidates, which layer 3
+// builds with the bus), never layer 5's reading of the store. r1 is up and
+// hooked in the store and off the bus, so the deal does not offer it and no
+// version can name it; before, every version was offered it, the default
+// named it, and layer 3 refused the whole answer ("names r1, not a
+// candidate"). tla/Steps.tla OfferedIsAccepted, witness StepsOfferedAbsent.
+// A question with no list (check) is offered the store's open rows. The
+// lists reach the child whole, an empty one too.
+func TestRowsAreOfferedTheDealsCandidates(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	w.apply(store.SetRowHeld{Row: "r4", Held: false, Reason: "test"})
+	snap := w.snap()
+	all, _ := override("rows", "def rows(card, kind, candidates):\n    return [c.name for c in candidates]")
+	p1, p5 := RowsQuestion{"p1", KindWork}, RowsQuestion{"p5", KindRead}
+	q := Questions{Rows: []RowsQuestion{p1, p5}}
+	a, fs := testEngine().Answer(Versions{Active: pv(2, all)}, snap, w.ro, q)
+	require.Empty(t, fs)
+	assert.Equal(t, []string{"r4", "r1"}, a.Rows[p1], "no tick: the store's open rows serving pro, by rank")
+	assert.Equal(t, []string{"r4"}, a.Rows[p5], "no tick: p5's read, never its author r1")
+
+	q.Candidates = map[RowsQuestion][]string{p1: {"r4"}, p5: {}}
+	for _, vs := range []Versions{{Active: pv(2, all)}, {}} {
+		a, fs = testEngine().Answer(vs, snap, w.ro, q)
+		require.Empty(t, fs)
+		assert.Equal(t, []string{"r4"}, a.Rows[p1], "r1 is off the bus: the deal does not offer it")
+		assert.Empty(t, a.Rows[p5], "the deal offers no row for p5's read")
+	}
+
+	var wire bytes.Buffer
+	require.NoError(t, gob.NewEncoder(&wire).Encode(request{Q: q}))
+	var got request
+	require.NoError(t, gob.NewDecoder(&wire).Decode(&got))
+	assert.Equal(t, []string{"r4"}, got.Q.Candidates[p1])
+	_, offered := got.Q.Candidates[p5]
+	assert.True(t, offered, "an empty list is still the deal's list")
 }
 
 // TestJudgementStorable: a failure's text is made storable before

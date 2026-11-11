@@ -25,7 +25,8 @@ import (
 // What the code has that the model does not (the abstractions):
 //
 //   - Streams and every stream write (PutStream, SetStreamHeld,
-//     SetStreamMode, SetStreamForge; mode and forge are round 22's) and the
+//     SetStreamMode, SetStreamForge, SetStreamGates; mode and forge are
+//     round 22's, gates round 31's) and the
 //     StreamHeld condition: the model has no streams. PutStream is dropped
 //     from a projected op (it is never refused for a value it carries); an
 //     op with another stream write or StreamHeld is not projected (TraceOp

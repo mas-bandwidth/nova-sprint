@@ -290,7 +290,20 @@ Deal to report:
    before it, which is a `fault`) is a `fail` saying how long it ran; one
    not started because no time was left is a `fault` that says so (no limit
    counts it: the card is dealt again and continues from the pushed head).
-   A red gate's reason names the gates not run after it.
+   A red gate's reason names the gates not run after it. Then the
+   stream's gates (the take receipt's `stream_gates`) run the same way at
+   the same head. One red at the head (it ran and exited non-zero by
+   itself, not killed) runs at the stream tip the merge used
+   (`GitOps.StreamTip`, the clone's `FETCH_HEAD`), in a worktree of the
+   job's tree under the job directory (`base`), removed on every path so
+   the job's tree stays at the head: red there too, it is the base's and
+   does not fail the attempt, whose report's reason says `stream gate
+   <command> is red at base <sha>`; green there, it is a `fail` naming the
+   stream gate; not judged there (no tip, no checkout, a wall fault, a
+   timeout, a kill, a stop), it is a `fault`. Only a green answer is kept,
+   per repository, base and gate, for the life of the worker.
+   Runner.tla's Rebase and Conflict are this step's outcomes as before: a
+   stream gate adds inputs to the step, no transition.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
    CI is read by the landing on the group sha, not by the worker.
 8. **Report** with a result id written to `job.json` before the first try;

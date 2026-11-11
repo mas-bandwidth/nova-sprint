@@ -742,6 +742,19 @@ model and harness wherever they are named).
   pos were never modelled), so the closed set is the checker's and the
   schema's; the trace projection drops PutStream and does not project an op
   with SetStreamMode or SetStreamForge, as for SetStreamHeld.
+- A stream's gates (round 31, 2026-11-10): `Stream` gains `Gates`, the
+  commands every card of the stream passes at its finished head beside its
+  own DONE-WHENs (CARD-CONTRACT.md, "Stream gates"), a column of
+  `sprint.streams` (`text[] NOT NULL DEFAULT '{}'`), nil for none.
+  `SetStreamGates{Stream, Gates}` writes the whole list in order, refused
+  when unchanged (`stream s1's gates are already [...]`, `stream s1 already
+  has no gates`); `PutStream` keeps them. The store keeps the text; that
+  each is one command is the verb's to check. A round-30 store is upgraded
+  in place (round30Hash, testdata/schema-round30.sql); a stream image
+  logged before round 31 reads as no gates. The trace projection does not
+  project an op with SetStreamGates, as for SetStreamForge. Tests:
+  `TestRound30Hash`, the conformance case `stream gates`,
+  `TestFunctionalMigrateRound30`.
 - A consumer's model (round 23, stitch w2D1): `Card` gains `Model`, the
   model its deal named (provider/model for a bench, the friend's own for a
   friend), a column of `sprint.cards` (`NOT NULL DEFAULT ''`) with a CHECK

@@ -53,6 +53,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"stop":                    stop,
 		"identity":                identity,
 		"stream settings":         streamSettings,
+		"stream gates":            streamGates,
 		"lesson columns":          lessonColumns,
 		"review and row reason":   reviewAndRowReason,
 		"finding":                 finding,
@@ -670,6 +671,34 @@ func streamSettings(h *harness) {
 	var old Stream
 	require.NoError(h.t, json.Unmarshal([]byte(`{"name":"s1","repo":"r","base":"main","held":false,"pos":1}`), &old))
 	assert.Equal(h.t, Stream{Name: "s1", Repo: "r", Base: "main", Pos: 1, Mode: "auto"}, old, "an image from before round 22 reads as auto")
+}
+
+// Round 31: a stream's gates are stream state. A stream starts with none;
+// set gates writes the whole list in order, refused when unchanged; none
+// clears them; a put stream keeps them; the images carry them, and an
+// image logged before round 31 reads as none.
+func streamGates(h *harness) {
+	h.seed()
+	assert.Nil(h.t, h.snap().Streams["s1"].Gates, "no gates by default")
+	r := h.ok(h.op("gates", nil, SetStreamGates{"s1", []string{"make generated-current", "sh -c 'go vet ./...'"}}))
+	assert.Equal(h.t, []string{"make generated-current", "sh -c 'go vet ./...'"}, r.After.Streams["s1"].Gates)
+	h.refused(h.op("again", nil, SetStreamGates{"s1", []string{"make generated-current", "sh -c 'go vet ./...'"}}), `stream s1's gates are already ["make generated-current" "sh -c 'go vet ./...'"]`)
+	h.refused(h.op("none", nil, SetStreamGates{"s9", nil}), "stream s9 does not exist")
+	h.ok(h.op("put keeps them", nil, PutStream{Name: "s1", Repo: s1.Repo, Base: "dev", Pos: 1}))
+	assert.Equal(h.t, []string{"make generated-current", "sh -c 'go vet ./...'"}, h.snap().Streams["s1"].Gates, "a put stream keeps the gates")
+	h.ok(h.op("reorder", nil, SetStreamGates{"s1", []string{"sh -c 'go vet ./...'", "make generated-current"}}))
+	assert.Equal(h.t, h.snap(), Rebuild(h.events()), "the images carry the gates")
+	h.ok(h.op("clear", nil, SetStreamGates{"s1", nil}))
+	assert.Nil(h.t, h.snap().Streams["s1"].Gates, "none clears them")
+	h.refused(h.op("clear again", nil, SetStreamGates{"s1", []string{}}), "stream s1 already has no gates")
+	assert.Equal(h.t, h.snap(), Rebuild(h.events()))
+	h.invalid(map[string]Op{
+		"gates twice":   h.op("x", nil, SetStreamGates{"s1", []string{"a"}}, SetStreamGates{"s1", []string{"b"}}),
+		"gate not text": h.op("x", nil, SetStreamGates{"s1", []string{"a\x00b"}}),
+	})
+	var old Stream
+	require.NoError(h.t, json.Unmarshal([]byte(`{"name":"s1","repo":"r","base":"main","held":false,"pos":1,"mode":"auto","forge":""}`), &old))
+	assert.Nil(h.t, old.Gates, "an image from before round 31 has no gates")
 }
 
 // Round 22: a row's width and tiers are configuration, the roster's, read

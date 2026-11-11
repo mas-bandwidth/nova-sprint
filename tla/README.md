@@ -1138,6 +1138,7 @@ operators where the check is about them:
 | `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
 | `VerdictHasItsRead` | Fix | a yes has a done ok read of the review and no fix read, a fix a done fix read; a faulted read is neither |
 | `NeverDealtAbsent` | D1' (2026-11-07) | no accepted Start, read or preemption lands on a row absent from nova-bus (`bus`), whatever the store's up says |
+| `OfferedIsAccepted` | 2026-11-11 | every row a rows question offers a version (`PolicyOffered`) is one the deal accepts for that card in the tick (`Offered`): layer 5 is handed the deal's own list, so a policy that names an offered row is never refused for it. The steps walk logs what its questions offered (`offered`), and `StepsTrace` requires it equal to `OfferedTo(snap)` |
 
 `ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
 under weak fairness on `Snap` and `Tick` only (rows need not take or
@@ -1187,6 +1188,7 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsResolveOnEvent` | deal | resolve only on a landed result's event | ResolveFromState |
 | `witnesses/StepsYesOnFault` | deal | the verdict default is yes unless a read said fix | VerdictHasItsRead |
 | `witnesses/StepsDealtAbsent` | deal | the deal reads the store's up as presence | NeverDealtAbsent |
+| `witnesses/StepsOfferedAbsent` | deal | layer 5 builds the candidates itself from the store's up, with no bus | OfferedIsAccepted |
 | `witnesses/StepsFaultCounted` | deal | a faulted read counts as a read | FaultedReadReadAgain (liveness, TLC exit 13) |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
