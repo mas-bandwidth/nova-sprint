@@ -56,6 +56,13 @@ type Questions struct {
 	Verdict []string          // producers whose reads are complete
 	Landing []LandingQuestion // streams and the rung each is on now
 	Stitch  []string          // streams at their sentinel
+	// Candidates is each rows question's third argument as the deal built it
+	// (layer 3's candidates, handed over by run's asker): the rows the deal
+	// accepts for that card this tick, so no version is offered a row the
+	// deal would refuse (tla/Steps.tla OfferedIsAccepted). A question with no
+	// entry (check, which runs no tick and reads no bus) is offered the rows
+	// the store and the roster show open and serving.
+	Candidates map[RowsQuestion][]string
 }
 
 // RowsQuestion asks which rows take producer Card's next consumer of Kind.

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"maps"
 	"slices"
+	"strings"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -23,7 +24,7 @@ type index struct {
 	load    map[string][2]int   // row -> working, ready consumers it holds
 	reads   map[string][]string // producer -> its done reads of its current review and head, by id
 	streams map[string]*streamCount
-	sets    map[string]*candidateSet // by tier, kind and (for a read) author
+	sets    map[string]*candidateSet // by the deal's list; with none, by tier, kind and (for a read) author
 }
 
 // rostered is a store row with its configuration from the roster, by its
@@ -49,8 +50,8 @@ func rosterOf(ro roster.Roster, r store.Row) (rostered, bool) {
 }
 
 // candidateSet is one list of candidates, built once per tick and shared by
-// every rows question with the same tier, kind and author; digest names
-// its contents for the answer cache.
+// every rows question with the same list; digest names its contents for the
+// answer cache.
 type candidateSet struct {
 	rows   []rostered
 	names  map[string]int // name -> its place in rows
@@ -122,15 +123,23 @@ func Rank(tiers []string) string {
 
 func rung(tier string) int { return slices.Index(store.Tiers, tier) }
 
-// candidateSet is rows' third argument for producer c and kind: the rows
-// that may take its next consumer (up, not held, hooked in as worker or
-// coordinator as layer 3's deal needs, serving the card's tier, and for a
-// read not its author), by rank, lowest first, then by name. A row that
-// left (a coordinator whose seat moved) is no candidate, read live.
-func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
-	key := c.Tier + " " + kind
-	if kind == KindRead {
+// candidateSet is rows' third argument for producer c and question rq, by
+// rank, lowest first, then by name. In a tick it is the deal's own list,
+// dealt[rq], row for row: layer 3 built it from what only the tick knows
+// too (who is on the bus, the routes the card needs, who reads the head
+// already), so a version is never offered a row the deal would refuse
+// (tla/Steps.tla OfferedIsAccepted, witness StepsOfferedAbsent). With no
+// list (check) it is the rows the store and the roster show may take the
+// consumer: up, not held, hooked in as worker or coordinator, serving the
+// card's tier, and for a read not its author.
+func (ix *index) candidateSet(c store.Card, rq RowsQuestion, dealt map[RowsQuestion][]string) *candidateSet {
+	offered, tick := dealt[rq]
+	key := c.Tier + " " + rq.Kind
+	if rq.Kind == KindRead {
 		key += " " + c.Author
+	}
+	if tick {
+		key = "\x00" + strings.Join(offered, "\x00")
 	}
 	if s, ok := ix.sets[key]; ok {
 		return s
@@ -138,7 +147,8 @@ func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 	s := &candidateSet{}
 	for _, r := range ix.rows {
 		hooked := r.Session != "" && (r.Role == "worker" || r.Role == "coordinator") // steps.Hooked
-		if r.State == "up" && !r.Held && hooked && slices.Contains(r.tiers, c.Tier) && (kind != KindRead || r.Name != c.Author) {
+		open := r.State == "up" && !r.Held && hooked && slices.Contains(r.tiers, c.Tier) && (rq.Kind != KindRead || r.Name != c.Author)
+		if (tick && slices.Contains(offered, r.Name)) || (!tick && open) {
 			s.rows = append(s.rows, r)
 		}
 	}

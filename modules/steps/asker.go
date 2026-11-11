@@ -49,8 +49,10 @@ type RowFacts struct {
 }
 
 // RowsQuestion asks rows(card, kind, candidates): Kind is work or read;
-// Candidates are the rows up, not held, hooked in, serving the card's tier
-// with room under the deal-ahead, the author excluded for a read.
+// Candidates are the deal's own list (tick.candidates): open, on the bus,
+// serving the card's tier and routes, and for a read not its author nor
+// reading its head. Policy is offered exactly these (run's asker passes
+// them), so naming one is never "not a candidate".
 type RowsQuestion struct {
 	Card       CardFacts
 	Kind       string

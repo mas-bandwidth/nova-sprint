@@ -30,7 +30,10 @@
 (* paths, tiers, which results occur) is the one the Go walk drives. The  *)
 (* oracle's answer for a Tick is the record's answer field when present   *)
 (* ([rows |-> r], r a row or "failed"), any of AnswersFor(snap) when       *)
-(* absent. The Go walk logs w in parts: ps, up, sh, tko, ob whole, cs as  *)
+(* absent. A Tick's offered field, when present, is every row the code's  *)
+(* rows questions offered, as <<producer, kind, row>>: it must be the     *)
+(* model's OfferedTo(snap), the deal's own list (OfferedIsAccepted).      *)
+(* The Go walk logs w in parts: ps, up, sh, tko, ob whole, cs as          *)
 (* the slots that are not "none" (every other slot must be "none"), so a   *)
 (* record stays small whatever K is; a record may log w instead (each of *)
 (* its fields, so a field added to w later is left to the model). rg     *)
@@ -104,6 +107,7 @@ StepAs(r) ==
   CASE r.action = "Snap"       -> Snap
     [] r.action = "Tick"       -> \E a \in AnswersFor(snap), due \in BOOLEAN :
                                     /\ Has(r, "answer") => a = r.answer
+                                    /\ Has(r, "offered") => r.offered = OfferedTo(snap)   \* what the code's questions offered
                                     /\ Tick(a, due)
     [] r.action = "Report"     -> Report(r.card, r.res)
     [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "Refuse", "Admit", "EnvMove"} -> EnvMove /\ EnvKind(r)

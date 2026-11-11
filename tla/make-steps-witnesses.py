@@ -27,7 +27,7 @@ INVARIANTS = [
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
     "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
-    "LapsedReleased", "HandEmptyWhenClosed",
+    "LapsedReleased", "HandEmptyWhenClosed", "OfferedIsAccepted",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -249,6 +249,13 @@ WITNESSES = [
      "hooked and up but gone from the bus is dealt a card it never takes.",
      [("  /\\ bus[r]   \\* on the bus this tick: a configured row is not a present one (D1')\n",
        "  /\\ TRUE   \\* FAULT: was bus[r]\n", 1)]),
+    ("StepsOfferedAbsent", "OfferedIsAccepted", "deal",
+     "Layer 5 builds a rows question's candidates itself, from the store's\n"
+     "up with no bus (as until 2026-11-11): a row up in the store and off\n"
+     "the bus is offered, the default policy names it, and the deal refuses\n"
+     "the whole answer for a row it never accepted.",
+     [("PolicyOffered(V, x, r) == Offered(V, x, r)",
+       "PolicyOffered(V, x, r) == V.up[r] /\\ Serves(r, x.p) /\\ (x.kind = \"read\" => r # V.ps[x.p].author)   \\* FAULT: was Offered(V, x, r), which reads the bus", 1)]),
     ("StepsDealtUnadmitted", "NeverDealtUnadmitted", "deal",
      "The deal reads no admission (item 4, 2026-11-08): a producer whose\n"
      "PATHS left its stream's base is dealt, and fails on its row.",
