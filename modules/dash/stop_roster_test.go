@@ -16,7 +16,7 @@ func TestStoppedAndRosterProjection(t *testing.T) {
 	snap := store.Snapshot{Epoch: 1, Stopped: true, StopReason: "Scheduled maintenance", Rows: map[string]store.Row{
 		"worker": {Name: "worker", State: "up"}, "friend": {Name: "friend", State: "up", Held: true}, "removed": {Name: "removed", State: "up", Held: true},
 	}}
-	d := mapSnapshot(snap, ros, time.Time{})
+	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	fleet := d.Tables["fleet"].(map[string]*fleetRow)
 	friends := d.Tables["friends"].(map[string]*fleetRow)
 	if fleet["worker"].Status != "up" || fleet["worker"].Width != 8 || friends["friend"].Status != "held" || friends["friend"].Width != 2 {
@@ -41,7 +41,7 @@ func TestStoppedAndRosterProjection(t *testing.T) {
 	}
 	snap.Stopped = false
 	snap.StopReason = "Restarted"
-	d = mapSnapshot(snap, ros, time.Time{})
+	d = mapSnapshot(snap, ros, time.Time{}, nil)
 	if d.Stopped || d.Machine != "machine: RUNNING" {
 		t.Fatalf("start projection: %+v", d)
 	}
@@ -63,7 +63,7 @@ func TestNoStopBanner(t *testing.T) {
 		}
 	}
 	snap := store.Snapshot{Epoch: 1, Stopped: true, StopReason: "x"}
-	body, err := json.Marshal(mapSnapshot(snap, roster.Roster{}, time.Time{}))
+	body, err := json.Marshal(mapSnapshot(snap, roster.Roster{}, time.Time{}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}

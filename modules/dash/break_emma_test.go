@@ -27,7 +27,7 @@ func TestAllFinalStreamWithFailuresIsWaiting(t *testing.T) {
 			"p2": {ID: "p2", Kind: "producer", Stream: "s1", State: "fail", Tier: "pro"},
 		},
 	}
-	env := mapSnapshot(s, testRoster, time.Time{})
+	env := mapSnapshot(s, testRoster, time.Time{}, nil)
 	if len(env.Streams) != 1 {
 		t.Fatalf("expected 1 stream, got %d", len(env.Streams))
 	}
@@ -62,7 +62,7 @@ func TestBreakDashStreamCostsWorkAndReadExceedTotalCost(t *testing.T) {
 			"r1": {ID: "r1", Kind: "read", Of: "p1", Stream: "s1", Tier: "pro", State: "done", Cost: 1000, Priced: true},
 		},
 	}
-	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}))
+	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}

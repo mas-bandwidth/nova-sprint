@@ -25,6 +25,10 @@ type Feed struct {
 	// read them (the ETA then reads "-"); non-nil, even empty, is the store's
 	// answer.
 	Landings []time.Time
+	// Stats is the stats reset mark run keeps from the store's events
+	// (Ticker.Stats); nil when none is set or it could not be read, and the
+	// Fleet and Friends counts are then the epoch's.
+	Stats *store.StatsMark
 }
 
 // NewFromFeed is the run-host dashboard: it reads no store; run publishes.
@@ -60,7 +64,7 @@ func (c *Cache) publish(f Feed) {
 	if c.landingsOK {
 		c.landings = append([]time.Time{}, f.Landings...)
 	}
-	c.view = mapSnapshot(f.Snap, ro, f.At)
+	c.view = mapSnapshot(f.Snap, ro, f.At, f.Stats)
 	if f.RosterErr != nil {
 		c.view.Error = "roster: " + f.RosterErr.Error()
 	}

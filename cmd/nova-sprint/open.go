@@ -168,6 +168,12 @@ func (s *lazyStore) Landings(ctx context.Context, epoch int, upToSeq int64) ([]t
 	return with(s, ctx, func(p *store.PG) ([]time.Time, error) { return p.Landings(ctx, epoch, upToSeq) })
 }
 
+// StatsSince forwards the board's stats mark to the store, as Landings does:
+// run looks for it by interface.
+func (s *lazyStore) StatsSince(ctx context.Context, mark int64) (store.StatsMark, error) {
+	return with(s, ctx, func(p *store.PG) (store.StatsMark, error) { return p.StatsSince(ctx, mark) })
+}
+
 func (s *lazyStore) Apply(ctx context.Context, o store.Op) (store.Receipt, error) {
 	return with(s, ctx, func(p *store.PG) (store.Receipt, error) { return p.Apply(ctx, o) })
 }
