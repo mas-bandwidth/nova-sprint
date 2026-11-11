@@ -148,12 +148,13 @@ func (w *storeWalk) rowWrite(s Snapshot) Write {
 }
 
 // hook is the sprint hook's write on row r: a session of the model's (x,
-// y) with a role, or unhook.
+// y) with a role, naming no session it replaces, or x or y (the row's
+// holder or not, as the pick falls), or unhook.
 func (w *storeWalk) hook(r string) Write {
 	if w.rng.IntN(3) == 0 {
 		return PutRow{Name: r}
 	}
-	return PutRow{Name: r, Session: w.pick([]string{"x", "y"}), Role: w.pick(RowRoles)}
+	return PutRow{Name: r, Session: w.pick([]string{"x", "y"}), Role: w.pick(RowRoles), Replaces: w.pick([]string{"", "", "x", "y"})}
 }
 
 func (w *storeWalk) judgementWrite(s Snapshot) Write {

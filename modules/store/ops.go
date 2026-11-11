@@ -315,10 +315,13 @@ type SetCardAfter struct {
 // the role (worker or coordinator), and unhook puts "" for both. Session
 // and Role are both set or both "" (ErrInvalid otherwise, and for a role
 // not in RowRoles). Hooking a row another session holds is refused: unhook
-// it first. State, flaps and held are kept on overwrite, and down, 0 and
+// it first; unless the hook names that session as the one it replaces
+// (Replaces: the bus started the name's hook again, so the recorded
+// session is gone and the row's state, hold and hand stay as they are).
+// State, flaps and held are kept on overwrite, and down, 0 and
 // false on insert. Its kind, width, tiers, model and harness are
 // configuration, the roster's, never the store's (round 22).
-type PutRow struct{ Name, Session, Role string }
+type PutRow struct{ Name, Session, Role, Replaces string }
 
 // PutJudgement opens a judgement: refused when it exists. Its state is
 // open, opened at the op's At; Deadline zero is none. It belongs to the
@@ -495,7 +498,7 @@ func specOf(w Write) spec {
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
 		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose", "model").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
-		return put("row", v.Name, func(c *checker) { c.text(v.Session).hook(v.Session, v.Role) }, "session", "role").then(func(w *work) (string, error) { return w.writePutRow(v) })
+		return put("row", v.Name, func(c *checker) { c.text(v.Session, v.Replaces).hook(v.Session, v.Role) }, "session", "role").then(func(w *work) (string, error) { return w.writePutRow(v) })
 	case PutJudgement:
 		return put("judgement", v.ID, func(c *checker) {
 			c.name(v.Kind, v.About, v.Group).text(v.Question, v.Command).time("deadline", v.Deadline, true)

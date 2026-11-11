@@ -50,6 +50,8 @@ REACH = {
     "NeverSameStopRefused": ("deal", "a stop write equal to the sprint's stop is refused (s22)"),
     "NeverStoppedRefused": ("deal", "an op fenced on Running (s23) is refused once the sprint is stopped"),
     "NeverFreshRefused": ("deal", "a tick op on the fresh store (n1) is refused: the sprint was never started"),
+    "NeverReplaceRefused": ("deal", "a hook naming a session that does not hold the row is refused (s24)"),
+    "NeverHookReplaced": ("deal", "a hook naming the session that holds the row replaces it in place (s25)"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
     "NeverJudgementFenced": ("records", "a second close of a judgement is refused on JudgementOpen"),
     "NeverCursorRefused": ("records", "a cursor write below the current value is refused (m2)"),
@@ -206,8 +208,15 @@ WITNESSES = [
      [("    [] w.k = \"putRow\"      -> ~(/\\ st.rows[w.r].state # Absent\n"
        "                                /\\ st.rows[w.r].sess # None\n"
        "                                /\\ w.s # None\n"
-       "                                /\\ w.s # st.rows[w.r].sess)\n",
+       "                                /\\ w.s # st.rows[w.r].sess\n"
+       "                                /\\ w.p # st.rows[w.r].sess)\n",
        "    [] w.k = \"putRow\"      -> TRUE   \\* FAULT: no session check\n", 1)]),
+    ("StoreHookReplacedUnnamed", "HookKept", "deal",
+     "Put row lets a hook that names any session take the row, whether\n"
+     "or not that session holds it: s24 hooks r2 by x naming x while y\n"
+     "holds it and is accepted.",
+     [("                                /\\ w.p # st.rows[w.r].sess)\n",
+       "                                /\\ w.p = None)   \\* FAULT: any named session replaces\n", 1)]),
     ("StoreHoldCarried", "ClearCarriesRows", "deal",
      "A clear carries a row's hold into the next epoch (the defect of\n"
      "2026-11-08: emma, johnny and stella came up in epoch 2 still held\n"

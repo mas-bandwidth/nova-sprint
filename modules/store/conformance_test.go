@@ -571,7 +571,9 @@ func genOncePerOp(h *harness) {
 // hook: PutRow is the sprint hook's one write (round 22). A row is hooked
 // by one session at a time: another session's hook is refused, naming the
 // fix; the same session may hook again, with a new role; unhook (both "")
-// frees it, and the state, flaps and hold are kept throughout.
+// frees it, and the state, flaps and hold are kept throughout. A hook that
+// names the session holding the row as the one it replaces takes the row
+// in place; one that names any other session is refused as a plain hook is.
 func hook(h *harness) {
 	h.seed()
 	h.refused(h.op("steal", nil, PutRow{Name: "w1", Session: "sess-x", Role: "coordinator"}), "row w1 is hooked by session sess-a; unhook it first")
@@ -582,6 +584,11 @@ func hook(h *harness) {
 	assert.Equal(h.t, Row{Name: "w1", State: "up", Session: "sess-x", Role: "coordinator", Gen: 3}, h.snap().Rows["w1"])
 	h.ok(h.op("new", nil, PutRow{Name: "w2", Session: "sess-y", Role: "worker"}))
 	assert.Equal(h.t, Row{Name: "w2", State: "down", Session: "sess-y", Role: "worker"}, h.snap().Rows["w2"], "a hook puts a new row down")
+	h.refused(h.op("replace another", nil, PutRow{Name: "w1", Session: "sess-z", Role: "coordinator", Replaces: "sess-a"}), "row w1 is hooked by session sess-x; unhook it first")
+	h.ok(h.op("hold", nil, SetRowHeld{"w1", true, "kept"}))
+	h.ok(h.op("replace", nil, PutRow{Name: "w1", Session: "sess-z", Role: "coordinator", Replaces: "sess-x"}))
+	assert.Equal(h.t, Row{Name: "w1", State: "up", Session: "sess-z", Role: "coordinator", Held: true, Reason: "kept", Gen: 5}, h.snap().Rows["w1"], "a hook naming the session it replaces takes the row in place: state and hold kept")
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "the rebuild agrees")
 }
 
 // stop: the sprint's stop is one value for the store, set by SetStopped,

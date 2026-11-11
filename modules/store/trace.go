@@ -216,7 +216,7 @@ func traceWrite(w Write) (ModelWrite, error) {
 	case SetCardRed:
 		x.K, x.C, x.W = "setRed", v.Card, flag(v.Red)
 	case PutRow:
-		x.K, x.R, x.S, x.Kd = "putRow", v.Name, orDash(v.Session, "-"), orDash(v.Role, "-")
+		x.K, x.R, x.S, x.Kd, x.P = "putRow", v.Name, orDash(v.Session, "-"), orDash(v.Role, "-"), orDash(v.Replaces, "-")
 	case SetStopped:
 		x.K, x.W = "setStopped", flag(v.Stopped)
 	case SetRowState:
