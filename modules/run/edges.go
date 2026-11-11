@@ -147,14 +147,13 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault", Reason: "the clone of " + s.Repo + " failed: " + err.Error()})
 		return
 	}
-	reran := false    // the stopped jobs were run again once (OutcomeRerun)
 	var gate git.Gate // the gate the last pass kept: read to its verdict, never rebuilt meanwhile
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Reran: reran, Gate: gate})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate})
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
-			return git.PromotePass(ctx, e.Git, e.Forge, git.PromoteRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Merges: r.Merges, Reran: reran})
+			return git.PromotePass(ctx, e.Git, e.Forge, git.PromoteRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Merges: r.Merges})
 		}
 	}
 	wait := time.Duration(r.Wait) * time.Second
@@ -177,7 +176,6 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 				rested = true
 				e.fault("land "+r.ID+" stream "+r.Stream+" waits", errors.New(res.Reason))
 			}
-			reran = reran || res.Outcome == git.OutcomeRerun
 			absent = waited
 			if e.Pause(ctx, LandPoll) != nil {
 				return
@@ -199,8 +197,8 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 
 // askAgain_internal says whether a pass is asked again after LandPoll, and
 // how long the gated sha has had no check at all, or a failed check while
-// others still run. Pending CI, a base that moved after the gate, stopped
-// jobs just run again and a forge GitHub rate-limited are asked again (a
+// others still run. Pending CI, a base that moved after the gate and a
+// forge GitHub rate-limited are asked again (a
 // resting forge refuses its calls without making them, so those passes
 // spend nothing); an absent CI and an unfinished one only until wait, after
 // which the pass goes to layer 3 as no-ci and as ci_no_verdict.
@@ -209,7 +207,7 @@ func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration
 		return false, 0
 	}
 	switch res.Outcome {
-	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested, git.OutcomeRerun:
+	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested:
 		return true, 0
 	case git.OutcomeAbsent, git.OutcomeUnfinished:
 		absent += LandPoll

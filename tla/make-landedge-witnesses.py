@@ -14,7 +14,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INVARIANTS = ["TypeOK", "BaseNeverRed", "NothingLandsUnpassed", "MergingCovered",
-              "VerdictOnlyCompleted", "RedIsReal", "StoppedRunAgainOnce", "ConflictJudgesItsCard"]
+              "VerdictOnlyCompleted", "RedIsReal", "ConflictJudgesItsCard"]
 CONSTS = "CONSTANT K = 1\nCONSTANT BackedUp = 2\nCONSTANT MaxPass = 6\nSPECIFICATION Spec\n"
 LIVE_CONSTS = "CONSTANT K = 1\nCONSTANT BackedUp = 2\nCONSTANT MaxPass = 6\nSPECIFICATION LiveSpec\n"
 
@@ -23,18 +23,17 @@ REACH = {
     "LandEdgeNeverJudged": "a result other than landed opens a land judgement (rung 3)",
     "LandEdgeNeverHandLand": "the coordinator lands a card by hand",
     "LandEdgeNeverRedGated": "CI is red on a gated tree and nothing lands",
-    "LandEdgeNeverNoVerdict": "a landing ends with no verdict (stopped twice, or the wait passed)",
-    "LandEdgeNeverRerun": "a gate whose failing checks were all stopped is run again",
+    "LandEdgeNeverNoVerdict": "a landing ends with no verdict (every failing check stopped, or the wait passed)",
     "LandEdgeNeverLate": "the wait passes on a failure while checks still run: no verdict",
     "LandEdgeNeverKeptMoved": "a gate whose CI runs is kept while base moves under it",
     "LandEdgeNeverOddAlone": "a group's conflict names one card of the group",
     "LandEdgeNeverSwitchInFlight": "stream set --base switches the base under a gate in flight",
 }
 
-# The rerun of a gate whose every failing check was stopped (the text the
-# stopped-check witnesses replace).
-RERUN = ("           \\/ /\\ r.ci = \"done\" /\\ r.res = \"stopped\" /\\ ~r.reran   \\* run again once: asked again\n"
-         "              /\\ req' = [req EXCEPT ![s] = [r EXCEPT !.ci = \"running\", !.res = \"none\", !.reran = TRUE, !.late = FALSE]]\n")
+# A gate whose every failing check was stopped (the text the stopped-check
+# witness replaces).
+STOPPED = ("           \\/ /\\ r.ci = \"done\" /\\ r.res = \"stopped\"   \\* every failing check stopped: no verdict\n"
+           "              /\\ Done(s, r, \"noverdict\")\n")
 
 WITNESSES = [
     ("LandEdgeRedLands", "BaseNeverRed",
@@ -61,13 +60,8 @@ WITNESSES = [
     ("LandEdgeStoppedIsRed", "RedIsReal",
      "The old rule (v2.0.36): a gate whose failing checks were all stopped\n"
      "(killed at a time limit, cancelled) is judged red.",
-     [(RERUN, "           \\/ /\\ r.ci = \"done\" /\\ r.res = \"stopped\"   \\* FAULT: stopped reads as red\n"
+     [(STOPPED, "           \\/ /\\ r.ci = \"done\" /\\ r.res = \"stopped\"   \\* FAULT: stopped reads as red\n"
               "              /\\ Done(s, r, \"red\")\n")]),
-    ("LandEdgeStoppedJudgedAtOnce", "StoppedRunAgainOnce",
-     "A gate whose failing checks were all stopped is the coordinator's at\n"
-     "once: its stopped jobs are never run again.",
-     [(RERUN, "           \\/ /\\ r.ci = \"done\" /\\ r.res = \"stopped\"   \\* FAULT: judged at once\n"
-              "              /\\ Done(s, r, \"noverdict\")\n")]),
     ("LandEdgeJudgementHoldsStream", "MergingCovered",
      "A land judgement holds its whole stream: while one card is judged,\n"
      "no landing is asked for the stream's other merging cards.",

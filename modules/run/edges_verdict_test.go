@@ -38,9 +38,6 @@ func TestUnfinishedCIIsBoundedThenNoVerdict(t *testing.T) {
 	if strings.Contains(it.Reason, "failing lint") || strings.Contains(it.Reason, "https://ci/1") {
 		t.Fatalf("reason %q names a check of an unfinished run as failing", it.Reason)
 	}
-	if again, _ := askAgain_internal(git.LandResult{Outcome: git.LandOutcome("ci_rerun")}, nil, 3*LandPoll, wait); !again {
-		t.Fatal("a pass whose stopped jobs were run again is not asked again")
-	}
 	if again, _ := askAgain_internal(git.LandResult{Outcome: git.LandOutcome("ci_no_verdict")}, nil, 0, wait); again {
 		t.Fatal("a no-verdict pass is asked again by the run")
 	}
@@ -57,13 +54,10 @@ func TestLandFactsNameStoppedApart(t *testing.T) {
 	}
 }
 
-// stopForge is a forge whose gated head (a...) is red with every failing
-// check killed until it is run again, then green (killedAgain: killed
-// again).
+// stopForge is a forge whose gated head (a...) is red with its one failing
+// check killed (the forge has no way to run CI again).
 type stopForge struct {
 	forge.Forge
-	reruns      int
-	killedAgain bool
 }
 
 func (f *stopForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
@@ -71,44 +65,46 @@ func (f *stopForge) PR(context.Context, string, string, string) (forge.PRInfo, b
 }
 
 func (f *stopForge) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
-	st := forge.CheckRed
-	if f.reruns > 0 && !f.killedAgain {
-		st = forge.CheckGreen
-	}
-	return map[string]forge.CheckRollup{shas[0]: {SHA: shas[0], State: st, Failing: []string{"corpus"}}}, nil
+	return map[string]forge.CheckRollup{shas[0]: {SHA: shas[0], State: forge.CheckRed, Failing: []string{"corpus"}}}, nil
+}
+
+func (f *stopForge) FailedLines(context.Context, string, string) ([]string, error) {
+	return []string{"signal: killed"}, nil
 }
 
 func (f *stopForge) Failures(context.Context, string, string) ([]forge.Failure, error) {
 	return []forge.Failure{{Name: "corpus", URL: "https://github.com/o/r/actions/runs/7/job/8", Stop: "killed (exit code 137)"}}, nil
 }
 
-func (f *stopForge) Rerun(context.Context, string, string) error { f.reruns++; return nil }
-
 func (f *stopForge) Merge(context.Context, string, int, string) (string, error) {
 	return strings.Repeat("b", 40), nil
 }
 
-// D: a landing whose failing checks were all stopped runs them again once
-// and is asked again; the next pass reads the new verdict: green lands, and
-// killed again is the coordinator's ci_no_verdict, never a second rerun.
-func TestLandRunsStoppedJobsAgainOnceThenReads(t *testing.T) {
+// D: a landing whose failing checks were all stopped is the coordinator's
+// ci_no_verdict at once: nothing is run again by the sprint (LESSONS-PRIORITY-AND-MERGE W19),
+// the stopped check is named apart, and the judgement carries its first
+// failing lines.
+func TestLandStoppedChecksAreNoVerdictAtOnce(t *testing.T) {
 	t.Parallel()
-	for _, killedAgain := range []bool{false, true} {
-		landed := false
-		f := &stopForge{killedAgain: killedAgain}
-		pauses := 0
-		e := &Edges{Git: restGit{landed: &landed}, Forge: f, ReposDir: t.TempDir(),
-			Pause: func(_ context.Context, d time.Duration) error {
-				if pauses++; pauses > 3 {
-					return fmt.Errorf("pause %d", pauses)
-				}
-				return nil
-			}}
-		e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{strings.Repeat("a", 40)}, Branches: []string{"sprint/s1/x"}},
-			store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
-		got, want := e.Results(), map[bool]string{false: "landed", true: "ci_no_verdict"}[killedAgain]
-		if len(got) != 1 || got[0].Outcome != want || f.reruns != 1 || pauses != 1 {
-			t.Fatalf("killed again %v: results %+v after %d reruns and %d pauses, want %s after one rerun", killedAgain, got, f.reruns, pauses, want)
+	landed := false
+	f := &stopForge{}
+	pauses := 0
+	e := &Edges{Git: restGit{landed: &landed}, Forge: f, ReposDir: t.TempDir(),
+		Pause: func(_ context.Context, d time.Duration) error {
+			if pauses++; pauses > 3 {
+				return fmt.Errorf("pause %d", pauses)
+			}
+			return nil
+		}}
+	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{strings.Repeat("a", 40)}, Branches: []string{"sprint/s1/x"}},
+		store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
+	got := e.Results()
+	if len(got) != 1 || got[0].Outcome != "ci_no_verdict" || pauses != 0 {
+		t.Fatalf("results %+v after %d pauses, want ci_no_verdict at once", got, pauses)
+	}
+	for _, want := range []string{"stopped, not failed (no verdict): corpus killed (exit code 137)", "first failing lines: signal: killed"} {
+		if !strings.Contains(got[0].Reason, want) {
+			t.Fatalf("judgement %q, want %q in it", got[0].Reason, want)
 		}
 	}
 }

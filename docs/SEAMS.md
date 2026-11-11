@@ -141,8 +141,8 @@ branch>, Heads, Branches}` run on a goroutine of its own (never under the
 tick), with the stream's forge (`Forge` "github": `forge.New`, acting as
 the host's gh login, `GH_GATE_TOKEN` an optional override). A stream with
 mode hand or no forge is answered at once with outcome `hand`. The pass is
-asked again after `LandPoll` on `ci_pending`, `base_moved`, `forge_rested`
-and `ci_rerun`, and on `ci_absent` and `ci_unfinished` until `Wait` (10
+asked again after `LandPoll` on `ci_pending`, `base_moved` and
+`forge_rested`, and on `ci_absent` and `ci_unfinished` until `Wait` (10
 minutes when none), when it is `no-ci` and `ci_no_verdict`. Its
 `LandResult` comes back as one `steps.InboxItem{Kind: "land", Request:
 req.ID, Outcome, Landed, Merge, Reason}`: landed -> `landed` with the

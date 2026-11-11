@@ -176,12 +176,4 @@ func (f *Fake) Failures(_ context.Context, repo, sha string) ([]Failure, error) 
 	return out, nil
 }
 
-func (f *Fake) Rerun(_ context.Context, _, url string) error {
-	f.call_internal("Rerun")
-	if RunOf(url) == "" {
-		return fmt.Errorf("forge: %s names no Actions run, so it cannot be run again", url)
-	}
-	return nil
-}
-
 var _ Forge = (*Fake)(nil)

@@ -389,10 +389,10 @@ What each cause of a land judgement means:
 - `ci_red`: checks completed and at least one failed on its own. "failing" names those; checks
   GitHub says were stopped are named apart as "stopped, not failed (no verdict)".
 - `ci_no_verdict`: CI said nothing about the code. Either every failing check was stopped
-  (killed, `exit code 137` or `143`; cancelled; timed out), and the run already ran those jobs
-  again once (`gh run rerun --failed`) and they were stopped again; or checks were still running
-  after `ci_wait`. Look at the runners and the load before blaming the card; `retry` asks a new
-  landing.
+  (killed, `exit code 137` or `143`; cancelled; timed out), with the first stopped check's
+  failing lines; or checks were still running after `ci_wait`. The sprint never runs CI again:
+  look at the runners and the load before blaming the card (the fix is that jobs are not
+  killed), then `retry` asks a new landing.
 - `ci_fault`: a check that never ran (a workflow that did not start, its checks unreadable).
 - `no-ci`: no check at all appeared within `ci_wait`.
 - `conflict`: a group's merge that conflicts on one card's head is that card's judgement alone,
@@ -402,10 +402,13 @@ What each cause of a land judgement means:
 - `merge_refused`, `pr_unopenable`, `branch_failed`, `missing_head`, `head_moved`, `base_behind`,
   `hand`, `fault`: what their names say, with the facts.
 
-A stopped check is read only from GitHub's own words (the check's conclusion and its failure
-annotations), never from a fleet's: a job killed at a runner's time limit, by the out-of-memory
-killer or by hand all read "killed (exit code 137)", and a run cancelled by a newer one reads as
-cancelled.
+A stopped check is read only from GitHub's own words, never from a fleet's: its conclusion
+(cancelled, timed out), or a stop line ("exit code 137" and the like) only when that is the
+check's one failure annotation. A check with any other failure annotation failed: a test that
+fails and then hangs until it is killed is `ci_red`, never "killed". A job killed at a runner's
+time limit, by the out-of-memory killer or by hand all read "killed (exit code 137)", and a run
+cancelled by a newer one reads as cancelled. "The base itself is red" is said only from the base
+tip's checks that failed on their own, by the same rule.
 
 **You stitch.** Cards that edit the same file run at the same time, so their heads can meet in
 a conflict. That is expected, not a fault of the cards: the group rung merges what merges
@@ -421,10 +424,10 @@ fix: merge it into the base yourself, push, and land it again (a head already on
 at once). Never land a card that is not merging, and never resolve a conflict on a card's branch,
 which no reader has read.
 
-A pending CI, a base that moved, a stopped check's first rerun and a rate-limited forge are asked
-again by the run on their own. A group whose CI is running is never rebuilt or pushed again while
-it runs, whatever the base does: it is judged on the base it was built on, and built again on the
-new tip only once it is green on a base that moved. A merging card with
+A pending CI, a base that moved and a rate-limited forge are asked again by the run on their
+own. A group whose CI is running is never rebuilt or pushed again while it runs, whatever the
+base does: it is judged on the base it was built on, and built again on the new tip only once it
+is green on a base that moved. A merging card with
 no land request and no land judgement is reported to you as an `engine` judgement: answer it
 `retry`, and take it to the project's own tracker.
 

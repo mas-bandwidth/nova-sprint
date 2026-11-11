@@ -128,20 +128,28 @@ card's fault. A land verdict is now taken only from completed checks:
   still pending; failed so far: <names>", a different cause from red.
 - **Stopped is not failed.** Once the checks complete, each failing one is
   read (`forge.Failures`: its conclusion and its failure annotations, one
-  GraphQL call per 100 checks) and those GitHub says were stopped (a
-  conclusion of cancelled or timed out; an annotation "exit code 137",
-  "exit code 143", "exceeded the maximum execution time", "has timed out
-  after", "the operation was canceled") are named apart in the judgement
-  as "stopped, not failed (no verdict): <name> <how>". The words are
-  GitHub's own, never a fleet's: a job killed at a runner's time limit, by
-  the out-of-memory killer or by hand all read "killed (exit code 137)",
-  and a run cancelled by a newer one reads as cancelled. They cannot be told
-  apart from here.
-- **Every failing check stopped.** That is no verdict about the code: the
-  stopped jobs are run again once (`gh run rerun <run> --failed`, one call
-  per distinct run, outcome `ci_rerun`, asked again), and if they are
-  stopped again, or the rerun is refused, it is one `ci_no_verdict`
-  judgement saying so. A request is run again at most once (`reran`).
+  GraphQL call per 100 checks). A check is stopped when its conclusion is
+  cancelled or timed out, or when its one failure annotation is a stop
+  line ("exit code 137", "exit code 143", "exceeded the maximum execution
+  time", "has timed out after", "the operation was canceled"). Any step can
+  write such a line, so a check with any other failure annotation failed:
+  a test that fails and then hangs until it is killed is red, never
+  "killed". Stopped checks are named apart in the judgement as "stopped,
+  not failed (no verdict): <name> <how>". The words are GitHub's own, never
+  a fleet's. Exit 137 is ambiguous: a runner's time limit, the
+  out-of-memory killer and a hand kill all read "killed (exit code 137)",
+  and a run cancelled by a newer one reads as cancelled. They cannot be
+  told apart from here.
+- **Every failing check stopped.** That is no verdict about the code and
+  the coordinator's `ci_no_verdict` judgement at once, with the first
+  stopped check's failing lines. The sprint never runs CI again
+  (LESSONS-PRIORITY-AND-MERGE W19; the owner ruled on 2026-11-11 that the
+  fix is that jobs are not killed).
+- **The base is red only from its own failures.** "The base itself is red
+  on" names only the base tip's checks that failed on their own, by the
+  same rule (one more `forge.Failures` read of the base tip). Its stopped
+  checks are named apart in the reason, and a base whose failing checks
+  were all stopped is not called red.
 - **Red is a check that failed on its own**, after every check completed:
   `ci_red`, with those checks, the first one's URL and its first failing
   lines (read once, from that completed run).
@@ -376,12 +384,10 @@ are left with neither a request nor a judgement). CI takes time in the
 model (`CIStep`: a gate's checks run, may fail while others run, and
 complete green, red or stopped; `Late`: the wait passes), with three more
 invariants: `VerdictOnlyCompleted` (red only from completed checks),
-`RedIsReal` (red only on a tree that is red; a stopped gate is never red)
-and `StoppedRunAgainOnce` (a completed gate is no verdict only after its
-stopped jobs were run again once). Their reversed witnesses:
-`LandEdgeRedWhileRunning` (a failure while checks run is judged red),
-`LandEdgeStoppedIsRed` (stopped jobs read as failed) and
-`LandEdgeStoppedJudgedAtOnce` (no rerun before the no verdict). The gate
+`RedIsReal` (red only on a tree that is red; a stopped gate is never red,
+and is no verdict at once). Their reversed witnesses:
+`LandEdgeRedWhileRunning` (a failure while checks run is judged red) and
+`LandEdgeStoppedIsRed` (stopped jobs read as failed). The gate
 is kept (`Kept`, `LetGo`): `GateKept` (an action property: a gate whose
 CI runs is never replaced while its request is in flight) and, on
 `LiveSpec` (CI that runs completes; `LandEdgeLive.cfg`),
@@ -392,8 +398,9 @@ A conflict names its card (`odd`) and the tick judges that card alone:
 `ConflictJudgesItsCard` (a card judged for a conflict conflicts with
 something), reversed witness `LandEdgeConflictJudgesGroup` (the 2.0.37
 rule: the whole group judged). Reach checks show rung 2, a judgement, a
-hand landing, a red gate, a no verdict, a rerun, a wait that passed, a
-gate kept while base moved, and a group's conflict naming one card. The
+hand landing, a red gate, a no verdict, a wait that passed, a
+gate kept while base moved, a group's conflict naming one card, and a
+base switched under a gate in flight. The
 trace walk plays CI per gate and keeps the gate as the run does, and
 committed breakers are refused at their last record:
 `tla/traces/landedge-breaker-red-while-running` and
@@ -432,11 +439,11 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
 - **Pending CI has no bound of its own.** A check that never leaves pending,
   with none failed, is met by the stall judgement, not by `ci_wait`; one
   failed while others run is bounded by `ci_wait` (`ci_no_verdict`).
-- **A rerun not yet visible.** The pass after `ci_rerun` reads the checks
-  again; if GitHub still shows the old, stopped run there, that pass is the
-  no verdict. Not seen live; a rerun's checks are queued at once.
 - **Why a job was killed is not known here.** Exit 137 is the same for a
-  runner's time limit, the out-of-memory killer and a hand kill.
+  runner's time limit, the out-of-memory killer and a hand kill. A kill
+  that writes a second failure annotation (a fleet's "CI rule" line, or
+  "Process completed with exit code 1.") reads as red, with its failing
+  lines: by design, a real red is never read as no verdict.
 - **Stream mode `group`** is accepted and behaves as `auto`.
 - **A base that moves faster than CI.** A green gate merges only while the
   base is still the tip it was gated on; if the base always moves within

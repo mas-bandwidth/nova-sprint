@@ -35,9 +35,7 @@ type fakeForge_internal struct {
 	OpenErr   error  // OpenPR fails with it
 	ChecksErr error  // Checks fails with it
 	Mergeable string // the PR's mergeable state ("" is MERGEABLE)
-	RerunErr  error  // Rerun fails with it
 	prs       []forge.PRInfo
-	reruns    []string // the urls Rerun was asked
 }
 
 func (f *fakeForge_internal) calls_internal() []string { return f.calls }
@@ -161,16 +159,6 @@ func (f *fakeForge_internal) SetFailures(repo, sha string, fs []forge.Failure) {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
 	f.world.failures[repo+"\x00"+sha] = fs
-}
-
-// Rerun records the url run again; RerunErr fails it.
-func (f *fakeForge_internal) Rerun(_ context.Context, _, url string) error {
-	f.call_internal("Rerun")
-	if f.RerunErr != nil {
-		return f.RerunErr
-	}
-	f.reruns = append(f.reruns, url)
-	return nil
 }
 
 type FakeCommit struct {

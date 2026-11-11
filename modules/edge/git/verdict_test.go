@@ -2,7 +2,6 @@ package git
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -18,8 +17,8 @@ const (
 
 // verdictPass_internal is one rung-1 pass with the gated head's rollup r,
 // the head's failures fs (nil: the rollup's own) and the base tip's rollup
-// base (nil: none reported); reran is LandRequest.Reran.
-func verdictPass_internal(t *testing.T, r forge.CheckRollup, fs []forge.Failure, base *forge.CheckRollup, reran bool) (LandResult, *fakeForge_internal) {
+// base (nil: none reported).
+func verdictPass_internal(t *testing.T, r forge.CheckRollup, fs []forge.Failure, base *forge.CheckRollup) (LandResult, *fakeForge_internal) {
 	t.Helper()
 	gf, ff, root, c1, _ := landWorld_internal()
 	ff.SetCheck("o/r", c1, r)
@@ -30,7 +29,6 @@ func verdictPass_internal(t *testing.T, r forge.CheckRollup, fs []forge.Failure,
 		ff.SetCheck("o/r", root, *base)
 	}
 	req := one_internal(c1)
-	req.Reran = reran
 	res, err := LandPass(context.Background(), gf, ff, req)
 	if err != nil || gf.OriginRef("v2") != root {
 		t.Fatalf("pass %+v err=%v: nothing lands", res, err)
@@ -45,7 +43,7 @@ func verdictPass_internal(t *testing.T, r forge.CheckRollup, fs []forge.Failure,
 func TestLandRedWhileChecksRunIsNoVerdictYet(t *testing.T) {
 	t.Parallel()
 	r := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"lint"}, URL: verdictJob1, Waiting: true, Pending: 67}
-	res, ff := verdictPass_internal(t, r, nil, &forge.CheckRollup{State: forge.CheckRed, Failing: []string{"corpus"}}, false)
+	res, ff := verdictPass_internal(t, r, nil, &forge.CheckRollup{State: forge.CheckRed, Failing: []string{"corpus"}})
 	if res.Outcome != LandOutcome("ci_unfinished") || res.Outcome == OutcomeRed {
 		t.Fatalf("%+v, want ci_unfinished, never ci_red, while checks still run", res)
 	}
@@ -57,7 +55,7 @@ func TestLandRedWhileChecksRunIsNoVerdictYet(t *testing.T) {
 	}
 	// A faulted check while others run is no verdict yet either.
 	r = forge.CheckRollup{State: forge.CheckFault, Failing: []string{"runner"}, Waiting: true, Pending: 3}
-	if res, _ = verdictPass_internal(t, r, nil, nil, false); res.Outcome != LandOutcome("ci_unfinished") {
+	if res, _ = verdictPass_internal(t, r, nil, nil); res.Outcome != LandOutcome("ci_unfinished") {
 		t.Fatalf("%+v, want ci_unfinished for a fault while checks still run", res)
 	}
 }
@@ -67,7 +65,7 @@ func TestLandRedWhileChecksRunIsNoVerdictYet(t *testing.T) {
 func TestLandRedAfterChecksCompletedIsJudged(t *testing.T) {
 	t.Parallel()
 	r := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"unit"}, URL: verdictJob1}
-	res, ff := verdictPass_internal(t, r, nil, nil, false)
+	res, ff := verdictPass_internal(t, r, nil, nil)
 	if res.Outcome != OutcomeRed || !slices.Equal(res.FailingCI, []string{"unit"}) || len(res.FailingLines) == 0 {
 		t.Fatalf("%+v, want ci_red on unit with its lines", res)
 	}
@@ -83,7 +81,7 @@ func TestLandBaseRedOnlyFromItsCompletedChecks(t *testing.T) {
 	t.Parallel()
 	head := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"unit"}, URL: verdictJob1}
 	running := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"luacheck"}, Waiting: true, Pending: 115}
-	res, _ := verdictPass_internal(t, head, nil, &running, false)
+	res, _ := verdictPass_internal(t, head, nil, &running)
 	if res.Outcome != OutcomeRed || len(res.BaseFailing) != 0 {
 		t.Fatalf("%+v, want ci_red with no base red stated while the base's checks run", res)
 	}
@@ -91,12 +89,33 @@ func TestLandBaseRedOnlyFromItsCompletedChecks(t *testing.T) {
 		t.Fatalf("reason %q, want the base still running with its red so far", res.Reason)
 	}
 	pending := forge.CheckRollup{State: forge.CheckPending}
-	if res, _ = verdictPass_internal(t, head, nil, &pending, false); len(res.BaseFailing) != 0 || !strings.Contains(res.Reason, "base CI still running") || !strings.Contains(res.Reason, "0 red so far") {
+	if res, _ = verdictPass_internal(t, head, nil, &pending); len(res.BaseFailing) != 0 || !strings.Contains(res.Reason, "base CI still running") || !strings.Contains(res.Reason, "0 red so far") {
 		t.Fatalf("%+v, want a pending base said as running", res)
 	}
 	done := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"luacheck", "corpus"}}
-	if res, _ = verdictPass_internal(t, head, nil, &done, false); !slices.Equal(res.BaseFailing, done.Failing) {
+	if res, _ = verdictPass_internal(t, head, nil, &done); !slices.Equal(res.BaseFailing, done.Failing) {
 		t.Fatalf("%+v, want the completed base's red stated", res)
+	}
+}
+
+// B with D's rule: the base is called red only from its checks that failed
+// on their own; a base check that was stopped is named apart in the
+// reason, and a base whose failing checks were all stopped is not red.
+func TestLandBaseRedOnlyFromItsOwnFailures(t *testing.T) {
+	t.Parallel()
+	head := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"unit"}, URL: verdictJob1}
+	base := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"corpus", "luacheck"}, URL: verdictJob2}
+	gf, ff, root, c1, _ := landWorld_internal()
+	ff.SetCheck("o/r", c1, head)
+	ff.SetCheck("o/r", root, base)
+	ff.SetFailures("o/r", root, []forge.Failure{{Name: "corpus", URL: verdictJob2, Stop: "killed (exit code 137)"}, {Name: "luacheck", URL: verdictJob3}})
+	res, err := LandPass(context.Background(), gf, ff, one_internal(c1))
+	if err != nil || res.Outcome != OutcomeRed || !slices.Equal(res.BaseFailing, []string{"luacheck"}) || !strings.Contains(res.Reason, "corpus killed (exit code 137)") {
+		t.Fatalf("%+v err=%v, want the base red on luacheck only, corpus said stopped", res, err)
+	}
+	ff.SetFailures("o/r", root, []forge.Failure{{Name: "corpus", URL: verdictJob2, Stop: "killed (exit code 137)"}, {Name: "luacheck", URL: verdictJob3, Stop: "cancelled"}})
+	if res, _ = LandPass(context.Background(), gf, ff, one_internal(c1)); res.Outcome != OutcomeRed || len(res.BaseFailing) != 0 || !strings.Contains(res.Reason, "the base tip's failing checks were all stopped") {
+		t.Fatalf("%+v, want no base red when every failing base check was stopped", res)
 	}
 }
 
@@ -107,29 +126,27 @@ func TestLandStoppedChecksAreNamedApart(t *testing.T) {
 	t.Parallel()
 	r := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"corpus", "unit"}, URL: verdictJob1}
 	fs := []forge.Failure{{Name: "corpus", URL: verdictJob1, Stop: "killed (exit code 137)"}, {Name: "unit", URL: verdictJob3}}
-	res, ff := verdictPass_internal(t, r, fs, nil, false)
+	res, _ := verdictPass_internal(t, r, fs, nil)
 	if res.Outcome != OutcomeRed || !slices.Equal(res.FailingCI, []string{"unit"}) || !slices.Equal(res.Stopped, []string{"corpus killed (exit code 137)"}) || res.CIURL != verdictJob3 {
 		t.Fatalf("%+v, want ci_red on unit at its url, corpus named stopped", res)
 	}
-	if slices.Contains(ff.calls_internal(), "Rerun") {
-		t.Fatal("a red with an own failure ran jobs again")
-	}
 }
 
-// D: every failing check stopped is no verdict about the code: the
-// stopped jobs are run again once, one rerun per Actions run (rerun, asked
-// again), and with Reran set it is the coordinator's no-verdict judgement.
-func TestLandEveryCheckStoppedIsRunAgainOnce(t *testing.T) {
+// D: every failing check stopped is no verdict about the code, and the
+// coordinator's at once: the sprint runs nothing again (LESSONS-PRIORITY-AND-MERGE W19). The
+// judgement names each stopped check and carries the first stopped check's
+// failing lines, its log read once.
+func TestLandEveryCheckStoppedIsNoVerdict(t *testing.T) {
 	t.Parallel()
 	r := forge.CheckRollup{State: forge.CheckRed, Failing: []string{"corpus", "cpp"}, URL: verdictJob1}
 	fs := []forge.Failure{{Name: "corpus", URL: verdictJob1, Stop: "killed (exit code 137)"}, {Name: "cpp", URL: verdictJob2, Stop: "killed (exit code 137)"}, {Name: "lua", URL: verdictJob3, Stop: "cancelled"}}
-	res, ff := verdictPass_internal(t, r, fs, nil, false)
-	if res.Outcome != LandOutcome("ci_rerun") || !slices.Equal(ff.reruns, []string{verdictJob1, verdictJob3}) || slices.Contains(ff.calls_internal(), "FailedLines") {
-		t.Fatalf("%+v, reruns %v, calls %v: want ci_rerun with runs 11 and 12 asked once each and no log read", res, ff.reruns, ff.calls_internal())
+	res, ff := verdictPass_internal(t, r, fs, nil)
+	calls := ff.calls_internal()
+	if res.Outcome != LandOutcome("ci_no_verdict") || len(res.FailingCI) != 0 {
+		t.Fatalf("%+v, calls %v: want ci_no_verdict at once, nothing run again, nothing named failing", res, calls)
 	}
-	res, ff = verdictPass_internal(t, r, fs, nil, true)
-	if res.Outcome != LandOutcome("ci_no_verdict") || len(ff.reruns) != 0 || len(res.FailingCI) != 0 || !strings.Contains(res.Reason, "already run again once") {
-		t.Fatalf("%+v, reruns %v: want ci_no_verdict, no second rerun, nothing named failing", res, ff.reruns)
+	if !slices.Equal(res.FailingLines, []string{"--- FAIL: TestX", "FAIL"}) || res.CIURL != verdictJob1 || len(slices.DeleteFunc(calls, func(c string) bool { return c != "FailedLines" })) != 1 {
+		t.Fatalf("lines %v at %s: want the first stopped check's failing lines, read once", res.FailingLines, res.CIURL)
 	}
 	for _, want := range []string{"corpus killed (exit code 137)", "lua cancelled"} {
 		if !slices.Contains(res.Stopped, want) {
@@ -138,30 +155,21 @@ func TestLandEveryCheckStoppedIsRunAgainOnce(t *testing.T) {
 	}
 }
 
-// D: a cancelled-only rollup (a fault) is no verdict too, run again once;
-// a rerun GitHub refuses leaves the no-verdict judgement with its reason,
-// and a rate-limited one waits (forge_rested).
-func TestLandStoppedRerunRefusedOrRested(t *testing.T) {
+// D: a cancelled-only rollup (a fault) is no verdict too, at once, with
+// its failing lines; a faulted check that was not stopped (a workflow that
+// never started) stays the coordinator's ci_fault, at once.
+func TestLandCancelledOnlyIsNoVerdict(t *testing.T) {
 	t.Parallel()
 	r := forge.CheckRollup{State: forge.CheckFault, Failing: []string{"lua"}, URL: verdictJob3}
-	fs := []forge.Failure{{Name: "lua", URL: verdictJob3, Stop: "cancelled"}}
 	gf, ff, root, c1, _ := landWorld_internal()
 	ff.SetCheck("o/r", c1, r)
-	ff.SetFailures("o/r", c1, fs)
-	ff.RerunErr = errors.New("HTTP 403: Resource not accessible by integration")
+	ff.SetFailures("o/r", c1, []forge.Failure{{Name: "lua", URL: verdictJob3, Stop: "cancelled"}})
 	res, err := LandPass(context.Background(), gf, ff, one_internal(c1))
-	if err != nil || res.Outcome != LandOutcome("ci_no_verdict") || !strings.Contains(res.Reason, "run 12 could not be run again") || gf.OriginRef("v2") != root {
-		t.Fatalf("%+v err=%v, want ci_no_verdict saying the rerun failed", res, err)
+	if err != nil || res.Outcome != LandOutcome("ci_no_verdict") || len(res.FailingLines) == 0 || gf.OriginRef("v2") != root {
+		t.Fatalf("%+v err=%v, want ci_no_verdict with its lines and nothing run again", res, err)
 	}
-	ff.RerunErr = &forge.FaultError{Kind: forge.FaultRateLimit, Reason: "HTTP 403: API rate limit exceeded"}
-	if res, err = LandPass(context.Background(), gf, ff, one_internal(c1)); err != nil || res.Outcome != OutcomeRested {
-		t.Fatalf("%+v err=%v, want forge_rested", res, err)
-	}
-	// A faulted check that was not stopped (a workflow that never started)
-	// stays the coordinator's ci_fault, at once.
-	ff.RerunErr = nil
 	ff.SetFailures("o/r", c1, []forge.Failure{{Name: "lua", URL: verdictJob3}})
-	if res, _ = LandPass(context.Background(), gf, ff, one_internal(c1)); res.Outcome != OutcomeCIFault || len(ff.reruns) != 0 {
-		t.Fatalf("%+v, want ci_fault and nothing run again", res)
+	if res, _ = LandPass(context.Background(), gf, ff, one_internal(c1)); res.Outcome != OutcomeCIFault {
+		t.Fatalf("%+v, want ci_fault", res)
 	}
 }

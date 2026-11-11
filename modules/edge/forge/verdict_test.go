@@ -65,6 +65,11 @@ func TestPrimaryRateLimitRestsUntilTheReset(t *testing.T) {
 	}
 }
 
+// A check is stopped by GitHub's conclusion (CANCELLED, TIMED_OUT), or by a
+// stop line only when that line is the check's one failure annotation: any
+// step can write such text, so a check with any other failure annotation
+// failed (a test that fails and then hangs to a kill is red, never
+// "killed").
 func TestStopOfReadsGitHubsOwnWordsOnly(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -73,7 +78,11 @@ func TestStopOfReadsGitHubsOwnWordsOnly(t *testing.T) {
 		want       string
 	}{
 		{"FAILURE", []string{"Process completed with exit code 137."}, "killed (exit code 137)"},
-		{"FAILURE", []string{"Process completed with exit code 1.", "CI rule: per-commit jobs finish in 2m", "Process completed with exit code 137."}, "killed (exit code 137)"},
+		{"FAILURE", []string{"Process completed with exit code 1.", "CI rule: per-commit jobs finish in 2m", "Process completed with exit code 137."}, ""},
+		{"FAILURE", []string{"--- FAIL: TestWalk (3.20s)", "Process completed with exit code 137."}, ""},
+		{"FAILURE", []string{"Process completed with exit code 137.", "Process completed with exit code 1."}, ""},
+		{"FAILURE", []string{"The job running on runner r1 has exceeded the maximum execution time of 5 minutes.", "The operation was canceled."}, ""},
+		{"CANCELLED", []string{"--- FAIL: TestWalk (3.20s)"}, "cancelled"},
 		{"FAILURE", []string{"Process completed with exit code 143."}, "terminated (exit code 143)"},
 		{"FAILURE", []string{"The job running on runner r1 has exceeded the maximum execution time of 5 minutes."}, "timed out (the job's time limit)"},
 		{"FAILURE", []string{"The action 'unit' has timed out after 2 minutes."}, "timed out (a step's time limit)"},
@@ -119,20 +128,6 @@ func TestFailuresReadsEachChecksAnnotations(t *testing.T) {
 	want := []Failure{{"corpus", "u1", "killed (exit code 137)"}, {"unit", "u2", ""}, {"lua", "u3", "cancelled"}, {"ext", "u4", ""}}
 	if err != nil || !slices.Equal(got, want) || len(*calls) != 2 {
 		t.Fatalf("Failures = %+v (%v) in %d calls, want %+v in 2", got, err, len(*calls), want)
-	}
-}
-
-// Rerun asks GitHub to run the failed jobs of the run a check's url names,
-// one REST call; a url that names no run is refused without a call.
-func TestRerunRunsTheFailedJobsOfTheRun(t *testing.T) {
-	t.Parallel()
-	now := int64(1000)
-	c, calls := ghClient_internal(&now, func([]string) edge.Result { return edge.Result{} })
-	if err := c.Rerun(context.Background(), "o/r", "https://github.com/o/r/actions/runs/42/job/7"); err != nil || !slices.Equal(*calls, []string{"run rerun 42 --failed --repo o/r"}) {
-		t.Fatalf("Rerun: %v, calls %q", err, *calls)
-	}
-	if err := c.Rerun(context.Background(), "o/r", "https://ci.example/status/1"); err == nil || len(*calls) != 1 {
-		t.Fatalf("a url with no run: %v, calls %q", err, *calls)
 	}
 }
 
