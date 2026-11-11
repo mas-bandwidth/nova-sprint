@@ -102,6 +102,9 @@ func workerLogFix(u WorkerUnit) string {
 type rowView struct {
 	store.Row
 	Worker *workerView `json:"worker,omitempty"`
+	// RosterUnread is why nova-config's roster could not be read: show
+	// cannot tell a friend from a bench then, so it applies no bench check.
+	RosterUnread string `json:"roster_unread,omitempty"`
 }
 
 // workerView is a bench's unit with check's red line for it, when any.
@@ -116,6 +119,14 @@ type workerView struct {
 // does not answer (check's bus line says so).
 func (e *Engine) showRow(ctx context.Context, row store.Row, snap store.Snapshot) any {
 	if e.Doctor == nil {
+		return row
+	}
+	// Bench-only checks never judge a friend row (docs/README.md "Hard
+	// requirements" 3): a friend is the row alone, and with the roster
+	// unreadable no row is read as a bench.
+	if friend, err := e.isFriend(ctx, row.Name); err != nil {
+		return rowView{Row: row, RosterUnread: errText(err)}
+	} else if friend {
 		return row
 	}
 	u, isBench, err := e.Doctor.Worker(ctx, row.Name)
@@ -134,4 +145,18 @@ func (e *Engine) showRow(ctx context.Context, row store.Row, snap store.Snapshot
 		view.Problem, view.Fix = f.What, f.Fix
 	}
 	return rowView{Row: row, Worker: view}
+}
+
+// isFriend says whether nova-config's roster names row a friend, and the
+// error when the roster cannot be read. No roster configured is no friend.
+func (e *Engine) isFriend(ctx context.Context, row string) (bool, error) {
+	if e.Roster == nil {
+		return false, nil
+	}
+	ro, err := e.Roster.ReadRosterAt(ctx, 1) // the width cap moves no name in or out of Kin
+	if err != nil {
+		return false, err
+	}
+	_, kin := ro.Kin[row]
+	return kin, nil
 }

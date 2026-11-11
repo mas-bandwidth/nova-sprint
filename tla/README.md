@@ -1613,3 +1613,50 @@ below the code's 5 tries), and records each read, apply and other write as a
 `VerbFenceTrace.tla` step; `make-traces.sh check verbs` checks them. The
 breaker (`tla/traces/verbfence-breaker/`) is a verb that plans again after
 the old card changed under it, and commits: refused at 5 of 6 (the re-read).
+
+# A row's up, down and hand (RowAlive.tla, layers 3 and 6)
+
+`RowAlive.tla` holds the sprint's hard requirements 1 and 2
+(docs/README.md "Hard requirements"), for friend and bench rows alike: a row
+is up while its bus hook is on nova-bus (modules/run/tick.go `raiseSeen`) and
+down after `Bound` ticks off it (modules/steps/limits.go `rowLimits`, the
+`row_silent_gone` timeout); the Gone and the coordinator's hold return the
+row's hand in the same op (modules/steps/holds.go `handMoves`), and a card in
+the queue is dealt to a row that is open. Time moves only when no tick step is
+due. Kinds are not modelled because no rule reads a row's kind for up or down:
+v2.0.36 to v2.0.41 raised a friend only on a `pong` its model ran by hand,
+which is the `ManualUp` witness.
+
+The closing op does not return every card: those an earlier step of the tick
+claimed, whose producer is not free, whose withdraw is refused, or that were
+dealt between the read the close was planned on and its commit stay on the
+closed row (`Skip`, `RaceDeal`) and are returned by the holds step of the next
+tick that can touch them (`Sweep`). Two stated exceptions to the silence rule
+are modelled as the code has them: a tick whose `nova-bus who` read failed
+moves every row's last-seen forward (`UnreadAdvance`), and a run restart counts
+every row's silence afresh (`Restart`).
+
+Invariants: `HookedWhileUp` (no row up past `Bound` of silence as the run
+counts it), `HandEmptyWhenClosed` (a down or held row holds only cards its
+closing op could not touch this tick, or cards owed to this tick's holds),
+`ReturnedByNextTick` (an owed card is gone by the end of the first later tick
+that can touch it); liveness `AutoUp` (a down row whose hook is on the bus
+comes up, unless the hook leaves first) and `Redealt` (a queued card is dealt
+while some row is open), under weak fairness of the run's own steps only.
+
+    RowAlive.cfg              Bound 2, MaxClock 6, MaxEnv 4         pass (282,786 states, depth 21)
+    RowAliveManualUp.cfg      up only on an answer (v2.0.36-41)     AutoUp violated
+    RowAliveNoGone.cfg        no Gone                               HookedWhileUp violated
+    RowAliveGoneKeeps.cfg     the Gone keeps the hand               HandEmptyWhenClosed violated
+    RowAliveHoldKeeps.cfg     the hold keeps the hand               HandEmptyWhenClosed violated
+    RowAliveNoSweep.cfg       no holds step on the next tick        ReturnedByNextTick violated
+    RowAliveNoRedeal.cfg      a returned card is never dealt again  Redealt violated
+    RowAliveNeverDown.cfg     reach: a row goes down                violated
+    RowAliveNeverBack.cfg     reach: a row comes back up by itself  violated
+    RowAliveNeverOwed.cfg     reach: a skipped card is owed a tick  violated
+
+The tests beside it: modules/run/rowalive_test.go (each requirement, for a
+friend and a bench; the closing op read from the store's log, red when
+handMoves keeps the hand). Trace binding is owed: the code's walk does not
+emit RowAlive traces, so the model is checked against the code by hand and by
+those tests only, as KinAlive was before it.

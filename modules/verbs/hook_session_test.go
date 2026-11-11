@@ -83,8 +83,8 @@ func TestHookNeverChangesRoleInPlace(t *testing.T) {
 }
 
 // A row whose bus hook was started again mid-card gets "hook in first" on
-// its next verb, hooks, and goes on with its hand as it was: take, pong,
-// finish and read.
+// its next verb, hooks, and goes on with its hand as it was: take, finish
+// and read.
 func TestBusHookRestartKeepsTheHand(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
@@ -94,7 +94,6 @@ func TestBusHookRestartKeepsTheHand(t *testing.T) {
 		args []string
 	}{
 		{"alice", []string{"take", "p1.w1@1"}},
-		{"alice", []string{"pong", "--nonce", "a1b2"}},
 		{"alice", []string{"finish", "p1.w1@1", "--head", head, "--cost", "0.04"}},
 		{"bob", []string{"read", "p2.r1@1", "yes", "--cost", "0.04"}},
 	}
