@@ -94,10 +94,14 @@ non-green, non-absent gate is one judgement (`red`) in the model.
 The landing does nothing else on a red base, but the coordinator is told
 once for the base itself (2026-11-10): the run reads each watched base tip's
 checks (one read per repository and base and tip, only while its streams
-have live cards; a running tip on the landing's cadence) and a tip that
-completed red is one `base-red` judgement pushed as NEEDS YOU, naming the
+have live cards; a running tip on the landing's cadence, up to `CIWait`)
+and a tip that
+completed red (or showed a failure and waited `CIWait`) is one `base-red`
+judgement pushed as NEEDS YOU, naming the
 streams and cards behind it and saying to fix the base before anything
-else. It clears when a later tip completes green (LAYER-3-STEPS
+else. A land pass that reads its base tip red tells the watch, so a tip
+that read green and later failed (a nightly, a re-run) is read again. It
+clears when a later tip completes green (LAYER-3-STEPS
 "Judgements"; `tla/BaseRed.tla`).
 
 ### land: the hand merge

@@ -135,7 +135,8 @@ present or has a named reason (held, away, broken) that you are repairing.
 
 What each judgement kind asks of you, and where to look before you choose:
 
-- `base-red`: a base the streams land on is red: its tip's checks completed with failures. One
+- `base-red`: a base the streams land on is red: its tip's checks completed with failures (or a
+  check failed and the rest have run past the landing's CI wait). One
   per repository and base (`about` is `<repo>@<base>`), however many streams share it, and it
   comes first in `next`. It names the tip, the red checks, the first failing lines of up to
   three failing jobs, since when it has been red, and the streams and their cards behind it.
@@ -144,7 +145,11 @@ What each judgement kind asks of you, and where to look before you choose:
   itself until the base is green. Then answer `retry`: the run reads the tip's checks again. It
   clears by itself when a later tip is green; a different red (other checks, other jobs) is
   pushed again as its next episode; unanswered, it escalates like the others. The sprint holds,
-  stops and deals nothing differently because of it: the fix is yours (section 5).
+  stops and deals nothing differently because of it: the fix is yours (section 5). When it says
+  red since only since the run began watching the base, it may have been red for longer.
+- Any watch judgement (one whose one choice is `retry`) that you answer stays quiet while its
+  cause still holds, for the judgement timeout (one hour by default); then it reopens as `STILL
+  HOLDS <d> after your answer: ...`. Answering `retry` is "I am on it", not "it is fixed".
 - `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unhold`, or `drop`. An unhold gives the card a full fresh bounce budget (the limit

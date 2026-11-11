@@ -314,7 +314,9 @@ for each candidate, and the engine refuses one below the card's tier.
 - `base-red` (`modules/steps/basered.go`; 2026-11-10, a base red for
   eleven days with no push): layer 6 reads each watched base tip's checks
   (`run.BaseWatch`) and passes the last completed read per repository and
-  base in `Inputs.Bases`. A red read (a check failed, none still running)
+  base in `Inputs.Bases`. A red read (a check failed and none still
+  running, or a check failed and the tip has waited `CIWait`, the
+  landing's bound; a tip still running is not polled past it)
   with live producers on its streams has one open `base-red` about
   `<repo>@<base>`, choice `retry`: the tip, the red checks, the first
   failing lines of up to three jobs, the first red tip of the stretch and
@@ -322,10 +324,18 @@ for each candidate, and the engine refuses one below the card's tier.
   and "the base is red: fix it now, before anything else". The same red set
   at another tip is the same judgement; a changed red set expires it naming
   the next episode, opened in the same op; a green read clears it; no read
-  (pending, rested, failed) neither opens nor clears. Answered, the same red
+  (pending, rested, failed) neither opens nor clears; a base that leaves the
+  watch (no live cards) forgets its read, and a land pass that finds the
+  base red at a tip that read green reads it again. Answered, the same red
   set stays quiet for the judgement timeout, then opens `STILL RED`.
   Nothing is held, stopped or dealt differently: the push only (v1's
-  TickBaseCI; `tla/BaseRed.tla`).
+  TickBaseCI; `tla/BaseRed.tla`, bound to the code by the trace walk
+  `modules/run/basered_trace_test.go`).
+- Answered watch judgements (a kind whose one choice is `retry`;
+  `judge`, 2026-11-10: a stall answered `retry` reopened seconds later,
+  again and again): one answered while its cause still holds stays quiet
+  for the judgement timeout, then reopens as `STILL HOLDS <d> after your
+  answer: ...` (`tla/AnsweredQuiet.tla`).
 - Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 
