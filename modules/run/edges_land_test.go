@@ -182,6 +182,11 @@ func TestLandWaitsOutARateLimitedForge(t *testing.T) {
 	if again, _ := askAgain_internal(git.LandResult{Outcome: git.OutcomeRested}, nil, 0, time.Minute); !again {
 		t.Fatal("a rate-limited pass is not asked again")
 	}
+	// A rest is no fact about the gated sha's CI: the time it has had no
+	// check at all is kept, neither restarted nor counted on.
+	if again, absent := askAgain_internal(git.LandResult{Outcome: git.OutcomeRested}, nil, 2*LandPoll, 5*LandPoll); !again || absent != 2*LandPoll {
+		t.Fatalf("a rested pass after 2 absent ones: again %v, absent %s; want true and %s kept", again, absent, 2*LandPoll)
+	}
 	landed, pauses := false, 0
 	var said []string
 	e := &Edges{Git: restGit{landed: &landed}, Forge: limitedForge{}, ReposDir: t.TempDir(),

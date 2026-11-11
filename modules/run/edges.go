@@ -185,13 +185,16 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 // moved after the gate and a forge GitHub rate-limited are asked again (a
 // resting forge refuses its calls without making them, so those passes
 // spend nothing); an absent CI only until wait, after which the pass goes
-// to layer 3 as no-ci.
+// to layer 3 as no-ci. A rested pass read no CI, so it keeps absent as it
+// was: a rest neither restarts the no-CI clock nor counts on it.
 func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, 0
 	}
 	switch res.Outcome {
-	case git.OutcomePending, git.OutcomeBaseMoved, git.OutcomeRested:
+	case git.OutcomeRested:
+		return true, absent
+	case git.OutcomePending, git.OutcomeBaseMoved:
 		return true, 0
 	case git.OutcomeAbsent:
 		absent += LandPoll
