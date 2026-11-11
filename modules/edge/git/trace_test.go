@@ -64,6 +64,8 @@ func newWalkReq_internal(cards []string, st string) walkReq_internal {
 type landWalk_internal struct {
 	t      *testing.T
 	rng    *rand.Rand
+	rest   *rand.Rand // the forge's rate-limit draws, a stream of their own so the walk's other draws keep their seeds
+	rested int        // passes the forge's rate limit rested
 	g      *Fake
 	ff     *walkForge_internal
 	heads  map[string]string
@@ -147,7 +149,7 @@ func (f *walkForge_internal) Failures(_ context.Context, _, sha string) ([]forge
 
 func newLandWalk_internal(t *testing.T, seed int64) *landWalk_internal {
 	g := NewFake(nil)
-	w := &landWalk_internal{t: t, rng: rand.New(rand.NewSource(seed)), g: g, heads: map[string]string{},
+	w := &landWalk_internal{t: t, rng: rand.New(rand.NewSource(seed)), rest: rand.New(rand.NewSource(seed + 200)), g: g, heads: map[string]string{},
 		cs: map[string]string{}, req: map[string]walkReq_internal{}, js: map[string]bool{}, held: map[string]bool{}}
 	w.ff = &walkForge_internal{fakeForge_internal: newFakeForge_internal(), w: w}
 	init := g.AddCommit("", map[string]string{"README.md": "init\n", "shared.txt": "init\n"}, "main")
@@ -290,7 +292,7 @@ var walkOutcomes = map[LandOutcome]string{OutcomeLanded: "landed", OutcomeConfli
 // outcome (layer 6, as edges.land: pending and unfinished are asked again,
 // unfinished after the wait is no verdict).
 func (w *landWalk_internal) pass_internal(s string) {
-	w.passWith_internal(s, w.rng.Intn(8) == 0, w.extCount_internal() < walkK && w.rng.Intn(6) == 0, w.rng.Intn(6) == 0, w.rng.Intn(8) == 0)
+	w.passWith_internal(s, w.rng.Intn(8) == 0, w.extCount_internal() < walkK && w.rng.Intn(6) == 0, w.rng.Intn(6) == 0, w.rest.Intn(8) == 0)
 }
 
 // passWith_internal is pass_internal with the forge's choices given: absent
@@ -330,6 +332,7 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, re
 		w.req[s] = r
 		return
 	case OutcomeRested:
+		w.rested++
 		w.req[s] = r // a rate-limited forge: asked again, its gate kept, nothing read
 		return
 	case OutcomeConflict:
@@ -466,6 +469,9 @@ func walkLandEdge_internal(t *testing.T, seed int64) (string, []string) {
 	}
 	if !w.done_internal() {
 		t.Fatalf("seed %d: the walk did not finish in 1000 steps: %v", seed, w.cs)
+	}
+	if w.rested > 0 {
+		acts = append(acts, "rested") // not an action: a Pass the forge's rate limit rested
 	}
 	return traceModule_internal(records), acts
 }
@@ -674,7 +680,7 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd"} {
+	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd", "rested"} {
 		if !seen[want] {
 			t.Errorf("the walks never reached %s", want)
 		}
