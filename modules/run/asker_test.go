@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,6 +35,28 @@ func TestNoDealNamesTheStoredVersionToActivate(t *testing.T) {
 		must(t, f, "policy "+string(rune('0'+i)), store.PutPolicy{Kind: "script", Name: "p", Body: "p" + string(rune('0'+i))})
 	}
 	assert.Equal(t, 3, tk.storedPolicy(context.Background()), "the newest stored version")
+}
+
+// asked is an Asking that keeps the questions it was asked.
+type asked struct{ q policy.Questions }
+
+func (a *asked) AnswerContext(_ context.Context, _ policy.Versions, _ store.Snapshot, _ roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
+	a.q = q
+	return policy.Answers{}, nil
+}
+
+// TestAskOffersPolicyTheDealsCandidates: each rows question reaches policy
+// with the candidates layer 3 built for it, by name, an empty list too, so
+// policy offers a version the rows the deal accepts and no others (a row up
+// in the store and off the bus was offered, named and the answer refused;
+// tla/Steps.tla OfferedIsAccepted).
+func TestAskOffersPolicyTheDealsCandidates(t *testing.T) {
+	t.Parallel()
+	p := &asked{}
+	(&asker{ctx: context.Background(), policy: p}).Ask(steps.Questions{Rows: []steps.RowsQuestion{
+		{Card: steps.CardFacts{ID: "p1"}, Kind: "work", Candidates: []steps.RowFacts{{Name: "r4"}}},
+		{Card: steps.CardFacts{ID: "p5"}, Kind: "read"}}})
+	assert.Equal(t, map[policy.RowsQuestion][]string{{Card: "p1", Kind: "work"}: {"r4"}, {Card: "p5", Kind: "read"}: {}}, p.q.Candidates)
 }
 
 // TestStepsAnswersAttributesFailuresToTheirOwnVersion: v5 failed its verdict
