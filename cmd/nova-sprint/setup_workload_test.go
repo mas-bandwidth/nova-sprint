@@ -169,6 +169,38 @@ func TestWorkersBehindThisBuildAreRestartedOnce(t *testing.T) {
 	}
 }
 
+// A worker behind this build whose bench's binary on disk is old too (its
+// install failed, or up runs from a newer binary than the fleet's) is never
+// restarted: it would give back its hand and come back on the same old
+// binary, on every up. It is named with the install that fixes it; a bench
+// whose disk binary is this build is restarted as before.
+func TestABehindWorkerOnAnOldDiskBinaryIsNamedNotRestarted(t *testing.T) {
+	t.Parallel()
+	f := &fleetFake{machines: workloadMachines, rows: 3}
+	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Session: "s1", Version: "v2.0.36"}, "amd-2": {Name: "amd-2", State: "up", Session: "s2", Version: "v2.0.36"}}
+	w := testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
+	w.release = "v2.0.37"
+	w.version = func(_ context.Context, bench string) error {
+		if bench == "amd-1" {
+			return &verbs.OperationError{Problem: "amd-1's nova-sprint is v2.0.36, not v2.0.37", Fix: "nova-fleet install --repo mas-bandwidth/nova-sprint --tag v2.0.37 amd-1", Exit: 1}
+		}
+		return nil
+	}
+	w.pause = func(context.Context, time.Duration) error { // amd-2's restarted process hooks a new session
+		rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Session: "s3"}
+		return nil
+	}
+	err := w.InstallWorkers(context.Background())
+	var nr *verbs.WorkloadNotReady
+	if !errors.As(err, &nr) || !strings.Contains(nr.Why, "amd-1") || !strings.Contains(nr.Fix, "nova-fleet install") || strings.Contains(nr.Why, "amd-2") {
+		t.Fatalf("err %v, want a refusal naming amd-1 only, with the install", err)
+	}
+	play := []string{"nova-fleet", "services", "--", "-l", "amd-1,amd-2", "-e", "nova_service_only=sprint-worker-amd-1,sprint-worker-amd-2", "-e", "nova_service_restart=sprint-worker-amd-2"}
+	if last := f.calls[len(f.calls)-1]; !slices.Equal(last, play) {
+		t.Fatalf("play %q, want %q: amd-1 is not restarted, amd-2 is", last, play)
+	}
+}
+
 // A worker hooked but not yet beaten (a new session clears the row's
 // build) is waited for, beatWait at most, then named; it is never restarted.
 func TestWorkerNotYetBeatenIsWaitedForNeverRestarted(t *testing.T) {
