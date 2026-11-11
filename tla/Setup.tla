@@ -28,8 +28,9 @@ EXTENDS Naturals, Sequences, FiniteSets
 
  The workload steps, bound to cmd/nova-sprint/setup_workload.go by
  TestWorkloadStepsMatchTheSetupModel (every state of a two-bench fleet):
- world[StepWorkers] is every worker bench on the bus and up in the store
- (WorkersReady); world[StepSmoke] is world[StepWorkers] and every worker
+ world[StepWorkers] is every worker bench on the bus, up in the store and
+ beating this build's release (WorkersReady; Do restarts a worker beating
+ an older one); world[StepSmoke] is world[StepWorkers] and every worker
  bench with cores, so dealable once the sprint starts (SmokeReady; a fresh
  sprint is stopped until start, so up deals no card itself). Do at
  StepWorkers writes the worker service records and applies them;

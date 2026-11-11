@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
@@ -114,7 +115,7 @@ type productionWorkload struct {
 	present  func(context.Context) (map[string]bool, error)
 	lastLine func(ctx context.Context, machine, service string) string
 	version  func(ctx context.Context, machine string) error // nil: this bench runs this binary's version
-	release  string // this build's release: a worker beating an older one is restarted
+	release  string                                          // this build's release: a worker beating an older one is restarted
 }
 
 // ServicesReady is true: the services step's keys are proven by their model probe
@@ -149,15 +150,26 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	if runAddress == "" && (loopbackAddr(w.run.Env["NOVA_PG_DSN"]) || loopbackAddr(w.run.Env["NOVA_BUS_REDIS"])) {
 		return &verbs.OperationError{Problem: "the store or bus is on loopback on run machine " + w.run.Machine + ", which has no fleet address in the machine inventory, so no bench could reach it", Fix: "nova-config machine set " + w.run.Machine + " --address <MagicDNS name> --actor <you> --reason <why>, then nova-sprint up again", Exit: 1}
 	}
-	names := make([]string, 0, len(benches))
+	snap, err := w.store.Snapshot(ctx)
+	if err != nil {
+		return edge.Cause("cannot read the store", err)
+	}
+	names, restart := make([]string, 0, len(benches)), []string{}
 	for _, bench := range benches {
 		s := workerService(bench, w.run, runAddress)
 		if _, err = w.services.Ensure(ctx, s); err != nil {
 			return err
 		}
 		names = append(names, s.Name)
+		if w.behind(snap.Rows[bench]) {
+			restart = append(restart, s.Name)
+		}
 	}
-	_, err = w.services.Command(ctx, "nova-fleet", "services", "--", "-l", strings.Join(benches, ","), "-e", "nova_service_only="+strings.Join(names, ","))
+	args := []string{"services", "--", "-l", strings.Join(benches, ","), "-e", "nova_service_only=" + strings.Join(names, ",")}
+	if len(restart) > 0 { // its unit file is unchanged, so only naming it restarts it onto the binary on disk
+		args = append(args, "-e", "nova_service_restart="+strings.Join(restart, ","))
+	}
+	_, err = w.services.Command(ctx, "nova-fleet", args...)
 	if err != nil {
 		return verbs.RefusalOr(err, &verbs.OperationError{Problem: edge.RedactN("nova-fleet services for the workers on "+strings.Join(benches, ",")+" failed: "+err.Error(), edge.FailureMax+400), Fix: "fix what it says for each machine it names (nova-fleet check), or take the bench role off a machine that is gone, then nova-sprint up again", Exit: 1})
 	}
@@ -169,9 +181,18 @@ type benchState struct {
 	name, row string // row: the store row's state, "no row" when absent
 	hooked    bool   // its name is on the bus
 	cores     *int
+	beat      string // the release its row's beat reports
+	behind    bool   // up and beating a release older than this build's
 }
 
 func (b benchState) up() bool { return b.hooked && b.row == "up" }
+
+// behind is a worker row up and beating a release older than this build's
+// (roster.Behind, as the run and check compare it): its process predates
+// the binary on disk, and only a restart puts it on this build.
+func (w productionWorkload) behind(r store.Row) bool {
+	return r.State == "up" && roster.Behind(r.Version, w.release)
+}
 
 // benchStates reads every worker bench's bus presence, store row and cores
 // in one inventory read, one snapshot and one nova-bus who.
@@ -195,17 +216,19 @@ func (w productionWorkload) benchStates(ctx context.Context) ([]benchState, erro
 	var states []benchState
 	for _, bench := range verbs.WorkerBenches(machines) {
 		row := "no row"
-		if r, ok := snap.Rows[bench]; ok {
+		r, ok := snap.Rows[bench]
+		if ok {
 			row = r.State
 		}
-		states = append(states, benchState{name: bench, row: row, hooked: present[bench], cores: cores[bench]})
+		states = append(states, benchState{name: bench, row: row, hooked: present[bench], cores: cores[bench], beat: r.Version, behind: w.behind(r)})
 	}
 	return states, nil
 }
 
 // WorkersReady is every worker bench hooked on the bus and up in the
-// store, and running this binary's version; else the benches that are not,
-// each with its unit's last log line. A worker probes its harness with the
+// store, its nova-sprint on disk this binary's version and its beat at
+// this build's release; else the benches that are not, each with its
+// unit's last log line or the release it beats. A worker probes its harness with the
 // policy's models, its seat's provider keys in hand, before it hooks
 // (worker.Runner.ServeRow), so hooked and up is probed (admission, intent
 // rule 34).
@@ -223,7 +246,19 @@ func (w productionWorkload) WorkersReady(ctx context.Context) (bool, error) {
 	if len(down) > 0 {
 		return false, &verbs.WorkloadNotReady{Why: w.downWhy(ctx, down), Fix: "read the unit's log on each bench named (~/" + serviceLogPath("sprint-worker-<bench>") + ") and fix what it says (a probe refusal names the model or key it lacks), or take the bench role off a machine that is gone; then nova-sprint up again"}
 	}
-	return w.versionsReady(ctx, states)
+	if ok, err := w.versionsReady(ctx, states); !ok {
+		return ok, err
+	}
+	var behind []string
+	for _, b := range states {
+		if b.behind {
+			behind = append(behind, b.name+" runs "+cmp.Or(b.beat, "no release")+" (its beat), below this build's "+w.release)
+		}
+	}
+	if len(behind) > 0 {
+		return false, &verbs.WorkloadNotReady{Why: strings.Join(behind, "; "), Fix: "nova-sprint up again: its workers step restarts each worker named through nova-fleet services, and each beats its release once it hooks again"}
+	}
+	return true, nil
 }
 
 // versionsReady is every bench's nova-sprint at this binary's version, the

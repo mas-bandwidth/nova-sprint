@@ -21,7 +21,7 @@ func TestVersionAdoptionJudgesTheBuild(t *testing.T) {
 	t.Parallel()
 	calls := []string{}
 	installed := "v2.0.0"
-	a := VersionAdoption{Binary: "/bin/nova-sprint", Running: "v2.0.0", ResolvePath: func() (string, error) { return "/bin/nova-sprint", nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+	a := VersionAdoption{Binary: "/bin/nova-sprint", Running: "v2.0.0", ResolvePath: func() (string, error) { return "/bin/nova-sprint", nil }, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, strings.Join(append([]string{name}, args...), " "))
 		if args[0] == "version" {
 			return versionOutput(t, installed), nil
@@ -55,7 +55,7 @@ func TestAdoptionCommandsAreAllParseable(t *testing.T) {
 	t.Parallel()
 	const binary = "/bin/nova-sprint"
 	var argvs [][]string
-	a := VersionAdoption{Binary: binary, Running: "v2.0.0", ResolvePath: func() (string, error) { return binary, nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+	a := VersionAdoption{Binary: binary, Running: "v2.0.0", ResolvePath: func() (string, error) { return binary, nil }, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch {
 		case name == binary:
 			argvs = append(argvs, args)
