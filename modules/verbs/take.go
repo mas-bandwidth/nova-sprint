@@ -23,23 +23,29 @@ import (
 // timeouts().consumer[tier], Forge the stream's, CommitName and CommitEmail
 // the sprint's; the worker holds none of its own.
 type takeReceipt struct {
-	Consumer  string   `json:"consumer"`
-	Producer  string   `json:"producer"`
-	Kind      string   `json:"kind"`
-	Stream    string   `json:"stream"`
-	Repo      string   `json:"repo"`
-	Base      string   `json:"base"`
-	Branch    string   `json:"branch"`
-	Head      string   `json:"head"`
-	Tier      string   `json:"tier"`
-	Brief     string   `json:"brief"`
-	Prose     string   `json:"prose"`
-	Finding   string   `json:"finding"`
-	StreamRef string   `json:"stream_ref"`
-	BaseSHA   string   `json:"base_sha"`
-	PriorHead string   `json:"prior_head"`
-	Paths     []string `json:"paths"`
-	DoneWhen  []string `json:"done_when"`
+	Consumer  string `json:"consumer"`
+	Producer  string `json:"producer"`
+	Kind      string `json:"kind"`
+	Stream    string `json:"stream"`
+	Repo      string `json:"repo"`
+	Base      string `json:"base"`
+	Branch    string `json:"branch"`
+	Head      string `json:"head"`
+	Tier      string `json:"tier"`
+	Brief     string `json:"brief"`
+	Prose     string `json:"prose"`
+	Finding   string `json:"finding"`
+	StreamRef string `json:"stream_ref"`
+	BaseSHA   string `json:"base_sha"`
+	PriorHead string `json:"prior_head"`
+	// PriorFinished: a work attempt of the card reported ok at PriorHead
+	// (card.FinishedAt), so the card machine refuses it as this attempt's
+	// finish; false for a head an attempt pushed and then faulted, failed
+	// or was withdrawn at. A bench's worker decides from it what an ok that
+	// adds nothing to the prior head is.
+	PriorFinished bool     `json:"prior_finished"`
+	Paths         []string `json:"paths"`
+	DoneWhen      []string `json:"done_when"`
 	// StreamGates are the stream's gates (store.Stream.Gates): every card
 	// of the stream passes them at its finished head, after its DONE-WHENs.
 	StreamGates []string `json:"stream_gates"`
@@ -169,7 +175,8 @@ func (e *Engine) takenOutput(ctx context.Context, in *input, snap store.Snapshot
 	}
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
-		PriorHead: prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), StreamGates: nonNil(s.Gates), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
+		PriorHead: prior, PriorFinished: c.Kind == "work" && prior != "" && card.FinishedAt(consumersOf(snap, c.Of), prior),
+		Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), StreamGates: nonNil(s.Gates), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
 		Review: c.Review, Model: c.Model, Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge,
 		CommitName: snap.Identity.Name, CommitEmail: snap.Identity.Email}
 	if in.has("json") {
