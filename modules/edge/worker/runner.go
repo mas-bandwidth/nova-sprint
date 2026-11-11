@@ -181,7 +181,11 @@ type Runner struct {
 	RefusalLimit int
 	// RemoveDir removes a retired job's directory (retireJob_internal); nil
 	// is removeTree_internal. A unit test's fault injection.
-	RemoveDir                 func(dir string) error
+	RemoveDir func(dir string) error
+	// KillJob ends every process of the job at a job directory
+	// (endJobTree_internal; OSKillJob in the binary) before the worker lets
+	// the job go: the clean, a retire, a quarantine. nil: none.
+	KillJob                   func(jobDir string) (int, error)
 	mu                        *sync.Mutex
 	gone                      map[string]int  // per consumer: its jobs of a lower gen hold no branch (holds_internal)
 	jobs                      *sync.WaitGroup // every detached job, waited for when the wake loop ends
@@ -207,7 +211,14 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	}
 	cfg.Timeouts = cfg.Timeouts.WithDefaults()
 	cfg.Procs = cmp.Or[ProcessTable](cfg.Procs, OSProcessTable{})
-	cfg.Wall = cmp.Or[ReserveWall](cfg.Wall, &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, KillGroup: OSKillGroup, Config: WallConfig{ReserveWait: cfg.Timeouts.ReserveWait, NetDeny: true}})
+	if cfg.Wall == nil {
+		grace := cfg.Timeouts.TerminateGrace
+		cfg.Wall = &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, KillGroup: OSKillGroup, KillJob: func(d string) (int, error) { return OSKillJob(cfg.RootDir, d, grace) },
+			Config: WallConfig{ReserveWait: cfg.Timeouts.ReserveWait, NetDeny: true}}
+		if cfg.KillJob == nil {
+			cfg.KillJob = cfg.Wall.(*OSReserveWall).KillJob
+		}
+	}
 	if cfg.Logger == nil && cfg.StateDir != "" {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
 	}
@@ -1240,6 +1251,7 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 			return nil
 		}
 	}
+	r.endJobTree_internal(jobDir, rec, "clean")
 	if r.Git != nil {
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
 	}
@@ -1836,6 +1848,10 @@ type OSReserveWall struct {
 	// nothing. No guarantee rests on it: no worker git runs in the job
 	// directory after the harness, whatever outlives it.
 	KillGroup func(pgid int) (int, error)
+	// KillJob ends every process of the job at a job directory (OSKillJob
+	// in the binary), after every wall command: the command's own group is
+	// nova-reserve's child's, not the one KillGroup reaches. nil: none.
+	KillJob func(jobDir string) (int, error)
 }
 
 // OSKillGroup kills process group pgid (a wall command's, whose leader has
@@ -2085,6 +2101,10 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	leftovers, leftoverErr := 0, error(nil)
 	if w.KillGroup != nil && res.PID > 0 && res.PID != os.Getpid() { // edge's exec makes each command its group's leader
 		leftovers, leftoverErr = w.KillGroup(res.PID)
+	}
+	if w.KillJob != nil && j.JobDir != "" {
+		n, err := w.KillJob(j.JobDir)
+		leftovers, leftoverErr = leftovers+n, errors.Join(leftoverErr, err)
 	}
 	out := WallRunResult{Leftovers: leftovers, LeftoverErr: leftoverErr, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
