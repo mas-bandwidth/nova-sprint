@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -99,7 +100,41 @@ func gateStep_internal(t *testing.T, wall ReserveWall, clock *gateClock_internal
 // gateTimeout_internal is the wall's error for a command its timeout
 // killed, as runWallCmd_internal returns it.
 func gateTimeout_internal(timeout time.Duration) error {
-	return edge.Failure([]string{"nova-reserve", "run"}, nil, -1, "", "", &edge.ExecError{Program: "nova-reserve", Kind: edge.ErrTimeout, Reason: fmt.Sprintf("timed out after %s", timeout)})
+	return &WallTimeoutError{Err: edge.Failure([]string{"nova-reserve", "run"}, nil, -1, "", "", &edge.ExecError{Program: "nova-reserve", Kind: edge.ErrTimeout, Reason: fmt.Sprintf("timed out after %s", timeout)})}
+}
+
+// hangExec_internal times out the command at index hang (with an SDK
+// environment: 0 its shell, 1 the wall) and passes the rest.
+type hangExec_internal struct{ n, hang int }
+
+func (x *hangExec_internal) Run(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+	x.n++
+	if x.n-1 != x.hang {
+		return edge.Result{}, nil
+	}
+	return edge.Result{ExitCode: -1}, &edge.ExecError{Program: filepath.Base(cmd.Argv[0]), Kind: edge.ErrTimeout, Reason: "timed out after " + cmd.Timeout.String()}
+}
+
+// The wall marks its own command's timeout where it happens
+// (WallTimeoutError); the SDK environment script's, the same exec timeout
+// underneath, is not marked and names the script.
+func TestWallMarksOnlyItsOwnCommandsTimeout(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		hang int
+		own  bool
+	}{"the gate": {hang: 1, own: true}, "the SDK environment": {hang: 0}} {
+		dir := t.TempDir()
+		w := &OSReserveWall{Exec: &hangExec_internal{hang: tc.hang}, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", SDKEnv: "/b/sdk/env.sh"}}
+		_, err := w.RunTest(context.Background(), Job{Consumer: "c1", Row: "r1", JobDir: dir, WorktreeDir: dir}, "make test", time.Hour)
+		var own *WallTimeoutError
+		if err == nil || errors.As(err, &own) != tc.own {
+			t.Errorf("%s timed out: err = %v, marked the wall's own %v, want %v", name, err, !tc.own, tc.own)
+		}
+		if !tc.own && !strings.Contains(fmt.Sprint(err), "/b/sdk/env.sh") {
+			t.Errorf("%s timed out: err = %v does not name the script", name, err)
+		}
+	}
 }
 
 // A done-when runs until the card's deadline, each gate with what is left
@@ -109,7 +144,7 @@ func TestDoneWhenRunsUntilTheCardsDeadline(t *testing.T) {
 	clock := &gateClock_internal{sec: 1600} // the harness took ten minutes of a 90-minute deadline
 	wall := &gateWall_internal{}
 	wall.run = func(string, time.Duration) (WallRunResult, error) {
-		clock.add(524 * time.Second) // the gate measured on 2026-11-11
+		clock.add(524 * time.Second) // a gate as measured
 		return WallRunResult{}, nil
 	}
 	rec := gateStep_internal(t, wall, clock, JobRecord{StreamRef: "sprint/s1", DeadlineAt: 1000 + 5400, DoneWhen: []string{"make test", "go test -timeout 600s ./..."}})

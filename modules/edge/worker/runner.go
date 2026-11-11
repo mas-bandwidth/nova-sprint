@@ -816,11 +816,15 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 		return nil
 	}
-	for _, cmd := range rec.DoneWhen {
+	for i, cmd := range rec.DoneWhen {
 		if strings.TrimSpace(cmd) == "" || r.Wall == nil {
 			continue
 		}
 		if out, red := r.doneWhen_internal(ctx, tJob, *rec, cmd); red {
+			// The gates after it are not run: said, so none is taken for green.
+			if rest := slices.DeleteFunc(slices.Clone(rec.DoneWhen[i+1:]), func(c string) bool { return strings.TrimSpace(c) == "" }); len(rest) > 0 {
+				out.Reason += "\ndone-whens not run after it: " + strings.Join(rest, "; ")
+			}
 			rec.Outcome = out
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
@@ -841,43 +845,56 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 }
 
 // doneWhenBound_internal is how long a done-when gate of rec may run from
-// now: until the card's deadline (rec.DeadlineAt: the take plus the
-// receipt's deadline, policy's timeouts().consumer[tier]), the one bound
-// the deal carries. The card contract states no other, and the worker's own
-// step bound (Timeouts.RebaseAndTest, two minutes) killed every longer gate
-// on every bench (2026-11-11). Zero or less: the deadline has passed. A
-// record with no deadline (written before they were recorded) keeps the
-// step bound, so no gate runs unbounded.
-func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound time.Duration, what string) {
+// now, and left, what is left of the card's deadline (rec.DeadlineAt: the
+// take plus the receipt's deadline, policy's timeouts().consumer[tier]),
+// the one bound the deal carries. The card contract states no other, and
+// the worker's own step bound (Timeouts.RebaseAndTest, two minutes) killed
+// every longer gate on every bench. The bound is left less the push's
+// bound (Timeouts.Push), kept for the push and the report after the gates:
+// the sprint withdraws a card that has not reported by its deadline, and a
+// gate that ran right up to it lost the attempt. One push bound for both
+// is a guess, not measured. Zero or less: no gate starts. A record with no
+// deadline (written before they were recorded) keeps the step bound, so no
+// gate runs unbounded.
+func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound, left time.Duration, what string) {
 	if rec.DeadlineAt <= 0 {
-		return r.Timeouts.RebaseAndTest, "the worker's step bound (the job record carries no deadline)"
+		return r.Timeouts.RebaseAndTest, r.Timeouts.RebaseAndTest, "the worker's step bound (the job record carries no deadline)"
 	}
-	return time.Unix(rec.DeadlineAt, 0).Sub(r.Now()), "what was left of the card's deadline"
+	left = time.Unix(rec.DeadlineAt, 0).Sub(r.Now())
+	return left - r.Timeouts.Push, left, fmt.Sprintf("what was left of the card's deadline less the %s kept for the push and the report", r.Timeouts.Push)
 }
 
 // doneWhen_internal runs one done-when gate of rec in the wall, at the
 // head the job's tree holds; red: it did not pass, and out is the job's
 // outcome. Red tests are a fail whose reason keeps the lines that say what
-// failed (GateTail). A gate its timeout killed is a fail too, saying after
-// how long: it had the rest of the card's deadline, dealt again it would
-// run out of it again, and a fail's bounce reaches the bounce limit where
-// a fault is dealt again for ever. A gate not started because the deadline
-// has passed, a wall that could not run it and a missing toolchain are
-// faults: that gate did not run.
+// failed (GateTail). A gate the wall's own timeout killed
+// (WallTimeoutError) is a fail too, saying after how long: it had the rest
+// of the card's deadline, dealt again it would run out of it again, and a
+// fail's bounce reaches the bounce limit where a fault is dealt again for
+// ever. A gate not started because the deadline has passed, a wall that
+// could not run it (a setup step that failed or timed out, the SDK
+// environment's among them) and a missing toolchain are faults: that gate
+// did not run.
 func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, cmd string) (out Outcome, red bool) {
 	notRun := func(why string) (Outcome, bool) {
 		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}, true
 	}
-	bound, what := r.doneWhenBound_internal(rec)
+	bound, left, what := r.doneWhenBound_internal(rec)
 	if bound <= 0 {
-		return notRun(fmt.Sprintf("the card's deadline passed %s ago, before the gate could start", (-bound).Round(time.Second)))
+		// No limit counts a work fault, so the card is dealt again; its next
+		// attempt starts from the head this one pushed, with a whole deadline.
+		why := fmt.Sprintf("the card's deadline passed %s ago", (-left).Round(time.Second))
+		if left > 0 {
+			why = fmt.Sprintf("only %s of the card's deadline was left, less than the %s kept for the push and the report", left.Round(time.Second), r.Timeouts.Push)
+		}
+		return notRun(why + ", so the gate was not started; the card is dealt again (a fault spends no bounce) and continues from the head this attempt pushed")
 	}
 	tres, err := r.Wall.RunTest(ctx, j, cmd, bound)
 	if err == nil && tres.ExitCode == 0 {
 		return Outcome{}, false
 	}
-	var xe *edge.ExecError
-	if errors.As(err, &xe) && xe.Kind == edge.ErrTimeout {
+	var own *WallTimeoutError
+	if errors.As(err, &own) {
 		return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("done-when test (%s) timed out after %s, %s: %s",
 			cmd, bound.Round(time.Second), what, cmp.Or(GateTail(tres.Output, MaxReasonBytes), "no output"))}, true
 	}
@@ -1803,7 +1820,22 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	if err != nil {
 		// The run never completed (a timeout, a missing binary): the
 		// command, its exit code and its output so far go with it.
-		return out, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
+		fail := error(edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
+		var xe *edge.ExecError
+		if errors.As(err, &xe) && xe.Kind == edge.ErrTimeout {
+			fail = &WallTimeoutError{Err: fail}
+		}
+		return out, fail
 	}
 	return out, nil
 }
+
+// WallTimeoutError is a wall command that ran for its whole timeout and
+// was killed: the command's own, marked here where it is known, never a
+// setup step's before it (the SDK environment script has a bound of its
+// own, and its timeout is the same edge.ErrTimeout underneath). Its words
+// are the failure's.
+type WallTimeoutError struct{ Err error }
+
+func (e *WallTimeoutError) Error() string { return e.Err.Error() }
+func (e *WallTimeoutError) Unwrap() error { return e.Err }

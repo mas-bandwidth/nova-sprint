@@ -282,10 +282,15 @@ Deal to report:
    job pushes nothing (defect 78).
 6. **Merge the stream** head as it is now in (never rebase), bounded by the
    two-minute step bound, and run the card's done-when gates, inside a slot,
-   each until the card's deadline (what is left of it; the step bound is
-   never a gate's); push. A conflict is a `fail` naming the files; a gate
-   still running at the deadline is a `fail` saying how long it ran, and
-   one not started because the deadline had passed is a `fault`.
+   each until the card's deadline (what is left of it, less the push's 60 s
+   kept for the push and the report; the step bound is never a gate's);
+   push. A job restarted from taken or staged keeps the deadline its record
+   holds. A conflict is a `fail` naming the files; a gate still running at
+   its bound (the wall's own timeout of the gate, never of a setup step
+   before it, which is a `fault`) is a `fail` saying how long it ran; one
+   not started because no time was left is a `fault` that says so (no limit
+   counts it: the card is dealt again and continues from the pushed head).
+   A red gate's reason names the gates not run after it.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
    CI is read by the landing on the group sha, not by the worker.
 8. **Report** with a result id written to `job.json` before the first try;
@@ -360,8 +365,8 @@ then 30 to 60 s jittered (9 of 40 launches died on a provider 5xx);
 terminate grace 3 s. From nova-config: the card's deadline per tier.
 Unmeasured until the first dogfood sprint: the stream merge, the seal and
 the apply of the merged head 2 min each (a done-when gate has no bound of
-its own: it runs until the card's deadline; one measured 524 s,
-2026-11-11); push 60 s; `gh` 30 s; bus send 5 s; ssh connect 10 s; CI wait, the repository's
+its own: it runs until the card's deadline, less the push's bound; one
+measured 524 s); push 60 s; `gh` 30 s; bus send 5 s; ssh connect 10 s; CI wait, the repository's
 job timeout plus 10 min (v1's land deadline). No silence kill: v1's
 silence heuristic once deleted a running card's home and temp directory.
 
@@ -574,7 +579,7 @@ An estimate from the interfaces and v1's runner, lines of Go without tests:
 | `TerminateGrace` | `3s` | **measured** | Process-group `SIGTERM` -> `SIGKILL` grace |
 | `MaxMessageBytes` / `MaxFieldBytes` | `4096 B` / `300 B` | **measured** | v1 bus size discipline (`Guarantee 3`) |
 | `MaxLogTailBytes` | `4096 B` | **measured** | Harness failure tail carried in report reason |
-| `RebaseTestBound` | `2m` | **guess** | The stream merge, the seal and the apply of the merged head, each; never a done-when gate, which runs until the card's deadline (a gate measured 524 s, 2026-11-11) |
+| `RebaseTestBound` | `2m` | **guess** | The stream merge, the seal and the apply of the merged head, each; never a done-when gate, which runs until the card's deadline less `PushTimeout` (a gate measured 524 s) |
 | `PushTimeout` | `60s` | **guess** | Unmeasured until the first dogfood sprint |
 | `ForgeTimeout` (`gh`) | `30s` | **guess** | Unmeasured until the first dogfood sprint |
 | `BusSendTimeout` | `5s` | **guess** | Unmeasured until the first dogfood sprint |
