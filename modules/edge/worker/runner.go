@@ -813,17 +813,13 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		return nil
 	}
 	for _, cmd := range rec.DoneWhen {
-		if strings.TrimSpace(cmd) != "" && r.Wall != nil {
-			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
-				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, TailBytes(tres.Output, MaxReasonBytes))}
-				if fault, why := isInfraFault_internal(tres, err); fault {
-					rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}
-				} else if fault, why := isMissingTestToolchain_internal(tres); fault {
-					rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}
-				}
-				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
-				return nil
-			}
+		if strings.TrimSpace(cmd) == "" || r.Wall == nil {
+			continue
+		}
+		if out, red := r.doneWhen_internal(ctx, tJob, *rec, cmd); red {
+			rec.Outcome = out
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
+			return nil
 		}
 	}
 	if r.Git != nil && rec.Outcome.Head != "" && rec.Outcome.Head != rec.PushedHead {
@@ -838,6 +834,56 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	rec.State = JobRebased
 	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 	return nil
+}
+
+// doneWhenBound_internal is how long a done-when gate of rec may run from
+// now: until the card's deadline (rec.DeadlineAt: the take plus the
+// receipt's deadline, policy's timeouts().consumer[tier]), the one bound
+// the deal carries. The card contract states no other, and the worker's own
+// step bound (Timeouts.RebaseAndTest, two minutes) killed every longer gate
+// on every bench (2026-11-11). Zero or less: the deadline has passed. A
+// record with no deadline (written before they were recorded) keeps the
+// step bound, so no gate runs unbounded.
+func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound time.Duration, what string) {
+	if rec.DeadlineAt <= 0 {
+		return r.Timeouts.RebaseAndTest, "the worker's step bound (the job record carries no deadline)"
+	}
+	return time.Unix(rec.DeadlineAt, 0).Sub(r.Now()), "what was left of the card's deadline"
+}
+
+// doneWhen_internal runs one done-when gate of rec in the wall, at the
+// head the job's tree holds; red: it did not pass, and out is the job's
+// outcome. Red tests are a fail whose reason keeps the lines that say what
+// failed (GateTail). A gate its timeout killed is a fail too, saying after
+// how long: it had the rest of the card's deadline, dealt again it would
+// run out of it again, and a fail's bounce reaches the bounce limit where
+// a fault is dealt again for ever. A gate not started because the deadline
+// has passed, a wall that could not run it and a missing toolchain are
+// faults: that gate did not run.
+func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, cmd string) (out Outcome, red bool) {
+	notRun := func(why string) (Outcome, bool) {
+		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}, true
+	}
+	bound, what := r.doneWhenBound_internal(rec)
+	if bound <= 0 {
+		return notRun(fmt.Sprintf("the card's deadline passed %s ago, before the gate could start", (-bound).Round(time.Second)))
+	}
+	tres, err := r.Wall.RunTest(ctx, j, cmd, bound)
+	if err == nil && tres.ExitCode == 0 {
+		return Outcome{}, false
+	}
+	var xe *edge.ExecError
+	if errors.As(err, &xe) && xe.Kind == edge.ErrTimeout {
+		return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("done-when test (%s) timed out after %s, %s: %s",
+			cmd, bound.Round(time.Second), what, cmp.Or(GateTail(tres.Output, MaxReasonBytes), "no output"))}, true
+	}
+	if fault, why := isInfraFault_internal(tres, err); fault {
+		return notRun(why)
+	}
+	if fault, why := isMissingTestToolchain_internal(tres); fault {
+		return notRun(why)
+	}
+	return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, GateTail(tres.Output, MaxReasonBytes))}, true
 }
 
 // applyRebased_internal checks the rebased head out in the job's tree,
