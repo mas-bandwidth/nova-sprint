@@ -496,13 +496,19 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
    the bus). The sprint's health (open judgements, landings) stays `check`'s. When the release
    is not on PATH, it names the `nova-fleet install` command that installs it. Never copy a
    binary by hand. `nova-fleet install` replaces binaries only: a running worker or run keeps
-   the old build until its service is restarted. `up --version` restarts what is behind: its
-   run step restarts a run whose process is an older build, and its workers step restarts, once,
-   each worker whose process beats an older build (a worker not yet beaten is waited for, never
-   restarted), through the `services` play's `nova_service_restart`. Every worker restart gives
-   up the row's whole hand (section 7, item 4): every running bench job stops, is never
-   reported, and its card is dealt again, from its branch with the pushed head kept; work a
-   harness had not pushed is lost. So run `up --version` at a quiet moment.
+   the old build until its service is restarted. Any `up`, not only `up --version`, restarts
+   what is behind: its run step restarts a run whose process is an older build, and its workers
+   step restarts, once, each worker whose process beats an older build (a worker not yet beaten
+   is waited for, never restarted), through the `services` play's `nova_service_restart`. A
+   worker whose bench's binary on disk is itself older is not restarted: up names it with the
+   `nova-fleet install` that fixes it. Every worker restart gives up the row's whole hand
+   (section 7, item 4): every running bench job stops, is never reported, and its card is dealt
+   again, from its branch with the pushed head kept; work a harness had not pushed is lost. So
+   run `up` at a quiet moment when a build is behind.
+   The first adoption of v2.0.40 does not restart old workers by itself: a worker process from
+   before it beats the build of the binary on disk, so `up --version` sees it as current. After
+   installing v2.0.40, restart each sprint worker once through the services play:
+   `nova-fleet services -- -e nova_service_restart=sprint-worker-<bench>,...`, every worker bench named.
 2. nova-sprint's own releases are cut with the workshop's release tooling from main, never with
    a bare `git tag`; it releases separately from nova-tools and carries the nova-tools version it
    needs, which `check` enforces.
