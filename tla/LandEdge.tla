@@ -247,7 +247,7 @@ BaseMoves ==
 Switch(s) ==
   /\ Tip.ext < K
   /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> "switch", gated |-> NoTree])
-  /\ req' = [req EXCEPT ![s] = IF Kept(s) THEN LetGo(@) ELSE @]
+  /\ req' = [req EXCEPT ![s] = IF @.st = "sent" /\ Kept(s) THEN LetGo(@) ELSE @]   \* only a request in flight holds a gate
   /\ ticked' = FALSE
   /\ UNCHANGED <<cs, js, jc, held, passes>>
 
