@@ -1251,6 +1251,7 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 			return nil
 		}
 	}
+	r.endJobTree_internal(jobDir, rec, "clean")
 	if r.Git != nil {
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
 	}
@@ -2100,6 +2101,10 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	leftovers, leftoverErr := 0, error(nil)
 	if w.KillGroup != nil && res.PID > 0 && res.PID != os.Getpid() { // edge's exec makes each command its group's leader
 		leftovers, leftoverErr = w.KillGroup(res.PID)
+	}
+	if w.KillJob != nil && j.JobDir != "" {
+		n, err := w.KillJob(j.JobDir)
+		leftovers, leftoverErr = leftovers+n, errors.Join(leftoverErr, err)
 	}
 	out := WallRunResult{Leftovers: leftovers, LeftoverErr: leftoverErr, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
