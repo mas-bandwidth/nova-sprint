@@ -21,9 +21,11 @@ to a log file, and nothing landed). A harness's watch can expire (Claude Code's 
 at most 30 minutes): re-arm it the moment it ends, then run `nova-sprint hook --as <you> --role
 coordinator` again; it replaces the hook in place and keeps the seat. The sprint hook is bound
 to the bus hook it was made on, so every restart of the bus hook, a re-armed watch included,
-costs one `hook in first` until you have hooked again. When an open judgement has waited longer
-than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every verb you run
-print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answer them.
+costs one `hook in first` until you have hooked again. When an open judgement has waited
+longer than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every
+verb you run print `UNSEEN <n> judgements open, oldest <age>` first, counting those: fix the
+hook, then answer them. A held card's judgement waits for you by design and never raises
+UNSEEN; `judge`, `next` and `check` still list it, and `check` reds it on its own line.
 
 Every 5 minutes the run sends each friend's session, yours included, a `CHALLENGE` line: run
 the `nova-sprint pong` command it prints. A friend that answers none for 10 minutes is down:
@@ -341,7 +343,10 @@ for the top card, and `check` says the same.
 To correct a brief, add the corrected brief under a new id and replace the old card with it:
 `nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants
 follow the new one. A card a row holds is replaced too: its live consumer is released with the
-replace's reason (the branch kept), so tell the holder on the bus first.
+replace's reason (the branch kept), so tell the holder on the bus first. Run it right after
+`add`: the new card may already be dealt or taken, and that is fine, replace follows it. A new
+card that is landed or failed is refused, and so is the old card changing while replace runs: the
+refusal names what changed; read `show <old>` and decide again.
 
 ## 5. Priorities, landing and reds
 
@@ -446,6 +451,13 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    it is never dropped; the board lists it under its stream with that reason.
    `nova-sprint unhold <card> --reason "<why>"` sends it back to `waiting`, and it is dealt again
    when its needs have landed. A consumer id is refused with its producer's id.
+   A busy sprint writes while a verb runs (deals, reports, hooks). `hold`, `unhold`, `replace`,
+   `drop`, `judge`, `priority`, `relink`, `land`, `stream add`, `stream set`, `stop`, `start`,
+   `stats reset`, `identity`, `policy set` and `policy activate` read again by themselves when
+   the write was not to their own row, stream, card, judgement, policy or your hook, up to 5
+   tries; each is refused only when its own record changed, and the refusal names what changed.
+   "refused 5 times ... the store moves faster than it can plan" means five writes landed in a
+   row: run it again.
 6. Coach for first-pass acceptance. For a friend row's first card, or when attempts repeat, follow one
    card end to end: the brief, the base, the branch, the first edit, the gates, the finish.
    Classify a failure as tool or version, access or route, brief or scope, gate or bench, report,

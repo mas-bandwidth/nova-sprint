@@ -14,24 +14,68 @@ import (
 )
 
 // move is a person's move through the steps' actor rules (SEAMS 3): one View
-// built from the snapshot the hooked check read, one op from steps.Verb.
+// built from the snapshot the hooked check read, one op from steps.Verb on
+// the request req makes of it. The op is fenced (fenced): refused for a
+// write to a record the request does not name (another card dealt, a
+// bench's report), it is planned again on a fresh read; a change to the
+// card, row, stream or judgement it names is the refusal, naming it.
 // With --dry-run it prints what the op would do and applies nothing.
-func (e *Engine) move(ctx context.Context, in *input, snap store.Snapshot, r steps.Request, subject string) (string, error) {
-	r.Actor, r.Coordinators = in.actor, []string{coordinatorOf(snap)}
-	op, why := steps.Verb(steps.Build(snap, e.Now()), steps.Inputs{Now: e.Now()}, r)
-	if why != nil {
-		return "", moved(why, subject)
+func (e *Engine) move(ctx context.Context, in *input, snap store.Snapshot, req func(store.Snapshot) steps.Request, subject string) (string, error) {
+	plan := func(s store.Snapshot) (store.Op, error) {
+		r := req(s)
+		r.Actor, r.Coordinators = in.actor, []string{coordinatorOf(s)}
+		op, why := steps.Verb(steps.Build(s, e.Now()), steps.Inputs{Now: e.Now()}, r)
+		if why != nil {
+			return op, moved(why, subject)
+		}
+		op.Note = in.str("reason")
+		return op, nil
 	}
-	effect := effects(op)
 	if in.has("dry-run") {
-		return effect + " (dry run)", nil
+		op, err := plan(snap)
+		if err != nil {
+			return "", err
+		}
+		return effects(op) + " (dry run)", nil
 	}
-	op.Note = in.str("reason")
-	rec, err := e.commit(ctx, op, "nova-sprint show "+subject)
+	own := func(was, now store.Snapshot) string { return targetChange(req(was), was, now) }
+	rec, op, err := e.fenced(ctx, snap, "nova-sprint show "+subject, own, plan)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s applied at seq %d", effect, rec.Seq), nil
+	return fmt.Sprintf("%s applied at seq %d", effects(op), rec.Seq), nil
+}
+
+// fixed is a request that is the same on any read.
+func fixed(r steps.Request) func(store.Snapshot) steps.Request {
+	return func(store.Snapshot) steps.Request { return r }
+}
+
+// targetChange is what changed, between was and now, of the records r names
+// as its own: its card or row (its gen), its stream (its hold) and the
+// judgement it answers (still open); "" when none did. A replacing card, a
+// dependant and every other record are not its own: the plan on the fresh
+// read checks them again.
+func targetChange(r steps.Request, was, now store.Snapshot) string {
+	if a, ok := was.Cards[r.Card]; ok {
+		if b, ok := now.Cards[r.Card]; !ok || a.Gen != b.Gen {
+			return fmt.Sprintf("card %s changed since this verb read it (gen %d %s, now gen %d %s)", r.Card, a.Gen, a.State, b.Gen, orWord(b.State, "gone"))
+		}
+	}
+	if a, ok := was.Rows[r.Row]; ok {
+		if b := now.Rows[r.Row]; a.Gen != b.Gen {
+			return fmt.Sprintf("row %s changed since this verb read it (gen %d %s held=%t, now gen %d %s held=%t)", r.Row, a.Gen, a.State, a.Held, b.Gen, orWord(b.State, "gone"), b.Held)
+		}
+	}
+	if a, ok := was.Streams[r.Stream]; ok {
+		if b, ok := now.Streams[r.Stream]; !ok || a.Held != b.Held {
+			return fmt.Sprintf("stream %s changed since this verb read it (held=%t, now held=%t)", r.Stream, a.Held, b.Held)
+		}
+	}
+	if j, ok := now.Judgements[r.Judgement]; ok && j.State != "open" {
+		return fmt.Sprintf("judgement %s was %s by %s since this verb read it", j.ID, j.State, j.Actor)
+	}
+	return ""
 }
 
 // again is the snapshot the i-th of several moves acts on: the hooked
@@ -101,7 +145,7 @@ func runHold(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		if err != nil {
 			return "", partial(err, lines)
 		}
-		line, err := e.move(ctx, in, snap, r, name)
+		line, err := e.move(ctx, in, snap, fixed(r), name)
 		if err != nil {
 			return "", partial(err, lines)
 		}
@@ -177,7 +221,7 @@ func runPriority(e *Engine, ctx context.Context, in *input, snap store.Snapshot)
 	if c.Of != "" {
 		return "", refuse(id+" is a consumer; priority is its producer's", "nova-sprint priority "+c.Of+" "+level+" --reason \"<why>\"")
 	}
-	line, err := e.move(ctx, in, snap, steps.Request{Card: id, Event: card.SetPriority{Level: level, Reason: reason}}, id)
+	line, err := e.move(ctx, in, snap, fixed(steps.Request{Card: id, Event: card.SetPriority{Level: level, Reason: reason}}), id)
 	if err != nil {
 		return "", err
 	}
@@ -190,7 +234,7 @@ func runRelink(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (
 	if need == "" || to == "" || reason == "" {
 		return "", misuse("relink", "relink takes --need <failed need> --to <card> --reason <why>")
 	}
-	line, err := e.move(ctx, in, snap, steps.Request{Card: id, Event: card.Relink{Need: need, To: to, Reason: reason}}, id)
+	line, err := e.move(ctx, in, snap, fixed(steps.Request{Card: id, Event: card.Relink{Need: need, To: to, Reason: reason}}), id)
 	if err != nil {
 		return "", err
 	}

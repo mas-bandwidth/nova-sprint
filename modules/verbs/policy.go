@@ -1,7 +1,9 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -38,17 +40,55 @@ func runPolicy(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (
 // policyWrite is set and activate, by the coordinator, with a reason.
 func policyWrite(ctx context.Context, e *Engine, in *input, snap store.Snapshot, ro roster.Roster) (string, error) {
 	reason := in.str("reason")
-	c := policy.Caller{Actor: in.actor, Coordinator: true, OpID: e.newOp(strings.ReplaceAll(in.verb, " ", "-"), in.actor, snap, in.args).ID, At: e.Now()}
-	var r policy.Result
-	var err error
-	if in.verb == "policy set" {
-		r, err = policy.Set(ctx, e.Store, ro, e.Policy, c, in.arg(0), reason)
-	} else {
+	write := func(c policy.Caller) (policy.Result, error) {
+		return policy.Set(ctx, e.Store, ro, e.Policy, c, in.arg(0), reason)
+	}
+	if in.verb == "policy activate" {
 		v, f := version(in.arg(0))
 		if f != nil {
 			return "", f
 		}
-		r, err = policy.Activate(ctx, e.Store, ro, e.Policy, c, v, reason)
+		write = func(c policy.Caller) (policy.Result, error) {
+			return policy.Activate(ctx, e.Store, ro, e.Policy, c, v, reason)
+		}
+	}
+	// activate, and a set that activates, answer the open policy judgements
+	// they read, so they are fenced on every judgement (policy.fenced): one
+	// the run opened or closed between (a red, a down) is not their own.
+	// Refused by the store with a write between, they read again and run
+	// again, up to fenceTries in all, as fenced does, while their own record
+	// is as first read: the epoch, the active policy, the versions stored
+	// and the caller's hook. A change to it is the refusal, named.
+	was := snap
+	stored, err := policy.Stored(ctx, e.Store)
+	if err != nil {
+		return "", err
+	}
+	var r policy.Result
+	for try := 1; ; try++ {
+		c := policy.Caller{Actor: in.actor, Coordinator: true, OpID: e.newOp(strings.ReplaceAll(in.verb, " ", "-"), in.actor, snap, in.args).ID, At: e.Now()}
+		r, err = write(c)
+		var ref *policy.Refused
+		if !errors.As(err, &ref) || !ref.Between() {
+			break
+		}
+		if snap, err = e.snapshot(ctx); err != nil {
+			return "", err
+		}
+		now, serr := policy.Stored(ctx, e.Store)
+		if serr != nil {
+			return "", serr
+		}
+		if what := cmp.Or(epochChange(was, snap), policyChange(was, snap, stored, now), hookChange(in.actor)(was, snap)); what != "" {
+			ref.What += "; " + what
+			err = ref
+			break
+		}
+		if try == fenceTries {
+			ref.What += fmt.Sprintf(" (refused %d times, each by a write to records this verb did not read: the store moves faster than it can plan)", try)
+			err = ref
+			break
+		}
 	}
 	if err != nil {
 		return "", err
@@ -58,6 +98,19 @@ func policyWrite(ctx context.Context, e *Engine, in *input, snap store.Snapshot,
 		word = "STORED AND ACTIVE" // the first set: none was active (defect 53)
 	}
 	return done(r.Next, fmt.Sprintf("POLICY %s v%d changes=%d", word, r.Version, r.Changes)), nil
+}
+
+// policyChange is a policy verb's own record changed: the active version
+// on now is not was's, or versions were stored past the stored the verb
+// first read.
+func policyChange(was, now store.Snapshot, stored, nowStored int) string {
+	switch {
+	case was.Policy != now.Policy:
+		return fmt.Sprintf("the active policy changed since this verb read it (v%d, now v%d)", was.Policy, now.Policy)
+	case nowStored != stored:
+		return fmt.Sprintf("policy v%d was stored since this verb read it", nowStored)
+	}
+	return ""
 }
 
 // policyCheck is the report; a report with refusals is a refusal, printed

@@ -10,3 +10,4 @@ runner-walk-*/
 runner-breaker/
 runner-restart/
 runner-breaker-refused/
+verbfence-walk-*/

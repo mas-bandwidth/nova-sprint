@@ -84,12 +84,19 @@ func TestUnseenClearsWhenAnswered(t *testing.T) {
 }
 
 // TestUnseenOf is the report alone: no open judgement, an answered one, the
-// threshold exact, and the policy's own threshold.
+// threshold exact, and the policy's own threshold; a held one never
+// counts, and the count is of the judgements past the threshold, not of
+// every one open.
 func TestUnseenOf(t *testing.T) {
 	t.Parallel()
 	at := time.Unix(1000, 0)
 	open := store.Snapshot{Judgements: map[string]store.Judgement{"j": judgement("j", "stall", "s", at)}}
 	answered := store.Snapshot{Judgements: map[string]store.Judgement{"j": {ID: "j", State: "answered", OpenedAt: at}}}
+	young := judgement("y", "stall", "s", time.Unix(1200, 0))
+	held := store.Snapshot{Judgements: map[string]store.Judgement{"h": heldJudgement("h", "p1", at)}}
+	heldAndYoung := store.Snapshot{Judgements: map[string]store.Judgement{"h": heldJudgement("h", "p1", time.Unix(100, 0)), "y": young}}
+	heldAndOld := store.Snapshot{Judgements: map[string]store.Judgement{"h": heldJudgement("h", "p1", time.Unix(100, 0)), "j": judgement("j", "stall", "s", at)}}
+	oldAndYoung := store.Snapshot{Judgements: map[string]store.Judgement{"j": judgement("j", "stall", "s", at), "y": young}}
 	for _, c := range []struct {
 		snap  store.Snapshot
 		now   int64
@@ -103,9 +110,45 @@ func TestUnseenOf(t *testing.T) {
 		{open, 1301, 0, "UNSEEN 1 judgements open, oldest 5m1s"}, // 0: the default
 		{open, 1301, 600, ""},
 		{open, 1601, 600, "UNSEEN 1 judgements open, oldest 10m1s"},
+		{held, 99999, 300, ""},
+		{heldAndYoung, 1301, 300, ""},
+		{heldAndOld, 1301, 300, "UNSEEN 1 judgements open, oldest 5m1s"},
+		{oldAndYoung, 1301, 300, "UNSEEN 1 judgements open, oldest 5m1s"},
 	} {
 		if got := unseenOf(c.snap, time.Unix(c.now, 0), c.limit); got != c.want {
 			t.Errorf("now %d limit %d: %q, want %q", c.now, c.limit, got, c.want)
+		}
+	}
+}
+
+// TestUnseenSkipsHeldJudgements (2026-11-10): a held card's judgement sits
+// until answered, by design, so its age says nothing about the
+// coordinator's wake: one open for an hour is still listed by judge and
+// check (its own red line, its command), and never raises UNSEEN. Every
+// other kind counts, a land judgement and the no-policy gate included.
+func TestUnseenSkipsHeldJudgements(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	s.Judgements["h1"] = heldJudgement("h1", "p1", time.Unix(1000, 0))
+	w := worldFrom(t, s)
+	healthy(t, w)
+	w.e.Now = func() time.Time { return time.Unix(1000+3725, 0) }
+	for _, args := range [][]string{{"next"}, {"judge"}, {"show"}} {
+		if r := w.do("carol", args...); strings.Contains(r.Output, "UNSEEN") || strings.Contains(r.Output, unseenFix) {
+			t.Fatalf("%v:\n%s", args, r.Output)
+		}
+	}
+	want(t, w.do("carol", "judge"), 0, "JUDGEMENT h1 kind=held")
+	r := w.do("carol", "check")
+	want(t, r, 1, "CHECK RED judgement h1 is open: q h1: nova-sprint judge h1")
+	if strings.Contains(r.Output, "UNSEEN") || strings.Contains(r.Output, unseenFix) {
+		t.Fatalf("check:\n%s", r.Output)
+	}
+	at := time.Unix(1000, 0)
+	for _, k := range []string{"land", "no-policy"} {
+		snap := store.Snapshot{Judgements: map[string]store.Judgement{"h": heldJudgement("h", "p1", at), "k": judgement("k", k, "s", at)}}
+		if got, want := unseenOf(snap, time.Unix(1301, 0), 300), "UNSEEN 1 judgements open, oldest 5m1s"; got != want {
+			t.Errorf("%s: %q, want %q", k, got, want)
 		}
 	}
 }
