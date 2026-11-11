@@ -37,7 +37,7 @@ type InboxItem struct {
 	Kind string // report, take, land, stop
 
 	Row, Session, Consumer string // a report or take: who, from which session, of what
-	Result, Head, Reason   string // a report; land red: the failing checks and their URLs
+	Result, Head, Reason   string // a report; land red: the failing checks and their URLs; land conflict: Head is the one head whose merge failed
 	Cost                   int64  // the report's cost, Priced and Usage as the engine priced them
 	Priced                 bool   // (verbs' priceReport): layer 6 routes a report here priced, never
 	Usage                  string // raw words, so the tick reads no price sheet

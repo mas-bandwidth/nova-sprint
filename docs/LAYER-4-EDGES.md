@@ -201,7 +201,15 @@ removes a landing host (LANDING step 9).
 ## The GitHub edge
 
 `Forge` has `PR(head, base)` (find), `OpenPR`, `Checks(shas)`,
-`Merge(pr, sha)` and `FailedLines(url)`.
+`Merge(pr, sha)`, `FailedLines(url)` and `Failures(sha)`.
+A rollup says how many checks are still pending (`Pending`) and whether a
+red one still has checks running (`Waiting`); the landing takes a verdict
+only when it does not (LANDING.md, "A verdict only from completed
+checks"). `Failures` is each failing check at a sha with how GitHub says
+it was stopped, if it was: its conclusion cancelled or timed out, or a
+stop line ("exit code 137" or "143", a time limit, a cancel; GitHub's
+words only) when that is its one failure annotation (any other failure
+annotation beside it makes it failed). The forge never runs CI again.
 
 Credentials. The landing's `gh` runs as the host's own gh login (the run's
 host; intent rule 32, 2026-11-07: "the run does the forge work with the
@@ -222,9 +230,13 @@ evidence (green; red with the failing checks and URL; pending) recorded on
 the consumer by the tick. Webhooks would make it an event in the strict
 sense; they need a public endpoint and are deferred to layer 6.
 
-Rate limits: GitHub's own answer is the limit. A 403 or 429 with a retry
-time rests that identity until then: a fault to its caller that spends
-nothing. The landing asks a pass whose PR or checks read was rate-limited
+Rate limits: GitHub's own answer is the limit, per bucket: GraphQL (`gh
+api graphql`, `gh pr`, `gh repo`) and REST (`gh run`, other `gh api`
+paths) rest apart, so a spent GraphQL bucket does not stop a log read. A 403
+or 429 with a retry time rests that bucket until then; a primary limit
+with none rests it until the bucket's reset, read once from `gh api
+rate_limit` (60 s when that read fails or shows calls left). A rested call
+is a fault to its caller that spends nothing. The landing asks a pass whose PR or checks read was rate-limited
 again, as it does a pending CI (`forge_rested`): never a land judgement.
 A checks read pages past a commit's first 100 checks only when GitHub's
 per-state counts show a failed or faulted check (or do not account for
@@ -856,8 +868,18 @@ differ (LANDING.md, "The ladder, as built").
   yet the gated sha is `ci_pending`; GitHub's `CONFLICTING` is `conflict`.
   Checks are read at the gated sha; green merges only while base is still
   the tip it read (`base_moved` otherwise) through `forge.Merge(pr, sha)`.
+  A gate the request kept (`LandRequest.Gate`: the PR's head branch, sha,
+  base tip and rung of the last pass's gate, which `LandResult.Kept` hands
+  back while its CI has no verdict) is read as it is, on the base it was
+  built on, never rebuilt or pushed again; GitHub's `CONFLICTING` on a
+  base that moved, or its branch no longer at it, builds again in the
+  same pass (LANDING.md, "A group in flight"). A group merge conflict
+  names the head whose merge failed (`MergeResult.Head`,
+  `LandResult.ConflictHead`).
   Outcomes: `landed`, `ci_pending`, `ci_absent`, `base_moved`, `ci_red`,
-  `ci_fault`, `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`,
+  `ci_unfinished` (a check failed while others run), `ci_no_verdict`
+  (every failing check stopped, judged at once), `ci_fault`,
+  `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`,
   `missing_head`, `head_moved`; an error is a fault of git or the forge
   themselves. `LandResult` carries the rung, base tip, group tip, gated
   sha, merge sha, PR, CI URL, the failing checks and their first lines
@@ -1127,8 +1149,10 @@ base, `forge.Inheritance`, `Authors`, `IsAgreement` and `ci_red_inherited`
 were removed 2026-11-08: a red base is the coordinator's judgement, not
 classified here.)
 
-- *`LandPass`* (`modules/edge/git/land.go`): a red rollup is `ci_red` at once,
-  with `FailingLines`; the pass also reads the base tip's own checks
+- *`LandPass`* (`modules/edge/git/land.go`): a red rollup is `ci_red` once
+  every check completed and one failed on its own (2026-11-11: no longer at
+  once; LANDING.md, "A verdict only from completed checks"), with
+  `FailingLines`; the pass also reads the base tip's own checks
   (`Checks` on `BaseTip`) and, when the base is red too, fills
   `LandResult.BaseFailing`. Run's `landFacts` then leads with "the base
   itself is red at its tip <sha> on: ...; the card's head is red on: ...".

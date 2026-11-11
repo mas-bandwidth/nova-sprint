@@ -33,6 +33,9 @@
 #                       kept hand, refused at that record
 #   runner-breaker      the same test: a restart that kept its hand to resume it, refused
 #                       at its Restart record (all three written here, not committed)
+#   landedge-breaker-<old behaviour>   modules/edge/git/trace_test.go
+#                       TestLandEdgeTraceRefusesOldBehaviours: the old landing's judgements, its
+#                       gate rebuilt in flight, its whole-group conflict (committed fixtures, refused at their last record)
 # Run it on a bench host (hetzner2 for the TLC half), never on the working machine.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -61,7 +64,7 @@ if on store; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergen
 if on card; then go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ & pids+=($!); fi
 if on policy; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ & pids+=($!); fi
 if on steps; then go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ & pids+=($!); fi
-if on edge; then go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./modules/edge/git & pids+=($!); fi
+if on edge; then go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$|TestLandEdgeTraceRefusesOldBehaviours$' ./modules/edge/git & pids+=($!); fi
 if on edge; then go test -count=1 -run 'TestRunnerTraceRefinementWalk$|TestRunnerTraceRefusesAResume$' ./modules/edge/worker & pids+=($!); fi
 if on hook; then go test -count=1 -run 'TestHookTraceWalk$|TestHookTraceRefusesDivergence$' ./modules/verbs/ & pids+=($!); fi
 if on verbs; then go test -count=1 -run 'TestVerbFenceTraceWalk$' ./modules/verbs/ & pids+=($!); fi

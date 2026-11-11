@@ -34,6 +34,8 @@ TraceAction(k) ==
       x == TraceLog[k].arg
   IN CASE a = "Tick"      -> Tick
        [] a = "Pass"      -> Pass(x)
+       [] a = "CIStep"    -> CIStep(x)
+       [] a = "Late"      -> Late(x)
        [] a = "BaseMoves" -> BaseMoves
        [] a = "Answer"    -> Answer(x, TraceLog[k].choice)
        [] OTHER           -> FALSE

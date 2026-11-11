@@ -47,13 +47,26 @@ func (f ExecFunc) Run(ctx context.Context, cmd edge.Cmd) (edge.Result, error) { 
 
 // CheckRollup is a commit's checks: State, the failing checks with the
 // first one's URL, and Waiting, some check still queued or running (a red
-// rollup can still be waiting: directive 76).
+// or faulted rollup can still be waiting: directive 76), Pending of them.
+// A red rollup that is still waiting is no verdict yet: the landing reads
+// it as unfinished, never as red (LANDING.md "A verdict only from completed
+// checks").
 type CheckRollup struct {
 	SHA, URL, Reason string
 	State            CheckState
 	Failing          []string
 	Waiting          bool
+	Pending          int
 }
+
+// Failure is one completed check of a commit that did not pass, as GitHub
+// recorded it: its name, its URL, and Stop, how GitHub says it was stopped
+// rather than failing on its own ("" when nothing says so). The landing
+// reads only GitHub's own words (StopOf), never a fleet's: a job killed at
+// a time limit, by the out-of-memory killer or by anything else that sends
+// SIGKILL all read "killed (exit code 137)", and a run cancelled because a
+// newer one superseded it reads like one cancelled by hand.
+type Failure struct{ Name, URL, Stop string }
 
 // PRInfo is an open PR as gh pr list prints it. Mergeable is GitHub's
 // MERGEABLE, CONFLICTING or UNKNOWN (still computing).
@@ -87,6 +100,10 @@ type Forge interface {
 	// commit base now has.
 	Merge(ctx context.Context, repo string, pr int, sha string) (string, error)
 	FailedLines(ctx context.Context, repo, url string) ([]string, error)
+	// Failures is every completed check of sha that did not pass, each
+	// with how GitHub says it was stopped, if it was: one read, made only
+	// once sha's checks have all completed.
+	Failures(ctx context.Context, repo, sha string) ([]Failure, error)
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on
@@ -139,9 +156,17 @@ type Config struct {
 type Client struct {
 	cfg      Config
 	mu       sync.Mutex
-	restTill int64
+	restTill map[string]int64  // bucket (BucketGraphQL, BucketCore) -> rested until
 	methods  map[string]string // repo -> the merge method it allows
 }
+
+// The two rate-limit buckets GitHub keeps per identity: GraphQL (gh api
+// graphql, and gh pr and gh repo, which call it) and REST (core: gh run, gh
+// api on a REST path). A limit on one rests only that one.
+const (
+	BucketGraphQL = "graphql"
+	BucketCore    = "core"
+)
 
 func New(cfg Config) *Client { return NewClient(cfg.Exec, cfg) }
 func NewClient(ex edge.Exec, cfg Config) *Client {
@@ -151,9 +176,28 @@ func NewClient(ex edge.Exec, cfg Config) *Client {
 	if cfg.Now == nil {
 		cfg.Now = func() int64 { return time.Now().Unix() }
 	}
-	return &Client{cfg: cfg, methods: map[string]string{}}
+	return &Client{cfg: cfg, methods: map[string]string{}, restTill: map[string]int64{}}
 }
-func (c *Client) RestedUntil() int64 { c.mu.Lock(); defer c.mu.Unlock(); return c.restTill }
+
+// RestedUntil is the latest time either bucket rests until.
+func (c *Client) RestedUntil() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return max(c.restTill[BucketGraphQL], c.restTill[BucketCore])
+}
+
+// bucket_internal is the rate-limit bucket a gh call spends: REST for gh
+// run and gh api on a REST path, GraphQL for gh api graphql and the rest
+// (gh pr and gh repo call GraphQL).
+func bucket_internal(argv []string) string {
+	switch {
+	case len(argv) > 0 && argv[0] == "run":
+		return BucketCore
+	case len(argv) > 1 && argv[0] == "api" && argv[1] != "graphql":
+		return BucketCore
+	}
+	return BucketGraphQL
+}
 
 // env_internal is gh's environment: the process's without any GitHub
 // credential of its own (HostEnv: the host's gh login), with GH_TOKEN set
@@ -166,13 +210,13 @@ func (c *Client) env_internal() []string {
 	return env
 }
 
-// resting_internal refuses a call while the identity rests after GitHub
-// rate-limited it (detectRateLimit_internal sets restTill).
-func (c *Client) resting_internal() error {
+// resting_internal refuses a call while its bucket rests after GitHub
+// rate-limited it (rest_internal sets restTill).
+func (c *Client) resting_internal(bucket string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.cfg.Now() < c.restTill {
-		return &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.restTill, Reason: "identity is resting after GitHub rate limit"}
+	if till := c.restTill[bucket]; c.cfg.Now() < till {
+		return &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: till, Reason: "identity is resting after GitHub rate limit (" + bucket + ")"}
 	}
 	return nil
 }
@@ -183,7 +227,8 @@ func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, st
 // runGHBytes_internal is runGH_internal with stdout capped at maxBytes (0:
 // edge.DefaultMaxBytes).
 func (c *Client) runGHBytes_internal(ctx context.Context, maxBytes int, argv ...string) (string, string, error) {
-	if err := c.resting_internal(); err != nil {
+	bucket := bucket_internal(argv)
+	if err := c.resting_internal(bucket); err != nil {
 		return "", "", err
 	}
 	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout, MaxBytes: maxBytes}
@@ -194,14 +239,54 @@ func (c *Client) runGHBytes_internal(ctx context.Context, maxBytes int, argv ...
 	// The failure names none of the environment (it may hold a token).
 	failed := edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	if retrySec, ok := detectRateLimit_internal(res.Stderr); ok {
-		c.mu.Lock()
-		c.restTill = c.cfg.Now() + retrySec
-		c.mu.Unlock()
-		return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.RestedUntil(), Reason: failed.Error()}
+		till := c.rest_internal(ctx, bucket, retrySec)
+		return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: till, Reason: failed.Error()}
 	}
 	return res.Stdout, res.Stderr, failed
 }
 
+// rest_internal rests bucket after a rate limit and returns until when:
+// retrySec when GitHub said (Retry-After, a secondary limit), else until
+// the bucket's reset as gh api rate_limit reads it (gh's message for a
+// primary limit carries no time) when its remaining is 0, else
+// DefaultRateLimitRestSec (a limit the reset does not explain, or a read
+// that failed). The rate_limit read is one call, made outside the rest and
+// never classified itself, so it cannot loop.
+func (c *Client) rest_internal(ctx context.Context, bucket string, retrySec int64) int64 {
+	now := c.cfg.Now()
+	till := now + retrySec
+	if retrySec == 0 {
+		till = now + DefaultRateLimitRestSec
+		if reset, ok := c.reset_internal(ctx, bucket); ok && reset > now {
+			till = reset
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.restTill[bucket] = till
+	return till
+}
+
+// reset_internal is bucket's reset time from gh api rate_limit, when its
+// remaining is 0.
+func (c *Client) reset_internal(ctx context.Context, bucket string) (int64, bool) {
+	cmd := edge.Cmd{Argv: []string{c.cfg.Binary, "api", "rate_limit"}, Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout}
+	res, err := c.cfg.Exec.Run(ctx, cmd)
+	if err != nil || !res.OK() {
+		return 0, false
+	}
+	var v struct {
+		Resources map[string]struct{ Remaining, Reset int64 }
+	}
+	if json.Unmarshal([]byte(res.Stdout), &v) != nil {
+		return 0, false
+	}
+	r, ok := v.Resources[bucket]
+	return r.Reset, ok && r.Remaining == 0 && r.Reset > 0
+}
+
+// detectRateLimit_internal is whether stderr is a GitHub rate limit, and the
+// seconds GitHub said to wait (0: it did not say).
 func detectRateLimit_internal(s string) (int64, bool) {
 	lower := strings.ToLower(s)
 	if !strings.Contains(lower, "http 429") && !strings.Contains(lower, "status 429") &&
@@ -214,7 +299,7 @@ func detectRateLimit_internal(s string) (int64, bool) {
 			return sec, true
 		}
 	}
-	return DefaultRateLimitRestSec, true
+	return 0, true
 }
 func (c *Client) PR(ctx context.Context, repo, head, base string) (PRInfo, bool, error) {
 	if repo == "" || head == "" || base == "" {
@@ -422,12 +507,12 @@ func classifyNode_internal(n gqlNode) (CheckState, string, string) {
 func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRollup {
 	var failing, faulted []string
 	var firstRedURL, firstFaultURL string
-	pending := false
+	pending := 0
 	for _, n := range nodes {
 		st, name, url := classifyNode_internal(n)
 		switch st {
 		case CheckPending:
-			pending = true
+			pending++
 		case CheckRed:
 			failing, firstRedURL = append(failing, name), cmp.Or(firstRedURL, url)
 		case CheckFault:
@@ -436,12 +521,12 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 	}
 	switch {
 	case len(faulted) > 0 && len(failing) == 0:
-		return CheckRollup{SHA: sha, State: CheckFault, Failing: faulted, URL: firstFaultURL, Reason: "gate did not run: " + strings.Join(faulted, ", ")}
+		return CheckRollup{SHA: sha, State: CheckFault, Failing: faulted, URL: firstFaultURL, Waiting: pending > 0, Pending: pending, Reason: "gate did not run: " + strings.Join(faulted, ", ")}
 	case len(failing) > 0:
-		return CheckRollup{SHA: sha, State: CheckRed, Failing: failing, URL: firstRedURL, Waiting: pending, Reason: "CI red: " + strings.Join(failing, ", ")}
+		return CheckRollup{SHA: sha, State: CheckRed, Failing: failing, URL: firstRedURL, Waiting: pending > 0, Pending: pending, Reason: "CI red: " + strings.Join(failing, ", ")}
 	case strings.EqualFold(rollupState, "FAILURE") || strings.EqualFold(rollupState, "ERROR"):
 		return CheckRollup{SHA: sha, State: CheckRed, Failing: []string{"statusCheckRollup"}, Reason: "statusCheckRollup state " + rollupState}
-	case pending || strings.EqualFold(rollupState, "PENDING") || strings.EqualFold(rollupState, "EXPECTED") || len(nodes) == 0:
+	case pending > 0 || strings.EqualFold(rollupState, "PENDING") || strings.EqualFold(rollupState, "EXPECTED") || len(nodes) == 0:
 		if strings.EqualFold(rollupState, "SUCCESS") && len(nodes) == 0 {
 			return CheckRollup{SHA: sha, State: CheckGreen}
 		}
@@ -533,6 +618,117 @@ func (c *Client) FailedLines(ctx context.Context, repo, url string) ([]string, e
 		return nil, err
 	}
 	return FirstFailing(stdout, 5), nil
+}
+
+// stopLines are GitHub's own words for a job stopped rather than failed,
+// as its failure annotations say them, and what the landing calls each.
+// Exit codes 137 and 143 are the runner's report of a step killed by
+// SIGKILL and SIGTERM: a time-limit killer, the out-of-memory killer and a
+// kill by hand all say the same.
+var stopLines = []struct {
+	re   *regexp.Regexp
+	stop string
+}{
+	{regexp.MustCompile(`exit code 137\b`), "killed (exit code 137)"},
+	{regexp.MustCompile(`exit code 143\b`), "terminated (exit code 143)"},
+	{regexp.MustCompile(`(?i)exceeded the maximum execution time`), "timed out (the job's time limit)"},
+	{regexp.MustCompile(`(?i)has timed out after`), "timed out (a step's time limit)"},
+	{regexp.MustCompile(`(?i)the (operation|run) was cancel+ed`), "cancelled"},
+}
+
+// StopOf is how GitHub says a completed check that did not pass was
+// stopped: its conclusion CANCELLED or TIMED_OUT, or one of stopLines when
+// that line is its one failure annotation; "" when it failed on its own.
+// Any step can write a stop line (::error::, a problem matcher), so a check
+// with any other failure annotation failed: a test that fails and then
+// hangs to a kill is red, never "killed".
+func StopOf(conclusion string, failureAnnotations []string) string {
+	switch strings.ToUpper(conclusion) {
+	case "CANCELLED":
+		return "cancelled"
+	case "TIMED_OUT":
+		return "timed out"
+	}
+	if len(failureAnnotations) != 1 {
+		return ""
+	}
+	for _, l := range stopLines {
+		if l.re.MatchString(failureAnnotations[0]) {
+			return l.stop
+		}
+	}
+	return ""
+}
+
+type gqlFailNode struct {
+	gqlNode
+	Annotations struct {
+		Nodes []struct{ Message, AnnotationLevel string }
+	}
+}
+
+// Failures reads sha's completed checks that did not pass with their
+// failure annotations (one gh api graphql call per 100 checks) and says
+// how each was stopped, if GitHub says it was (StopOf).
+func (c *Client) Failures(ctx context.Context, repo, sha string) ([]Failure, error) {
+	path, err := RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	owner, name, ok := strings.Cut(path, "/")
+	if !ok || !isFullSHA_internal(sha) {
+		return nil, fmt.Errorf("forge refused: Failures requires an org/repo and a 40-hex sha")
+	}
+	var out []Failure
+	after := ""
+	for {
+		page := ""
+		if after != "" {
+			page = fmt.Sprintf(", after: %q", after)
+		}
+		q := fmt.Sprintf(`query { repository(owner: %q, name: %q) { c0: object(oid: %q) { ... on Commit { statusCheckRollup { contexts(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { __typename ... on CheckRun { name status conclusion detailsUrl annotations(first: 10) { nodes { message annotationLevel } } } ... on StatusContext { context state targetUrl } } } } } } } }`, owner, name, sha, page)
+		stdout, _, err := c.runGH_internal(ctx, "api", "graphql", "-f", "query="+q)
+		if err != nil {
+			return nil, err
+		}
+		var env struct {
+			Data struct {
+				Repository map[string]*struct {
+					StatusCheckRollup *struct {
+						Contexts struct {
+							PageInfo gqlPageInfo
+							Nodes    []gqlFailNode
+						}
+					}
+				}
+			}
+		}
+		if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+			return nil, fmt.Errorf("forge: decode gh api graphql failures: %s", edge.ParseFailure(err, []byte(stdout)))
+		}
+		commit := env.Data.Repository["c0"]
+		if commit == nil || commit.StatusCheckRollup == nil {
+			return out, nil
+		}
+		for _, n := range commit.StatusCheckRollup.Contexts.Nodes {
+			st, nm, url := classifyNode_internal(n.gqlNode)
+			if st != CheckRed && st != CheckFault {
+				continue
+			}
+			var msgs []string
+			for _, a := range n.Annotations.Nodes {
+				if strings.EqualFold(a.AnnotationLevel, "FAILURE") {
+					msgs = append(msgs, a.Message)
+				}
+			}
+			out = append(out, Failure{Name: nm, URL: url, Stop: StopOf(n.Conclusion, msgs)})
+		}
+		pi := commit.StatusCheckRollup.Contexts.PageInfo
+		if !pi.HasNextPage || pi.EndCursor == "" {
+			return out, nil
+		}
+		after = pi.EndCursor
+	}
 }
 
 // FirstFailing is the first n lines of log that say error, fail or panic,

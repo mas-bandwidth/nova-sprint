@@ -49,7 +49,8 @@ Three rungs, each stream on one at a time; the group rung is kept.
    card branch missing or moved from its read head; a stream landed by
    hand (mode hand, or no forge); or a fault of git or the forge itself:
    each is one `land` judgement per card on the coordinator's row, opened
-   in the tick that reads the result. Nothing moves and nothing is blamed.
+   in the tick that reads the result (a group's merge conflict that names
+   its card: that card alone, "One card's conflict" below). Nothing moves and nothing is blamed.
    Its question carries the facts: the card, stream, base and base tip,
    branch, head, the outcome, the rung, the group tip, the gated sha, the
    PR, the failing checks with the first one's URL and its first failing
@@ -71,6 +72,88 @@ rate-limited (`forge_rested`) is asked again the same way, said once in the
 run log as an edge fault; the identity rests meanwhile, so those passes make
 no call.
 
+### A group in flight (2026-11-11)
+
+Every pass used to rebuild the gate from the base tip as it was then: each
+base move while CI ran pushed the group branch again, its CI started over
+on the new sha (and a workflow that cancels superseded runs cancelled the
+old one), and on a busy base groups never reached a verdict. Now the run keeps the gate a pass pushed
+(`LandRequest.Gate`, from `LandResult.Kept`) for the next pass of the
+same request, and a kept gate is read as it is, on the base it was built
+on, while its CI has no verdict (pending, unfinished, absent, stopped jobs
+run again, a rested forge). It is never rebuilt or pushed again meanwhile.
+It is let go only when:
+
+- it is green and the base moved since it was built: `base_moved`, and
+  the next pass builds on the new tip (green merges only while base is
+  still the tip it was gated on, as before);
+- GitHub says its PR conflicts with a base that moved: it is built again
+  in the same pass, and a merge that fails is the conflict (below);
+- its branch is no longer at it on origin: built again in the same pass.
+
+A red or a no verdict is judged on the gate as built, with its base tip
+named. One group is in flight per stream: layer 3 asks a stream's next
+landing only once the one in flight has a result, so cards that become
+ready meanwhile wait for the next group, and the run never supersedes the
+group in flight. A run restarted mid-landing loses the kept gate (it is
+in memory), and its first pass builds on the tip as it is: at most one
+supersede per restart.
+
+Latency: a group whose CI is still running is no longer restarted, so it
+reaches a verdict in one CI run; the price is that a green gate on a base
+that moved costs one more CI run, on the new tip, before it can merge.
+
+### One card's conflict (2026-11-11)
+
+The group's merge takes its heads in landing order; the first whose merge
+fails is named (`LandResult.ConflictHead`, the inbox item's `Head`). That
+card alone gets the `conflict` judgement, with the files, and the
+question says which cards are landing again without it; the group's other
+cards are not judged, and the next tick asks them again as a new landing
+with no answer needed. The named card may conflict with the base or with a
+card before it in the group; the judgement says so. A conflict that names
+no head (GitHub's mergeable state on the group's PR) is still one
+judgement per card.
+
+### A verdict only from completed checks (2026-11-11)
+
+The sprint of 2026-11-10 judged landings red while their CI still ran: the
+rollup is red as soon as one check fails, and one killed job read as the
+card's fault. A land verdict is now taken only from completed checks:
+
+- **Checks still running.** A gated sha with a failed check while others
+  still run (`CheckRollup.Waiting`) is `ci_unfinished`: no log is read and
+  the pass is asked again. When `ci_wait` passes with checks still running
+  it is one `ci_no_verdict` judgement: "no verdict after <wait>: <n> checks
+  still pending; failed so far: <names>", a different cause from red.
+- **Stopped is not failed.** Once the checks complete, each failing one is
+  read (`forge.Failures`: its conclusion and its failure annotations, one
+  GraphQL call per 100 checks). A check is stopped when its conclusion is
+  cancelled or timed out, or when its one failure annotation is a stop
+  line ("exit code 137", "exit code 143", "exceeded the maximum execution
+  time", "has timed out after", "the operation was canceled"). Any step can
+  write such a line, so a check with any other failure annotation failed:
+  a test that fails and then hangs until it is killed is red, never
+  "killed". Stopped checks are named apart in the judgement as "stopped,
+  not failed (no verdict): <name> <how>". The words are GitHub's own, never
+  a fleet's. Exit 137 is ambiguous: a runner's time limit, the
+  out-of-memory killer and a hand kill all read "killed (exit code 137)",
+  and a run cancelled by a newer one reads as cancelled. They cannot be
+  told apart from here.
+- **Every failing check stopped.** That is no verdict about the code and
+  the coordinator's `ci_no_verdict` judgement at once, with the first
+  stopped check's failing lines. The sprint never runs CI again
+  (LESSONS-PRIORITY-AND-MERGE W19; the owner ruled on 2026-11-11 that the
+  fix is that jobs are not killed).
+- **The base is red only from its own failures.** "The base itself is red
+  on" names only the base tip's checks that failed on their own, by the
+  same rule (one more `forge.Failures` read of the base tip). Its stopped
+  checks are named apart in the reason, and a base whose failing checks
+  were all stopped is not called red.
+- **Red is a check that failed on its own**, after every check completed:
+  `ci_red`, with those checks, the first one's URL and its first failing
+  lines (read once, from that completed run).
+
 ### A red base
 
 A red gated sha is one `ci_red` judgement at once, with the failing checks
@@ -84,12 +167,16 @@ red, the judgement leads with both sides, plainly:
 > ... land: you looked, merge it by hand; fix: back to its producer with
 > your finding as the reason; retry: a new landing
 
+"The base itself is red" is said only from the base tip's completed checks.
+While they still run the reason says "base CI still running at its tip
+<sha>: <n> red so far (<names>)", and no comparison is made; the head's
+red is itself taken only from completed checks (above).
+
 A red base is a merge question for the whole picture, so the landing does
 not classify which of the head's failures are "the base's" and gives no
 advice: the coordinator decides with all three choices (land, fix, retry).
 A base tip whose checks cannot be read is said in the reason. Red never
-lands by itself (`BaseNeverRed`); `LandEdge.tla` is unchanged, since every
-non-green, non-absent gate is one judgement (`red`) in the model.
+lands by itself (`BaseNeverRed`).
 
 ### land: the hand merge
 
@@ -134,6 +221,34 @@ same path.
   the group branch from being created (`sprint-group` itself, or a branch
   under `sprint-group/<stream>/`), branches it cannot list, and a creation
   that fails (push access for this host's gh identity).
+
+### A stream's base changed (2026-11-11)
+
+A stream lands into a branch that does not move: a stream branch
+that nothing else merges into, promoted into main by the sprint.
+`nova-sprint stream set <s> --base <branch>` moves a live stream onto
+one. The branch is admitted as `stream add` admits a base: it must be at
+origin, and must not be `sprint` or `sprint/<s>`. The command is refused
+while cards merged onto the old base wait for their promotion to main,
+because a promotion looks for their merges on the stream's base. Otherwise
+it is one write, and the receipt names the old base and what happens to
+the cards:
+
+- **Cards merging.** The landing reads the stream's base before each pass
+  (`Edges.Streams`, run's folded streams). A gate built on the old base
+  is let go, and the group is built on the new base at the next pass.
+  Nothing built on the old base lands: a merge also needs the base tip
+  it was gated on.
+- **Cards working.** Each finishes its attempt on the old base (its job
+  record names the base it was taken on, and its rebase step fetches that
+  branch). Its head then lands onto the new base, merged by the landing.
+- **Cards ready, and every retry,** start from the new base.
+
+In `LandEdge.tla` this is `Switch(s)`. The base's tip becomes a tree no
+gate was built on, and a gate in flight is let go. `NothingLandsUnpassed`
+covers it, and `GateReachesVerdict` allows a gate that was let go by a
+switch. The reach check `NeverSwitchInFlight` shows a switch under a
+gate. The card machine has no base, so a switch changes no card state.
 
 ### Requests rebuilt, nothing unexplained
 
@@ -265,8 +380,33 @@ does not read the gate, so a red tree merges), `LandEdgeStaleGate` (base
 moves under the gate and the pass merges anyway: the heads on the new tip
 land, not the tree CI passed), `LandEdgeJudgementHoldsStream` (a judgement
 on one card holds its whole stream, so the stream's other merging cards
-are left with neither a request nor a judgement). Reach checks show rung 2, a
-judgement, a hand landing and a red gate. `tla/Steps.tla` carries the land
+are left with neither a request nor a judgement). CI takes time in the
+model (`CIStep`: a gate's checks run, may fail while others run, and
+complete green, red or stopped; `Late`: the wait passes), with three more
+invariants: `VerdictOnlyCompleted` (red only from completed checks),
+`RedIsReal` (red only on a tree that is red; a stopped gate is never red,
+and is no verdict at once). Their reversed witnesses:
+`LandEdgeRedWhileRunning` (a failure while checks run is judged red) and
+`LandEdgeStoppedIsRed` (stopped jobs read as failed). The gate
+is kept (`Kept`, `LetGo`): `GateKept` (an action property: a gate whose
+CI runs is never replaced while its request is in flight) and, on
+`LiveSpec` (CI that runs completes; `LandEdgeLive.cfg`),
+`GateReachesVerdict` (a gate in flight reaches its verdict, or its
+request an outcome, the same gate); reversed witness
+`LandEdgeRebuildsInFlight` (the 2.0.36 rule: rebuilt when base moved).
+A conflict names its card (`odd`) and the tick judges that card alone:
+`ConflictJudgesItsCard` (a card judged for a conflict conflicts with
+something), reversed witness `LandEdgeConflictJudgesGroup` (the 2.0.37
+rule: the whole group judged). Reach checks show rung 2, a judgement, a
+hand landing, a red gate, a no verdict, a wait that passed, a
+gate kept while base moved, a group's conflict naming one card, and a
+base switched under a gate in flight. The
+trace walk plays CI per gate and keeps the gate as the run does, and
+committed breakers are refused at their last record:
+`tla/traces/landedge-breaker-red-while-running` and
+`landedge-breaker-stopped-is-red` (the 2.0.36 judgements),
+`landedge-breaker-rebuilds-in-flight` (the 2.0.36 run, no gate kept) and
+`landedge-breaker-conflict-judges-group` (the 2.0.37 tick). `tla/Steps.tla` carries the land
 judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
 `MergingCovered` (judgements as the tick's snapshot saw them) and the
 reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the earlier card lands, so a card after one sent to fix sits with no request).
@@ -296,9 +436,23 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
   than forbidding it.
 - **`flowing` is validated and not used.** Rung 2 is taken whenever
   `backed_up` or more heads wait; there is no hysteresis back to rung 1.
-- **Pending CI has no bound of its own.** A check that never leaves pending
-  is met by the stall judgement, not by `ci_wait`.
+- **Pending CI has no bound of its own.** A check that never leaves pending,
+  with none failed, is met by the stall judgement, not by `ci_wait`; one
+  failed while others run is bounded by `ci_wait` (`ci_no_verdict`).
+- **Why a job was killed is not known here.** Exit 137 is the same for a
+  runner's time limit, the out-of-memory killer and a hand kill. A kill
+  that writes a second failure annotation (a fleet's "CI rule" line, or
+  "Process completed with exit code 1.") reads as red, with its failing
+  lines: by design, a real red is never read as no verdict.
 - **Stream mode `group`** is accepted and behaves as `auto`.
+- **A base that moves faster than CI.** A green gate merges only while the
+  base is still the tip it was gated on; if the base always moves within
+  one CI run, a group is green, let go, built again, and never merges. The
+  coordinator sees no judgement for it (each pass is asked again). Not
+  seen live yet; the fix would be a policy choice (merge a green gate whose
+  base moved by a fast-forward-safe rule, or hold other landings).
+- **The kept gate is in memory.** A restart mid-landing builds on the tip
+  as it is, once.
 
 ## Where it lives
 
