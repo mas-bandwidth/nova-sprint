@@ -55,7 +55,6 @@ TraceAction(k) ==
        [] a = "Retire"    -> Retire(c)
        [] a = "HolderPush" -> HolderPush(c)
        [] a = "HolderTake" -> HolderTake(c)
-       [] a = "Release"   -> Release(c)
        [] a = "PassStart" -> PassStart
        [] a = "PassEnd"   -> PassEnd
        [] a = "Stop"      -> Stop

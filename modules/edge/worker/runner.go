@@ -308,16 +308,6 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 	}
 	return out, nil
 }
-func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id string, rec JobRecord, reason string) error {
-	rec.PushedHead = cmp.Or(r.harvestPartialPush_internal(ctx, jobDir, rec), rec.PushedHead)
-	rec.ResultID = cmp.Or(rec.ResultID, resultID_internal(rec.Epoch, id, rec.Gen))
-	rec.Outcome, rec.State = Outcome{Result: "fault", Head: rec.PushedHead, Reason: reason}, JobReporting
-	if err := WriteJobRecord(jobDir, rec); err != nil {
-		return err
-	}
-	return r.sendReportAndClean_internal(ctx, jobDir, rec)
-}
-
 // withdrawRunningJob_internal stops the harness of a job whose consumer is
 // final (withdrawn): it pushes nothing, since the branch is the next
 // holder's (defect 78); the caller retires the directory.
@@ -331,9 +321,8 @@ func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
 }
 
 // harvestPartialPush_internal pushes the commits a work job's tree holds,
-// once, while its job still holds the consumer (a fault past the deadline,
-// a restart's release); the head pushed, or "" when nothing was (a failed
-// push is said).
+// once, while its job still holds the consumer (a release with no blame);
+// the head pushed, or "" when nothing was (a failed push is said).
 func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string, rec JobRecord) string {
 	if rec.Kind != "work" || r.Git == nil {
 		return ""
@@ -372,7 +361,10 @@ func (r *Runner) cancelRunning_internal(id string) {
 }
 
 // busHook_internal is the start's first half: the bus hook, which claims
-// the row's name, then the self-unhook of a dead worker's sprint hook.
+// the row's name, then the self-unhook of a dead worker's sprint hook. The
+// unhook gives the row's whole hand back to the queue in its op (released,
+// no blame, branches and pushed heads kept), so a restart resumes nothing:
+// the dealer deals those cards again (tla/Runner.tla Restart).
 func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, error) {
 	if r.BusHook == nil {
 		return nil, errors.New("worker refused: no bus hook configured: start the worker through nova-sprint worker")
@@ -468,7 +460,7 @@ func (r *Runner) refuseReceipt_internal(ctx context.Context, jobDir string, rowI
 }
 
 // initJob_internal makes the job directory of a card just taken, with its
-// receipt (to resume it after a stop) and its record at taken.
+// receipt (for a later pass to go on with it) and its record at taken.
 func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir string) (Job, JobRecord, error) {
 	for _, sub := range []string{"home", "tmp", "data"} {
 		if err := os.MkdirAll(filepath.Join(jobDir, sub), 0o755); err != nil && sub == "home" {

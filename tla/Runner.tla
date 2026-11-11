@@ -13,16 +13,27 @@
 (* its hand and ends whatever its jobs are doing (PassNeverWaitsOnJobs). A *)
 (* job is the rest of each consumer's actions. Stop is the worker's own    *)
 (* stop (defect 73): each live harness is killed, its job kept at staged   *)
-(* (stopped) to be resumed, never a fault (StopIsNeverAFault). Release is  *)
-(* the restart's no-blame give-back of a job it cannot resume (a job       *)
-(* directory with no receipt): its commits pushed, the consumer withdrawn  *)
-(* with no result and no report, the directory gone; the producer's redeal *)
-(* is a new consumer, the card machine's. A dealt card with no job         *)
-(* directory is no release: the pass acknowledges it and runs it. A staged *)
-(* job that finds every slot held is no release either: it waits for a    *)
-(* slot (2026-11-09: a busy bench gave back 124 cards in 20 minutes, each  *)
-(* dealt to it again); the sprint's deadline withdraw bounds the wait.     *)
-(* NoSlotNeverReleases; reversed witness RunnerNoSlotReleases.             *)
+(* (stopped), never a fault and never reported (StopIsNeverAFault).        *)
+(*                                                                         *)
+(* A restart gives up the hand (2026-11-10: a bench that restarts and does *)
+(* not come back must not sit on its cards; it gives them up and the       *)
+(* dealer deals them again). Restart is the next start: its self-unhook    *)
+(* returns every card the row holds to the queue in the unhook's op, each  *)
+(* released with no result, no bounce and no blame, branch and pushed     *)
+(* head kept (Steps.tla ReturnHand and HandEmptyWhenClosed are the         *)
+(* authority; CardMachine.tla's Withdraw is the move). env.returned is     *)
+(* that hand. Nothing of the old session is resumed or adopted: its jobs   *)
+(* are final, so the first pass retires each (Retire: a harness left       *)
+(* running is killed first, the directory removed, nothing pushed, nothing *)
+(* reported), and the card's next deal is a new consumer that starts from  *)
+(* the branch tip (HolderTake). RestartReturnsHand, ReturnedNeverReports,  *)
+(* ReturnedDealtAgain; reversed witness RunnerRestartResumes (the restart  *)
+(* that kept the hand and resumed: a job reports for a card its row gave   *)
+(* back). A dealt card with no job directory is the pass's to acknowledge  *)
+(* and run. A staged job that finds every slot held waits for a slot and   *)
+(* keeps its card (2026-11-09: a busy bench gave back 124 cards in 20      *)
+(* minutes, each dealt to it again); the sprint's deadline withdraw bounds *)
+(* the wait. NoSlotNeverReleases; reversed witness RunnerNoSlotReleases.   *)
 (*                                                                         *)
 (* A branch is its holder's (defect 78, 2026-11-07): branch[c] is consumer *)
 (* c's card branch on origin: who wrote its tip (none, this job, or the    *)
@@ -51,10 +62,11 @@
 (* The next holder starts from the branch's tip (2026-11-09, johnny's four *)
 (* cards): Harvest pushes the job's head (harvestWorkHead_internal), and a *)
 (* Withdraw after it tells the store nothing (the sprint reads no origin), *)
-(* so branch[c].known, the head a re-deal's store prior carries (a Release *)
-(* reports its own; a Report ends the card done, never re-dealt), can lag  *)
-(* the tip; "none" is also a tip at the base, nothing past it. HolderTake  *)
-(* is the next holder's take; its prior                                    *)
+(* so branch[c].known, the head a re-deal's store prior carries (a Report  *)
+(* ends the card done, never re-dealt), can lag the tip; "none" is also a *)
+(* tip at the base, nothing past it. A restart's return is such a          *)
+(* withdraw: it records the store's head, never origin's.                  *)
+(* HolderTake is the next holder's take; its prior                         *)
 (* head, branch[c].from, is TakePrior (worker.StartHead): the tip at       *)
 (* origin when there is one, else the store's. HolderStartsFromTip;       *)
 (* witness RunnerTakeFromStorePrior, the take that read only the store.    *)
@@ -118,7 +130,7 @@ Init ==
                                       prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
-  /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, released |-> FALSE, restarted |-> FALSE]
+  /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, returned |-> {}, restarted |-> FALSE]
   /\ pass = "idle"
   /\ branch = [c \in Consumers |-> [tip |-> "none", holderWrote |-> FALSE, finalPushes |-> 0, known |-> "none", from |-> "unset"]]
 
@@ -177,6 +189,7 @@ Run(c) ==
 
 Die(c) ==
   /\ ~env.crashed
+  /\ storeState[c] = "working"   \* a returned job's harness is never harvested: it moves only to Retire
   /\ jobState[c] = "running"
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
@@ -186,6 +199,7 @@ Die(c) ==
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
 Harvest(c) ==
+  /\ storeState[c] = "working"   \* a returned job's harness is never harvested: it moves only to Retire
   /\ ~env.crashed
   /\ jobState[c] = "running"
   /\ harnessAlive[c] = 1
@@ -251,6 +265,7 @@ Push(c) ==
 Report(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
+  /\ storeState[c] # "fail"   \* a final consumer's job is never sent: it moves only to Retire
   /\ jobState[c] = "reporting"
   /\ jobDir[c].pushed
   /\ LET id == jobDir[c].resId IN
@@ -265,6 +280,7 @@ ReplyLost(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
   /\ env.crashes < MaxCrashes
+  /\ storeState[c] # "fail"   \* a final consumer's job is never sent: it moves only to Retire
   /\ jobState[c] = "reporting"
   /\ jobDir[c].pushed
   /\ LET id == jobDir[c].resId IN
@@ -296,17 +312,20 @@ Withdraw(c) ==
   /\ storeState' = [storeState EXCEPT ![c] = "fail"]
   /\ UNCHANGED <<jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass, branch>>
 
-\* The first pass that sees a withdrawn consumer retires its job: the
-\* directory is removed (made writable first) and nothing is pushed.
+\* The first pass that sees a withdrawn or returned consumer retires its
+\* job, wherever it stood (finalJob_internal): a harness the old session
+\* left running is killed and its slot freed, the directory is removed (made
+\* writable first), and nothing is pushed or reported.
 Retire(c) ==
   /\ ~env.crashed
   /\ pass = "planning"
   /\ storeState[c] = "fail"
-  /\ jobState[c] \in RetireStates
-  /\ harnessAlive[c] = 0
+  /\ jobState[c] # "cleaned"
+  /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
+  /\ slotsInUse' = slotsInUse - harnessAlive[c]
   /\ jobDir' = [jobDir EXCEPT ![c].exists = FALSE]
   /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
-  /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
+  /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
 \* The head the card's next holder starts from (worker.StartHead): the
 \* branch's tip at origin, read by take, when there is one; else the store's.
@@ -362,33 +381,19 @@ PassEnd ==
   /\ pass' = "idle"
   /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, branch>>
 
-\* After a restart, a job the worker cannot resume (its directory holds no
-\* receipt) is given back with no blame: its commits pushed once, by lease,
-\* while it still holds the card, then the consumer withdrawn with no result
-\* (no outcome, no bounce, no report), and its directory retired once the
-\* release is recorded. A staged job that finds every slot held is never
-\* given back: it waits for a slot (Run).
-Release(c) ==
-  /\ ~env.crashed
-  /\ ~env.storeDown
-  /\ env.restarted   \* only after a restart
-  /\ ~env.released
-  /\ storeState[c] = "working"
-  /\ jobState[c] \in {"staged", "harvested"}
-  /\ jobDir[c].exists
-  /\ harnessAlive[c] = 0
-  /\ storeState' = [storeState EXCEPT ![c] = "fail"]
-  /\ jobDir' = [jobDir EXCEPT ![c].pushed = TRUE, ![c].exists = FALSE, ![c].sealed = TRUE]   \* sealed, then pushed
-  /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
-  /\ env' = [env EXCEPT !.released = TRUE]
-  /\ branch' = [JobPushes(c) EXCEPT ![c].known = "job"]   \* the release reports the head it pushed
-  /\ UNCHANGED <<slotsInUse, width, harnessAlive, appliedOps, pass>>
-
+\* The next start (runner.go busHook_internal): its self-unhook returns the
+\* row's whole hand to the queue in the unhook's op (Steps.tla ReturnHand),
+\* each card released: no result, no bounce, branch and pushed head kept.
+\* Nothing is resumed: the old session's jobs are final, and the first pass
+\* retires them (Retire). A start whose unhook cannot reach the store does
+\* not start, so the store is up here.
 Restart ==
   /\ env.crashed
-  /\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE, !.restarted = TRUE]
-  /\ harnessAlive' = harnessAlive   \* adopt live harnesses by pid and nonce, never spawn a second
-  /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, appliedOps, pass, branch>>
+  /\ LET hand == {c \in Consumers : storeState[c] \in {"ready", "working"}}
+     IN /\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE, !.restarted = TRUE, !.returned = @ \cup hand]
+        /\ storeState' = [c \in Consumers |-> IF c \in hand THEN "fail" ELSE storeState[c]]   \* the hand, returned
+  /\ harnessAlive' = harnessAlive   \* a harness left running is never adopted and never doubled: the first pass kills it
+  /\ UNCHANGED <<jobState, slotsInUse, width, jobDir, appliedOps, pass, branch>>
 
 StoreDown ==
   /\ ~env.storeDown
@@ -428,7 +433,6 @@ Next ==
        \/ Retire(c)
        \/ HolderPush(c)
        \/ HolderTake(c)
-       \/ Release(c)
   \/ Crash
   \/ Restart
   \/ StoreDown
@@ -451,8 +455,10 @@ FairConsumer(c) ==
   /\ WF_vars(Clean(c))
   /\ SF_vars(Retire(c))
 
+\* The dealer deals a card that went back to the queue again: Steps.tla's
+\* liveness (DealtWithinKTicks), assumed here as HolderTake's fairness.
 Spec == Init /\ [][Next]_vars /\ WF_vars(Restart) /\ WF_vars(StoreUp) /\ WF_vars(PassStart) /\ WF_vars(PassEnd)
-        /\ FairConsumer("c1") /\ FairConsumer("c2")
+        /\ FairConsumer("c1") /\ FairConsumer("c2") /\ \A c \in Consumers : WF_vars(HolderTake(c))
 
 TypeOK ==
   /\ storeState \in [Consumers -> StoreStates]
@@ -504,7 +510,7 @@ PassNeverWaitsOnJobs ==
   (pass = "planning" /\ ~env.crashed) => ENABLED PassEnd
 
 \* Defect 73: a job the worker's stop cut short carries no outcome and no
-\* report until it runs again.
+\* report (the next start gives its card back, and it never runs again).
 StopIsNeverAFault ==
   \A c \in Consumers : jobDir[c].stopped =>
     /\ jobDir[c].outcome = "none"
@@ -525,10 +531,20 @@ BranchOnlyByHolder ==
 PushOnlySealed ==
   \A c \in Consumers : branch[c].tip = "job" => jobDir[c].sealed
 
-\* 2026-11-09: a card is given back only after a restart (a crash or the
-\* worker's stop), never because every slot is held.
+\* 2026-11-09: a card is given back only by a restart (a crash or the
+\* worker's stop, then the start's unhook), never because every slot is held.
 NoSlotNeverReleases ==
-  env.released => env.restarted
+  env.returned # {} => env.restarted
+
+\* 2026-11-10: a bench that restarts gives up its hand: after a restart the
+\* row holds none of the cards it held before it.
+RestartReturnsHand ==
+  \A c \in env.returned : storeState[c] = "fail"
+
+\* 2026-11-10: nothing of the old session is resumed: no job reports for a
+\* card its restart gave back (the dealer deals it again, to a new consumer).
+ReturnedNeverReports ==
+  \A c \in env.returned : ~(\E op \in appliedOps : op.c = c)
 
 \* The head a job pushes keeps the history of the head it started from:
 \* the stream is merged in, never rebased (a rebase drops a merge commit
@@ -561,8 +577,8 @@ NeverOkAtUnfinishedPrior ==
 NeverTakesWhileAJobRuns ==
   ~(\E c, d \in Consumers : c # d /\ harnessAlive[c] = 1 /\ jobState[d] = "taken")
 NeverStopped == \A c \in Consumers : ~jobDir[c].stopped
-NeverResumedAfterStop == ~(\E c \in Consumers : jobDir[c].stopped /\ ~env.crashed /\ jobState[c] = "staged" /\ pass = "planning")
-NeverReleased == ~env.released
+NeverLeftoverAfterRestart == ~(\E c \in env.returned : harnessAlive[c] = 1 /\ ~env.crashed /\ pass = "planning")
+NeverReturned == env.returned = {}
 NeverRetired == ~(\E c \in Consumers : storeState[c] = "fail" /\ jobDir[c].creates > 0 /\ ~jobDir[c].exists /\ ~jobDir[c].pushed)
 NeverHolderPushedOverJob == ~(\E c \in Consumers : branch[c].holderWrote /\ jobDir[c].pushed /\ jobDir[c].creates > 0)
 
@@ -572,4 +588,9 @@ Liveness ==
 \* Defect 78: a withdrawn job's directory is removed, not kept for ever.
 FinalDirRemoved ==
   \A c \in Consumers : [](storeState[c] = "fail" /\ jobDir[c].exists => <>(~jobDir[c].exists))
+
+\* 2026-11-10: a card a restart gave back is dealt again, and its next
+\* holder starts from the branch tip (HolderStartsFromTip): pushed work kept.
+ReturnedDealtAgain ==
+  \A c \in Consumers : [](c \in env.returned => <>(branch[c].from # "unset"))
 =============================================================================

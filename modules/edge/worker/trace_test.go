@@ -49,7 +49,7 @@ type runnerEnvState_internal struct {
 	crashes   int
 	storeDown bool
 	crashed   bool
-	released  bool
+	returned  [2]bool // c1, c2: the hand a restart's self-unhook gave back
 	restarted bool
 }
 
@@ -94,10 +94,11 @@ type runnerWalkHarness_internal struct {
 	applied    map[int]runnerAppliedOp_internal
 	env        runnerEnvState_internal
 	pass       string                // the wake loop's pass: idle or planning
-	stopped    map[string]bool       // kept by the worker's stop, to run again
-	gone       map[string]*JobRecord // the record a release or a retire left, its directory gone
+	stopped    map[string]bool       // kept by the worker's stop, unreported
+	gone       map[string]*JobRecord // the record a retire left, its directory gone
 	takes      map[string]int
 	runner     *Runner  // its stopped_internal, pushBranch_internal and finalJob_internal are the walk's
+	procs      *fakeProcTable // the runner's process table: a live harness, and the kills
 	git        *fakeGit // origin: the card branches, and every push the runner made
 	finalAt    map[string]int
 	holder     map[string]bool
@@ -143,7 +144,9 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 	}
 	root, git := t.TempDir(), newFakeGit_internal()
 	wall := &stepWall_internal{fakeWall: &fakeWall{}, steps: &[][]string{}}
+	procs := &fakeProcTable{alive: map[string]bool{}}
 	return &runnerWalkHarness_internal{
+		procs:    procs,
 		st:       st,
 		rootDir:  root,
 		t0:       t0,
@@ -157,7 +160,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		stopped:  map[string]bool{"c1": false, "c2": false},
 		gone:     map[string]*JobRecord{},
 		takes:    map[string]int{"c1": 0, "c2": 0},
-		runner:   runnerForWalk_internal(t, root, git, wall),
+		runner:   runnerForWalk_internal(t, root, git, wall, procs),
 		wall:     wall,
 		git:      git,
 		finalAt:  map[string]int{},
@@ -172,9 +175,9 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 	}
 }
 
-func runnerForWalk_internal(t *testing.T, root string, git *fakeGit, wall ReserveWall) *Runner {
+func runnerForWalk_internal(t *testing.T, root string, git *fakeGit, wall ReserveWall, procs *fakeProcTable) *Runner {
 	t.Helper()
-	r, err := NewRunner(Runner{Host: "vision", RootDir: root, Git: git, Wall: wall, Procs: &fakeProcTable{alive: map[string]bool{}},
+	r, err := NewRunner(Runner{Host: "vision", RootDir: root, Git: git, Wall: wall, Procs: procs,
 		Now: func() time.Time { return time.Unix(1000, 0) }, Sleep: func(time.Duration) {}})
 	if err != nil {
 		t.Fatal(err)
@@ -383,6 +386,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.git.mu.Unlock()
 		h.slotsInUse++
 		h.alive[c] = 1
+		h.setLive_internal(rec, true)
 		h.stopped[c], h.sealedAt[c] = false, h.seals_internal(c)
 		h.jobState[c] = JobRunning
 	case "Harvest", "Die":
@@ -409,21 +413,60 @@ func (h *runnerWalkHarness_internal) processStep_internal(t *testing.T, act, c s
 		h.pass = "planning"
 	case "PassEnd":
 		h.pass = "idle"
-	case "Release":
-		h.release_internal(t, c)
 	case "Withdraw", "Retire", "HolderTake", "HolderPush":
 		h.branchStep_internal(t, act, c)
 	case "Restart":
-		h.env.crashed = false
-		h.env.storeDown = false
-		h.env.restarted = true
+		h.restart_internal(t)
 	}
+}
+
+// setLive_internal marks rec's harness alive (or gone) in the runner's
+// process table, by the pid and nonce its record carries.
+func (h *runnerWalkHarness_internal) setLive_internal(rec JobRecord, alive bool) {
+	h.procs.mu.Lock()
+	defer h.procs.mu.Unlock()
+	if alive {
+		h.procs.alive[fmt.Sprintf("%d:%s", rec.PID, rec.Nonce)] = true
+	} else {
+		delete(h.procs.alive, fmt.Sprintf("%d:%s", rec.PID, rec.Nonce))
+	}
+}
+
+// restart_internal is the next start: its self-unhook gives the row's whole
+// hand back to the queue in one op, each card released (no result, no
+// bounce, the store's head kept), as the unhook verb does (modules/verbs
+// handBack; Steps.tla ReturnHand). A harness the old session left stays
+// alive until the first pass's retire kills it; nothing is resumed.
+func (h *runnerWalkHarness_internal) restart_internal(t *testing.T) {
+	t.Helper()
+	snap, err := h.st.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var writes []store.Write
+	for i, c := range []string{"c1", "c2"} {
+		if s := snap.Cards[c].State; s == card.Ready || s == card.Working {
+			writes = append(writes, store.SetCardState{Card: c, State: card.Fail})
+			h.env.returned[i] = true
+			h.finalAt[c] = len(h.git.pushes())
+		}
+	}
+	if len(writes) > 0 {
+		rec, err := h.st.Apply(context.Background(), store.Op{ID: fmt.Sprintf("unhook-%d", h.stepN), Epoch: 1, Actor: "vision.ds", Kind: "unhook",
+			At: h.t0.Add(time.Duration(h.stepN) * time.Second), Writes: writes})
+		if err != nil || !rec.Accepted {
+			t.Fatalf("Restart: the self-unhook's return of the hand: err=%v rec=%+v", err, rec)
+		}
+	}
+	h.env.crashed = false
+	h.env.storeDown = false
+	h.env.restarted = true
 }
 
 // stop_internal is the worker's stop: each running job's record is kept by
 // the worker's own stopped_internal (no pid, no outcome), its harness gone
-// and its slot freed; the walk's job is at staged, as a resume treats a
-// running record with no live harness (prepareResume_internal).
+// and its slot freed; the walk's job is at staged, unreported, until the
+// restart gives its card back.
 func (h *runnerWalkHarness_internal) stop_internal(t *testing.T) {
 	t.Helper()
 	for _, c := range []string{"c1", "c2"} {
@@ -435,6 +478,7 @@ func (h *runnerWalkHarness_internal) stop_internal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		h.setLive_internal(rec, false) // the stop kills the harness
 		if err := h.runner.stopped_internal(&prepared_internal{job: Job{JobDir: dir, Row: "vision.ds", Consumer: c}, rec: rec}); err != nil {
 			t.Fatal(err)
 		}
@@ -446,40 +490,10 @@ func (h *runnerWalkHarness_internal) stop_internal(t *testing.T) {
 	h.pass = "idle"
 }
 
-// release_internal is the restart's no-blame give-back of a job it cannot
-// resume: its commits pushed, the consumer withdrawn with no result and no
-// report, and its directory gone (releaseNoBlame_internal).
-func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
-	t.Helper()
-	dir := h.jobDirPath_internal(c)
-	kept, err := ReadJobRecord(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.seal_internal(t, c, kept)
-	// Its one push, by lease, while it still holds the card.
-	if err := h.runner.pushBranch_internal(context.Background(), &kept, testWorkSHA); err != nil {
-		t.Fatalf("Release %s: the push by lease: %v", c, err)
-	}
-	rec, err := h.st.Apply(context.Background(), store.Op{
-		ID: fmt.Sprintf("release-%s-%d", c, h.takes[c]), Epoch: 1, Actor: "vision.ds", Kind: "release",
-		At: h.t0.Add(time.Duration(h.stepN) * time.Second), Writes: []store.Write{store.SetCardState{Card: c, State: "fail"}},
-	})
-	if err != nil || !rec.Accepted {
-		t.Fatalf("Release %s: err=%v rec=%+v", c, err, rec)
-	}
-	if err := os.RemoveAll(dir); err != nil {
-		t.Fatal(err)
-	}
-	h.pushed[c], h.gone[c], h.jobState[c] = true, &kept, JobCleaned
-	h.known[c] = kept.PushedHead // releaseNoBlame_internal reports the head it pushed
-	h.finalAt[c] = len(h.git.pushes())
-	h.env.released = true
-}
-
 // branchStep_internal is defect 78's three steps: the sprint withdraws c
 // (and re-deals its card to another row); the next pass retires c's job
-// through the worker's own finalJob_internal, which must push nothing; the
+// through the worker's own finalJob_internal, which must push nothing and,
+// for a job a restart gave back, kills the harness it left running; the
 // new holder, on another row, pushes c's branch.
 func (h *runnerWalkHarness_internal) branchStep_internal(t *testing.T, act, c string) {
 	t.Helper()
@@ -501,6 +515,13 @@ func (h *runnerWalkHarness_internal) branchStep_internal(t *testing.T, act, c st
 				t.Fatalf("Retire %s: the job directory is still there: %v", c, err)
 			}
 			h.gone[c] = &kept
+			h.procs.mu.Lock()
+			killed := slices.Contains(h.procs.killed, kept.PID)
+			h.procs.mu.Unlock()
+			if h.alive[c] == 1 && killed { // the harness the old session left, killed by finalJob_internal
+				h.alive[c] = 0
+				h.slotsInUse--
+			}
 		}
 		h.jobState[c] = JobCleaned
 	case "HolderTake": // the next holder's take: its prior head is StartHead's, as take hands it over
@@ -544,6 +565,7 @@ func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, di
 	if err != nil {
 		t.Fatal(err)
 	}
+	h.setLive_internal(rec, false) // the harness ended
 	rec.PID = 0
 	rec.State = JobHarvested
 	if act == "Die" {
@@ -753,19 +775,15 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 }
 
 // consumerMoves_internal are c's enabled job moves in st: a take (the
-// acknowledgement of a card dealt working) only in a pass; a release after
-// a restart, of a job left staged or harvested (a staged job that finds
-// every slot held waits for one); a job's own moves only
-// while its consumer is working; the withdraw, the retire and the holder's
-// push of defect 78 (branchMoves_internal).
+// acknowledgement of a card dealt working) only in a pass; a job's own
+// moves only while its consumer is not final (a staged job that finds every
+// slot held waits for one); the withdraw, the retire (of a withdrawn job,
+// or of one a restart gave back) and the holder's push of defect 78
+// (branchMoves_internal).
 func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_internal {
 	moves := branchMoves_internal(st, c)
-	if st.storeState[c] != "working" && runnerRetireStates_internal[st.jobState[c]] {
-		return moves // a withdrawn job's only move is Retire
-	}
-	if (st.jobState[c] == JobStaged || st.jobState[c] == JobHarvested) && st.env.restarted && !st.env.released &&
-		st.storeState[c] == "working" && st.jobDir[c].exists && st.harnessAlive[c] == 0 {
-		moves = append(moves, runnerMove_internal{"Release", c})
+	if st.storeState[c] == "fail" {
+		return moves // a withdrawn or returned job's only move is Retire
 	}
 	switch st.jobState[c] {
 	case JobNone:
@@ -803,19 +821,21 @@ func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_
 var runnerRetireStates_internal = map[string]bool{JobNone: true, JobTaken: true, JobStaged: true, JobHarvested: true, JobRebased: true}
 
 // branchMoves_internal: Withdraw of a working consumer with no harness and
-// no report owed; Retire of a withdrawn one's job in a pass; HolderPush once
-// its card is re-dealt.
+// no report owed; Retire of a final one's job in a pass, wherever it stood;
+// HolderPush once its card is re-dealt.
 func branchMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_internal {
 	var moves []runnerMove_internal
-	retireable := runnerRetireStates_internal[st.jobState[c]]
 	switch {
-	case st.env.crashed || st.harnessAlive[c] != 0 || !retireable:
+	case st.env.crashed:
+	case st.storeState[c] == "fail":
+		if st.pass == "planning" && st.jobState[c] != JobCleaned {
+			moves = append(moves, runnerMove_internal{"Retire", c})
+		}
+	case st.harnessAlive[c] != 0 || !runnerRetireStates_internal[st.jobState[c]]:
 	case st.storeState[c] == "working" && !st.env.storeDown && st.jobState[c] != JobNone && st.jobState[c] != JobTaken:
 		// The walk withdraws a job with a directory (staged, harvested,
 		// rebased); the model allows the rest too.
 		moves = append(moves, runnerMove_internal{"Withdraw", c})
-	case st.storeState[c] == "fail" && st.pass == "planning":
-		moves = append(moves, runnerMove_internal{"Retire", c})
 	}
 	switch {
 	case st.storeState[c] != "fail" || st.branch[c].holderWrote:
@@ -879,8 +899,14 @@ func formatRunnerOpsTLA_internal(ops []runnerAppliedOp_internal) string {
 }
 
 func formatRunnerEnvTLA_internal(e runnerEnvState_internal) string {
-	return fmt.Sprintf("[crashes |-> %d, storeDown |-> %s, crashed |-> %s, released |-> %s, restarted |-> %s]",
-		e.crashes, tlaBool_internal(e.storeDown), tlaBool_internal(e.crashed), tlaBool_internal(e.released), tlaBool_internal(e.restarted))
+	var returned []string
+	for i, c := range []string{"c1", "c2"} {
+		if e.returned[i] {
+			returned = append(returned, strconv.Quote(c))
+		}
+	}
+	return fmt.Sprintf("[crashes |-> %d, storeDown |-> %s, crashed |-> %s, returned |-> {%s}, restarted |-> %s]",
+		e.crashes, tlaBool_internal(e.storeDown), tlaBool_internal(e.crashed), strings.Join(returned, ", "), tlaBool_internal(e.restarted))
 }
 
 func tlaBool_internal(v bool) string {
@@ -893,13 +919,14 @@ func tlaBool_internal(v bool) string {
 func TestRunnerTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
 	driveRunnerEntrypoints_internal(t)
-	seen := map[string]int{}
+	seen, killedLeftover := map[string]int{}, false
 	for seed := int64(1); seed <= 32; seed++ {
 		steps := walkRunnerTrace_internal(t, seed)
 		fresh := false // a walk of an action no earlier seed walked
-		for _, s := range steps {
+		for i, s := range steps {
 			fresh = fresh || seen[s.action] == 0
 			seen[s.action]++
+			killedLeftover = killedLeftover || (s.action == "Retire" && steps[i-1].harnessAlive[s.arg] == 1 && s.harnessAlive[s.arg] == 0)
 		}
 		last := steps[len(steps)-1]
 		if last.action != "Done" {
@@ -952,10 +979,55 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 		}
 	}
 	// The seeds, together, walk every path the model checks the code on,
-	// defect 78's withdraw, retire and holder's push among them.
-	for _, a := range []string{"Rebase", "NothingNew", "Conflict", "Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
+	// defect 78's withdraw, retire and holder's push, and the restart's
+	// return of the hand, among them.
+	for _, a := range []string{"Rebase", "NothingNew", "Conflict", "Push", "Report", "Clean", "Stop", "Crash", "Restart", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
 		if seen[a] == 0 {
 			t.Errorf("no seed walks %s: the trace binding does not cover it (walked: %v)", a, seen)
+		}
+	}
+	if !killedLeftover {
+		t.Errorf("no seed walks a restart whose first pass kills the harness the old session left")
+	}
+}
+
+// TestRunnerTraceRefusesAResume holds the restart rule's breaker: a walk
+// that takes c1, runs its harness, crashes and restarts, recorded once as
+// the code does it (the self-unhook gives c1 and c2 back) and once as the
+// old restart did (the hand kept, to be resumed). The second is the
+// fixture runner-breaker, which TLC must refuse at its Restart record
+// (make-traces.sh check edge).
+func TestRunnerTraceRefusesAResume(t *testing.T) {
+	t.Parallel()
+	h := newRunnerWalkHarness_internal(t)
+	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
+	for _, m := range []runnerMove_internal{{"PassStart", "none"}, {"Take", "c1"}, {"Stage", "c1"}, {"Run", "c1"}, {"Crash", "none"}, {"Restart", "none"}} {
+		h.applyStep_internal(t, m.act, m.arg)
+		steps = append(steps, refinementRunnerState_internal(t, h, m.act, m.arg))
+	}
+	last := steps[len(steps)-1]
+	if last.storeState["c1"] != "fail" || last.storeState["c2"] != "fail" || last.env.returned != [2]bool{true, true} || last.harnessAlive["c1"] != 1 {
+		t.Fatalf("the restart must give the whole hand back and leave the old harness to the first pass: %+v", last)
+	}
+	broken := slices.Clone(steps)
+	kept := last
+	kept.storeState = map[string]string{"c1": "working", "c2": "working"}
+	broken[len(broken)-1] = kept
+	if out := os.Getenv("NOVA_TRACE_DIR"); out != "" {
+		dir := filepath.Join(out, "runner-breaker")
+		cfg, err := os.ReadFile(filepath.Join("..", "..", "..", "tla", "RunnerTrace.cfg"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg = []byte(strings.Replace(string(cfg), "\\* expect: matched", fmt.Sprintf("\\* expect: forbidden at %d", len(broken)), 1))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "RunnerTrace.cfg"), cfg, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "RunnerTraceLog.tla"), []byte(formatRunnerTraceTLA_internal(broken)), 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

@@ -16,7 +16,7 @@ import (
 )
 
 // The worker's live defects of 2026-11-07 (items 61, 66-73): passes apart
-// from jobs, restart resumes, read outcomes, JOB.md, quarantine, one fetch
+// from jobs, a job a pass left goes on, read outcomes, JOB.md, quarantine, one fetch
 // per repo. Unit tier: fake sprint, fake wall, fake git, fake timer.
 
 // liveWall runs fn for each harness run; nil fn writes {"result":"ok"}.
@@ -243,10 +243,12 @@ func TestLivePeriodicWakeRunsAPass(t *testing.T) {
 	}
 }
 
-// 70, 73: a job taken but never run (no slot) is staged again and run by
-// the next pass or the next worker, with no fault; one that was running
-// when the worker died is run again; neither is released.
-func TestLiveRestartResumesWithNoFault(t *testing.T) {
+// 70: a job taken but never run (no slot) is staged again and run by a
+// later pass, with no fault; one whose record a pass left at taken or
+// running, its harness gone, is run again; neither is released. (A restart
+// never gets here: its self-unhook gave the row's cards back, so its old
+// jobs are final and retired.)
+func TestLiveAJobAPassLeftGoesOnWithNoFault(t *testing.T) {
 	t.Parallel()
 	for _, state := range []string{JobStaged, JobTaken, JobRunning} {
 		sp := &cr2Sprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
@@ -259,7 +261,7 @@ func TestLiveRestartResumesWithNoFault(t *testing.T) {
 		if err != nil || rec.State != JobStaged {
 			t.Fatalf("a job with no slot stays staged: %+v %v", rec, err)
 		}
-		rec.State, rec.PID, rec.Nonce = state, 77, "n-77" // the worker died here
+		rec.State, rec.PID, rec.Nonce = state, 77, "n-77" // where the pass left it
 		_ = WriteJobRecord(dir, rec)
 		sp.next = workingNext_internal("read", "p1.r1")
 		wall := &liveWall{}
@@ -290,8 +292,8 @@ func TestLiveRestartWithNoJobDirRunsTheCard(t *testing.T) {
 	}
 }
 
-// 73: a job directory a restart cannot resume (no receipt) is released with
-// no blame, never reported.
+// 73: a job directory that cannot go on (no receipt) is released with no
+// blame, never reported.
 func TestLiveUnresumableJobIsReleasedWithNoBlame(t *testing.T) {
 	t.Parallel()
 	sp := &cr2Sprint{next: workingNext_internal("read", "p1.r1")}
@@ -301,7 +303,7 @@ func TestLiveUnresumableJobIsReleasedWithNoBlame(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = r.RecoverRow(context.Background(), "vision.ds")
-	if len(sp.reported()) != 0 || len(sp.releases) != 1 || !strings.HasPrefix(sp.releases[0], "p1.r1@2 runner restarted: ") {
+	if len(sp.reported()) != 0 || len(sp.releases) != 1 || !strings.HasPrefix(sp.releases[0], "p1.r1@2 the job cannot go on: ") {
 		t.Fatalf("want one no-blame release and no report, got releases %v reports %+v", sp.releases, sp.reported())
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
@@ -310,7 +312,7 @@ func TestLiveUnresumableJobIsReleasedWithNoBlame(t *testing.T) {
 }
 
 // 73: a job the worker's own stop cancels is "runner stopped": no report,
-// no timeout, its record kept to resume.
+// no timeout, its record kept until the next start gives the card back.
 func TestLiveAStoppedJobIsKeptNotReported(t *testing.T) {
 	t.Parallel()
 	running := make(chan struct{})
