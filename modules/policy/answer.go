@@ -143,7 +143,7 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 	}
 	for _, rq := range q.Rows {
 		if c, ok := ix.producer(rq.Card); ok && (rq.Kind == KindWork || rq.Kind == KindRead) {
-			out = append(out, ix.rowsAsk(c, rq))
+			out = append(out, ix.rowsAsk(c, rq, q.Candidates))
 		}
 	}
 	return append(out, ix.subjectAsks(q)...)
@@ -155,8 +155,8 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 // deals a read to that many distinct rows; the names are distinct
 // candidates, so never the author), when the candidates could (a configured
 // width above 0): rowan2's and cold read 3's probe.
-func (ix *index) rowsAsk(c store.Card, rq RowsQuestion) ask {
-	set := ix.candidateSet(c, rq.Kind)
+func (ix *index) rowsAsk(c store.Card, rq RowsQuestion, dealt map[RowsQuestion][]string) ask {
+	set := ix.candidateSet(c, rq, dealt)
 	card := ix.card(c)
 	return ask{q: "rows", subject: rq.Card + " " + rq.Kind, args: starlark.Tuple{card, starlark.String(rq.Kind), set.list},
 		digest: digestOf("rows", card.String()+" "+rq.Kind+" "+set.digest), rq: &rq,
