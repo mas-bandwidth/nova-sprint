@@ -267,7 +267,10 @@ The card id is the file's name without `.md`: 1 to 104 of a-z A-Z 0-9 _ -, not s
    - `DONE-WHEN: <command>`: required, one per line; each is one checkable command (a program and
      its arguments, run with no shell: wrap a pipe, `&&`, `;` or a redirection in `sh -c '...'`).
      `add` parses each and runs none; a bench's worker runs every one at the head after the
-     work, and a red one fails the attempt. A gate that would stay red after a correct fix is a
+     work, and a red one fails the attempt. A gate has what is left of the card's deadline (its
+     tier's, less what the work took and a minute kept for the push and the report) and no
+     shorter bound; one still running then fails the attempt, saying how long it ran and which
+     gates were not run. A gate that would stay red after a correct fix is a
      brief defect no machine catches before the deal: write it red at base, green at head. Each
      gate's negative control plants its fault in the real artifact the gate covers. A gate names
      the facts it needs (an OS, a tool), never a host.
@@ -285,7 +288,23 @@ head with a commit made as anyone else. `nova-sprint identity` with no flags pri
 A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base main]
 [--mode auto|group|hand] [--forge github]` prints `STREAM <s> repo=... base=... mode=...
 forge=... applied at seq <n>`; give `--forge github` when the repo requires PRs and CI, and only
-then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either later). Add cards
+then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either later).
+
+A rule every card of a stream must keep (the committed generated tree is current, the lint is
+clean) is a stream gate, never a line each brief has to remember: `--gate "<command>"` on
+`stream add` or `stream set`, once per gate, each one command as a DONE-WHEN is (`sh -c '...'`
+for a shell). Given once or more, `--gate` replaces the stream's whole list; `--gate none`
+clears it. Each prints a `GATE <command>` line (`GATES none` when cleared), `show <s>` lists
+them under `gates`, `check` prints `stream <s> gate: <command>` for each, and take hands them to
+every row. A bench's worker runs them after the card's DONE-WHENs at the same head, with the
+same bound; a red one fails the attempt and its reason names the stream gate and the lines that
+failed. A gate red at the card's head that is also red at its base (the stream tip the card was
+merged with) is the base's fault, not the card's: the attempt is not failed for it, and its
+reason says `stream gate <command> is red at base <sha>`; `check` prints a red line per such
+base with the cards it excused, and that base needs a card of its own. A base the worker cannot
+judge is a fault, dealt again. `stream set --gate` and `check` warn naming the bench rows whose
+worker is too old to run stream gates (`nova-fleet install` the current release there). Friend rows and
+reads run them as they run DONE-WHENs, under the same rule. Add cards
 with `nova-sprint add --stream <s> --brief-file <f>...` (`--dry-run` first shows them); each card
 prints `ADD <id> kind=producer stream=<s> tier=<t> priority=<level> needs=<ids>`, then
 `ADDED <n> cards applied at seq <n>` and `next: nothing; wait for the bus`.

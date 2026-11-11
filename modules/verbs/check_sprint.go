@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -74,6 +75,10 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 		})
 	}
 	wg.Wait()
+	var old []string // the rows that would pass a card without its stream gates
+	if slices.ContainsFunc(ss, func(s store.Stream) bool { return len(s.Gates) > 0 }) {
+		old = e.gatelessRows(ctx, snap)
+	}
 	for i, s := range ss {
 		sha, err := shas[i], errs[i]
 		if err != nil {
@@ -82,6 +87,7 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 		}
 		heads[s.Name] = sha
 		r.ok("stream %s: %s reachable, base %s at %s", s.Name, s.Repo, s.Base, shortSHA(sha))
+		checkStreamGates(r, s, snap, old)
 		if agree[i][0] != "" {
 			r.warn(agree[i][0], agree[i][1])
 		}
@@ -109,6 +115,90 @@ func baseRedJudged(snap store.Snapshot, s store.Stream) string {
 	}
 	return "; no base-red judgement is open for it yet"
 }
+
+// streamGatesRelease is the first nova-sprint release whose bench worker
+// runs a stream's gates: an older worker ignores the take receipt's
+// stream_gates and reports ok without them.
+const streamGatesRelease = "v2.0.37"
+
+// checkStreamGates is one line per gate of stream s, each re-parsed as
+// stream set admitted it (a restore or an older build is held to today's
+// rule): ok when it is one command, red naming the fix when it is not.
+func checkStreamGates(r *checkReport, s store.Stream, snap store.Snapshot, old []string) {
+	for _, g := range s.Gates {
+		if _, why := edge.ParseGate(g); why != "" {
+			r.red(refuse("stream "+s.Name+": gate "+clip(g)+" is not one command: "+why, edge.GateFix+", then nova-sprint stream set "+s.Name+" --gate <command> again"))
+			continue
+		}
+		r.ok("stream %s gate: %s (every card of the stream passes it at its finished head)", s.Name, g)
+		excused := map[string]int{} // per base sha: the cards it excused
+		for _, c := range snap.Cards {
+			if c.Stream != s.Name {
+				continue
+			}
+			for _, sha := range redBases(c.Reason+"\n"+c.Finding, g) {
+				excused[sha]++
+			}
+		}
+		for _, sha := range slices.Sorted(maps.Keys(excused)) {
+			r.red(refuse(fmt.Sprintf("stream %s: stream gate %s is red at base %s (%d cards excused)", s.Name, g, shortSHA(sha), excused[sha]),
+				"make the gate green at the stream's tip (a card for that is admitted), then check again"))
+		}
+	}
+	if what := gatelessLine(s, old); what != "" {
+		r.warn(what, gatelessFix)
+	}
+}
+
+// redBases is each base sha text names a gate red at, as a bench worker's
+// report and a friend's finish name one ("stream gate <g> is red at base
+// <sha>"), once each.
+func redBases(text, gate string) []string {
+	var out []string
+	for rest := text; ; {
+		_, after, ok := strings.Cut(rest, "stream gate "+gate+" is red at base ")
+		if !ok {
+			return out
+		}
+		sha := after[:len(after)-len(strings.TrimLeft(after, "0123456789abcdef"))]
+		if sha != "" && !slices.Contains(out, sha) {
+			out = append(out, sha)
+		}
+		rest = after
+	}
+}
+
+// gatelessRows is the hooked bench rows (the roster's workers; a friend
+// hooks as a worker too and never beats) whose worker's release is below
+// streamGatesRelease: it ignores a take receipt's stream_gates and reports
+// ok without them. An unreadable roster names none.
+func (e *Engine) gatelessRows(ctx context.Context, snap store.Snapshot) []string {
+	if e.Roster == nil {
+		return nil
+	}
+	ro, err := e.Roster.ReadRosterAt(ctx, 1)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(snap.Rows)) {
+		if _, bench := ro.Workers[name]; bench && snap.Rows[name].Session != "" && roster.Behind(snap.Rows[name].Version, streamGatesRelease) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// gatelessLine is the warning for stream s when it has gates and rows run
+// a worker that does not run them; "" otherwise.
+func gatelessLine(s store.Stream, rows []string) string {
+	if len(s.Gates) == 0 || len(rows) == 0 {
+		return ""
+	}
+	return "stream " + s.Name + ": rows " + strings.Join(rows, ", ") + " run a worker below " + streamGatesRelease + " that does not run stream gates, so their cards of it finish without them"
+}
+
+const gatelessFix = "nova-fleet install --repo mas-bandwidth/nova-sprint --tag <" + streamGatesRelease + " or later> <row>, for each"
 
 // streamsInOrder is the streams by position, then name.
 func streamsInOrder(snap store.Snapshot) []store.Stream {

@@ -62,6 +62,8 @@ type fakeGit struct {
 	fetchedJobs map[string]int // per repo: the jobs its fetches were for
 	fetchErr    error
 	pushLog     []fakePush
+	streamTip   string // StreamTip's answer: the stream tip the last merge used
+	tipErr      error
 }
 
 type fakePush struct{ branch, sha, expect string }
@@ -160,6 +162,12 @@ func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _, _ string) (string, 
 		return g.rebasedSHA, nil
 	}
 	return g.headByWT[wt], nil
+}
+
+func (g *fakeGit) StreamTip(context.Context, string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.streamTip, g.tipErr
 }
 
 func (g *fakeGit) OriginHasHead(_ context.Context, _, _, branch, sha string) (bool, error) {

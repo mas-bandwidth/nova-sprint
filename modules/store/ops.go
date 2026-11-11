@@ -116,7 +116,7 @@ func (UnchangedSince) isExpect() {}
 type Write interface{ isWrite() }
 
 // PutStream inserts a stream or overwrites its repo, base, pos, mode and
-// forge; held is kept on overwrite and false on insert. Pos is the order
+// forge; held and gates are kept on overwrite, false and none on insert. Pos is the order
 // streams land in. Mode is one of StreamModes, "" for auto; Forge is the
 // forge it lands through, "" for none.
 type PutStream struct {
@@ -138,6 +138,14 @@ type SetStreamMode struct{ Stream, Mode string }
 // SetStreamForge sets the forge a stream lands through ("" for none);
 // refused when it is the stream's forge already.
 type SetStreamForge struct{ Stream, Forge string }
+
+// SetStreamGates sets a stream's gates, the whole list in order (none
+// clears them); refused when they are the stream's gates already. The store
+// keeps the text; that each is one command is the verb's to check.
+type SetStreamGates struct {
+	Stream string
+	Gates  []string
+}
 
 // PutCard adds a card of a kind (producer, sentinel, work or read): refused
 // when it exists. It starts waiting, gen 0, attempt 0. Its stream must exist;
@@ -403,6 +411,7 @@ func (PutStream) isWrite()        {}
 func (SetStreamHeld) isWrite()    {}
 func (SetStreamMode) isWrite()    {}
 func (SetStreamForge) isWrite()   {}
+func (SetStreamGates) isWrite()   {}
 func (PutCard) isWrite()          {}
 func (SetCardState) isWrite()     {}
 func (SetCardResult) isWrite()    {}
@@ -489,6 +498,8 @@ func specOf(w Write) spec {
 		return put("stream", v.Stream, func(c *checker) { c.text(v.Forge) }, "forge").then(func(w *work) (string, error) {
 			return w.setStream(v.Stream, "forge", v.Forge, func(s *Stream) *string { return &s.Forge })
 		})
+	case SetStreamGates:
+		return put("stream", v.Stream, func(c *checker) { c.text(v.Gates...) }, "gates").then(func(w *work) (string, error) { return w.setStreamGates(v) })
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
 			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding, v.Model).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
