@@ -10,6 +10,7 @@ TickOld ==
   /\ IF cause
        THEN IF Last = "open" THEN UNCHANGED js ELSE js' = Append(js, "open")
        ELSE IF Last = "open" THEN js' = [js EXCEPT ![Len(js)] = "expired"] ELSE UNCHANGED js
+  /\ See
   /\ UNCHANGED <<cause, quiet, env>>
 
 NextOld == TickOld \/ Cause \/ Answer \/ QuietEnds

@@ -165,13 +165,16 @@ func setOf(q string) string {
 
 func (w *baseRedWalk) record(act, arg, how string) {
 	var js []string
-	for _, j := range w.judgements() {
+	all := w.judgements()
+	for i, j := range all {
 		js = append(js, fmt.Sprintf("[set |-> %q, st |-> %q]", setOf(j.Question), j.State))
 		switch {
 		case strings.HasPrefix(j.Question, "UNANSWERED"):
 			w.seen["escalated"] = true
 		case strings.HasPrefix(j.Question, "STILL RED"):
 			w.seen["still-red"] = true
+		case i > 0 && all[i-1].State == "answered" && setOf(j.Question) == setOf(all[i-1].Question):
+			w.seen["reopened-plain"] = true // the same red set after an answer, said plain: a new red stretch
 		}
 		if strings.HasPrefix(j.Answer, "the red set changed") {
 			w.seen["changed"] = true
@@ -342,7 +345,9 @@ func (w *baseRedWalk) write(dir, cfg string) {
 // TestBaseRedTraceRefinementWalk writes walk 0, the scripted path (green,
 // running, rested, red, the same red at a newer tip, a changed red set,
 // green again; then red unanswered past its deadline, an answer, its quiet's
-// end, and the cards gone), and eight random walks; with NOVA_TRACE_DIR set
+// end (STILL RED), an answer, green and the same red again inside the
+// quiet (a new red stretch, said plain), and the cards gone), and eight
+// random walks; with NOVA_TRACE_DIR set
 // each one's trace is written for tla/check-trace.sh. It fails when the
 // walks together never reach a move or an outcome of the model.
 func TestBaseRedTraceRefinementWalk(t *testing.T) {
@@ -352,7 +357,9 @@ func TestBaseRedTraceRefinementWalk(t *testing.T) {
 	w := newBaseRedWalk(t, 0, false)
 	script := []func(){func() { w.read("green") }, w.tick, func() { w.read("running") }, w.tick, func() { w.read("rested") }, w.tick,
 		func() { w.read("A") }, w.tick, func() { w.read("A") }, w.tick, func() { w.read("B") }, w.tick, func() { w.read("green") }, w.tick,
-		func() { w.read("A") }, w.tick, w.lapse, w.tick, w.answer, w.tick, w.quietEnds, w.tick, w.toggleCards, w.tick, w.lapse, w.tick}
+		func() { w.read("A") }, w.tick, w.lapse, w.tick, w.answer, w.tick, w.quietEnds, w.tick,
+		w.answer, w.tick, func() { w.read("green") }, w.tick, func() { w.read("A") }, w.tick, w.quietEnds, w.tick,
+		w.toggleCards, w.tick, w.lapse, w.tick}
 	for _, m := range script {
 		m()
 	}
@@ -373,7 +380,7 @@ func TestBaseRedTraceRefinementWalk(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"Tick:", "Read:green", "Read:A", "Read:B", "Read:running", "Read:absent", "Read:rested",
-		"Read:A-running", "Read:after-tick", "Unwatch:", "Cards:", "Answer:", "QuietEnds:", "Lapse:", "escalated", "still-red", "changed", "cleared"} {
+		"Read:A-running", "Read:after-tick", "Unwatch:", "Cards:", "Answer:", "QuietEnds:", "Lapse:", "escalated", "still-red", "reopened-plain", "changed", "cleared"} {
 		if !seen[want] {
 			t.Errorf("the walks never reached %s", want)
 		}

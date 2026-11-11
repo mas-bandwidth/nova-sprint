@@ -4,7 +4,7 @@
 \* is met card by card and never pushed. RedIsPushed must be violated.
 EXTENDS BaseRed
 
-TickOld == /\ ~ticked /\ ticked' = TRUE /\ UNCHANGED <<fact, live, js, quiet, due, env>>
+TickOld == /\ ~ticked /\ ticked' = TRUE /\ UNCHANGED <<fact, live, js, quiet, broke, due, env>>
 
 NextOld == TickOld \/ (\E r \in Reads : Read(r)) \/ Cards \/ Unwatch \/ Answer \/ QuietEnds \/ Lapse
 

@@ -14,8 +14,11 @@
 #                                      must pass            (TLC exit 0)
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   BaseRed.tla with BaseRed.cfg (the base-red judgement) must pass;
-#     its witness BaseRedNoPush and reach checks BaseRedNever{Opens,Replaced}
+#     its witnesses BaseRedNoPush, BaseRedQuietSwallows and reach checks BaseRedNever{Opens,Replaced}
 #     must be violated
+#   AnsweredQuiet.tla with AnsweredQuiet.cfg (an answered watch judgement's
+#     quiet) must pass; its witnesses AnsweredQuiet{Reopens,Swallows} and
+#     reach check AnsweredQuietNeverReopens must be violated
 #   KinAlive.tla with KinAlive.cfg (kin liveness by challenge)
 #                                      must pass            (TLC exit 0);
 #     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
@@ -243,7 +246,7 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupRunFreshRunning \
          KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
          HookAnySession HookReplaceUnhooks HookReplaceChangesRole \
-         BaseRedNoPush AnsweredQuietReopens; do
+         BaseRedNoPush BaseRedQuietSwallows AnsweredQuietReopens AnsweredQuietSwallows; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
