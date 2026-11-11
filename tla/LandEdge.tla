@@ -100,6 +100,9 @@ Tick ==
 \* first commit) gates the card's branch, which is that tip plus the card;
 \* rung 2 gates the heads merged onto the tip. Both are Tip plus the cards.
 Gated(s) == [cards |-> Tip.cards \cup req[s].cards, ext |-> Tip.ext]
+\* The merge conflicts only when it brings c2 and c3 together: a tip that
+\* already holds both (resolved by hand) takes the other heads cleanly.
+Clash(s) == Conflict(Gated(s).cards) /\ ~Conflict(Tip.cards)
 RungOf(s) == IF Cardinality(req[s].cards) = 1 /\ Tip = Init0 THEN 1 ELSE 2
 CIOf(t) == IF Red(t.cards) THEN {"red", "absent"} ELSE {"green", "absent"}
 
@@ -116,14 +119,14 @@ Pass(s) ==
         /\ OnBase(s)
         /\ UNCHANGED base
      \/ /\ ~(req[s].cards \subseteq Tip.cards)
-        /\ Conflict(Gated(s).cards)
+        /\ Clash(s)
         /\ Finish(s, "conflict")
         /\ UNCHANGED base
      \/ /\ ~(req[s].cards \subseteq Tip.cards)   \* GitHub rate-limited the forge (forge_rested):
-        /\ ~Conflict(Gated(s).cards)              \* no CI read, asked again, nothing changed
+        /\ ~Clash(s)                            \* no CI read, asked again, nothing changed
         /\ UNCHANGED <<base, req>>
      \/ /\ ~(req[s].cards \subseteq Tip.cards)
-        /\ ~Conflict(Gated(s).cards)
+        /\ ~Clash(s)
         /\ \E ci \in CIOf(Gated(s)) :
              IF ci # "green" THEN Finish(s, ci) /\ UNCHANGED base
              ELSE \/ /\ base' = Append(base, [tree |-> Gated(s), how |-> "auto", gated |-> Gated(s)])
