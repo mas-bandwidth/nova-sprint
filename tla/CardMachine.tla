@@ -205,6 +205,7 @@ WorkingOn(r) == {c \in CIds : cs[c].st = "working" /\ cs[c].row = r}
 RowOpen(r)   == rs[r].st = "up" /\ ~rs[r].held
 NeedsLanded(p) == \A n \in ps[p].needs : ps[n].st = "landed"
 NonFinal(p)  == ps[p].st \notin PFinal \cup {"absent"}
+HeldCard(p)  == ps[p].st = "waiting" /\ ps[p].why = "held"   \* card.HeldReason
 Exists(p)    == ps[p].st # "absent"
 \* A move that returns a producer to ready writes it parked (waiting) when
 \* the stream is held, in the same plan (Rulings from the card model).
@@ -301,7 +302,7 @@ StepRule(n, ev, p, c, r) ==
            \E k \in ConsOf(p) :
              /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "fix"
              /\ cs[k].head = ps[p].head /\ cs[k].review = ps[p].review
-    [] n = "ReplaceByLive" -> ev = "Replace" => (r \in P \ {p} /\ NonFinal(r))
+    [] n = "ReplaceByLive" -> ev = "Replace" => (r \in P \ {p} /\ NonFinal(r) /\ ~HeldCard(r))
     [] n = "HeadNeverRepeats" ->
          (ev \in {"Report", "Withdraw"} /\ cs[c].kind = "work")
            => (cs'[c].head = 0 \/ cs'[c].head # cs[c].prior
@@ -597,11 +598,13 @@ Cancel(p) ==
   /\ PStep("Cancel", p, NoC, [ps[p] EXCEPT !.st = "fail", !.why = "-"])
 
 \* Replace{by}: by is a producer or sentinel other than p, non-final (the
-\* second cold read).
+\* second cold read) and not held (a held card is one the deal never takes:
+\* its dependants would wait on it; 2026-11-10). Dealt or taken is a target.
 Replace(p, by) ==
   /\ NonFinal(p)
   /\ by \in P \ {p}
   /\ NonFinal(by)
+  /\ ~HeldCard(by)
   /\ NoLive(p)
   /\ ps'   = [ps EXCEPT ![p].st = "fail", ![p].why = "-"]
   /\ UNCHANGED <<cs, rs, held>>

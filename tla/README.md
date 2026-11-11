@@ -759,6 +759,7 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardRelinkAfterCycle` | deps | Relink walks needs only | OrderAcyclic |
 | `witnesses/CardReadReportsFail` | life | a read may report fail | ResultsByKind |
 | `witnesses/CardReplaceByFinal` | life | Replace by a final card | ReplaceByLive |
+| `witnesses/CardReplaceByHeld` | life | Replace by a held card | ReplaceByLive |
 | `witnesses/CardTwoReadsOneRow` | life | AskRead takes a row holding a live read of the head | OneLiveReadPerRow |
 | `witnesses/CardPriorRepeated` | life | an ok report repeats the prior head | HeadNeverRepeats |
 | `witnesses/CardWaiveRedWithoutRed` | redw | WaiveRed without the red check | WaiveRedNeedsRed |

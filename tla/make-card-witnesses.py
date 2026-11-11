@@ -213,6 +213,11 @@ WITNESSES = [
      "Replace does not require by to be non-final.",
      [("  /\\ by \\in P \\ {p}\n  /\\ NonFinal(by)\n",
        "  /\\ by \\in P \\ {p}\n  /\\ TRUE   \\* FAULT: was NonFinal(by)\n", 1)]),
+    ("CardReplaceByHeld", "ReplaceByLive", "life",
+     "Replace does not refuse a held by (2026-11-10: its dependants would\n"
+     "follow a card the deal never takes).",
+     [("  /\\ NonFinal(by)\n  /\\ ~HeldCard(by)\n",
+       "  /\\ NonFinal(by)\n  /\\ TRUE   \\* FAULT: was ~HeldCard(by)\n", 1)]),
     ("CardTwoReadsOneRow", "OneLiveReadPerRow", "life",
      "AskRead does not refuse a row that already holds a live read of this\n"
      "head.",
