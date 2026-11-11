@@ -128,9 +128,9 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 		require.Empty(t, fs, "shape %d", i)
 		assert.Equal(t, 0, a.Version)
 		assert.Equal(t, Limits{Bounces: 12, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
-			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, FleetWidthCap: 8, ChainLimit: 3, IdleFloor: 0.5, LandTarget: 0.3}, a.Limits)
+			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, FleetWidthCap: 8, ChainLimit: 3, IdleFloor: 0.5, LandTarget: 0.3, OverloadFactor: 2}, a.Limits)
 		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 1200, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800,
-			Tick: 10, ReadyNag: 30, ReadyTake: 180, JudgementUnseen: 300, Consumer: map[string]int{"flash": 3600, "pro": 7200, "heavy": 7200, "frontier": 7200}}, a.Timeouts)
+			Tick: 10, ReadyNag: 30, ReadyTake: 180, JudgementUnseen: 300, OverloadSpan: 300, Consumer: map[string]int{"flash": 3600, "pro": 7200, "heavy": 7200, "frontier": 7200}}, a.Timeouts)
 		assert.Empty(t, a.Prices)
 	}
 	a, _ := testEngine().Answer(Versions{}, shapes[1], w.ro, FullQuestions(shapes[1], nil))

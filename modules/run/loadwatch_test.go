@@ -47,6 +47,7 @@ func TestLoadWatchNeedsTheWholeSpan(t *testing.T) {
 	if got.LowCenti != 35000 || got.PeakCenti != 83000 || got.For != span || got.Load1Centi != 35000 || got.SlotsTotal != 16 {
 		t.Fatalf("the fact %+v", got)
 	}
+	at(1000, 3*time.Minute) // the dip's first sample
 	if over, _ := at(1000, 3*time.Minute); !over {
 		t.Fatal("a dip shorter than the span cleared it")
 	}
