@@ -786,6 +786,14 @@ differ (LANDING.md, "The ladder, as built").
   yet the gated sha is `ci_pending`; GitHub's `CONFLICTING` is `conflict`.
   Checks are read at the gated sha; green merges only while base is still
   the tip it read (`base_moved` otherwise) through `forge.Merge(pr, sha)`.
+  A gate the request kept (`LandRequest.Gate`: the PR's head branch, sha,
+  base tip and rung of the last pass's gate, which `LandResult.Kept` hands
+  back while its CI has no verdict) is read as it is, on the base it was
+  built on, never rebuilt or pushed again; GitHub's `CONFLICTING` on a
+  base that moved, or its branch no longer at it, builds again in the
+  same pass (LANDING.md, "A group in flight"). A group merge conflict
+  names the head whose merge failed (`MergeResult.Head`,
+  `LandResult.ConflictHead`).
   Outcomes: `landed`, `ci_pending`, `ci_absent`, `base_moved`, `ci_red`,
   `ci_unfinished` (a check failed while others run), `ci_no_verdict`
   (every failing check stopped, run again once), `ci_rerun`, `ci_fault`,

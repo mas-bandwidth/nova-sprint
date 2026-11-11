@@ -674,7 +674,9 @@ only on `landed` (with `card.Landed{Head, Merge}`, the merge sha), and every
 other outcome (`ci_red`, `no-ci`, `ci_no_verdict`, `conflict`, `merge_refused`,
 `pr_unopenable`, `branch_failed`, `ci_fault`, `missing_head`, `head_moved`,
 `hand`, `fault`) opens one `land` judgement per card still merging at the
-request's head (`land.<card>.<n>`, group key `land`, no deadline; choices
+request's head (a `conflict` whose item names the head that did not merge,
+`Head`: that card's alone, the rest asked again next tick; 2026-11-11)
+(`land.<card>.<n>`, group key `land`, no deadline; choices
 `land | fix | retry`), with the question naming the card, stream, base and
 its tip, branch, head, outcome, the edge's facts, and the cards landing
 together. Nothing is blamed: the `red`, `no-ci`, `conflict`, `base-red` and

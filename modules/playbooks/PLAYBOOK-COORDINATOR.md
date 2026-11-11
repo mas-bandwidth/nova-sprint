@@ -387,8 +387,12 @@ What each cause of a land judgement means:
   landing.
 - `ci_fault`: a check that never ran (a workflow that did not start, its checks unreadable).
 - `no-ci`: no check at all appeared within `ci_wait`.
-- `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`, `missing_head`, `head_moved`,
-  `base_behind`, `hand`, `fault`: what their names say, with the facts.
+- `conflict`: a group's merge that conflicts on one card's head is that card's judgement alone,
+  naming its files and the cards landing again without it; the others need no answer, the next
+  tick lands them as a new group. A conflict GitHub reports on the group's PR, naming no card,
+  is one judgement per card.
+- `merge_refused`, `pr_unopenable`, `branch_failed`, `missing_head`, `head_moved`, `base_behind`,
+  `hand`, `fault`: what their names say, with the facts.
 
 A stopped check is read only from GitHub's own words (the check's conclusion and its failure
 annotations), never from a fleet's: a job killed at a runner's time limit, by the out-of-memory
@@ -410,7 +414,9 @@ at once). Never land a card that is not merging, and never resolve a conflict on
 which no reader has read.
 
 A pending CI, a base that moved, a stopped check's first rerun and a rate-limited forge are asked
-again by the run on their own. A merging card with
+again by the run on their own. A group whose CI is running is never rebuilt or pushed again while
+it runs, whatever the base does: it is judged on the base it was built on, and built again on the
+new tip only once it is green on a base that moved. A merging card with
 no land request and no land judgement is reported to you as an `engine` judgement: answer it
 `retry`, and take it to the project's own tracker.
 

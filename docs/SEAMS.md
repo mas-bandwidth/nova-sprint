@@ -151,7 +151,11 @@ landed heads and the merge sha; every other outcome (`ci_red`, `no-ci`,
 `missing_head`, `head_moved`, `hand`) keeps its name and carries the facts
 in `Reason` (rung, base tip, group tip, gated sha, PR, failing checks, their
 URL and first lines, conflicts, the pass's reason); an error is `fault`.
-Layer 3 opens one `land` judgement per card for each of those. A landed
+A conflict of the group's merge carries `Head`, the head whose merge
+failed. Layer 3 opens one `land` judgement per card for each of those (a
+conflict with `Head`: that card's alone). The run keeps the gate a pass
+pushed (`LandRequest.Gate`, `LandResult.Kept`) for the request's next
+pass, so a gate whose CI has no verdict is never rebuilt. A landed
 result says whether its merge is on main (`Main`, read with `Git.Main`
 after the pass); a request of kind `promote` (`Merges`) runs `PromotePass`
 under the same clone lock and comes back the same way, always `Main`

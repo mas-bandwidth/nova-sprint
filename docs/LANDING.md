@@ -49,7 +49,8 @@ Three rungs, each stream on one at a time; the group rung is kept.
    card branch missing or moved from its read head; a stream landed by
    hand (mode hand, or no forge); or a fault of git or the forge itself:
    each is one `land` judgement per card on the coordinator's row, opened
-   in the tick that reads the result. Nothing moves and nothing is blamed.
+   in the tick that reads the result (a group's merge conflict that names
+   its card: that card alone, "One card's conflict" below). Nothing moves and nothing is blamed.
    Its question carries the facts: the card, stream, base and base tip,
    branch, head, the outcome, the rung, the group tip, the gated sha, the
    PR, the failing checks with the first one's URL and its first failing
@@ -70,6 +71,49 @@ judgement (layer 3), not by the landing. A PR or checks read that GitHub
 rate-limited (`forge_rested`) is asked again the same way, said once in the
 run log as an edge fault; the identity rests meanwhile, so those passes make
 no call.
+
+### A group in flight (2026-11-11)
+
+Every pass used to rebuild the gate from the base tip as it was then: each
+base move while CI ran pushed the group branch again, its CI started over
+on the new sha (and a workflow that cancels superseded runs cancelled the
+old one), and on a busy base groups never reached a verdict. Now the run keeps the gate a pass pushed
+(`LandRequest.Gate`, from `LandResult.Kept`) for the next pass of the
+same request, and a kept gate is read as it is, on the base it was built
+on, while its CI has no verdict (pending, unfinished, absent, stopped jobs
+run again, a rested forge). It is never rebuilt or pushed again meanwhile.
+It is let go only when:
+
+- it is green and the base moved since it was built: `base_moved`, and
+  the next pass builds on the new tip (green merges only while base is
+  still the tip it was gated on, as before);
+- GitHub says its PR conflicts with a base that moved: it is built again
+  in the same pass, and a merge that fails is the conflict (below);
+- its branch is no longer at it on origin: built again in the same pass.
+
+A red or a no verdict is judged on the gate as built, with its base tip
+named. One group is in flight per stream: layer 3 asks a stream's next
+landing only once the one in flight has a result, so cards that become
+ready meanwhile wait for the next group, and the run never supersedes the
+group in flight. A run restarted mid-landing loses the kept gate (it is
+in memory), and its first pass builds on the tip as it is: at most one
+supersede per restart.
+
+Latency: a group whose CI is still running is no longer restarted, so it
+reaches a verdict in one CI run; the price is that a green gate on a base
+that moved costs one more CI run, on the new tip, before it can merge.
+
+### One card's conflict (2026-11-11)
+
+The group's merge takes its heads in landing order; the first whose merge
+fails is named (`LandResult.ConflictHead`, the inbox item's `Head`). That
+card alone gets the `conflict` judgement, with the files, and the
+question says which cards are landing again without it; the group's other
+cards are not judged, and the next tick asks them again as a new landing
+with no answer needed. The named card may conflict with the base or with a
+card before it in the group; the judgement says so. A conflict that names
+no head (GitHub's mergeable state on the group's PR) is still one
+judgement per card.
 
 ### A verdict only from completed checks (2026-11-11)
 
@@ -309,12 +353,25 @@ and `StoppedRunAgainOnce` (a completed gate is no verdict only after its
 stopped jobs were run again once). Their reversed witnesses:
 `LandEdgeRedWhileRunning` (a failure while checks run is judged red),
 `LandEdgeStoppedIsRed` (stopped jobs read as failed) and
-`LandEdgeStoppedJudgedAtOnce` (no rerun before the no verdict). Reach
-checks show rung 2, a judgement, a hand landing, a red gate, a no verdict,
-a rerun and a wait that passed. The trace walk plays CI per gate too, and
-two committed breakers, `tla/traces/landedge-breaker-red-while-running`
-and `landedge-breaker-stopped-is-red` (the 2.0.36 landing's judgements),
-are refused at their last record. `tla/Steps.tla` carries the land
+`LandEdgeStoppedJudgedAtOnce` (no rerun before the no verdict). The gate
+is kept (`Kept`, `LetGo`): `GateKept` (an action property: a gate whose
+CI runs is never replaced while its request is in flight) and, on
+`LiveSpec` (CI that runs completes; `LandEdgeLive.cfg`),
+`GateReachesVerdict` (a gate in flight reaches its verdict, or its
+request an outcome, the same gate); reversed witness
+`LandEdgeRebuildsInFlight` (the 2.0.36 rule: rebuilt when base moved).
+A conflict names its card (`odd`) and the tick judges that card alone:
+`ConflictJudgesItsCard` (a card judged for a conflict conflicts with
+something), reversed witness `LandEdgeConflictJudgesGroup` (the 2.0.37
+rule: the whole group judged). Reach checks show rung 2, a judgement, a
+hand landing, a red gate, a no verdict, a rerun, a wait that passed, a
+gate kept while base moved, and a group's conflict naming one card. The
+trace walk plays CI per gate and keeps the gate as the run does, and
+committed breakers are refused at their last record:
+`tla/traces/landedge-breaker-red-while-running` and
+`landedge-breaker-stopped-is-red` (the 2.0.36 judgements),
+`landedge-breaker-rebuilds-in-flight` (the 2.0.36 run, no gate kept) and
+`landedge-breaker-conflict-judges-group` (the 2.0.37 tick). `tla/Steps.tla` carries the land
 judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
 `MergingCovered` (judgements as the tick's snapshot saw them) and the
 reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the earlier card lands, so a card after one sent to fix sits with no request).
@@ -353,6 +410,14 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
 - **Why a job was killed is not known here.** Exit 137 is the same for a
   runner's time limit, the out-of-memory killer and a hand kill.
 - **Stream mode `group`** is accepted and behaves as `auto`.
+- **A base that moves faster than CI.** A green gate merges only while the
+  base is still the tip it was gated on; if the base always moves within
+  one CI run, a group is green, let go, built again, and never merges. The
+  coordinator sees no judgement for it (each pass is asked again). Not
+  seen live yet; the fix would be a policy choice (merge a green gate whose
+  base moved by a fast-forward-safe rule, or hold other landings).
+- **The kept gate is in memory.** A restart mid-landing builds on the tip
+  as it is, once.
 
 ## Where it lives
 
