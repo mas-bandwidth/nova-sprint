@@ -107,7 +107,8 @@ func gateTimeout_internal(timeout time.Duration) error {
 }
 
 // hangExec_internal times out the command at index hang (with an SDK
-// environment: 0 its shell, 1 the wall) and passes the rest.
+// environment: 0 its shell, 1 the wall) and passes the rest; the wall's
+// command has its slot (nova-reserve's HELD line) before it hangs.
 type hangExec_internal struct{ n, hang int }
 
 func (x *hangExec_internal) Run(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
@@ -115,7 +116,7 @@ func (x *hangExec_internal) Run(_ context.Context, cmd edge.Cmd) (edge.Result, e
 	if x.n-1 != x.hang {
 		return edge.Result{}, nil
 	}
-	return edge.Result{ExitCode: -1}, &edge.ExecError{Program: filepath.Base(cmd.Argv[0]), Kind: edge.ErrTimeout, Reason: "timed out after " + cmd.Timeout.String()}
+	return edge.Result{ExitCode: -1, Stderr: "nova-reserve: HELD mode=shared slot=1/4\n"}, &edge.ExecError{Program: filepath.Base(cmd.Argv[0]), Kind: edge.ErrTimeout, Reason: "timed out after " + cmd.Timeout.String()}
 }
 
 // The wall marks its own command's timeout where it happens
