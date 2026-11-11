@@ -52,8 +52,10 @@ the oracle.
 
 What runs where:
 
-- Per commit (`ci.yml`, the `functional` job, for pull requests and pushes
-  to `main`): every test named `Functional`, with `NOVA_FUNCTIONAL=1` (the
+- Per commit (`ci.yml`, the `functional` jobs, for pull requests and pushes
+  to `main`; one job each for `./cmd/...`, `modules/store` and
+  `modules/verbs`, and one for every other package): every test named
+  `Functional`, with `NOVA_FUNCTIONAL=1` (the
   tests behind it start their own PostgreSQL: backup round trips, clear,
   setup lock, sprint role, schema identity, and the `up` child test) and
   `NOVA_CONFIG_SCHEMA_FILE` set to nova-config's `config/schema.sql` from
