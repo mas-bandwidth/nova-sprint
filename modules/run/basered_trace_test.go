@@ -14,7 +14,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
-	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/require"
 )
@@ -185,8 +184,6 @@ func (w *baseRedWalk) record(act, arg, how string) {
 	w.recs = append(w.recs, fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, how |-> %q, fact |-> %q, live |-> %s, js |-> << %s >>, quiet |-> %s, due |-> %s, ticked |-> %s, env |-> %d]",
 		len(w.recs)+1, act, arg, how, w.fact(), tlaBool(w.liveNow()), strings.Join(js, ", "), tlaBool(w.quiet()), tlaBool(w.due()), tlaBool(w.ticked), w.env))
 }
-
-func tlaBool(b bool) string { return strings.ToUpper(strconv.FormatBool(b)) }
 
 func (w *baseRedWalk) step() { w.now = w.now.Add(time.Second) }
 
