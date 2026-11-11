@@ -3,6 +3,7 @@ package steps
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -32,7 +33,29 @@ func (t *tick) judge(kind, about, question string) {
 	if t.held(kind, about) || t.pending(kind, about) {
 		return
 	}
+	if since, quiet := t.answeredQuiet(kind, about); quiet {
+		return
+	} else if since > 0 {
+		question = fmt.Sprintf("STILL HOLDS %s after your answer: %s", since.Truncate(time.Second), question)
+	}
 	t.addJudge(judgement{kind: kind, about: about, question: question})
+}
+
+// answeredQuiet is whether kind about about's latest episode is a watch
+// judgement (its one choice is retry) answered within the judgement
+// timeout: the answer says the coordinator is on it, so its cause still
+// holding is no news until the timeout passes (seen live 2026-11-10: a
+// stall answered retry reopened seconds later, again and again). Past the
+// timeout, since is how long ago it was answered.
+func (t *tick) answeredQuiet(kind, about string) (since time.Duration, quiet bool) {
+	if choices[kind] != "retry" {
+		return 0, false
+	}
+	j := t.v.Judgements[fmt.Sprintf("%s.%s.%d", kind, about, t.episodes(kind, about))]
+	if j.State != "answered" {
+		return 0, false
+	}
+	return t.in.Now.Sub(j.ClosedAt), t.in.Now.Before(j.ClosedAt.Add(seconds(t.tmo.Judgement)))
 }
 
 // judgeAt opens episode n of kind about about once: a count that only grows

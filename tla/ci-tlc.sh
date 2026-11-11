@@ -200,6 +200,7 @@ run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run KinAlive pass . KinAlive.cfg KinAlive.tla 2
 run BaseRed pass . BaseRed.cfg BaseRed.tla 2
+run AnsweredQuiet pass . AnsweredQuiet.cfg AnsweredQuiet.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
 run Run pass . Run.cfg Run.tla 2
@@ -236,7 +237,7 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
          KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
-         BaseRedNoPush; do
+         BaseRedNoPush AnsweredQuietReopens; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
@@ -244,6 +245,7 @@ done
 for m in NeverOpens NeverReplaced; do
     run "reach-BaseRed$m" violate . "BaseRed$m.cfg" BaseRed.tla 1
 done
+run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg AnsweredQuiet.tla 1
 
 # KinAlive's reach checks (a kin row goes down, and comes back on a pong).
 for m in NeverDown NeverBack; do
