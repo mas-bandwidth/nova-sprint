@@ -572,13 +572,15 @@ func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
 		tlaKeys_internal(w.js), tlaKeys_internal(w.held), strings.ToUpper(fmt.Sprint(w.ticked)), w.passes)
 }
 
-// TestLandEdgeTraceRefinementWalk walks eight seeds to the end and, with
+// TestLandEdgeTraceRefinementWalk walks nine seeds to the end and, with
 // NOVA_TRACE_DIR set, writes each one's trace for tla/check-trace.sh. It
-// fails when the walks together never reach a rung of the ladder.
+// fails when the walks together never reach a rung of the ladder. Seed 59
+// is the first that reaches red now that nothing is run again: seeds 1 to
+// 58 end without one (red needs c1 gated on a base holding c3).
 func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
 	seen := map[string]bool{}
-	for seed := int64(1); seed <= 8; seed++ {
+	for _, seed := range []int64{1, 2, 3, 4, 5, 6, 7, 8, 59} {
 		text, acts := walkLandEdge_internal(t, seed)
 		for _, a := range acts {
 			seen[strings.SplitN(a, ":", 2)[0]] = true
