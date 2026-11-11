@@ -201,16 +201,15 @@ removes a landing host (LANDING step 9).
 ## The GitHub edge
 
 `Forge` has `PR(head, base)` (find), `OpenPR`, `Checks(shas)`,
-`Merge(pr, sha)`, `FailedLines(url)`, `Failures(sha)` and `Rerun(url)`.
+`Merge(pr, sha)`, `FailedLines(url)` and `Failures(sha)`.
 A rollup says how many checks are still pending (`Pending`) and whether a
 red one still has checks running (`Waiting`); the landing takes a verdict
 only when it does not (LANDING.md, "A verdict only from completed
 checks"). `Failures` is each failing check at a sha with how GitHub says
-it was stopped, if it was (its conclusion, and its failure annotations:
-"exit code 137" or "143", a time limit, a cancel; GitHub's words only).
-`Rerun` runs the failed jobs of the Actions run a check's URL names
-(`gh run rerun <run> --failed`), once per landing when every failing
-check was stopped.
+it was stopped, if it was: its conclusion cancelled or timed out, or a
+stop line ("exit code 137" or "143", a time limit, a cancel; GitHub's
+words only) when that is its one failure annotation (any other failure
+annotation beside it makes it failed). The forge never runs CI again.
 
 Credentials. The landing's `gh` runs as the host's own gh login (the run's
 host; intent rule 32, 2026-11-07: "the run does the forge work with the
@@ -233,7 +232,7 @@ sense; they need a public endpoint and are deferred to layer 6.
 
 Rate limits: GitHub's own answer is the limit, per bucket: GraphQL (`gh
 api graphql`, `gh pr`, `gh repo`) and REST (`gh run`, other `gh api`
-paths) rest apart, so a spent GraphQL bucket does not stop a rerun. A 403
+paths) rest apart, so a spent GraphQL bucket does not stop a log read. A 403
 or 429 with a retry time rests that bucket until then; a primary limit
 with none rests it until the bucket's reset, read once from `gh api
 rate_limit` (60 s when that read fails or shows calls left). A rested call
@@ -788,7 +787,7 @@ differ (LANDING.md, "The ladder, as built").
   the tip it read (`base_moved` otherwise) through `forge.Merge(pr, sha)`.
   Outcomes: `landed`, `ci_pending`, `ci_absent`, `base_moved`, `ci_red`,
   `ci_unfinished` (a check failed while others run), `ci_no_verdict`
-  (every failing check stopped, run again once), `ci_rerun`, `ci_fault`,
+  (every failing check stopped, judged at once), `ci_fault`,
   `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`,
   `missing_head`, `head_moved`; an error is a fault of git or the forge
   themselves. `LandResult` carries the rung, base tip, group tip, gated
