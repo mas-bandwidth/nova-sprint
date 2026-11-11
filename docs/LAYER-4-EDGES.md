@@ -292,12 +292,16 @@ Deal to report:
    counts it: the card is dealt again and continues from the pushed head).
    A red gate's reason names the gates not run after it. Then the
    stream's gates (the take receipt's `stream_gates`) run the same way at
-   the same head. One red at the head (it ran and exited non-zero) runs
-   once at the card's base sha, in the job's tree checked out there (an
-   answer kept per repository, base and gate for the life of the worker):
-   red there too, it is the base's and does not fail the attempt, whose
-   report's reason says `stream gate <command> is red at base <sha>`;
-   green there, or not judged there, it is a `fail` naming the stream gate.
+   the same head. One red at the head (it ran and exited non-zero by
+   itself, not killed) runs at the stream tip the merge used
+   (`GitOps.StreamTip`, the clone's `FETCH_HEAD`), in a worktree of the
+   job's tree under the job directory (`base`), removed on every path so
+   the job's tree stays at the head: red there too, it is the base's and
+   does not fail the attempt, whose report's reason says `stream gate
+   <command> is red at base <sha>`; green there, it is a `fail` naming the
+   stream gate; not judged there (no tip, no checkout, a wall fault, a
+   timeout, a kill, a stop), it is a `fault`. Only a green answer is kept,
+   per repository, base and gate, for the life of the worker.
    Runner.tla's Rebase and Conflict are this step's outcomes as before: a
    stream gate adds inputs to the step, no transition.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);

@@ -21,14 +21,19 @@ import (
 // base as well is the base's, not the card's.
 
 // streamGateWall_internal is a wall that knows which tree its gates run
-// in: the head, after the apply step, or a base sha a step checked out
-// (baseArgv_internal). red names "<where> <cmd>" runs that exit 2 with a
-// FAIL line; a run of a cmd in notRun exits 127 (not run); res and errs
-// give a "<where> <cmd>" run their own result or error. No real time.
+// in: the job's tree (at: the head, after the apply step), or the base's
+// worktree a step added at a base sha (baseArgv_internal) and a step
+// dropped (dropBaseArgv_internal, recorded "drop"); a run in a base tree
+// already dropped is "gone <cmd>". red names "<where> <cmd>" runs that
+// exit 2 with a FAIL line; a run of a cmd in notRun exits 127 (not run);
+// res and errs give a "<where> <cmd>" run their own result or error. No
+// real time.
 type streamGateWall_internal struct {
 	cr2Wall
 	mu        sync.Mutex
 	at        string
+	base      string // the sha the base's tree is at
+	baseDir   string // the base's tree, "" when there is none
 	runs      []string
 	red       map[string]bool
 	notRun    map[string]bool
@@ -37,25 +42,39 @@ type streamGateWall_internal struct {
 	baseFails bool
 }
 
-func (w *streamGateWall_internal) RunStep(_ context.Context, _ Job, argv []string, _ time.Duration) (WallRunResult, error) {
+func (w *streamGateWall_internal) RunStep(_ context.Context, j Job, argv []string, _ time.Duration) (WallRunResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if len(argv) == 5 && argv[3] == "base" {
-		if w.baseFails {
-			return WallRunResult{ExitCode: 128, Output: []byte("fatal: reference is not a tree: " + argv[4])}, nil
+	switch {
+	case len(argv) == 6 && argv[3] == "base":
+		if filepath.Dir(argv[5]) != j.JobDir || argv[5] == j.WorktreeDir {
+			return WallRunResult{ExitCode: 2, Output: []byte("base tree " + argv[5] + " is not a tree of its own in the job directory")}, nil
 		}
-		w.at = argv[4]
+		if w.baseFails {
+			return WallRunResult{ExitCode: 128, Output: []byte("fatal: invalid reference: " + argv[4])}, nil
+		}
+		w.base, w.baseDir = argv[4], argv[5]
 		w.runs = append(w.runs, "checkout "+argv[4])
-		return WallRunResult{}, nil
+	case len(argv) == 5 && argv[3] == "drop":
+		w.base, w.baseDir = "", ""
+		w.runs = append(w.runs, "drop")
+	default:
+		w.at = "head"
 	}
-	w.at = "head"
 	return WallRunResult{}, nil
 }
 
-func (w *streamGateWall_internal) RunTest(_ context.Context, _ Job, cmd string, _ time.Duration) (WallRunResult, error) {
+func (w *streamGateWall_internal) RunTest(_ context.Context, j Job, cmd string, _ time.Duration) (WallRunResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	where := w.at + " " + cmd
+	switch {
+	case filepath.Base(j.WorktreeDir) != BaseTreeDir:
+	case j.WorktreeDir == w.baseDir:
+		where = w.base + " " + cmd
+	default:
+		where = "gone " + cmd
+	}
 	w.runs = append(w.runs, where)
 	if err := w.errs[where]; err != nil {
 		return WallRunResult{ExitCode: -1}, err
@@ -175,7 +194,7 @@ func TestAStreamGateRedOnlyAtTheHeadFailsTheAttempt(t *testing.T) {
 			t.Errorf("reason %q lacks %q", rec.Outcome.Reason, want)
 		}
 	}
-	if want := []string{"head make test", "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate}; !slices.Equal(wall.ran(), want) {
+	if want := []string{"head make test", "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "drop"}; !slices.Equal(wall.ran(), want) {
 		t.Fatalf("ran %q, want %q", wall.ran(), want)
 	}
 }
@@ -203,7 +222,7 @@ func TestAStreamGateRedAtTheBaseIsNotTheCards(t *testing.T) {
 	if again.Outcome.Result != "ok" || !strings.Contains(again.Outcome.Reason, "is red at base "+testPriorSHA) {
 		t.Fatalf("second card %+v, want ok with the base's red named", again.Outcome)
 	}
-	if want := []string{"head make test", "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate}; !slices.Equal(wall.ran(), want) {
+	if want := []string{"head make test", "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "drop", "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "drop"}; !slices.Equal(wall.ran(), want) {
 		t.Fatalf("ran %q, want %q: a red answer at the base is asked again", wall.ran(), want)
 	}
 }
@@ -219,7 +238,7 @@ func TestAStreamGateGreenAtTheBaseIsKept(t *testing.T) {
 			t.Fatalf("%s: outcome %+v, want the head's red", id, rec.Outcome)
 		}
 	}
-	if want := []string{"head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "head " + genGate}; !slices.Equal(wall.ran(), want) {
+	if want := []string{"head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "drop", "head " + genGate}; !slices.Equal(wall.ran(), want) {
 		t.Fatalf("ran %q, want %q: the base's green is kept", wall.ran(), want)
 	}
 }
@@ -241,7 +260,7 @@ func TestAStreamGateIsJudgedAtTheTipTheMergeUsed(t *testing.T) {
 	if want := "stream gate " + genGate + " is red at base " + testRebSHA; rec.Outcome.Reason != want {
 		t.Fatalf("reason %q, want %q", rec.Outcome.Reason, want)
 	}
-	if want := []string{"head " + genGate, "checkout " + testRebSHA, testRebSHA + " " + genGate}; !slices.Equal(wall.ran(), want) {
+	if want := []string{"head " + genGate, "checkout " + testRebSHA, testRebSHA + " " + genGate, "drop"}; !slices.Equal(wall.ran(), want) {
 		t.Fatalf("ran %q, want %q", wall.ran(), want)
 	}
 }
@@ -260,7 +279,7 @@ func TestTwoStreamGatesOneRed(t *testing.T) {
 		case atBase && (rec.Outcome.Result != "ok" || rec.Outcome.Reason != "stream gate "+genGate+" is red at base "+testPriorSHA):
 			t.Fatalf("red at the base: outcome %+v, want ok naming %s alone", rec.Outcome, genGate)
 		}
-		if want := []string{"head " + genGate, "head " + vet, "checkout " + testPriorSHA, testPriorSHA + " " + genGate}; !slices.Equal(wall.ran(), want) {
+		if want := []string{"head " + genGate, "head " + vet, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "drop"}; !slices.Equal(wall.ran(), want) {
 			t.Fatalf("ran %q, want %q", wall.ran(), want)
 		}
 	}
@@ -320,13 +339,33 @@ func TestAStreamGateNotJudgedAtTheBaseIsAFault(t *testing.T) {
 	}
 }
 
-// The base run starts from a clean tree: what the head's gates built,
-// ignored build caches too (-x), is removed, so a stale cache cannot
-// decide the base's answer. Nothing runs in the job's tree after it.
-func TestTheBaseRunCleansIgnoredFiles(t *testing.T) {
+// The base run leaves nothing behind: its gates run in a worktree of their
+// own in the job directory, never in the job's tree, which stays at the
+// card's head (a worker that runs the gates again without the apply step
+// runs them there), and that worktree is dropped on every path, a fault's
+// too. TestFunctionalShallowStage runs the same steps on git.
+func TestTheBaseRunLeavesTheJobTreeAtTheHead(t *testing.T) {
 	t.Parallel()
-	if argv := baseArgv_internal(testPriorSHA); !strings.Contains(argv[2], "git clean -q -f -d -x") || argv[4] != testPriorSHA {
-		t.Fatalf("base argv %q, want a checkout of the base and git clean -q -f -d -x", argv)
+	at := testPriorSHA + " " + genGate
+	for name, wall := range map[string]*streamGateWall_internal{
+		"excused":  {red: map[string]bool{"head " + genGate: true, at: true}},
+		"charged":  {red: map[string]bool{"head " + genGate: true}},
+		"timeout":  {red: map[string]bool{"head " + genGate: true}, errs: map[string]error{at: &WallTimeoutError{Err: errors.New("killed")}}},
+		"checkout": {red: map[string]bool{"head " + genGate: true}, baseFails: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r := streamGateRunner_internal(t, wall)
+			rec := streamGateStep_internal(t, r, "p1.w1", nil, []string{genGate})
+			ran := wall.ran()
+			if wall.at != "head" || wall.baseDir != "" || len(ran) == 0 || ran[len(ran)-1] != "drop" {
+				t.Fatalf("the job's tree at %q, base tree %q, ran %q: want the head kept and the base's tree dropped last", wall.at, wall.baseDir, ran)
+			}
+			tJob := Job{JobDir: filepath.Join(r.RootDir, "jobs", "p1.w1"), WorktreeDir: filepath.Join(r.RootDir, "jobs", "p1.w1", "repo")}
+			if _, red, _ := r.doneWhen_internal(context.Background(), tJob, rec, streamGate, genGate); !red || wall.ran()[len(wall.ran())-1] != "head "+genGate {
+				t.Fatalf("a gate run again after the base run ran %q, want it at the head", wall.ran())
+			}
+		})
 	}
 }
 

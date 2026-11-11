@@ -71,7 +71,7 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	}
 	lines := []string{fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)}
 	if len(gates) > 0 {
-		lines = append(lines, gateLines(gates)...)
+		lines = append(append(lines, gateLines(gates)...), e.gatelessWarn(ctx, snap, store.Stream{Name: name, Gates: gates})...)
 	}
 	if redLine != "" {
 		lines = append(lines, redLine)
@@ -153,12 +153,13 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		}
 	}
 	op := e.newOp("stream-set", in.actor, snap, name, mode, forge, gates)
+	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
 	op.Writes = ws
 	r, err := e.commit(ctx, op, "nova-sprint show "+name)
 	if err != nil {
 		return "", err
 	}
-	return done(waitNext, append([]string{fmt.Sprintf("STREAM %s mode=%s forge=%s applied at seq %d", name, mode, orWord(forge, "none"), r.Seq)}, gateLines(gates)...)...), nil
+	return done(waitNext, append(append([]string{fmt.Sprintf("STREAM %s mode=%s forge=%s applied at seq %d", name, mode, orWord(forge, "none"), r.Seq)}, gateLines(gates)...), e.gatelessWarn(ctx, snap, store.Stream{Name: name, Gates: gates})...)...), nil
 }
 
 // streamGates is --gate over the stream's own gates: each given one
@@ -183,6 +184,19 @@ func streamGates(in *input, stream string, gates []string) ([]string, error) {
 		}
 	}
 	return slices.Clone(given), nil
+}
+
+// gatelessWarn is the WARN line stream add and stream set print when s has
+// gates and hooked bench rows run a worker that does not run them
+// (gatelessRows): their cards of s finish without them. Nothing is refused.
+func (e *Engine) gatelessWarn(ctx context.Context, snap store.Snapshot, s store.Stream) []string {
+	if len(s.Gates) == 0 {
+		return nil
+	}
+	if what := gatelessLine(s, e.gatelessRows(ctx, snap)); what != "" {
+		return []string{"WARN " + oneLine(what) + ": " + oneLine(gatelessFix)}
+	}
+	return nil
 }
 
 // gateLines are a stream's gates as stream add and stream set print them:

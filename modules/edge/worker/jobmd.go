@@ -145,7 +145,7 @@ func streamGatesRule_internal(j Job, kin bool) string {
 		return ""
 	}
 	base := cmp.Or(j.BaseSHA, "the base")
-	rule := "   Run every stream gate (the stream gate lines: every card of stream " + j.Stream + " passes them) at the same head; each must exit 0, except one that is red at the base the card started from (" + base + ") as well: that is the base's fault, not this card's, and is no reason to fail the work or answer fix.\n"
+	rule := "   Run every stream gate (the stream gate lines: every card of stream " + j.Stream + " passes them) at the same head; each must exit 0, except one that is red at the base the card started from (" + base + "), or at the stream tip merged into it, as well: that is the base's fault, not this card's, and is no reason to fail the work or answer fix.\n"
 	if !kin {
 		return rule
 	}
