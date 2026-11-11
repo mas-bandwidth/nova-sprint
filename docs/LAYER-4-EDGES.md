@@ -274,7 +274,14 @@ Deal to report:
    `HOME`, `TMPDIR`, data home), `--read` toolchains and siblings,
    `--net-deny --net-allow localhost:<proxy>` where the host's wall can deny,
    stdin closed. The model is nova-config's for (row, tier), chosen by code
-   and recorded in the report (LPM T3, T28).
+   and recorded in the report (LPM T3, T28). When any wall command ends,
+   and before the worker lets a job go (the clean, a retire, a quarantine),
+   every process of the job is ended, TERM then KILL after the grace: a
+   process whose environment's `HOME`, `TMPDIR` or `XDG_DATA_HOME` is the
+   wall's for that job directory (inherited by every child, a daemon that
+   left the group too), and on Linux one whose working directory is in it
+   (`OSKillJob`). nova-reserve runs the command in a group of its own, so
+   the group of the process the worker started holds none of them.
 5. **Harvest** outside the wall: read the result file, push the branch with
    the row's token. On a wall death or a kill past the deadline, while the
    job still holds its card, push whatever commits the worktree holds, so
