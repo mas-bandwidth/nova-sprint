@@ -21,8 +21,9 @@ import (
 // attempt that pushed complete work and then died of something else left
 // every later attempt nothing to do and nothing but a fail: two of them and
 // the card was held ("failed 2 top-rank attempts running with no new
-// head"). An attempt that is no fix is now verified at the prior head, the
-// stream merged in and the done-whens run there, and finishes at it.
+// head"). An attempt at a prior head no attempt finished at (the take
+// receipt says: prior_finished) is now verified there, the stream merged in
+// and the done-whens run on that head's own tree, and finishes at it.
 
 // priorStep_internal runs the stream merge and done-when step of rec, a
 // harvested work job whose harness said ok at its prior head

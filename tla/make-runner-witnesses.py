@@ -75,10 +75,10 @@ WITNESSES = [
      "The next holder's take reads only the store's prior head, which a withdraw after a pushed harvest never learned.",
      [("TakePrior(c) == IF branch[c].tip # \"none\" THEN branch[c].tip ELSE branch[c].known",
        "TakePrior(c) == branch[c].known")]),
-    ("RunnerPriorHeadOnlyFails", "NothingNewOnlyFixOrFinished",
+    ("RunnerPriorHeadOnlyFails", "NothingNewOnlyFinished",
      "An ok at the prior head is failed whatever the deal (the rule before 2026-11-11): an attempt that found its work pushed by one that died can only fail.",
-     [("  /\\ ~(jobDir[c].atPrior /\\ jobDir[c].fix)   \\* a fix that added nothing is NothingNew\n", "  /\\ ~jobDir[c].atPrior\n"),
-      ("  /\\ jobDir[c].atPrior /\\ jobDir[c].fix   \\* only a fix\n", "  /\\ jobDir[c].atPrior\n")]),
+     [("  /\\ ~(jobDir[c].atPrior /\\ jobDir[c].prior = \"finished\")   \\* nothing new over a finished head is NothingNew\n", "  /\\ ~jobDir[c].atPrior\n"),
+      ("  /\\ jobDir[c].atPrior /\\ jobDir[c].prior = \"finished\"   \\* only at a finished head\n", "  /\\ jobDir[c].atPrior\n")]),
 ]
 
 

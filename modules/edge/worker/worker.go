@@ -109,11 +109,6 @@ type (
 		// ("": absent). Every push leases from PushedHead, the head this job
 		// last pushed, or else from StartTip (defect 78).
 		StartTip string `json:",omitempty"`
-		// Fix: the deal carries a finding (a read's fix, a red landing's), so
-		// its prior head is one an attempt finished at and was sent back
-		// from; an ok that adds nothing to it does nothing about the finding
-		// (rebaseAndTestStep_internal).
-		Fix bool `json:",omitempty"`
 		// PriorFinished is the receipt's: an attempt reported ok at PriorHead,
 		// so the card machine refuses that head as this attempt's finish, and
 		// an ok that adds nothing to it is a fail (rebaseAndTestStep_internal).

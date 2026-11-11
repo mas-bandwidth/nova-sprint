@@ -62,19 +62,22 @@
 (* An ok at the prior head (2026-11-11). jobDir[c].prior is the head the   *)
 (* deal started the job from: none (the base), unfinished (an attempt      *)
 (* pushed it and then faulted, failed or was withdrawn) or finished (an    *)
-(* attempt reported ok at it: tla/CardMachine.tla FinishedHeads, which     *)
-(* only the card machine reads); jobDir[c].fix is that the deal carries a  *)
-(* finding, which is all the worker reads. Harvest may find no new head    *)
-(* (atPrior: the harness said ok and committed nothing, and nothing is     *)
-(* pushed). The worker failed every such job ("committed nothing over the  *)
-(* prior head"), so once an attempt had pushed complete work and died,     *)
-(* every later attempt could only fail and the card was held. Now a job    *)
-(* that is no fix is verified at the prior head (Rebase: the stream merged *)
-(* in and the done-whens run there; Conflict when they are red), and only  *)
-(* a fix is NothingNew. The card machine stays the authority: an ok at a   *)
-(* finished prior head is refused (ReportRefused), and the job is then the *)
-(* fail it was. OkAtPriorOnlyUnfinished, NothingNewOnlyFixOrFinished;      *)
-(* witness RunnerPriorHeadOnlyFails (the old rule); reach check            *)
+(* attempt reported ok at it: tla/CardMachine.tla FinishedHeads, which the *)
+(* take receipt hands the worker as prior_finished). Harvest may find no   *)
+(* new head (atPrior: the harness said ok and committed nothing, and       *)
+(* nothing is pushed). The worker failed every such job ("committed        *)
+(* nothing over the prior head"), so once an attempt had pushed complete   *)
+(* work and died, every later attempt could only fail and the card was     *)
+(* held. Now a job at an unfinished prior head is verified there (Rebase:  *)
+(* the job's tree put back at that head, the stream merged in and the      *)
+(* done-whens run; Conflict when they are red), and only at a finished one *)
+(* is it NothingNew, decided from the receipt, with no report for the card *)
+(* machine to refuse. A finding on the deal decides nothing and is not in  *)
+(* the model: a finding is written against a finished head, so an          *)
+(* unfinished prior head was pushed after it, by an attempt on that        *)
+(* finding, and the read that follows judges it against the finding.       *)
+(* OkAtPriorOnlyUnfinished, NothingNewOnlyFinished; witness                *)
+(* RunnerPriorHeadOnlyFails (the old rule); reach check                    *)
 (* NeverOkAtUnfinishedPrior.                                               *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
@@ -99,17 +102,11 @@ PidFor(c) == IF c = "c1" THEN 101 ELSE 102
 
 PriorKinds == {"none", "unfinished", "finished"}
 
-\* The deals: each consumer's prior head and whether it is a fix. A first
-\* attempt (no prior head) carries no finding; every other pair is a deal
-\* the card machine makes (a finding stays on a card after its fix attempt
-\* pushed and died: unfinished and fix; a card held in review and unheld is
-\* dealt again with no finding: finished and no fix).
-\* One consumer carries a deal (c1; c2 is a first attempt): the prior-head
-\* steps are a job's own, and the two jobs meet only at the slot and the
-\* pass, so both carrying one checks nothing more, at five times the states.
-Deals == {d \in [Consumers -> [prior : PriorKinds, fix : BOOLEAN]] :
-            /\ d["c2"] = [prior |-> "none", fix |-> FALSE]
-            /\ d["c1"].prior = "none" => ~d["c1"].fix}
+\* The deals: the prior head of each consumer's deal. One consumer carries
+\* one (c1; c2 is a first attempt): the prior-head steps are a job's own,
+\* and the two jobs meet only at the slot and the pass, so both carrying
+\* one checks nothing more, at three times the states.
+Deals == {d \in [Consumers -> PriorKinds] : d["c2"] = "none"}
 
 Init ==
   /\ storeState = [c \in Consumers |-> "working"]
@@ -118,7 +115,7 @@ Init ==
   /\ width = Width
   /\ \E d \in Deals :
        jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE, keepsPrior |-> TRUE,
-                                      prior |-> d[c].prior, fix |-> d[c].fix, atPrior |-> FALSE, nothingNew |-> FALSE]]
+                                      prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, released |-> FALSE, restarted |-> FALSE]
@@ -202,26 +199,29 @@ Harvest(c) ==
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass>>
 
 \* The stream merged in and the done-whens green. At the prior head only
-\* for a job that is no fix: the head is verified, never the harness's word.
+\* when no attempt finished at it: the head is verified, never the
+\* harness's word.
 Rebase(c) ==
   /\ ~env.crashed
   /\ storeState[c] = "working"   \* a withdrawn job moves only to Retire
   /\ jobState[c] = "harvested"
   /\ jobDir[c].outcome = "ok"
-  /\ ~(jobDir[c].atPrior /\ jobDir[c].fix)   \* a fix that added nothing is NothingNew
+  /\ ~(jobDir[c].atPrior /\ jobDir[c].prior = "finished")   \* nothing new over a finished head is NothingNew
   /\ jobState' = [jobState EXCEPT ![c] = "rebased"]
   /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass, branch>>   \* the stream merged in: keepsPrior
 
-\* A fix whose harness said ok and committed nothing over its prior head:
-\* that head was finished and sent back with a finding, and neither it nor
-\* a merge of the stream into it answers the finding. A fail that bounces,
-\* with no merge and no done-when run (runner.go rebaseAndTestStep_internal).
+\* The harness said ok and committed nothing over a prior head an attempt
+\* finished at (the take receipt says so: prior_finished). That head was
+\* read and sent back, and neither it nor a merge of the stream into it
+\* answers the finding. A fail that bounces, with no merge, no done-when
+\* run and no report for the card machine to refuse (runner.go
+\* rebaseAndTestStep_internal).
 NothingNew(c) ==
   /\ ~env.crashed
   /\ storeState[c] = "working"   \* a withdrawn job moves only to Retire
   /\ jobState[c] = "harvested"
   /\ jobDir[c].outcome = "ok"
-  /\ jobDir[c].atPrior /\ jobDir[c].fix   \* only a fix
+  /\ jobDir[c].atPrior /\ jobDir[c].prior = "finished"   \* only at a finished head
   /\ jobDir' = [jobDir EXCEPT ![c].outcome = "fail", ![c].bounced = TRUE, ![c].nothingNew = TRUE]
   /\ jobState' = [jobState EXCEPT ![c] = "rebased"]
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
@@ -248,28 +248,11 @@ Push(c) ==
   /\ branch' = IF jobDir[c].atPrior THEN branch ELSE JobPushes(c)   \* at the prior head there is nothing of this job's to push
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass>>
 
-\* The card machine refuses an ok at a prior head an attempt finished at
-\* (card.finished, CardMachine.tla FinishedHeads); the worker cannot read
-\* that, only be refused.
-Refuses(c) == jobDir[c].outcome = "ok" /\ jobDir[c].atPrior /\ jobDir[c].prior = "finished"
-
-\* The refused ok is the fail it was before: nothing new over the prior
-\* head. The next Report sends it, under the same result id.
-ReportRefused(c) ==
-  /\ ~env.crashed
-  /\ ~env.storeDown
-  /\ jobState[c] = "reporting"
-  /\ jobDir[c].pushed
-  /\ Refuses(c)
-  /\ jobDir' = [jobDir EXCEPT ![c].outcome = "fail", ![c].bounced = TRUE, ![c].nothingNew = TRUE]
-  /\ UNCHANGED <<storeState, jobState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
-
 Report(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
   /\ jobState[c] = "reporting"
   /\ jobDir[c].pushed
-  /\ ~Refuses(c)
   /\ LET id == jobDir[c].resId IN
      /\ appliedOps' = IF \E op \in appliedOps : op.id = id
                       THEN appliedOps
@@ -284,7 +267,6 @@ ReplyLost(c) ==
   /\ env.crashes < MaxCrashes
   /\ jobState[c] = "reporting"
   /\ jobDir[c].pushed
-  /\ ~Refuses(c)
   /\ LET id == jobDir[c].resId IN
      /\ appliedOps' = IF \E op \in appliedOps : op.id = id
                       THEN appliedOps
@@ -439,7 +421,6 @@ Next ==
        \/ NothingNew(c)
        \/ Conflict(c)
        \/ Push(c)
-       \/ ReportRefused(c)
        \/ Report(c)
        \/ ReplyLost(c)
        \/ Clean(c)
@@ -466,7 +447,6 @@ FairConsumer(c) ==
   /\ WF_vars(Rebase(c))
   /\ WF_vars(NothingNew(c))
   /\ WF_vars(Push(c))
-  /\ WF_vars(ReportRefused(c))
   /\ WF_vars(Report(c))
   /\ WF_vars(Clean(c))
   /\ SF_vars(Retire(c))
@@ -483,7 +463,7 @@ TypeOK ==
   /\ branch \in [Consumers -> [tip : {"none", "job", "holder"}, holderWrote : BOOLEAN, finalPushes : 0..2,
                                known : {"none", "job"}, from : {"unset", "none", "job"}]]
   /\ \A c \in Consumers :
-       /\ jobDir[c].prior \in PriorKinds /\ jobDir[c].fix \in BOOLEAN
+       /\ jobDir[c].prior \in PriorKinds
        /\ jobDir[c].atPrior \in BOOLEAN /\ jobDir[c].nothingNew \in BOOLEAN
        /\ jobDir[c].atPrior => jobDir[c].prior # "none"
 
@@ -567,13 +547,13 @@ HolderStartsFromTip ==
 OkAtPriorOnlyUnfinished ==
   \A op \in appliedOps : (op.res = "ok" /\ jobDir[op.c].atPrior) => jobDir[op.c].prior = "unfinished"
 
-\* 2026-11-11: "committed nothing over the prior head" fails only a fix, or
-\* a job the card machine refused at a finished head: never an attempt that
-\* found the work already pushed by one that died. (Under the old rule it
-\* failed every job at its prior head, and since each attempt of such a card
-\* starts at that head, every attempt: the card could only fail.)
-NothingNewOnlyFixOrFinished ==
-  \A c \in Consumers : jobDir[c].nothingNew => (jobDir[c].fix \/ jobDir[c].prior = "finished")
+\* 2026-11-11: "committed nothing over the prior head" fails a job only at a
+\* head an attempt finished at: never an attempt that found the work already
+\* pushed by one that died. (Under the old rule it failed every job at its
+\* prior head, and since each attempt of such a card starts at that head,
+\* every attempt: the card could only fail.)
+NothingNewOnlyFinished ==
+  \A c \in Consumers : jobDir[c].nothingNew => jobDir[c].prior = "finished"
 
 \* Reach checks (each must be violated: the state is reachable).
 NeverOkAtUnfinishedPrior ==

@@ -1406,3 +1406,8 @@ func rowHeld(r Row, held bool) *Refusal {
 	}
 	return nil
 }
+
+// FinishedAt: a work consumer of cons reported ok at head (finished). The
+// take receipt carries it for the attempt's prior head (prior_finished), so
+// a bench's worker knows a head the machine would refuse as its finish.
+func FinishedAt(cons []Card, head string) bool { return finished(cons, head) }

@@ -497,7 +497,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen),
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
-		Fix: info.Finding != "",
+		PriorFinished: info.PriorFinished,
 	}
 	return job, rec
 }
@@ -739,9 +739,20 @@ func sealArgv_internal(jobDir, base, name, email, msg string, paths []string) []
 }
 
 // applyArgv_internal checks the bundle's head out in the job's tree, in
-// the wall, so the done-when tests run on the head that is pushed.
+// the wall, so the done-when tests run on the head that is pushed, and on
+// nothing else: the seal committed only what is inside PATHS, so what the
+// harness changed outside them is still in the tree (an edit to a test or a
+// Makefile, which the forced checkout undoes; untracked files, which the
+// clean removes; ignored files, build output, stay).
 func applyArgv_internal(bundle string) []string {
-	return []string{"sh", "-c", `set -e; git fetch -q --no-tags "$1" HEAD; git checkout -q -f --detach FETCH_HEAD`, "apply", bundle}
+	return []string{"sh", "-c", `set -e; git fetch -q --no-tags "$1" HEAD; git checkout -q -f --detach FETCH_HEAD; git clean -q -f -d`, "apply", bundle}
+}
+
+// resetArgv_internal puts the job's tree at head, a commit it already
+// holds (the head the job started from, verified with no commit of its
+// own), as applyArgv_internal does for a new head.
+func resetArgv_internal(head string) []string {
+	return []string{"sh", "-c", `set -e; git checkout -q -f --detach "$1"; git clean -q -f -d`, "reset", head}
 }
 
 // sealNote_internal is the seal's output for its step log: the first 20
@@ -785,17 +796,23 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	}
 	// The harness said ok and committed nothing over the prior head
 	// (tla/Runner.tla atPrior). The card machine refuses that head as a
-	// finish only when an attempt already finished at it (card.finished,
-	// tla/CardMachine.tla FinishedHeads): a fix's prior head, sent back with
-	// a finding that neither it nor a merge of the stream into it answers,
-	// so a fix is failed here (NothingNew). Any other prior head is work an
-	// attempt pushed before it faulted, failed or was withdrawn, and this
-	// attempt found nothing left to do: it is verified like any head, the
-	// stream merged into it and the done-whens run there (Rebase), where
-	// failing it left every later attempt nothing but a fail (2026-11-11).
+	// finish when an attempt already finished at it (card.FinishedAt,
+	// tla/CardMachine.tla FinishedHeads), which the take receipt says
+	// (prior_finished): that head was read and sent back, and neither it nor
+	// a merge of the stream into it answers the finding, so the job fails
+	// here (NothingNew), with no report to be refused. An unfinished prior
+	// head is work an attempt pushed before it faulted, failed or was
+	// withdrawn, and this attempt found nothing left to do: it is verified
+	// like any head, the stream merged into it and the done-whens run there
+	// (Rebase), where failing it left every later attempt nothing but a
+	// fail (2026-11-11). A finding on the deal does not change that: a
+	// finding is written against a finished head, so an unfinished prior
+	// head was pushed after it, by an attempt on that finding, and the read
+	// that follows judges it against the finding.
 	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
-	if atPrior := rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead; atPrior && rec.Fix {
-		rec.Outcome = nothingNew_internal("")
+	atPrior := rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead
+	if atPrior && rec.PriorFinished {
+		rec.Outcome = nothingNew_internal()
 		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 		return nil
 	} else if atPrior && r.Git != nil { // the seal found no commits: nothing is checked out in the worker's clone
@@ -861,21 +878,24 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 			return nil
 		}
 	}
+	if atPrior {
+		// For the read of this head: the consumer that reports it did not
+		// write it. (Which attempt and row did is not in the receipt.)
+		rec.Outcome.Reason = "this attempt added nothing: the head was pushed by an earlier attempt that did not finish, and is verified here (done-whens green)"
+		if rec.Outcome.Head != rec.PriorHead {
+			rec.Outcome.Reason = "this attempt added nothing but the merge of the stream: the work under it was pushed by an earlier attempt that did not finish, and the merge is verified here (done-whens green)"
+		}
+	}
 	rec.State = JobRebased
 	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 	return nil
 }
 
 // nothingNew_internal is the fail of a job whose harness said ok and
-// committed nothing over its prior head, where that head cannot be its
-// finish (a fix's; one the sprint refused, in refusal's words). No head:
-// nothing new was pushed.
-func nothingNew_internal(refusal string) Outcome {
-	out := Outcome{Result: "fail", Reason: "harness reported ok but committed nothing over the prior head"}
-	if refusal != "" {
-		out.Reason += ", and the sprint refused that head as its finish: " + refusal
-	}
-	return out
+// committed nothing over a prior head an attempt already finished at. No
+// head: nothing new was pushed.
+func nothingNew_internal() Outcome {
+	return Outcome{Result: "fail", Reason: "harness reported ok but committed nothing over the prior head, which an earlier attempt already finished at"}
 }
 
 // doneWhenBound_internal is how long a done-when gate of rec may run from
@@ -947,17 +967,28 @@ func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, cm
 // no tests. fault: the failure is the worker's or the wall's (the export,
 // or isInfraFault_internal), not the card's.
 func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) (bool, error) {
-	if r.Git == nil || r.Wall == nil || rec.StreamRef == "" || !slices.ContainsFunc(rec.DoneWhen, func(c string) bool { return strings.TrimSpace(c) != "" }) {
+	if r.Wall == nil || !slices.ContainsFunc(rec.DoneWhen, func(c string) bool { return strings.TrimSpace(c) != "" }) {
 		return false, nil
 	}
-	if rec.Outcome.Head == cmp.Or(rec.PriorHead, rec.BaseSHA) { // verified at the head it started from, the stream not moved: the tree is at it, and there is nothing to export
+	start := cmp.Or(rec.PriorHead, rec.BaseSHA)
+	var argv []string
+	switch {
+	case rec.Outcome.Head == start:
+		// Verified at the head it started from, the stream not moved: no
+		// commit to export, but the tree is not that head. The harness may
+		// have changed anything outside PATHS, a test or a Makefile among
+		// them, and the gates must not pass on that.
+		argv = resetArgv_internal(start)
+	case r.Git == nil || rec.StreamRef == "":
 		return false, nil
+	default:
+		bundle := filepath.Join(j.JobDir, RebasedBundle)
+		if err := r.Git.Export(ctx, r.clonePath_internal(rec.Consumer), start, bundle); err != nil {
+			return true, err
+		}
+		argv = applyArgv_internal(bundle)
 	}
-	bundle := filepath.Join(j.JobDir, RebasedBundle)
-	if err := r.Git.Export(ctx, r.clonePath_internal(rec.Consumer), cmp.Or(rec.PriorHead, rec.BaseSHA), bundle); err != nil {
-		return true, err
-	}
-	res, err := r.Wall.RunStep(ctx, j, applyArgv_internal(bundle), r.Timeouts.RebaseAndTest)
+	res, err := r.Wall.RunStep(ctx, j, argv, r.Timeouts.RebaseAndTest)
 	if fault, why := isInfraFault_internal(res, err); fault {
 		return true, errors.New(why)
 	}
@@ -972,22 +1003,10 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return err
 	}
-	err := r.sendReport_internal(ctx, rec)
-	// Only the card machine knows whether an attempt finished at the prior
-	// head (card.finished: a card held in review and unheld is dealt again
-	// with no finding). An ok there that the sprint refuses is the fail it
-	// was before this head could be a finish, sent once under the same
-	// result id (tla/Runner.tla ReportRefused), never resent as ok until
-	// the record is set aside.
-	if errors.Is(err, ErrRefused) && rec.Kind == "work" && rec.Outcome.Result == "ok" && rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead {
-		r.logStep_internal(rec.Row, rec.Consumer, "report", "ok at the prior head refused; reported as a fail", 0)
-		rec.Outcome = nothingNew_internal(edge.RedactN(err.Error(), edge.FailureMax))
-		if werr := WriteJobRecord(jobDir, rec); werr != nil {
-			return werr
-		}
-		err = r.sendReport_internal(ctx, rec)
-	}
-	if err != nil {
+	// A refused report is never rewritten and sent again as something else:
+	// a refusal is also a misuse, a version skew or a verb that was killed,
+	// and the record on disk is what a restart resends.
+	if err := r.sendReport_internal(ctx, rec); err != nil {
 		return err
 	}
 	r.logStep_internal(rec.Row, rec.Consumer, "report", "accepted=true", 0)
