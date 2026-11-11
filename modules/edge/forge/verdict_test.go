@@ -65,6 +65,11 @@ func TestPrimaryRateLimitRestsUntilTheReset(t *testing.T) {
 	}
 }
 
+// A check is stopped by GitHub's conclusion (CANCELLED, TIMED_OUT), or by a
+// stop line only when that line is the check's one failure annotation: any
+// step can write such text, so a check with any other failure annotation
+// failed (a test that fails and then hangs to a kill is red, never
+// "killed").
 func TestStopOfReadsGitHubsOwnWordsOnly(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -73,7 +78,11 @@ func TestStopOfReadsGitHubsOwnWordsOnly(t *testing.T) {
 		want       string
 	}{
 		{"FAILURE", []string{"Process completed with exit code 137."}, "killed (exit code 137)"},
-		{"FAILURE", []string{"Process completed with exit code 1.", "CI rule: per-commit jobs finish in 2m", "Process completed with exit code 137."}, "killed (exit code 137)"},
+		{"FAILURE", []string{"Process completed with exit code 1.", "CI rule: per-commit jobs finish in 2m", "Process completed with exit code 137."}, ""},
+		{"FAILURE", []string{"--- FAIL: TestWalk (3.20s)", "Process completed with exit code 137."}, ""},
+		{"FAILURE", []string{"Process completed with exit code 137.", "Process completed with exit code 1."}, ""},
+		{"FAILURE", []string{"The job running on runner r1 has exceeded the maximum execution time of 5 minutes.", "The operation was canceled."}, ""},
+		{"CANCELLED", []string{"--- FAIL: TestWalk (3.20s)"}, "cancelled"},
 		{"FAILURE", []string{"Process completed with exit code 143."}, "terminated (exit code 143)"},
 		{"FAILURE", []string{"The job running on runner r1 has exceeded the maximum execution time of 5 minutes."}, "timed out (the job's time limit)"},
 		{"FAILURE", []string{"The action 'unit' has timed out after 2 minutes."}, "timed out (a step's time limit)"},
