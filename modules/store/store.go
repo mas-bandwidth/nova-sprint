@@ -138,15 +138,18 @@ func IsConsumerOp(op, id string) bool { return op == id || strings.HasPrefix(op,
 // settings (round 22): stream state, read with the snapshot, never policy
 // data or a scan of the log. Mode is how its producers land, one of
 // StreamModes (auto when unset); Forge is the forge it lands through, ""
-// for none.
+// for none. Gates (round 31) are the stream's gates: commands every card of
+// the stream passes at its finished head beside its own DONE-WHENs, each
+// one command as a DONE-WHEN is (edge.ParseGate); nil for none.
 type Stream struct {
-	Name  string `json:"name"`
-	Repo  string `json:"repo"`
-	Base  string `json:"base"`
-	Held  bool   `json:"held"`
-	Pos   int    `json:"pos"`
-	Mode  string `json:"mode"`
-	Forge string `json:"forge"`
+	Name  string   `json:"name"`
+	Repo  string   `json:"repo"`
+	Base  string   `json:"base"`
+	Held  bool     `json:"held"`
+	Pos   int      `json:"pos"`
+	Mode  string   `json:"mode"`
+	Forge string   `json:"forge"`
+	Gates []string `json:"gates,omitempty"`
 }
 
 // UnmarshalJSON reads a stream image, a mode the image does not carry (one
@@ -159,7 +162,7 @@ func (s *Stream) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*s = Stream(p)
-	s.Mode = cmp.Or(s.Mode, StreamAuto)
+	s.Mode, s.Gates = cmp.Or(s.Mode, StreamAuto), normList(s.Gates)
 	return nil
 }
 

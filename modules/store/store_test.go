@@ -316,6 +316,20 @@ func TestRound29Hash(t *testing.T) {
 	assert.True(t, knownOlder(round29Hash))
 }
 
+// round30Hash is the hash of round 30's schema.sql, kept in testdata: its
+// streams have no gates, which this build's schema adds (round 31: a
+// stream's gates). Unit: reads a file in the package, no store.
+func TestRound30Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round30.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round30Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round30Hash, schemaHash)
+	assert.NotContains(t, string(old), "gates")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS gates")
+	assert.True(t, knownOlder(round30Hash))
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.

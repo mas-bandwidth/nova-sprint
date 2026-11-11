@@ -399,7 +399,7 @@ func buildPrompt_internal(j Job) string {
 	} else {
 		fmt.Fprintf(&b, "branch=%s base_sha=%s prior_head=%s\n", j.Branch, j.BaseSHA, j.PriorHead)
 	}
-	for _, kv := range [][2]string{{"prior_finding=", j.Finding}, {"paths=", strings.Join(j.Paths, ",")}, {"done_when=", strings.Join(j.DoneWhen, " && ")}} {
+	for _, kv := range [][2]string{{"prior_finding=", j.Finding}, {"paths=", strings.Join(j.Paths, ",")}, {"done_when=", strings.Join(j.DoneWhen, " && ")}, {"stream_gates=", strings.Join(j.StreamGates, " && ")}} {
 		if kv[1] != "" {
 			b.WriteString(kv[0] + kv[1] + "\n")
 		}

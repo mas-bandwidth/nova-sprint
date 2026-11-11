@@ -63,7 +63,7 @@ func (t Timeouts) WithDefaults() Timeouts {
 type (
 	Job struct {
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, Head, Tier, Model, HarnessName, Brief, Prose, Finding string
-		Paths, DoneWhen, Siblings                                                                                                                       []string
+		Paths, DoneWhen, StreamGates, Siblings                                                                                                          []string
 		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
 		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, Forge                                                                                  string
 		Deadline                                                                                                                                        time.Duration
@@ -109,6 +109,9 @@ type (
 		// ("": absent). Every push leases from PushedHead, the head this job
 		// last pushed, or else from StartTip (defect 78).
 		StartTip string `json:",omitempty"`
+		// StreamGates are the stream's gates from the take receipt, run after
+		// DoneWhen at the same head (streamGates_internal).
+		StreamGates []string `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex
@@ -219,6 +222,73 @@ func TailBytes(b []byte, max int) string {
 		b = b[len(b)-max:]
 	}
 	return strings.TrimSpace(strings.ReplaceAll(strings.ToValidUTF8(string(b), ""), "\x00", ""))
+}
+
+// GateTail is a red gate's output in at most max bytes (MaxReasonBytes
+// when 0), for a report's reason. Output that fits is whole. Else the lines
+// that say what failed (failingLine_internal) come first, in order, those
+// the kept end does not already hold, in at most half the bytes (the first
+// ones: a compiler's first error is the cause), the rest counted, never cut
+// silently; then "..." and the output's end in what is left. With no such
+// line it is the end alone (TailBytes). v1 kept only the end (gateWhy: "a
+// failing run's last lines are the ones that say why"), which for `make -k`
+// is the targets after the failing one. The half is a guess, not measured.
+func GateTail(out []byte, max int) string {
+	const cut, noteRoom = "\n...\n", 48 // noteRoom holds the count's line and its newline
+	max = cmp.Or(max, MaxReasonBytes)
+	s := TailBytes(out, len(out)+1) // cleaned, nothing cut
+	if len(s) <= max {
+		return s
+	}
+	type failing struct {
+		end  int
+		line string
+	}
+	var all []failing
+	// Whole lines only, and none inside the least end kept.
+	for at, rest := 0, s[:len(s)-(max-max/2-len(cut))]; ; {
+		line, after, whole := strings.Cut(rest, "\n")
+		if !whole {
+			break
+		}
+		at, rest = at+len(line)+1, after
+		if l := strings.TrimSpace(line); failingLine_internal(l) {
+			all = append(all, failing{end: at, line: l})
+		}
+	}
+	// pick is the failing lines that end by limit, as the reason's head.
+	pick := func(limit int) string {
+		var kept []string
+		used, more := 0, 0
+		for _, f := range all {
+			switch {
+			case f.end > limit: // the end kept holds it
+			case used+len(f.line)+1 > max/2-noteRoom:
+				more++
+			default:
+				kept, used = append(kept, f.line), used+len(f.line)+1
+			}
+		}
+		if more > 0 {
+			kept = append(kept, fmt.Sprintf("(%d more failing lines cut)", more))
+		}
+		return strings.Join(kept, "\n")
+	}
+	head := pick(len(s))
+	end := max - len(head) - len(cut)
+	if head = pick(len(s) - end); head == "" {
+		return TailBytes(out, max)
+	}
+	return head + cut + TailBytes([]byte(s), end)
+}
+
+// failingLine_internal: line says what failed: make's "*** " (a target's
+// error, no rule for a target), go test's "FAIL" and "--- FAIL", and a
+// compiler's "error:" or "error[" in any case.
+func failingLine_internal(line string) bool {
+	low := strings.ToLower(line)
+	return strings.Contains(line, " *** ") || strings.HasPrefix(line, "FAIL") || strings.Contains(line, "--- FAIL") ||
+		strings.Contains(low, "error:") || strings.Contains(low, "error[")
 }
 func (l *StepLogger) Log(row, consumer, step, result string, d time.Duration) error {
 	if l == nil || l.StateDir == "" {

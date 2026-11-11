@@ -99,7 +99,8 @@ package does with it.
   inside the restore's transaction, and refuses the restore if a row is
   still hooked. A stream carries its landing settings, `Mode` (auto, group
   or hand) and `Forge` ("" for none), put by `PutStream` and changed by
-  `SetStreamMode` and `SetStreamForge`. A cursor
+  `SetStreamMode` and `SetStreamForge`, and its gates (round 31, `Gates`,
+  none by default, kept by `PutStream`), set by `SetStreamGates`. A cursor
   set to its current value is refused, an absent one counting as 0.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
