@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
@@ -163,18 +164,7 @@ func freePort(t *testing.T) int {
 func e2ePG(t *testing.T) string {
 	t.Helper()
 	initdb, _ := exec.LookPath("initdb")
-	dir := filepath.Join(t.TempDir(), "data")
-	if out, err := exec.Command(initdb, "-D", dir, "-U", "nova_admin", "--auth=trust", "--no-locale", "-E", "UTF8").CombinedOutput(); err != nil {
-		t.Fatalf("initdb: %v\n%s", err, out)
-	}
-	port := freePort(t)
-	ctl := filepath.Join(filepath.Dir(initdb), "pg_ctl")
-	opts := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port)
-	if out, err := exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "server.log"), "-o", opts, "-w", "start").CombinedOutput(); err != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", err, out)
-	}
-	t.Cleanup(func() { _ = exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").Run() })
-	return fmt.Sprintf("postgres://nova_admin@127.0.0.1:%d/postgres?sslmode=disable", port)
+	return pgbin.Start(t, pgbin.Options{Bin: filepath.Dir(initdb), User: "nova_admin", Stop: "immediate"}).DSN
 }
 
 // e2eRedis is a throwaway Redis; it returns NOVA_BUS_REDIS's value.

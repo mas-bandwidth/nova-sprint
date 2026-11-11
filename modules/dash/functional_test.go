@@ -4,12 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"net"
 	"net/http/httptest"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,29 +15,8 @@ import (
 
 func startPG(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(pgbin.Dir(t), "initdb")
-	dir := t.TempDir()
-	cmd := exec.Command(bin, "-D", dir, "-U", "nova", "--auth=trust", "--no-locale")
-	if out, e := cmd.CombinedOutput(); e != nil {
-		t.Fatalf("initdb %v: %s", e, out)
-	}
-	l, e := net.Listen("tcp", "127.0.0.1:0")
-	if e != nil {
-		t.Fatal(e)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	// pg_ctl starts it and stops it (-m immediate), never a signal.
-	ctl := filepath.Join(filepath.Dir(bin), "pg_ctl")
-	if out, e := exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "postgres.log"), "-o", fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port), "-w", "start").CombinedOutput(); e != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", e, out)
-	}
-	t.Cleanup(func() {
-		if out, e := exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").CombinedOutput(); e != nil {
-			t.Logf("pg_ctl stop: %v\n%s", e, out)
-		}
-	})
-	return fmt.Sprintf("postgres://nova@127.0.0.1:%d/postgres?sslmode=disable", port)
+	// pg_ctl stops it with -m immediate, never a signal.
+	return pgbin.Start(t, pgbin.Options{Stop: "immediate"}).DSN
 }
 func TestFunctionalJSONGolden(t *testing.T) {
 	t.Parallel()

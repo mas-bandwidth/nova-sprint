@@ -3,13 +3,13 @@ package verbs
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -19,26 +19,9 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	dir := t.TempDir()
-	data := filepath.Join(dir, "pg")
-	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(data, "pg_hba.conf"), []byte("local all all trust\nhost all all 127.0.0.1/32 scram-sha-256\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	_ = listener.Close()
-	opts := fmt.Sprintf("-k %s -p %d -c listen_addresses=127.0.0.1", dir, port)
-	if err = runPG(ctx, "", "pg_ctl", "-D", data, "-l", filepath.Join(dir, "pg.log"), "-o", opts, "-w", "start"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = runPG(context.Background(), "", "pg_ctl", "-D", data, "-m", "immediate", "-w", "stop") })
-	socket := "host=" + dir + fmt.Sprintf(" port=%d dbname=postgres sslmode=disable", port)
+	srv := pgbin.Start(t, roleServer)
+	dir, port := srv.Dir, srv.Port
+	socket := srv.Socket
 	super, err := pgx.Connect(ctx, socket)
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +109,11 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets 
 	}
 }
 
+// roleServer is the role tests' PostgreSQL: SCRAM over TCP, so the
+// password checks are real; the local socket is trusted, for the
+// superuser's fixture setup.
+var roleServer = pgbin.Options{Socket: true, Stop: "immediate", HBA: "local all all trust\nhost all all 127.0.0.1/32 scram-sha-256\n"}
+
 func roleAdoptionFixture(t *testing.T) (context.Context, *pgx.Conn, string) {
 	t.Helper()
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
@@ -133,26 +121,9 @@ func roleAdoptionFixture(t *testing.T) (context.Context, *pgx.Conn, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	t.Cleanup(cancel)
-	dir := t.TempDir()
-	data := filepath.Join(dir, "pg")
-	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(data, "pg_hba.conf"), []byte("local all all trust\nhost all all 127.0.0.1/32 scram-sha-256\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	_ = listener.Close()
-	opts := fmt.Sprintf("-k %s -p %d -c listen_addresses=127.0.0.1", dir, port)
-	if err = runPG(ctx, "", "pg_ctl", "-D", data, "-l", filepath.Join(dir, "pg.log"), "-o", opts, "-w", "start"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = runPG(context.Background(), "", "pg_ctl", "-D", data, "-m", "immediate", "-w", "stop") })
-	super, err := pgx.Connect(ctx, fmt.Sprintf("host=%s port=%d dbname=postgres sslmode=disable", dir, port))
+	srv := pgbin.Start(t, roleServer)
+	port := srv.Port
+	super, err := pgx.Connect(ctx, srv.Socket)
 	if err != nil {
 		t.Fatal(err)
 	}

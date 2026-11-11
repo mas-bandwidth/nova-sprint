@@ -25,7 +25,6 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -38,6 +37,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,43 +74,14 @@ func TestFunctionalLoad(t *testing.T) {
 // where the time went.
 func loadPG(t *testing.T, fsync string) (dsn string, stats bool) {
 	t.Helper()
-	bin, dir := pgBin(t), t.TempDir()
-	init := exec.Command(filepath.Join(bin, "initdb"), "-D", filepath.Join(dir, "data"), "-U", "nova", "--auth=trust", "-E", "UTF8", "--no-locale")
-	init.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := init.CombinedOutput()
-	require.NoError(t, err, "%s", out)
-	port := freePort(t)
-	args := []string{"-D", filepath.Join(dir, "data"), "-p", port, "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=" + fsync, "-c", "max_connections=200"}
+	bin := pgBin(t)
+	settings := []string{"fsync=" + fsync, "max_connections=200"}
 	libs, _ := filepath.Glob(filepath.Join(bin, "..", "lib", "pg_stat_statements.*")) // ignored: a bad pattern is a constant's
 	libs2, _ := filepath.Glob(filepath.Join(bin, "..", "lib", "postgresql", "pg_stat_statements.*"))
 	if stats = len(libs)+len(libs2) > 0; stats {
-		args = append(args, "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=all")
+		settings = append(settings, "shared_preload_libraries=pg_stat_statements", "pg_stat_statements.track=all")
 	}
-	// pg_ctl starts it and stops it (-m fast, a clean shutdown), never a signal.
-	ctl := filepath.Join(bin, "pg_ctl")
-	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", strings.Join(args[2:], " "), "-w", "start")
-	start.Env = append(os.Environ(), "LC_ALL=C")
-	// Stop is registered before start: a start that fails or times out can
-	// leave a postmaster running, and t.Fatalf must not orphan it.
-	t.Cleanup(func() {
-		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "fast", "-w", "stop")
-		stop.Env = append(os.Environ(), "LC_ALL=C")
-		if out, err := stop.CombinedOutput(); err != nil {
-			t.Logf("pg_ctl stop: %v\n%s", err, out)
-		}
-	})
-	if out, err := start.CombinedOutput(); err != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", err, out)
-	}
-	dsn = "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
-	require.Eventually(t, func() bool {
-		c, err := pgx.Connect(context.Background(), dsn)
-		if err == nil {
-			_ = c.Close(context.Background()) // ignored: only probing
-		}
-		return err == nil
-	}, wait, 50*time.Millisecond)
-	return dsn, stats
+	return pgbin.Start(t, pgbin.Options{Bin: bin, Settings: settings}).DSN, stats
 }
 
 // lat is a set of latencies.
