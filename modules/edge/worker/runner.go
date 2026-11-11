@@ -562,7 +562,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen), StreamGates: cloneStrings_internal(info.StreamGates),
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
-		PriorFinished: info.PriorFinished,
+		PriorFinished: info.PriorFinished, Harness: rowInfo.Harness,
 	}
 	return job, rec
 }
@@ -692,6 +692,9 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	out := ClassifyJob(h, job, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
 	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" && (runErr != nil || (out.Result != "ok" && out.Result != "yes" && out.Result != "fix")) {
 		out = Outcome{Result: "fault", Reason: why}
+	}
+	if out.Result != "ok" && out.Result != "yes" && out.Result != "fix" {
+		out.Reason = withHarnessLog_internal(out.Reason, harnessLogErrors_internal(job.JobDir, h.Needs().LogDir))
 	}
 	if cost, ok := h.Usage(job); ok {
 		rec.Cost = cost
@@ -1301,6 +1304,9 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 		}
 	}
 	r.endJobTree_internal(jobDir, rec, "clean")
+	if res := rec.Outcome.Result; res != "ok" && res != "yes" && res != "fix" {
+		r.keepJobLogs_internal(jobDir, rec)
+	}
 	if r.Git != nil {
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
 	}
@@ -1964,7 +1970,9 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if kv := cargoLinkerEnv_internal(runtime.GOOS, runtime.GOARCH, lookPath); kv != "" {
 		env = append(env, kv)
 	}
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, env, timeout)
+	cfg := w.effectiveConfig_internal(j)
+	cfg.ReserveWait = stepReserveWait_internal(cfg.ReserveWait, timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, fields, env, timeout)
 }
 
 // cargoLinkerEnv_internal is CARGO_TARGET_<host>_LINKER=<absolute cc> on
@@ -2041,7 +2049,9 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 }
 
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	cfg := w.effectiveConfig_internal(j)
+	cfg.ReserveWait = stepReserveWait_internal(cfg.ReserveWait, timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
