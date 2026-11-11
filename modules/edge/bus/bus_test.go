@@ -46,16 +46,16 @@ func TestEdgeSendAndWhoOverFakeExec(t *testing.T) {
 	assert.Contains(t, err.Error(), "nova-bus send --as sprint --to amd-1.ds DEAL \"DEAL: 1 card for amd-1.ds (epoch 1)\": exit 1; stderr \"SEND FAILED: sprint not hooked in\"")
 	assert.Contains(t, err.Error(), "nova-bus who")
 
-	// 4. Who parses present rows and optional detail column.
+	// 4. Who parses present rows and the optional session column.
 	fex.Enqueue("nova-bus", edge.FakeOutcome{
 		ExitCode: 0,
-		Stdout:   "WHO OK present=2\namd-1.ds\t14s\nrowan\t5m\trecv holding 99-0\n",
+		Stdout:   "WHO OK present=2\namd-1.ds\t14s\nrowan\t5m\t09505b39922930f7dd1d74367bc97eb3\n",
 	})
 	who, err := b.Who(ctx)
 	require.NoError(t, err)
 	require.Len(t, who, 2)
 	assert.Equal(t, Presence{Name: "amd-1.ds", Uptime: "14s"}, who["amd-1.ds"])
-	assert.Equal(t, Presence{Name: "rowan", Uptime: "5m", Detail: "recv holding 99-0"}, who["rowan"])
+	assert.Equal(t, Presence{Name: "rowan", Uptime: "5m", Session: "09505b39922930f7dd1d74367bc97eb3"}, who["rowan"])
 
 	// 5. A body over the cap is refused before nova-bus runs.
 	_, err = b.Send(ctx, "amd-1.ds", "DEAL", strings.Repeat("x", MaxMessageBytes+1))
