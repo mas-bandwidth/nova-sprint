@@ -679,16 +679,16 @@ func (h *runnerWalkHarness_internal) atPriorStep_internal(t *testing.T, c string
 	return act
 }
 
-// walkPriorHead_internal is a scripted walk of one of the two prior-head
-// paths the seeds reach rarely; c1's deal is no fix. finished: its prior
-// head is one an attempt finished at (a card held in review and unheld), so
-// its ok, verified, is refused and reported as the fail. unfinished: an
-// attempt pushed it and died, and c1 finishes ok there. c2 is a first
+// walkPriorHead_internal is a scripted walk of one of the prior-head paths
+// the seeds reach rarely, c1's. A fix: nothing new is its fail. No fix and
+// a finished prior head (a card held in review and unheld): its ok,
+// verified, is refused and reported as the fail. No fix and an unfinished
+// one (an attempt pushed it and died): c1 finishes ok there. c2 is a first
 // attempt.
-func walkPriorHead_internal(t *testing.T, prior string) []runnerTraceStep_internal {
+func walkPriorHead_internal(t *testing.T, prior string, fix bool) []runnerTraceStep_internal {
 	t.Helper()
 	h := newRunnerWalkHarness_internal(t)
-	h.prior["c1"], h.atPriorAlways = prior, true
+	h.prior["c1"], h.fix["c1"], h.atPriorAlways = prior, fix, true
 	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
 	do := func(act, c string) {
 		if act == "AtPrior" {
@@ -702,7 +702,7 @@ func walkPriorHead_internal(t *testing.T, prior string) []runnerTraceStep_intern
 	for _, act := range []string{"Take", "Stage", "Run", "Harvest", "AtPrior", "Push"} {
 		do(act, "c1")
 	}
-	if prior == "finished" {
+	if prior == "finished" && !fix {
 		do("ReportRefused", "c1")
 	}
 	for _, act := range []string{"Report", "Clean"} {
@@ -951,14 +951,17 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	// The two prior-head paths few seeds reach, each walked once by script.
-	for _, prior := range []string{"finished", "unfinished"} {
-		scripted := walkPriorHead_internal(t, prior)
+	// The prior-head paths few seeds reach, each walked once by script.
+	for name, deal := range map[string]struct {
+		prior string
+		fix   bool
+	}{"finished": {prior: "finished"}, "unfinished": {prior: "unfinished"}, "fix": {prior: "finished", fix: true}} {
+		scripted := walkPriorHead_internal(t, deal.prior, deal.fix)
 		for _, s := range scripted {
 			seen[s.action]++
 		}
 		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
-			sub := filepath.Join(traceDir, "runner-walk-prior-"+prior)
+			sub := filepath.Join(traceDir, "runner-walk-prior-"+name)
 			if err := os.MkdirAll(sub, 0o755); err != nil {
 				t.Fatal(err)
 			}
