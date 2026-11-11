@@ -196,8 +196,9 @@ func TestColdread3InfraFailureAfterTheHarnessIsAFaultNotAFail(t *testing.T) {
 // runner.go rebaseAndTestStep_internal: a retry whose harness wrote ok
 // with no new commit has the prior head as its head. It was rebased in a
 // clone with nothing checked out, reported as a fault at the prior head,
-// refused by the store three times and quarantined. It is a fail, with no
-// head, and no rebase is tried.
+// refused by the store three times and quarantined. For a fix (the deal
+// carries a finding) it is a fail, with no head, and no rebase is tried;
+// an attempt that is no fix is verified at that head (priorhead_test.go).
 func TestRetryOkAtThePriorHeadIsAFailWithNoHead(t *testing.T) {
 	t.Parallel()
 	g := newFakeGit_internal()
@@ -207,7 +208,7 @@ func TestRetryOkAtThePriorHeadIsAFailWithNoHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := JobRecord{Consumer: "p1.w2", Kind: "work", Row: "vision.ds", Repo: "o/r", Forge: "github", Gen: 2, StreamRef: "sprint/s1", Branch: "sprint/s1/p1",
-		BaseSHA: testPriorSHA, PriorHead: testCommitSHA, PushedHead: testCommitSHA, DoneWhen: []string{"go test ./..."}, Outcome: Outcome{Result: "ok", Head: testCommitSHA}}
+		BaseSHA: testPriorSHA, PriorHead: testCommitSHA, PushedHead: testCommitSHA, Fix: true, DoneWhen: []string{"go test ./..."}, Outcome: Outcome{Result: "ok", Head: testCommitSHA}}
 	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		t.Fatal(err)

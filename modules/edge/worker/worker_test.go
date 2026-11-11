@@ -62,6 +62,16 @@ type fakeGit struct {
 	fetchedJobs map[string]int // per repo: the jobs its fetches were for
 	fetchErr    error
 	pushLog     []fakePush
+	checkouts   []string // every CheckOut's sha
+}
+
+// CheckOut checks sha out in the worker's clone.
+func (g *fakeGit) CheckOut(_ context.Context, clone, sha string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.checkouts = append(g.checkouts, sha)
+	g.headByWT[clone] = sha
+	return nil
 }
 
 type fakePush struct{ branch, sha, expect string }
