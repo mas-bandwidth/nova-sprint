@@ -57,7 +57,11 @@ func readTail_internal(root *os.Root, name string, n int64) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	if fst, err := f.Stat(); err != nil || !fst.Mode().IsRegular() {
+	fst, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fst.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s is not a regular file", name)
 	}
 	if st.Size() > n {
