@@ -224,7 +224,11 @@ sense; they need a public endpoint and are deferred to layer 6.
 
 Rate limits: GitHub's own answer is the limit. A 403 or 429 with a retry
 time rests that identity until then: a fault to its caller that spends
-nothing. Rung 2's one PR per group keeps a backlog inside GitHub's documented
+nothing. The landing asks a pass whose PR or checks read was rate-limited
+again, as it does a pending CI (`forge_rested`): never a land judgement.
+A checks read pages past a commit's first 100 checks only when GitHub's
+per-state counts show a failed or faulted check (or do not account for
+every check), so a poll of a commit with nothing failed is one call. Rung 2's one PR per group keeps a backlog inside GitHub's documented
 limits (5,000 requests an hour; PR opens far fewer).
 
 ## The runner: nova-worker
