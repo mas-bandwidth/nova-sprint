@@ -133,7 +133,7 @@ func TestLandStoppedChecksAreNamedApart(t *testing.T) {
 }
 
 // D: every failing check stopped is no verdict about the code, and the
-// coordinator's at once: the sprint runs nothing again (LESSONS M11). The
+// coordinator's at once: the sprint runs nothing again (LESSONS-PRIORITY-AND-MERGE W19). The
 // judgement names each stopped check and carries the first stopped check's
 // failing lines, its log read once.
 func TestLandEveryCheckStoppedIsNoVerdict(t *testing.T) {
@@ -142,7 +142,7 @@ func TestLandEveryCheckStoppedIsNoVerdict(t *testing.T) {
 	fs := []forge.Failure{{Name: "corpus", URL: verdictJob1, Stop: "killed (exit code 137)"}, {Name: "cpp", URL: verdictJob2, Stop: "killed (exit code 137)"}, {Name: "lua", URL: verdictJob3, Stop: "cancelled"}}
 	res, ff := verdictPass_internal(t, r, fs, nil)
 	calls := ff.calls_internal()
-	if res.Outcome != LandOutcome("ci_no_verdict") || slices.Contains(calls, "Rerun") || len(res.FailingCI) != 0 {
+	if res.Outcome != LandOutcome("ci_no_verdict") || len(res.FailingCI) != 0 {
 		t.Fatalf("%+v, calls %v: want ci_no_verdict at once, nothing run again, nothing named failing", res, calls)
 	}
 	if !slices.Equal(res.FailingLines, []string{"--- FAIL: TestX", "FAIL"}) || res.CIURL != verdictJob1 || len(slices.DeleteFunc(calls, func(c string) bool { return c != "FailedLines" })) != 1 {
@@ -165,7 +165,7 @@ func TestLandCancelledOnlyIsNoVerdict(t *testing.T) {
 	ff.SetCheck("o/r", c1, r)
 	ff.SetFailures("o/r", c1, []forge.Failure{{Name: "lua", URL: verdictJob3, Stop: "cancelled"}})
 	res, err := LandPass(context.Background(), gf, ff, one_internal(c1))
-	if err != nil || res.Outcome != LandOutcome("ci_no_verdict") || len(res.FailingLines) == 0 || slices.Contains(ff.calls_internal(), "Rerun") || gf.OriginRef("v2") != root {
+	if err != nil || res.Outcome != LandOutcome("ci_no_verdict") || len(res.FailingLines) == 0 || gf.OriginRef("v2") != root {
 		t.Fatalf("%+v err=%v, want ci_no_verdict with its lines and nothing run again", res, err)
 	}
 	ff.SetFailures("o/r", c1, []forge.Failure{{Name: "lua", URL: verdictJob3}})

@@ -55,11 +55,9 @@ func TestLandFactsNameStoppedApart(t *testing.T) {
 }
 
 // stopForge is a forge whose gated head (a...) is red with its one failing
-// check killed; reruns counts any job the sprint asked GitHub to run again
-// (none: the sprint never runs CI again).
+// check killed (the forge has no way to run CI again).
 type stopForge struct {
 	forge.Forge
-	reruns int
 }
 
 func (f *stopForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
@@ -78,14 +76,12 @@ func (f *stopForge) Failures(context.Context, string, string) ([]forge.Failure, 
 	return []forge.Failure{{Name: "corpus", URL: "https://github.com/o/r/actions/runs/7/job/8", Stop: "killed (exit code 137)"}}, nil
 }
 
-func (f *stopForge) Rerun(context.Context, string, string) error { f.reruns++; return nil }
-
 func (f *stopForge) Merge(context.Context, string, int, string) (string, error) {
 	return strings.Repeat("b", 40), nil
 }
 
 // D: a landing whose failing checks were all stopped is the coordinator's
-// ci_no_verdict at once: nothing is run again by the sprint (LESSONS M11),
+// ci_no_verdict at once: nothing is run again by the sprint (LESSONS-PRIORITY-AND-MERGE W19),
 // the stopped check is named apart, and the judgement carries its first
 // failing lines.
 func TestLandStoppedChecksAreNoVerdictAtOnce(t *testing.T) {
@@ -103,8 +99,8 @@ func TestLandStoppedChecksAreNoVerdictAtOnce(t *testing.T) {
 	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{strings.Repeat("a", 40)}, Branches: []string{"sprint/s1/x"}},
 		store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
 	got := e.Results()
-	if len(got) != 1 || got[0].Outcome != "ci_no_verdict" || f.reruns != 0 || pauses != 0 {
-		t.Fatalf("results %+v after %d reruns and %d pauses, want ci_no_verdict at once with nothing run again", got, f.reruns, pauses)
+	if len(got) != 1 || got[0].Outcome != "ci_no_verdict" || pauses != 0 {
+		t.Fatalf("results %+v after %d pauses, want ci_no_verdict at once", got, pauses)
 	}
 	for _, want := range []string{"stopped, not failed (no verdict): corpus killed (exit code 137)", "first failing lines: signal: killed"} {
 		if !strings.Contains(got[0].Reason, want) {

@@ -37,7 +37,6 @@ const (
 
 var (
 	jobRe        = regexp.MustCompile(`/job/(\d+)`)
-	runRe        = regexp.MustCompile(`/actions/runs/(\d+)`)
 	failLineRe   = regexp.MustCompile(`(?i)(error|fail|panic)`)
 	retryAfterRe = regexp.MustCompile(`(?i)retry-after[:\s]+(\d+)`)
 )
@@ -105,9 +104,6 @@ type Forge interface {
 	// with how GitHub says it was stopped, if it was: one read, made only
 	// once sha's checks have all completed.
 	Failures(ctx context.Context, repo, sha string) ([]Failure, error)
-	// Rerun asks GitHub to run again the failed and cancelled jobs of the
-	// Actions run url names (gh run rerun <run> --failed).
-	Rerun(ctx context.Context, repo, url string) error
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on
@@ -641,8 +637,11 @@ var stopLines = []struct {
 }
 
 // StopOf is how GitHub says a completed check that did not pass was
-// stopped: its conclusion CANCELLED or TIMED_OUT, or one of stopLines in a
-// failure annotation of its; "" when it failed on its own.
+// stopped: its conclusion CANCELLED or TIMED_OUT, or one of stopLines when
+// that line is its one failure annotation; "" when it failed on its own.
+// Any step can write a stop line (::error::, a problem matcher), so a check
+// with any other failure annotation failed: a test that fails and then
+// hangs to a kill is red, never "killed".
 func StopOf(conclusion string, failureAnnotations []string) string {
 	switch strings.ToUpper(conclusion) {
 	case "CANCELLED":
@@ -650,11 +649,12 @@ func StopOf(conclusion string, failureAnnotations []string) string {
 	case "TIMED_OUT":
 		return "timed out"
 	}
-	for _, a := range failureAnnotations {
-		for _, l := range stopLines {
-			if l.re.MatchString(a) {
-				return l.stop
-			}
+	if len(failureAnnotations) != 1 {
+		return ""
+	}
+	for _, l := range stopLines {
+		if l.re.MatchString(failureAnnotations[0]) {
+			return l.stop
 		}
 	}
 	return ""
@@ -729,25 +729,6 @@ func (c *Client) Failures(ctx context.Context, repo, sha string) ([]Failure, err
 		}
 		after = pi.EndCursor
 	}
-}
-
-// RunOf is the Actions run id a check's url names ("" for none).
-func RunOf(url string) string {
-	if m := runRe.FindStringSubmatch(url); m != nil {
-		return m[1]
-	}
-	return ""
-}
-
-// Rerun runs the failed and cancelled jobs of the Actions run url names
-// again: gh run rerun <run> --failed. A url that names no run is refused.
-func (c *Client) Rerun(ctx context.Context, repo, url string) error {
-	run := RunOf(url)
-	if run == "" {
-		return fmt.Errorf("forge: %s names no Actions run, so it cannot be run again", cmp.Or(url, "the check's url"))
-	}
-	_, _, err := c.runGH_internal(ctx, "run", "rerun", run, "--failed", "--repo", repo)
-	return err
 }
 
 // FirstFailing is the first n lines of log that say error, fail or panic,

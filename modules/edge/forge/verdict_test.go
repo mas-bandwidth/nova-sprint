@@ -131,20 +131,6 @@ func TestFailuresReadsEachChecksAnnotations(t *testing.T) {
 	}
 }
 
-// Rerun asks GitHub to run the failed jobs of the run a check's url names,
-// one REST call; a url that names no run is refused without a call.
-func TestRerunRunsTheFailedJobsOfTheRun(t *testing.T) {
-	t.Parallel()
-	now := int64(1000)
-	c, calls := ghClient_internal(&now, func([]string) edge.Result { return edge.Result{} })
-	if err := c.Rerun(context.Background(), "o/r", "https://github.com/o/r/actions/runs/42/job/7"); err != nil || !slices.Equal(*calls, []string{"run rerun 42 --failed --repo o/r"}) {
-		t.Fatalf("Rerun: %v, calls %q", err, *calls)
-	}
-	if err := c.Rerun(context.Background(), "o/r", "https://ci.example/status/1"); err == nil || len(*calls) != 1 {
-		t.Fatalf("a url with no run: %v, calls %q", err, *calls)
-	}
-}
-
 // A red or faulted rollup with checks still queued or running is Waiting,
 // with how many (the landing reads it as unfinished, never as red).
 func TestRollupSaysHowManyStillRun(t *testing.T) {

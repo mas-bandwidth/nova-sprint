@@ -43,14 +43,14 @@ type walkEntry_internal struct{ sha, how, gated string }
 
 // walkReq_internal is a request as the model has it: its gate is the sha
 // LandPass gated (projected to its tree), gbase the length of base when it
-// was gated, ci and res its checks as the walk's CI has them, reran and
-// late what the run (played by the walk) holds for it.
+// was gated, ci and res its checks as the walk's CI has them, late what
+// the run (played by the walk) holds for it.
 type walkReq_internal struct {
 	cards         []string
 	st, out       string
 	rung, gbase   int
 	gate, ci, res string
-	reran, late   bool
+	late          bool
 }
 
 func newWalkReq_internal(cards []string, st string) walkReq_internal {
@@ -277,7 +277,7 @@ var walkOutcomes = map[LandOutcome]string{OutcomeLanded: "landed", OutcomeConfli
 // pass_internal is one LandPass for stream s's request, with the walk's
 // choice of what CI and the forge do, and what the run makes of its
 // outcome (layer 6, as edges.land: pending and unfinished are asked again,
-// unfinished after the wait is no verdict, a rerun is remembered).
+// unfinished after the wait is no verdict).
 func (w *landWalk_internal) pass_internal(s string) {
 	w.passWith_internal(s, w.rng.Intn(8) == 0, w.extCount_internal() < walkK && w.rng.Intn(6) == 0, w.rng.Intn(6) == 0)
 }
@@ -286,7 +286,7 @@ func (w *landWalk_internal) pass_internal(s string) {
 // CI, a base that moves under a green gate, a refused merge.
 func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse bool) {
 	r := w.req[s]
-	req := LandRequest{Repo: "o/r", Stream: s, Base: "main", Reran: r.reran}
+	req := LandRequest{Repo: "o/r", Stream: s, Base: "main"}
 	for _, c := range r.cards {
 		req.Heads = append(req.Heads, w.heads[c])
 		req.Branches = append(req.Branches, "sprint/"+s+"/"+c)
@@ -318,10 +318,6 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse boo
 			return
 		}
 		res.Outcome = OutcomeNoVerdict // the wait passed (edges.landItem)
-	case OutcomeRerun:
-		r.ci, r.res, r.reran, r.late = "running", "none", true, false
-		w.req[s] = r
-		return
 	}
 	out, ok := walkOutcomes[res.Outcome]
 	if !ok {
@@ -568,8 +564,8 @@ func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
 	req := make([]string, len(walkStreams))
 	for i, s := range walkStreams {
 		r := w.req[s]
-		req[i] = fmt.Sprintf("%s |-> [cards |-> %s, st |-> %q, out |-> %q, rung |-> %d, gate |-> %s, gbase |-> %d, ci |-> %q, res |-> %q, reran |-> %s, late |-> %s]",
-			s, tlaSet_internal(r.cards), r.st, r.out, r.rung, w.tree_internal(r.gate), r.gbase, r.ci, r.res, strings.ToUpper(fmt.Sprint(r.reran)), strings.ToUpper(fmt.Sprint(r.late)))
+		req[i] = fmt.Sprintf("%s |-> [cards |-> %s, st |-> %q, out |-> %q, rung |-> %d, gate |-> %s, gbase |-> %d, ci |-> %q, res |-> %q, late |-> %s]",
+			s, tlaSet_internal(r.cards), r.st, r.out, r.rung, w.tree_internal(r.gate), r.gbase, r.ci, r.res, strings.ToUpper(fmt.Sprint(r.late)))
 	}
 	return fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, choice |-> %q, base |-> << %s >>, cs |-> [%s], req |-> [%s], js |-> %s, held |-> %s, ticked |-> %s, passes |-> %d]",
 		n, m.act, m.arg, m.choice, strings.Join(base, ", "), strings.Join(cs, ", "), strings.Join(req, ", "),
@@ -591,7 +587,6 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 		seen["rung1"] = seen["rung1"] || strings.Contains(text, "rung |-> 1")
 		seen["hand"] = seen["hand"] || strings.Contains(text, `how |-> "hand"`)
 		seen["noverdict"] = seen["noverdict"] || strings.Contains(text, `out |-> "noverdict"`)
-		seen["rerun"] = seen["rerun"] || strings.Contains(text, `reran |-> TRUE`)
 		seen["red"] = seen["red"] || strings.Contains(text, `out |-> "red"`)
 		if dir := os.Getenv("NOVA_TRACE_DIR"); dir != "" {
 			sub := filepath.Join(dir, fmt.Sprintf("landedge-walk-%d", seed))
@@ -603,7 +598,7 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "rerun", "red"} {
+	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red"} {
 		if !seen[want] {
 			t.Errorf("the walks never reached %s", want)
 		}

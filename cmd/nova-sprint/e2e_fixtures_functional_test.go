@@ -306,11 +306,6 @@ func (f *fakeForge) Failures(_ context.Context, _, sha string) ([]forge.Failure,
 	return nil, nil
 }
 
-func (f *fakeForge) Rerun(_ context.Context, _, url string) error {
-	f.log("Rerun %s", url)
-	return nil
-}
-
 // storeSetup is up's store step through the binary. The binary's internal
 // mode prints no reason on failure (its JSON is the parent's), so a failure
 // is run once more in this process, the same function, for the reason.
