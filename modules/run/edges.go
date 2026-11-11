@@ -308,10 +308,11 @@ func (e *Edges) Stale() {
 	}
 }
 
-// WatchHeads reads every stream's base tip now, then every HeadsEvery or
-// when Stale is called, until ctx ends. streams is read each pass (run's
+// WatchHeads reads every stream's base tip now and closes read once that
+// first pass is done (run ticks only after it), then reads every HeadsEvery
+// or when Stale is called, until ctx ends. streams is read each pass (run's
 // folded copy).
-func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[string]store.Stream) {
+func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[string]store.Stream, read chan<- struct{}) {
 	e.mu.Lock()
 	e.stale = make(chan struct{}, 1)
 	e.mu.Unlock()
@@ -319,6 +320,10 @@ func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[stri
 	defer beat.Stop()
 	for {
 		e.readHeads(ctx, streams())
+		if read != nil {
+			close(read)
+			read = nil
+		}
 		select {
 		case <-ctx.Done():
 			return

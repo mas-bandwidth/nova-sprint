@@ -34,7 +34,7 @@ show run`. Then it hooks in as `sprint`, which nova-bus requires before `sprint`
 wake-up: run never parses a message body; the sprint's pushes are receipts, so a reply to
 `sprint` is never answered, nor is any other message: one log line each (verbs.BusAnswer,
 directive item 45: answering a REPLY with a REPLY made a loop).
-Then one cold `Snapshot`, and the ticks.
+Then one cold `Snapshot`, the first read of every stream's base tip (no tick before it is done; each read is bounded by the git edge's timeouts, and a repository it cannot read is an `EDGE FAULT heads` and its streams tick with no head), and the ticks.
 
 **Reports are ordinary ops.** A row's `report` (nova-worker's form), `finish` and `read` run
 their prerequisite table, build the card machine's plan for the consumer and its producer
