@@ -79,10 +79,23 @@ func serve(ctx context.Context, cfg Config, h Health) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go l.edges.WatchHeads(ctx, cfg.Clock, l.streamsCopy)
+	read := make(chan struct{})
+	go l.edges.WatchHeads(ctx, cfg.Clock, l.streamsCopy, read)
 	served := make(chan error, 1)
 	if cfg.Listen != "" {
 		go func() { served <- HTTPServer{Address: cfg.Listen, Ready: cfg.Ready}.Serve(ctx, dash.Handler(l.board)) }()
+	}
+	// No tick before the first heads read is done: a tick before it passes
+	// no heads and opens a no-head judgement for every stream with a deal.
+	// It reads HeadsAtOnce repositories at once, each bounded by the git
+	// edge's own timeouts; a repository it cannot read is said as a heads
+	// fault and its streams tick headless.
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-served:
+		return err
+	case <-read:
 	}
 	beat := cfg.Clock.Every(TickEvery)
 	defer beat.Stop()

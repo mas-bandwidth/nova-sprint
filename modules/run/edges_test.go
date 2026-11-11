@@ -47,7 +47,7 @@ func TestHeadsCloneTheStreamsCloneAddress(t *testing.T) {
 		"tools": {Name: "tools", Repo: "mas-bandwidth/nova-tools", Base: "main", Forge: "github"},
 		"url":   {Name: "url", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"},
 		"bad":   {Name: "bad", Repo: "nova-tools", Base: "main", Forge: "github"},
-	})
+	}, 1)
 	want := map[string]bool{"https://github.com/mas-bandwidth/nova-tools.git": true, "https://example.invalid/r.git": true}
 	if len(g.cloned) != 2 || !want[g.cloned[0]] || !want[g.cloned[1]] {
 		t.Fatalf("cloned %q", g.cloned)
@@ -103,12 +103,12 @@ func TestHeadsSharedBaseReadOnceAndKept(t *testing.T) {
 	}
 	both := map[string]string{"schema-moo": sha, "schema-strict": sha}
 	// pass 1: one read for the shared base, the head is both streams'
-	e.readHeads(context.Background(), streams)
+	e.readHeads(context.Background(), streams, 1)
 	if g.calls != 1 || !maps.Equal(e.Heads(), both) {
 		t.Fatalf("pass 1: %d ls-remotes, heads %v", g.calls, e.Heads())
 	}
 	// pass 2: the read fails; both keep the head, the fault is said per stream
-	e.readHeads(context.Background(), streams)
+	e.readHeads(context.Background(), streams, 1)
 	if !maps.Equal(e.Heads(), both) {
 		t.Fatalf("pass 2: heads %v after a failed read", e.Heads())
 	}
@@ -117,13 +117,13 @@ func TestHeadsSharedBaseReadOnceAndKept(t *testing.T) {
 		t.Fatalf("pass 2 said %q", said)
 	}
 	// pass 3: read again; pass 4: fails again, said again (it stopped in between)
-	e.readHeads(context.Background(), streams)
-	e.readHeads(context.Background(), streams)
+	e.readHeads(context.Background(), streams, 1)
+	e.readHeads(context.Background(), streams, 1)
 	if len(said) != 4 || !maps.Equal(e.Heads(), both) {
 		t.Fatalf("pass 4: said %d, heads %v", len(said), e.Heads())
 	}
 	// pass 5: the base is not on origin: a definite answer, the heads go
-	e.readHeads(context.Background(), streams)
+	e.readHeads(context.Background(), streams, 1)
 	if len(e.Heads()) != 0 || len(said) != 6 || !strings.Contains(said[5], "is not on origin") {
 		t.Fatalf("pass 5: heads %v, said %q", e.Heads(), said)
 	}
