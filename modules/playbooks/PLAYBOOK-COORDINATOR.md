@@ -329,7 +329,10 @@ for the top card, and `check` says the same.
 To correct a brief, add the corrected brief under a new id and replace the old card with it:
 `nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants
 follow the new one. A card a row holds is replaced too: its live consumer is released with the
-replace's reason (the branch kept), so tell the holder on the bus first.
+replace's reason (the branch kept), so tell the holder on the bus first. Run it right after
+`add`: the new card may already be dealt or taken, and that is fine, replace follows it. A new
+card that is landed, failed or held is refused (unhold a held one first), and so is the old card
+changing while replace runs: the refusal names what changed; read `show <old>` and decide again.
 
 ## 5. Priorities, landing and reds
 
@@ -434,6 +437,12 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    it is never dropped; the board lists it under its stream with that reason.
    `nova-sprint unhold <card> --reason "<why>"` sends it back to `waiting`, and it is dealt again
    when its needs have landed. A consumer id is refused with its producer's id.
+   A busy sprint writes while a verb runs (deals, reports, hooks). `hold`, `unhold`, `replace`,
+   `drop`, `judge`, `priority`, `relink`, `land`, `stream add`, `stream set`, `stop`, `start`,
+   `stats reset`, `identity` and `policy activate` read again by themselves when the write was not
+   to their own row, stream, card, judgement or your hook, up to 5 tries; each is refused only
+   when its own record changed, and the refusal names what changed. "refused 5 times ... the
+   store moves faster than it can plan" means five writes landed in a row: run it again.
 6. Coach for first-pass acceptance. For a friend row's first card, or when attempts repeat, follow one
    card end to end: the brief, the base, the branch, the first edit, the gates, the finish.
    Classify a failure as tool or version, access or route, brief or scope, gate or bench, report,

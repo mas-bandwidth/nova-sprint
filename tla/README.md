@@ -1555,3 +1555,37 @@ package; each writes a fixture `check-trace.sh` must refuse at its last step:
     store-cursor-zero matched (the cursor-zero ruling, above)
 
 The whole `make-traces.sh check` run takes about 1.5 minutes on hetzner2.
+
+# A verb on a busy store (VerbFence.tla, layer 6)
+
+`VerbFence.tla` is a coordinator verb whose op is fenced on what it read, with
+other writers moving the store between its read and its commit, shown on
+`replace old --by new` (modules/verbs apply.go `fenced`, moves.go `move` and
+`targetChange`). The writers deal, land or hold the new card, deal the old one,
+or write a card the verb names nowhere (`x`); `Coarse` fences the op on every
+card too, as a stream's hold is. The rule: a refused op is planned again on a
+fresh read, up to `Tries` applies, while the verb's own record (the old card as
+first read) is unchanged; a change to it, or the plan refusing on the fresh
+read (the new card final or held), is the refusal.
+
+Invariants: `Follows` (done: the old card failed, its dependant follows the
+new), `NoOrphan` (the old card fails only in the step its dependant moves),
+`TargetLive` (the new card was a card the deal can take at the commit),
+`OwnKept` (the commit is of the old card as first read), `NeverStuck` (a
+refusal is the verb's own, while `Tries > MaxEnv`); liveness `Ends`.
+
+    VerbFence.cfg            Tries 4, MaxEnv 3, every writer        pass (329 states, depth 9)
+    VerbFenceCoarse.cfg      the same, fenced on every card         pass (471 states, depth 12)
+    VerbFenceOneTry.cfg      Tries 1 (the old rule), a deal         NeverStuck violated
+    VerbFenceOneTryCoarse    Tries 1, coarse, a write to x          NeverStuck violated
+    VerbFenceNoOwn.cfg       a retry without the own check          OwnKept violated
+    VerbFenceNeverRetried    reach: a refused op planned again commits   violated
+    VerbFenceNeverDealt      reach: a dealt new card is replaced to      violated
+
+The walk: `TestVerbFenceTraceWalk` (modules/verbs/fence_trace_test.go) runs
+`replace p4 --by p9` on the Fake for seeds 1..120 (40 in -short), with the
+walk's own writers landing 0 to 2 moves before each apply (at most 4 in all,
+below the code's 5 tries), and records each read, apply and other write as a
+`VerbFenceTrace.tla` step; `make-traces.sh check verbs` checks them. The
+breaker (`tla/traces/verbfence-breaker/`) is a verb that plans again after
+the old card changed under it, and commits: refused at 5 of 6 (the re-read).

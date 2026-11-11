@@ -131,6 +131,15 @@ verb: it replays by op id and prints the real result. An AI never sees an op
 id. Three exit codes: 0 done, 1 refused with the fix, 2 could not run with
 the fix. Never a silent zero.
 
+A busy store's writes never leak either. A coordinator verb's op is fenced
+on what it read, and a fence is often wider than the verb's own record (a
+stream's hold on every card, the coordinator verbs on every row's hook,
+policy activate on every judgement). Refused by a write to a record it did
+not name (a deal, a bench's report, a worker hooking in), the verb reads
+again and commits, up to 5 applies, with no sleep (modules/verbs apply.go
+`fenced`; tla/VerbFence.tla). It is refused only when its own record
+changed, naming what changed, or after the fifth refusal, saying so.
+
 ## Notifications name their verb
 
 Every judgement that reaches the coordinator (a red CI, a producer sent back to ready by its reads, a producer
