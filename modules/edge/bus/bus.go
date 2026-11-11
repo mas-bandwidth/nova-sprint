@@ -28,7 +28,11 @@ type (
 		Send(ctx context.Context, to, subject, body string) (msgID string, err error)
 		Who(ctx context.Context) (map[string]Presence, error)
 	}
-	Presence struct{ Name, Uptime, Detail string }
+	// Presence is one line of nova-bus who: the name, how long its hook
+	// has been up, and the hook's session id, new each time the hook is
+	// started and kept across its reconnects ("" from a nova-bus that
+	// prints none).
+	Presence struct{ Name, Uptime, Session string }
 	Config   struct {
 		Exec        edge.Exec
 		Bin, Sender string
@@ -106,7 +110,7 @@ func (e *Edge) Who(ctx context.Context) (map[string]Presence, error) {
 }
 
 // ParseWho is the one parse of `nova-bus who`: "WHO OK present=<n>", then
-// n lines of name<TAB>uptime[<TAB>detail], each name once.
+// n lines of name<TAB>uptime[<TAB>session], each name once.
 func ParseWho(out []byte) (map[string]Presence, error) {
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if !strings.HasPrefix(lines[0], "WHO OK present=") {
@@ -129,7 +133,7 @@ func ParseWho(out []byte) (map[string]Presence, error) {
 		at += len(line) + 1
 		p := Presence{Name: parts[0], Uptime: parts[1]}
 		if len(parts) == 3 {
-			p.Detail = parts[2]
+			p.Session = parts[2]
 		}
 		who[p.Name] = p
 	}

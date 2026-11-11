@@ -52,6 +52,7 @@ type (
 		StreamRef                                                                               string   `json:"stream_ref"`
 		BaseSHA                                                                                 string   `json:"base_sha"`
 		PriorHead                                                                               string   `json:"prior_head"`
+		PriorFinished                                                                           bool     `json:"prior_finished"` // an attempt reported ok at PriorHead (the card machine's FinishedHeads)
 		Paths                                                                                   []string `json:"paths"`
 		DoneWhen                                                                                []string `json:"done_when"`
 		StreamGates                                                                             []string `json:"stream_gates"` // the stream's gates: run after the DONE-WHENs at the same head

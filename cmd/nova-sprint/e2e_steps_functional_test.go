@@ -109,14 +109,32 @@ func (x *e2e) answersChallenge(row string) {
 	x.c.must([]string{"pong", "--nonce", cmd, "--as", row}, "PONG "+row)
 }
 
+// newBusSession is kim's session ending with a card in its hand and a new
+// one starting the bus hook only: its take is refused until it hooks in, and
+// the hook replaces the old one in place, the card still kim's and working.
+func (x *e2e) newBusSession(stop func(), id string, gen int) {
+	x.tr.note("kim's session ends mid-card and a new one starts the bus hook only: its verbs are refused until it hooks in, and the hook keeps its hand")
+	stop()
+	busHook(x.t, x.tr, x.busEnv, "kim", x.inbox("kim"))
+	ref := fmt.Sprintf("%s@%d", id, gen)
+	if code, out := x.c.run(false, nil, "take", ref, "--as", "kim"); code != 1 || !strings.Contains(out, "SPRINT REFUSED take: hook in first: nova-sprint hook --as kim --role worker") {
+		x.t.Fatalf("a take on a new bus session, exit %d:\n%s", code, out)
+	}
+	x.c.must([]string{"hook", "--as", "kim", "--role", "worker"}, "HOOKED kim role=worker", "playbook: nova-sprint help playbook worker")
+	if c := x.snapshot().Cards[id]; c.Holder != "kim" || c.State != "working" || c.Gen != gen {
+		x.t.Fatalf("the hook moved kim's card: %+v", c)
+	}
+}
+
 // workerTakes hooks kim (on the bus first), waits for the deal, and takes
 // it; the receipt carries model, deadline and forge.
 func (x *e2e) workerTakes() (string, int, int) {
 	x.tr.note("a worker row hooks in: kim, a friend in nova-config")
-	busHook(x.t, x.tr, x.busEnv, "kim", x.inbox("kim"))
+	stop := busHook(x.t, x.tr, x.busEnv, "kim", x.inbox("kim"))
 	x.c.must([]string{"hook", "--as", "kim", "--role", "worker"}, "HOOKED kim role=worker")
 	x.answersChallenge("kim")
 	id, gen := x.dealt("kim", "work")
+	x.newBusSession(stop, id, gen)
 	out := x.c.must([]string{"take", fmt.Sprintf("%s@%d", id, gen), "--as", "kim", "--json"})
 	var r struct {
 		Consumer, Branch, Model, Forge string

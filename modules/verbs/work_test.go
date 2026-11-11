@@ -88,6 +88,27 @@ func TestTakeHandsOverTheBranchTip(t *testing.T) {
 	want(t, w.do("bob", "take", "p2.r1@1"), 0, "TAKEN p2.r1")
 }
 
+// The receipt says whether an attempt finished at the prior head it hands
+// over: the card machine refuses a finished one as this attempt's finish
+// (TestFinishAtThePriorHead), and only it can tell, so a bench's worker is
+// told at the take instead of finding out from a refused report.
+func TestTakeSaysWhetherThePriorHeadIsFinished(t *testing.T) {
+	t.Parallel()
+	for result, finished := range map[string]bool{"fault": false, "ok": true} {
+		s := sprint()
+		secondAttempt(result)(&s)
+		r := worldFrom(t, s).do("alice", "take", "p1.w2@1", "--json")
+		want(t, r, 0)
+		var got takeReceipt
+		if err := json.Unmarshal([]byte(r.Output), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.PriorHead != head || got.PriorFinished != finished {
+			t.Errorf("the first attempt ended %s at %s: prior_head %q prior_finished %v, want %v", result, head, got.PriorHead, got.PriorFinished, finished)
+		}
+	}
+}
+
 func TestTakeJSONIsTheReceipt(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)

@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"os"
@@ -104,10 +105,8 @@ func worldFrom(t *testing.T, s store.Snapshot) *world {
 	w := &world{f: f, bus: &fakeBus{present: map[string]bool{"alice": true, "bob": true, "carol": true, "dave": true}},
 		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head, gh + " main": base, gh + " sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true, run: run.ChooserStatus{Held: true, Operation: "run", Host: "studio", PID: 41}},
 		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster(), lander: &fakeLander{merge: strings.Repeat("e", 40)}, forge: &fakeForge{}}
-	n := 0
 	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Forge: w.forge, Doctor: w.doctor, Services: w.svc, Archive: w.arch, Lander: w.lander,
-		Now: func() time.Time { return t0 }, Version: "v2.0.0-test", ToolPin: "v2.0.2",
-		Session: func() (string, error) { n++; return "minted-" + string(rune('0'+n)), nil }}
+		Now: func() time.Time { return t0 }, Version: "v2.0.0-test", ToolPin: "v2.0.2"}
 	return w
 }
 
@@ -147,9 +146,11 @@ func want(t *testing.T, r Result, exit int, parts ...string) {
 }
 
 type fakeBus struct {
-	present map[string]bool
-	err     error
-	during  func() // runs inside Who: writes that land while the bus is asked
+	present   map[string]bool
+	session   map[string]string // a name's bus session id; "s-<name>", the fixtures' hooks, when not named
+	noSession bool              // who prints no session ids (a nova-bus before them)
+	err       error
+	during    func() // runs inside Who: writes that land while the bus is asked
 }
 
 func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
@@ -159,7 +160,10 @@ func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
 	out := map[string]bus.Presence{}
 	for n, ok := range b.present {
 		if ok {
-			out[n] = bus.Presence{Name: n}
+			out[n] = bus.Presence{Name: n, Session: cmp.Or(b.session[n], "s-"+n)}
+			if b.noSession {
+				out[n] = bus.Presence{Name: n}
+			}
 		}
 	}
 	return out, b.err

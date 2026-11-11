@@ -124,7 +124,7 @@ func TestHook(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("dave", "hook", "--role", "worker"), 0, "HOOKED dave role=worker", "next: nova-sprint next --as dave")
-	if r := w.snap(t).Rows["dave"]; r.Session != "minted-1" || r.Role != "worker" {
+	if r := w.snap(t).Rows["dave"]; r.Session != "s-dave" || r.Role != "worker" { // the bus's id for dave's hook (fakeBus)
 		t.Fatalf("row %+v", r)
 	}
 }
@@ -135,12 +135,11 @@ func TestHookRefusals(t *testing.T) {
 		{name: "no role", as: "dave", args: []string{"hook"}, exit: 2, want: []string{"--role is worker or coordinator"}},
 		{name: "a bad role", as: "dave", args: []string{"hook", "--role", "owner"}, exit: 2, want: []string{"--role is worker or coordinator"}},
 		{name: "not on the bus", as: "erin", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"erin is not on the bus"}},
-		{name: "a second hook", as: "alice", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"alice is already hooked in as worker", "nova-sprint unhook --as alice"}},
+		{name: "a second hook", as: "alice", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"alice is already hooked in as worker: nova-sprint next --as alice"}},
 		{name: "a second coordinator", as: "dave", args: []string{"hook", "--role", "coordinator"}, exit: 1, want: []string{"the sprint's coordinator is carol", "nova-sprint unhook --as carol"}},
-		{name: "no session", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 2,
-			prep: func(_ *testing.T, w *world) {
-				w.e.Session = func() (string, error) { return "", broken("no randomness", "again") }
-			}, want: []string{"no randomness"}},
+		{name: "a bus hook with no session id", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
+			prep: func(_ *testing.T, w *world) { w.bus.noSession = true },
+			want: []string{"dave's bus hook shows no session id in nova-bus who", "start it again with nova-tools v2.0.2 or later", "nova-bus hook --as dave"}},
 		{name: "the store without its schema", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
 			prep: func(_ *testing.T, w *world) { w.e.Store = failingStore{w.f}; w.doctor.schema = false },
 			want: []string{"SPRINT REFUSED hook: the sprint is not set up: nova-sprint up --as dave"}},

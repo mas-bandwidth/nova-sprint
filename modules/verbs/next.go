@@ -91,7 +91,8 @@ func (e *Engine) look(ctx context.Context, v *nextView, epoch int, inventory boo
 		v.Message, v.Next = "choose the name you use in the sprint", "nova-sprint next --as <name>"
 		return nil
 	}
-	if err := e.onBus(ctx, v.Row); err != nil {
+	live, err := e.busHook(ctx, v.Row)
+	if err != nil {
 		return guidance(v, err)
 	}
 	row := snap.Rows[v.Row]
@@ -99,8 +100,8 @@ func (e *Engine) look(ctx context.Context, v *nextView, epoch int, inventory boo
 	if inventory { // before the hook too: a worker probes its models before it hooks (up's workers step)
 		e.fillRoster(ctx, v, snap)
 	}
-	if row.Session == "" {
-		v.Message, v.Next = v.Row+" is not hooked in to the sprint", "nova-sprint hook --as "+v.Row+" --role worker"
+	if row.Session == "" || row.Session != live.Session { // never hooked, or its bus hook was started since (hooked.go)
+		v.Message, v.Next = v.Row+" is not hooked in to the sprint", "nova-sprint hook --as "+v.Row+" --role "+cmp.Or(row.Role, "worker")
 		return nil
 	}
 	fillInventory(v, snap)

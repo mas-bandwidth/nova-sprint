@@ -45,6 +45,11 @@
 (* are put by PutRow, the sprint hook's one write ("" for both, None here, *)
 (* is unhooked). A hook by another session while one holds the row is      *)
 (* refused (unhook first); the same session may hook again with a new role. *)
+(* One hook may take a row another session holds: the one that names that  *)
+(* session as the one it replaces (ReplaceRow; the bus started the name's  *)
+(* hook again, so the recorded session is gone: modules/verbs/hook.go,     *)
+(* Hook.tla). The row keeps its state and hold; a hook naming any other    *)
+(* session is refused as a plain hook is.                                  *)
 (* Session and role both set or both unset, and a role from Roles, is      *)
 (* checked before the store's step (ErrInvalid), so it is structural here. *)
 (* The sprint's stop (stopped) is one value for the store, as the epoch is, *)
@@ -124,11 +129,13 @@ Running           == Cnd("running",     None, None, None, 0)   \* the sprint is 
 (* A write: k the kind; c the card, judgement or cursor; r the row (and a  *)
 (* consumer's holder at add); s a state, or a producer's tier at add; n    *)
 (* needs at add; s also a policy body; w held as 1 or 0, red as 1 or 0, or *)
-(* a cursor value; kd a card kind; p a consumer's producer.                *)
+(* a cursor value; kd a card kind; p a consumer's producer, or the session *)
+(* a hook replaces.                                                        *)
 Wr(k, c, r, s, n, w, kd, p) == [k |-> k, c |-> c, r |-> r, s |-> s, n |-> n, w |-> w, kd |-> kd, p |-> p]
 AddCard(c, kd, p, n, h, t) == Wr("addCard",  c,    h,    t,    n,  0, kd,   p)
 SetState(c, s)       == Wr("setState",    c,    None, s,    {}, 0, None, None)
 PutRow(r, x, ro)     == Wr("putRow",      None, r,    x,    {}, 0, ro,   None)   \* x the session, ro the role; None, None unhooks
+ReplaceRow(r, x, ro, was) == Wr("putRow", None, r,    x,    {}, 0, ro,   was)    \* the hook that replaces session was
 SetStopped(b)        == Wr("setStopped",  None, None, None, {}, IF b THEN 1 ELSE 0, None, None)
 SetRowState(r, s)    == Wr("setRowState", None, r,    s,    {}, 0, None, None)
 SetRowHeld(r, h)     == Wr("setRowHeld",  None, r,    None, {}, IF h THEN 1 ELSE 0, None, None)
@@ -162,6 +169,8 @@ ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 (* holds it; s19 unhooks r2; s20 hooks it by y as coordinator. s21 stops   *)
 (* the sprint; s22 stops it again: refused as changing nothing. s23, fenced *)
 (* on Running (run's tick ops carry it), is refused: the sprint is stopped. *)
+(* s24 hooks r2 by x naming x as the session it replaces: refused, y holds *)
+(* it; s25 hooks r2 by x naming y: accepted, the hook replaced in place.   *)
 (* The deal scenario then runs stopped: unfenced ops still land. Before    *)
 (* all of them, on the fresh store: n1, a tick op fenced on Running (run   *)
 (* opens a judgement), is refused: the sprint was never started; n2 is the *)
@@ -202,6 +211,8 @@ Ops == [
   s21 |-> Op(1, {}, <<SetStopped(TRUE)>>),
   s22 |-> Op(1, {}, <<SetStopped(TRUE)>>),
   s23 |-> Op(1, {Running}, <<SetRed("u3", FALSE)>>),
+  s24 |-> Op(1, {}, <<ReplaceRow("r2", "x", "coordinator", "x")>>),
+  s25 |-> Op(1, {}, <<ReplaceRow("r2", "x", "coordinator", "y")>>),
   a1  |-> Op(1, {CardAbsent("u1"), RowIs("r1", "up"), RowHeld("r1", FALSE)},
               <<AddCard("u1", "work", "p2", {}, "r1", None), SetState("u1", "working")>>),
   a2  |-> Op(1, {CardState("u1", "working")}, <<SetState("u1", "done")>>),
@@ -220,7 +231,7 @@ Ops == [
 ]
 OpIds == DOMAIN Ops
 SetupSeq == <<"n1", "n2", "s1", "s2","s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12",
-              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23">>
+              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23", "s24", "s25">>
 Setup == {SetupSeq[i] : i \in DOMAIN SetupSeq}
 Active == Setup \cup (IF Scenario = "deal"
                       THEN {"a1", "a2", "b1", "b2", "e1", "g1", "k1", "k2"}
@@ -294,7 +305,8 @@ WriteRule(st, w) ==
     [] w.k = "putRow"      -> ~(/\ st.rows[w.r].state # Absent
                                 /\ st.rows[w.r].sess # None
                                 /\ w.s # None
-                                /\ w.s # st.rows[w.r].sess)
+                                /\ w.s # st.rows[w.r].sess
+                                /\ w.p # st.rows[w.r].sess)
     [] w.k = "setStopped"  -> TRUE
     [] w.k = "setRowState" -> st.rows[w.r].state # Absent /\ w.s \in RowStates
     [] w.k = "setRowHeld"  -> st.rows[w.r].state # Absent
@@ -682,13 +694,17 @@ ClearCarriesRows ==
                 /\ a.rows[r].role = b.rows[r].role
 
 (* A row is hooked by one session at a time: no accepted op moves a row   *)
-(* from one session straight to another; it is unhooked (None) between.    *)
+(* from one session straight to another; it is unhooked (None) between,    *)
+(* or the op's hook names the session it replaces.                         *)
+Replaced(o, r, was) == \E k \in DOMAIN Ops[o].writes :
+                         LET w == Ops[o].writes[k] IN w.k = "putRow" /\ w.r = r /\ w.p = was
 HookKept ==
   \A i \in DOMAIN events :
     LET b == events[i].before  a == events[i].after IN
     events[i].accepted =>
       \A r \in Rows : (b.rows[r].state # Absent /\ b.rows[r].sess # None /\ a.rows[r].sess # None)
-                       => a.rows[r].sess = b.rows[r].sess
+                       => \/ a.rows[r].sess = b.rows[r].sess
+                          \/ Replaced(events[i].id, r, b.rows[r].sess)
 
 (* A fresh store moves nothing: it begins stopped (never started), so no   *)
 (* op fenced on Running (a tick's) is accepted before an accepted start.   *)
@@ -808,5 +824,9 @@ NeverDealtStopped     == ~(stopped /\ cards["u1"].state = "working")
 NeverSameStopRefused  == ~RuleRefused("s22")
 \* n1, a tick op on the fresh store, is refused: the sprint was never started
 NeverFreshRefused     == ~FencedBy("n1", Running)
+\* s24 hooks r2 by x naming x while y holds it: refused
+NeverReplaceRefused   == ~RuleRefused("s24")
+\* s25 hooks r2 by x naming y, the session that holds it: replaced in place
+NeverHookReplaced     == ~(rows["r2"].sess = "x" /\ rows["r2"].role = "coordinator")
 
 =============================================================================

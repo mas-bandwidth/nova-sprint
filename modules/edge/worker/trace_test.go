@@ -31,6 +31,12 @@ type runnerJobDirState_internal struct {
 	// keepsPrior: the job's head still descends from the head it
 	// started from; a Rebase step sets it from the git the stream step runs.
 	keepsPrior bool
+	// The deal's prior head (none, unfinished, finished); atPrior: the
+	// harvest found no new head; nothingNew: failed as
+	// "committed nothing over the prior head" (Runner.tla, 2026-11-11).
+	prior      string
+	atPrior    bool
+	nothingNew bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -101,6 +107,13 @@ type runnerWalkHarness_internal struct {
 	known      map[string]string  // the head a re-deal's store prior carries: a release reports its own
 	from       map[string]string  // the next holder's start, once it took c's card: StartHead is the code bound here; take's origin read is TestTakeHandsOverTheBranchTip's
 	took       map[string]bool
+	prior      map[string]string // the deal: each consumer's prior head by kind, chosen by the walk's seed
+	atPrior    map[string]bool   // the harvest found no new head
+	nothingNew map[string]bool
+	rng        *rand.Rand // the walk's: a harvest at the prior head, red done-whens there
+	// atPriorAlways: every harvest of a job with a prior head finds no new
+	// head (the scripted walk's).
+	atPriorAlways bool
 }
 
 func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
@@ -154,6 +167,8 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		known:    map[string]string{},
 		from:     map[string]string{},
 		took:     map[string]bool{},
+		prior:    map[string]string{"c1": "none", "c2": "none"},
+		atPrior:  map[string]bool{}, nothingNew: map[string]bool{},
 	}
 }
 
@@ -212,7 +227,7 @@ func (h *runnerWalkHarness_internal) projectBranch_internal(c string) runnerBran
 // job.
 func runnerWriter_internal(sha string) string {
 	switch sha {
-	case "", testBaseSHA:
+	case "", testBaseSHA, testPriorSHA: // the prior head is where the job started: nothing past it is the job's
 		return "none"
 	case testHolderSHA:
 		return "holder"
@@ -297,6 +312,7 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 		sealed:  h.seals_internal(c) > h.sealedAt[c],
 
 		keepsPrior: !h.dropped[c],
+		prior:      h.prior[c], atPrior: h.atPrior[c], nothingNew: h.nothingNew[c],
 	}
 }
 
@@ -344,7 +360,13 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.creates[c]++
 		h.jobState[c] = JobStaged
 		rec := JobRecord{Epoch: 1, Consumer: c, Kind: "work", Row: "vision.ds", Branch: runnerBranchName_internal(c), BaseSHA: testBaseSHA,
-			Gen: 1, State: JobStaged}
+			Gen: 1, State: JobStaged, PriorFinished: h.prior[c] == "finished", DoneWhen: []string{"go test ./..."}}
+		if h.prior[c] != "none" { // an earlier attempt pushed the prior head
+			rec.PriorHead, rec.StartTip = testPriorSHA, testPriorSHA
+			h.git.mu.Lock()
+			h.git.originHeads[rec.Branch] = testPriorSHA
+			h.git.mu.Unlock()
+		}
 		writeStagedRecord_internal(t, dir, rec)
 	case "Run":
 		rec, err := ReadJobRecord(dir)
@@ -529,14 +551,19 @@ func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, di
 		h.bounced[c] = false
 	} else {
 		rec.Outcome = Outcome{Result: "ok"}
+		// The harness said ok and committed nothing over the prior head
+		// (harvestWorkHead_internal's case): nothing is pushed.
+		if h.atPrior[c] = h.prior[c] != "none" && (h.atPriorAlways || h.rng != nil && h.rng.Intn(2) == 0); h.atPrior[c] {
+			rec.Outcome.Head, rec.PushedHead = rec.PriorHead, rec.PriorHead
+		}
 	}
 	if err := WriteJobRecord(dir, rec); err != nil {
 		t.Fatal(err)
 	}
 	h.alive[c] = 0
 	h.slotsInUse--
-	h.seal_internal(t, c, rec) // the seal step, after the harness
-	if act == "Harvest" {      // harvestWorkHead_internal pushes the sealed head, by lease
+	h.seal_internal(t, c, rec)             // the seal step, after the harness
+	if act == "Harvest" && !h.atPrior[c] { // harvestWorkHead_internal pushes the sealed head, by lease
 		if err := h.runner.pushBranch_internal(context.Background(), &rec, testWorkSHA); err != nil {
 			t.Fatalf("Harvest %s: the push by lease: %v", c, err)
 		}
@@ -566,8 +593,10 @@ func (h *runnerWalkHarness_internal) advancePostRun_internal(t *testing.T, c, ac
 		h.jobState[c] = JobRebased
 	case "Push":
 		rec, _ := ReadJobRecord(dir)
-		if err := h.runner.pushBranch_internal(ctx, &rec, testWorkSHA); err != nil {
-			t.Fatalf("Push %s: %v", c, err)
+		if !h.atPrior[c] { // at the prior head there is nothing of this job's to push
+			if err := h.runner.pushBranch_internal(ctx, &rec, testWorkSHA); err != nil {
+				t.Fatalf("Push %s: %v", c, err)
+			}
 		}
 		h.pushed[c] = true
 		if rec.ResultID == "" {
@@ -601,10 +630,86 @@ func (h *runnerWalkHarness_internal) advancePostRun_internal(t *testing.T, c, ac
 	}
 }
 
+// atPriorStep_internal is the step after a harvest at the prior head, taken
+// by the worker's own rebaseAndTestStep_internal (red: its done-when is
+// red); the model's action is read off the outcome the code left, so TLC
+// checks the code's choice against Runner.tla's guards: Rebase (verified
+// there), NothingNew (a finished head) or Conflict (red there).
+func (h *runnerWalkHarness_internal) atPriorStep_internal(t *testing.T, c string, red bool) string {
+	t.Helper()
+	h.stepN++
+	dir := h.jobDirPath_internal(c)
+	rec, err := ReadJobRecord(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.wall.mu.Lock()
+	h.wall.testFn = func(Job, string) (WallRunResult, error) {
+		if red {
+			return WallRunResult{ExitCode: 1, Output: []byte("--- FAIL: TestX")}, nil
+		}
+		return WallRunResult{}, nil
+	}
+	h.wall.mu.Unlock()
+	if err := h.runner.rebaseAndTestStep_internal(context.Background(), dir, &rec); err != nil {
+		t.Fatalf("the step at the prior head of %s: %v", c, err)
+	}
+	act := "Rebase"
+	switch {
+	case rec.Outcome.Result == "ok" && rec.Outcome.Head == rec.PriorHead:
+	case rec.Outcome.Result == "fail" && rec.Outcome == nothingNew_internal():
+		act, h.bounced[c], h.nothingNew[c] = "NothingNew", true, true
+	case rec.Outcome.Result == "fail":
+		act, h.bounced[c] = "Conflict", true
+	default:
+		t.Fatalf("the step at the prior head of %s left %+v: no action of Runner.tla", c, rec.Outcome)
+	}
+	rec.State = JobRebased // as the walk's own Rebase and Conflict leave it
+	if err := WriteJobRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	h.jobState[c] = JobRebased
+	return act
+}
+
+// walkPriorHead_internal is a scripted walk of one of the two prior-head
+// paths, c1's. finished: an attempt finished at its prior head (the
+// receipt says so), and nothing new over it is its fail. unfinished: an
+// attempt pushed it and died, and c1 finishes ok there. c2 is a first
+// attempt.
+func walkPriorHead_internal(t *testing.T, prior string) []runnerTraceStep_internal {
+	t.Helper()
+	h := newRunnerWalkHarness_internal(t)
+	h.prior["c1"], h.atPriorAlways = prior, true
+	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
+	do := func(act, c string) {
+		if act == "AtPrior" {
+			act = h.atPriorStep_internal(t, c, false)
+		} else {
+			h.applyStep_internal(t, act, c)
+		}
+		steps = append(steps, refinementRunnerState_internal(t, h, act, c))
+	}
+	do("PassStart", "none")
+	for _, act := range []string{"Take", "Stage", "Run", "Harvest", "AtPrior", "Push"} {
+		do(act, "c1")
+	}
+	for _, act := range []string{"Report", "Clean"} {
+		do(act, "c1")
+	}
+	for _, act := range []string{"Take", "Stage", "Run", "Harvest", "Rebase", "Push", "Report", "Clean"} { // c2, a first attempt
+		do(act, "c2")
+	}
+	return append(steps, refinementRunnerState_internal(t, h, "Done", "none"))
+}
+
 func walkRunnerTrace_internal(t *testing.T, seed int64) []runnerTraceStep_internal {
 	t.Helper()
 	rng := rand.New(rand.NewSource(seed))
 	h := newRunnerWalkHarness_internal(t)
+	h.rng = rng
+	// The deal (Runner.tla Deals): c1 carries one, c2 is a first attempt.
+	h.prior["c1"] = []string{"none", "unfinished", "finished"}[rng.Intn(3)]
 	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
 	for i := 0; i < 160; i++ {
 		st := steps[len(steps)-1]
@@ -640,6 +745,9 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 	if m.act == "Withdraw" && rng.Intn(2) != 0 { // a withdraw is rarer than a job's own step
 		m = moves[0]
 	}
+	if m.act == "AtPrior" { // the code picks the model's action
+		return h.atPriorStep_internal(t, m.arg, rng.Intn(4) == 0), m.arg
+	}
 	h.applyStep_internal(t, m.act, m.arg)
 	return m.act, m.arg
 }
@@ -673,7 +781,9 @@ func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_
 	case JobRunning:
 		moves = append(moves, runnerMove_internal{"Harvest", c}, runnerMove_internal{"Die", c})
 	case JobHarvested:
-		if st.jobDir[c].outcome == "ok" {
+		if st.jobDir[c].outcome == "ok" && st.jobDir[c].atPrior {
+			moves = append(moves, runnerMove_internal{"AtPrior", c}) // rebaseAndTestStep_internal decides: Rebase, NothingNew or Conflict
+		} else if st.jobDir[c].outcome == "ok" {
 			moves = append(moves, runnerMove_internal{"Rebase", c}, runnerMove_internal{"Conflict", c})
 		} else {
 			moves = append(moves, runnerMove_internal{"Push", c})
@@ -747,8 +857,9 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s]",
-		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed), tlaBool_internal(d.keepsPrior))
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s, prior |-> %q, atPrior |-> %s, nothingNew |-> %s]",
+		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed), tlaBool_internal(d.keepsPrior),
+		d.prior, tlaBool_internal(d.atPrior), tlaBool_internal(d.nothingNew))
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {
@@ -824,9 +935,25 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
+	// The two prior-head paths, each walked once by script.
+	for _, prior := range []string{"finished", "unfinished"} {
+		scripted := walkPriorHead_internal(t, prior)
+		for _, s := range scripted {
+			seen[s.action]++
+		}
+		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
+			sub := filepath.Join(traceDir, "runner-walk-prior-"+prior)
+			if err := os.MkdirAll(sub, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(sub, "RunnerTraceLog.tla"), []byte(formatRunnerTraceTLA_internal(scripted)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	// The seeds, together, walk every path the model checks the code on,
 	// defect 78's withdraw, retire and holder's push among them.
-	for _, a := range []string{"Rebase", "Conflict", "Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
+	for _, a := range []string{"Rebase", "NothingNew", "Conflict", "Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
 		if seen[a] == 0 {
 			t.Errorf("no seed walks %s: the trace binding does not cover it (walked: %v)", a, seen)
 		}
