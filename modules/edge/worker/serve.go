@@ -120,7 +120,7 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		}
 	}
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
-	killJob := func(jobDir string) (int, error) { return OSKillJob(jobDir, timeouts.TerminateGrace) }
+	killJob := func(jobDir string) (int, error) { return OSKillJob(root, jobDir, timeouts.TerminateGrace) }
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,
 		StateDir: stateDir,

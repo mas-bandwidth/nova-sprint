@@ -32,11 +32,18 @@ import (
 // inherits them, a daemon that called setsid included); on Linux, also a
 // process whose working directory is in the job directory. Not found: a
 // process that both cleared or replaced those three names and, on Linux,
-// left the job directory (on macOS: cleared them). They are ended, TERM
-// then KILL after the grace, at the end of every wall command (the job's
-// steps run one at a time, so nothing of the job runs then) and before the
-// worker lets a job directory go: the clean, a retire (a card returned or
-// withdrawn), a quarantine. Model: tla/Runner.tla, NoProcessOutlivesItsJob.
+// left the job directory (on macOS: cleared them). The marks name the
+// directory the job ran in, so a process whose working directory was moved
+// with it (a quarantine) is still found by them. They are ended, TERM then
+// KILL after the grace, sweeping until a scan finds none (one started while
+// the job is ended is found by the next), at the end of every wall command
+// (the job's steps run one at a time, so nothing of the job runs then; a
+// "no slot" refusal included) and before the worker lets a job directory
+// go: the clean, a retire (a card returned or withdrawn), a quarantine,
+// each before the directory is removed or moved, so nothing of the job is
+// left to re-create it. Owed, in the follow-up after the Runner.tla changes
+// of #803 land: the invariant NoProcessOutlivesItsJob in tla/Runner.tla,
+// its reversed witness and the runner walk's trace binding.
 
 // jobMarks_internal are the environment entries every wall command of the
 // job at jobDir carries (SanitizeWallEnv), in both spellings of jobDir.
@@ -118,40 +125,92 @@ func psJobProcesses_internal(marks []string) ([]int, error) {
 	return pids, nil
 }
 
-// OSKillJob ends every process of the job at jobDir (jobProcesses_internal):
-// TERM, then KILL to whatever is still there after grace, and is how many
-// it found.
-func OSKillJob(jobDir string, grace time.Duration) (int, error) {
-	pids, err := jobProcesses_internal(jobDir)
-	if err != nil || len(pids) == 0 {
+// OSKillJob ends every process of the job at jobDir (jobProcesses_internal),
+// a job directory of the worker at root (jobDirOfRoot_internal; any other
+// is refused, nothing swept): TERM, then KILL to whatever is still there
+// after grace, sweeping until none is left (killJob_internal). It is how
+// many it found.
+func OSKillJob(root, jobDir string, grace time.Duration) (int, error) {
+	if err := jobDirOfRoot_internal(root, jobDir); err != nil {
 		return 0, err
 	}
-	signal := func(pids []int, sig syscall.Signal) error {
-		var errs []error
+	return killJob_internal(jobDir, grace, jobKiller_internal{scan: jobProcesses_internal, kill: syscall.Kill, now: time.Now, sleep: time.Sleep})
+}
+
+// jobDirOfRoot_internal refuses a directory that is not one job's of the
+// worker at root: exactly <root>/jobs/<consumer>, or a probe's,
+// <root>/probes/<row>/<model>. A record whose consumer is "" or ".." names
+// <root>/jobs or root itself, whose marks would match every job's.
+func jobDirOfRoot_internal(root, jobDir string) error {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(jobDir))
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	ok := err == nil && root != "" && jobDir != "" && !slices.ContainsFunc(parts, func(p string) bool { return p == "" || p == "." || p == ".." }) &&
+		(len(parts) == 2 && parts[0] == "jobs" || len(parts) == 3 && parts[0] == "probes")
+	if !ok {
+		return fmt.Errorf("refused to end the processes of %q: not a job directory of the worker at %s (<root>/jobs/<consumer> or <root>/probes/<row>/<model>)", jobDir, root)
+	}
+	return nil
+}
+
+// jobKiller_internal is what killJob_internal finds, signals and waits
+// with: the OS's in OSKillJob, a test's own otherwise.
+type jobKiller_internal struct {
+	scan  func(jobDir string) ([]int, error)
+	kill  func(pid int, sig syscall.Signal) error
+	now   func() time.Time
+	sleep func(time.Duration)
+}
+
+// killSweepRounds_internal bounds the KILL rounds after the grace: at 50 ms
+// a round, a second for a job that keeps starting processes as they die.
+const killSweepRounds_internal = 20
+
+// killJob_internal sweeps the job at jobDir until a scan finds none of its
+// processes: each one found is sent TERM once, and once grace has passed
+// every one still found is sent KILL, round after round, for at most
+// killSweepRounds_internal rounds; one started while the job is being ended
+// (a shell's next child, a build server's respawn) is found by the next
+// scan. What is still running then is said. It is how many it found.
+func killJob_internal(jobDir string, grace time.Duration, k jobKiller_internal) (int, error) {
+	seen, termed := map[int]bool{}, map[int]bool{}
+	var errs []error
+	deadline := k.now().Add(grace)
+	for kills := 0; ; k.sleep(50 * time.Millisecond) {
+		pids, err := k.scan(jobDir)
+		if err != nil {
+			return len(seen), errors.Join(append(errs, err)...)
+		}
+		if len(pids) == 0 {
+			return len(seen), errors.Join(errs...)
+		}
+		sig := syscall.SIGTERM
+		if !k.now().Before(deadline) {
+			if kills == killSweepRounds_internal {
+				return len(seen), errors.Join(append(errs, fmt.Errorf("%d processes of the job at %s still running after KILL: %v", len(pids), jobDir, pids))...)
+			}
+			sig, kills = syscall.SIGKILL, kills+1
+		}
 		for _, pid := range pids {
-			if err := syscall.Kill(pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
+			seen[pid] = true
+			if sig == syscall.SIGTERM && termed[pid] {
+				continue
+			}
+			termed[pid] = true
+			if err := k.kill(pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
 				errs = append(errs, fmt.Errorf("kill -%d %d: %w", sig, pid, err))
 			}
 		}
-		return errors.Join(errs...)
 	}
-	errs := []error{signal(pids, syscall.SIGTERM)}
-	left := pids
-	for deadline := time.Now().Add(grace); len(left) > 0 && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		if left, err = jobProcesses_internal(jobDir); err != nil {
-			left = pids
-		}
-	}
-	if len(left) > 0 {
-		errs = append(errs, signal(left, syscall.SIGKILL))
-	}
-	return len(pids), errors.Join(errs...)
 }
 
 // endJobTree_internal ends what is left running of the job at jobDir before
 // the worker lets the job go (what: the step), and says it on the step log.
 func (r *Runner) endJobTree_internal(jobDir string, rec JobRecord, what string) {
-	if r.KillJob == nil || jobDir == "" {
+	if r.KillJob == nil {
+		return
+	}
+	if err := jobDirOfRoot_internal(r.RootDir, jobDir); err != nil {
+		r.report("ending the processes of "+rec.Consumer+" ("+what+")", err)
 		return
 	}
 	n, err := r.KillJob(jobDir)

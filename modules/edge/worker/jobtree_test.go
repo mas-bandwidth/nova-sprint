@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -114,7 +115,7 @@ func TestFunctionalReturnedJobLeavesNoProcessRunning(t *testing.T) {
 	pids = append(pids, grandchild)
 
 	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Wall: &fakeWall{}, Now: time.Now, Sleep: time.Sleep,
-		KillJob: func(d string) (int, error) { return OSKillJob(d, time.Second) }})
+		KillJob: func(d string) (int, error) { return OSKillJob(root, d, time.Second) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +135,106 @@ func TestFunctionalReturnedJobLeavesNoProcessRunning(t *testing.T) {
 	for _, pid := range pids {
 		if !processGone_internal(pid) {
 			t.Errorf("process %d of the returned job c1.w1 is still running after its retire", pid)
+		}
+	}
+}
+
+// fakeJobProcs_internal is a job's processes for killJob_internal, on a
+// clock of its own: a pid may ignore TERM, ignore every signal, or start
+// another as it dies (a shell's last child, a build server's respawn).
+type fakeJobProcs_internal struct {
+	live, ignoresTerm, unkillable map[int]bool
+	startsAsItDies                map[int]int
+	t                             time.Time
+	scans                         int
+}
+
+func (f *fakeJobProcs_internal) killer_internal() jobKiller_internal {
+	return jobKiller_internal{
+		scan: func(string) ([]int, error) {
+			f.scans++
+			var pids []int
+			for pid := range f.live {
+				pids = append(pids, pid)
+			}
+			slices.Sort(pids)
+			return pids, nil
+		},
+		kill: func(pid int, sig syscall.Signal) error {
+			switch {
+			case !f.live[pid]:
+				return syscall.ESRCH
+			case f.unkillable[pid], sig == syscall.SIGTERM && f.ignoresTerm[pid]:
+				return nil
+			}
+			delete(f.live, pid)
+			if c := f.startsAsItDies[pid]; c != 0 {
+				f.live[c] = true
+			}
+			return nil
+		},
+		now:   func() time.Time { return f.t },
+		sleep: func(d time.Duration) { f.t = f.t.Add(d) },
+	}
+}
+
+// A process the job starts while it is being ended (2 s after a card was
+// held, a dotnet run) is ended too: the sweep goes on until none is left.
+func TestKillJobSweepsUntilNoneIsLeft(t *testing.T) {
+	t.Parallel()
+	f := &fakeJobProcs_internal{live: map[int]bool{10: true}, ignoresTerm: map[int]bool{10: true}, startsAsItDies: map[int]int{10: 12}, t: time.Unix(1000, 0)}
+	n, err := killJob_internal("/j/c1", time.Second, f.killer_internal())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.live) != 0 {
+		t.Errorf("still running after the kill: %v, want none (one started as the first died)", f.live)
+	}
+	if n != 2 {
+		t.Errorf("ended %d, want 2: the one found first and the one it started", n)
+	}
+}
+
+// A process no signal ends is said, and the sweep is bounded: it does not
+// wait on it for ever.
+func TestKillJobSaysWhatItCouldNotEndAndStops(t *testing.T) {
+	t.Parallel()
+	t0 := time.Unix(1000, 0)
+	f := &fakeJobProcs_internal{live: map[int]bool{20: true}, unkillable: map[int]bool{20: true}, t: t0}
+	_, err := killJob_internal("/j/c1", time.Second, f.killer_internal())
+	if err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Errorf("err %v, want one saying pid 20 is still running", err)
+	}
+	if took := f.t.Sub(t0); took > 3*time.Second || f.scans > 100 {
+		t.Errorf("the sweep took %v and %d scans, want it bounded near the grace", took, f.scans)
+	}
+}
+
+// Only one job's directory of the worker is swept: a record whose consumer
+// is "" or ".." names <root>/jobs or root, whose marks would be every job's.
+func TestKillJobRefusesWhatIsNotOneJobsDirectory(t *testing.T) {
+	t.Parallel()
+	root := "/w/root"
+	for _, d := range []string{"", root, filepath.Join(root, "jobs"), filepath.Join(root, "jobs", ""), filepath.Join(root, "jobs", ".."),
+		filepath.Join(root, "jobs", "c1", "repo"), filepath.Join(root, "probes", "row"), filepath.Join(root, "clones", "x"), "/elsewhere/jobs/c1", "jobs/c1"} {
+		if err := jobDirOfRoot_internal(root, d); err == nil {
+			t.Errorf("%q: accepted, want refused", d)
+		}
+		if n, err := OSKillJob(root, d, time.Second); n != 0 || err == nil {
+			t.Errorf("OSKillJob %q: %d, %v, want refused before any scan", d, n, err)
+		}
+	}
+	for _, d := range []string{filepath.Join(root, "jobs", "c1.w1"), filepath.Join(root, "probes", "vision.ds", "default")} {
+		if err := jobDirOfRoot_internal(root, d); err != nil {
+			t.Errorf("%q: %v, want accepted", d, err)
+		}
+	}
+	for _, consumer := range []string{"", ".."} {
+		var swept []string
+		r := &Runner{RootDir: root, KillJob: func(d string) (int, error) { swept = append(swept, d); return 0, nil }}
+		r.endJobTree_internal(filepath.Join(root, "jobs", consumer), JobRecord{Consumer: consumer}, "retire")
+		if len(swept) != 0 {
+			t.Errorf("consumer %q: swept %q, want nothing", consumer, swept)
 		}
 	}
 }
