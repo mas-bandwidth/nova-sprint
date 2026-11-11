@@ -99,6 +99,11 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 	return heads
 }
 
+// streamGatesRelease is the first nova-sprint release whose bench worker
+// runs a stream's gates: an older worker ignores the take receipt's
+// stream_gates and reports ok without them.
+const streamGatesRelease = "v2.0.37"
+
 // checkStreamGates is one line per gate of stream s, each re-parsed as
 // stream set admitted it (a restore or an older build is held to today's
 // rule): ok when it is one command, red naming the fix when it is not.

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,7 +23,8 @@ import (
 // streamGateWall_internal is a wall that knows which tree its gates run
 // in: the head, after the apply step, or a base sha a step checked out
 // (baseArgv_internal). red names "<where> <cmd>" runs that exit 2 with a
-// FAIL line; a run of a cmd in notRun exits 127 (not run). No real time.
+// FAIL line; a run of a cmd in notRun exits 127 (not run); res and errs
+// give a "<where> <cmd>" run their own result or error. No real time.
 type streamGateWall_internal struct {
 	cr2Wall
 	mu        sync.Mutex
@@ -30,6 +32,8 @@ type streamGateWall_internal struct {
 	runs      []string
 	red       map[string]bool
 	notRun    map[string]bool
+	res       map[string]WallRunResult
+	errs      map[string]error
 	baseFails bool
 }
 
@@ -53,6 +57,12 @@ func (w *streamGateWall_internal) RunTest(_ context.Context, _ Job, cmd string, 
 	defer w.mu.Unlock()
 	where := w.at + " " + cmd
 	w.runs = append(w.runs, where)
+	if err := w.errs[where]; err != nil {
+		return WallRunResult{ExitCode: -1}, err
+	}
+	if res, ok := w.res[where]; ok {
+		return res, nil
+	}
 	switch {
 	case w.notRun[cmd]:
 		return WallRunResult{ExitCode: 127, Output: []byte("sh: 1: " + cmd + ": not found")}, nil
@@ -68,11 +78,15 @@ func (w *streamGateWall_internal) ran() []string {
 	return slices.Clone(w.runs)
 }
 
-// streamGateRunner_internal is one worker on wall, its clock at 1600.
+// streamGateRunner_internal is one worker on wall, its clock at 1600; its
+// git's stream merge used the tip testPriorSHA, the cards' base, unless a
+// test moves it (streamGateGit_internal).
 func streamGateRunner_internal(t *testing.T, wall ReserveWall) *Runner {
 	t.Helper()
 	clock := &gateClock_internal{sec: 1600}
-	r, err := NewRunner(Runner{Now: clock.now, Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: &cr2Sprint{}, Wall: wall, Git: newFakeGit_internal(), DefaultHarness: &ScriptHarness{}, Warn: func(string) {}})
+	git := newFakeGit_internal()
+	git.streamTip = testPriorSHA
+	r, err := NewRunner(Runner{Now: clock.now, Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: &cr2Sprint{}, Wall: wall, Git: git, DefaultHarness: &ScriptHarness{}, Warn: func(string) {}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +180,14 @@ func TestAStreamGateRedOnlyAtTheHeadFailsTheAttempt(t *testing.T) {
 	}
 }
 
-// A stream gate red at the head and red at the base the card started from
-// is the base's fault: the attempt is not failed for it, and its reason
-// says so for the coordinator. The answer at the base is kept for the life
-// of the worker: a second card on the same base runs the gate there no
-// more, and a card on another base does.
+// streamGateGit_internal is r's fake git, to move the tip its merge used.
+func streamGateGit_internal(r *Runner) *fakeGit { return r.Git.(*fakeGit) }
+
+// A stream gate red at the head and red at the base is the base's fault:
+// the attempt is not failed for it, and its reason says so for the
+// coordinator. A red answer at the base is never kept: a second card on
+// the same base runs the gate there again (a red there may be the bench's,
+// gone the next time).
 func TestAStreamGateRedAtTheBaseIsNotTheCards(t *testing.T) {
 	t.Parallel()
 	wall := &streamGateWall_internal{red: map[string]bool{"head " + genGate: true, testPriorSHA + " " + genGate: true}}
@@ -186,8 +203,66 @@ func TestAStreamGateRedAtTheBaseIsNotTheCards(t *testing.T) {
 	if again.Outcome.Result != "ok" || !strings.Contains(again.Outcome.Reason, "is red at base "+testPriorSHA) {
 		t.Fatalf("second card %+v, want ok with the base's red named", again.Outcome)
 	}
-	if want := []string{"head make test", "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "head " + genGate}; !slices.Equal(wall.ran(), want) {
-		t.Fatalf("ran %q, want %q: the base's answer is kept, the second card runs the gate at its head only", wall.ran(), want)
+	if want := []string{"head make test", "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate}; !slices.Equal(wall.ran(), want) {
+		t.Fatalf("ran %q, want %q: a red answer at the base is asked again", wall.ran(), want)
+	}
+}
+
+// A green answer at the base is kept for the life of the worker: a second
+// card red at its head on the same base fails without the base run.
+func TestAStreamGateGreenAtTheBaseIsKept(t *testing.T) {
+	t.Parallel()
+	wall := &streamGateWall_internal{red: map[string]bool{"head " + genGate: true}}
+	r := streamGateRunner_internal(t, wall)
+	for _, id := range []string{"p1.w1", "p2.w1"} {
+		if rec := streamGateStep_internal(t, r, id, nil, []string{genGate}); rec.Outcome.Result != "fail" || !strings.HasPrefix(rec.Outcome.Reason, "stream gate red ("+genGate+")") {
+			t.Fatalf("%s: outcome %+v, want the head's red", id, rec.Outcome)
+		}
+	}
+	if want := []string{"head " + genGate, "checkout " + testPriorSHA, testPriorSHA + " " + genGate, "head " + genGate}; !slices.Equal(wall.ran(), want) {
+		t.Fatalf("ran %q, want %q: the base's green is kept", wall.ran(), want)
+	}
+}
+
+// The head the gates run at is the card merged with the stream's tip
+// (RebaseOntoStream), so the base it is judged against is that tip, not
+// the older base the card was dealt on: two landings whose merge left the
+// generated tree stale make the gate red at the tip, and every card dealt
+// before them, green at its old base, is not charged for it.
+func TestAStreamGateIsJudgedAtTheTipTheMergeUsed(t *testing.T) {
+	t.Parallel()
+	wall := &streamGateWall_internal{red: map[string]bool{"head " + genGate: true, testRebSHA + " " + genGate: true}}
+	r := streamGateRunner_internal(t, wall)
+	streamGateGit_internal(r).streamTip = testRebSHA
+	rec := streamGateStep_internal(t, r, "p1.w1", nil, []string{genGate})
+	if rec.Outcome.Result != "ok" || rec.State != JobRebased {
+		t.Fatalf("outcome %+v at %s, want ok: the gate is red at the stream tip the merge used", rec.Outcome, rec.State)
+	}
+	if want := "stream gate " + genGate + " is red at base " + testRebSHA; rec.Outcome.Reason != want {
+		t.Fatalf("reason %q, want %q", rec.Outcome.Reason, want)
+	}
+	if want := []string{"head " + genGate, "checkout " + testRebSHA, testRebSHA + " " + genGate}; !slices.Equal(wall.ran(), want) {
+		t.Fatalf("ran %q, want %q", wall.ran(), want)
+	}
+}
+
+// Two gates, one red at the head: both run there, only the red one runs
+// at the base, and the card's fail or its excuse names that one alone.
+func TestTwoStreamGatesOneRed(t *testing.T) {
+	t.Parallel()
+	const vet = "sh -c 'go vet ./...'"
+	for _, atBase := range []bool{false, true} {
+		wall := &streamGateWall_internal{red: map[string]bool{"head " + genGate: true, testPriorSHA + " " + genGate: atBase}}
+		rec := streamGateStep_internal(t, streamGateRunner_internal(t, wall), "p1.w1", nil, []string{genGate, vet})
+		switch {
+		case !atBase && (rec.Outcome.Result != "fail" || !strings.HasPrefix(rec.Outcome.Reason, "stream gate red ("+genGate+")") || strings.Contains(rec.Outcome.Reason, vet)):
+			t.Fatalf("green at the base: outcome %+v, want the fail of %s alone", rec.Outcome, genGate)
+		case atBase && (rec.Outcome.Result != "ok" || rec.Outcome.Reason != "stream gate "+genGate+" is red at base "+testPriorSHA):
+			t.Fatalf("red at the base: outcome %+v, want ok naming %s alone", rec.Outcome, genGate)
+		}
+		if want := []string{"head " + genGate, "head " + vet, "checkout " + testPriorSHA, testPriorSHA + " " + genGate}; !slices.Equal(wall.ran(), want) {
+			t.Fatalf("ran %q, want %q", wall.ran(), want)
+		}
 	}
 }
 
@@ -205,18 +280,53 @@ func TestAStreamGateThatDoesNotRunIsAFault(t *testing.T) {
 	}
 }
 
-// A base the job's tree cannot check out answers nothing: the gate red at
-// the head fails the attempt as before, and nothing is kept.
-func TestAStreamGateWhoseBaseCannotBeCheckedOutFails(t *testing.T) {
+// A gate red at the head that the worker cannot judge at the base is a
+// fault, not the card's fail: the card is dealt again and spends no
+// bounce. A base that cannot be checked out, a stream tip that cannot be
+// read, a sandbox refusal or a missing binary at the base, a base run the
+// wall's timeout killed, a kill signal (an OOM kill, 137) and a worker
+// stopped during the base run each judge nothing, and nothing is kept.
+func TestAStreamGateNotJudgedAtTheBaseIsAFault(t *testing.T) {
 	t.Parallel()
-	wall := &streamGateWall_internal{red: map[string]bool{"head " + genGate: true}, baseFails: true}
-	r := streamGateRunner_internal(t, wall)
-	rec := streamGateStep_internal(t, r, "p1.w1", nil, []string{genGate})
-	if rec.Outcome.Result != "fail" || !strings.HasPrefix(rec.Outcome.Reason, "stream gate red ("+genGate+")") {
-		t.Fatalf("outcome %+v, want the head's red", rec.Outcome)
+	at := testPriorSHA + " " + genGate
+	for _, c := range []struct {
+		name, why string
+		baseFails bool
+		res       map[string]WallRunResult
+		errs      map[string]error
+		tipErr    error
+	}{
+		{name: "checkout", why: "not checked out", baseFails: true},
+		{name: "tip", why: "the stream tip the merge used could not be read", tipErr: errors.New("fatal: no FETCH_HEAD")},
+		{name: "sandbox", why: "SANDBOX REFUSED", res: map[string]WallRunResult{at: {ExitCode: 1, Output: []byte("SANDBOX REFUSED: write /home")}}},
+		{name: "exit 126", why: "exit 126", res: map[string]WallRunResult{at: {ExitCode: 126, Output: []byte("permission denied")}}},
+		{name: "timeout", why: "timed out", errs: map[string]error{at: &WallTimeoutError{Err: errors.New("killed after 1h28m")}}},
+		{name: "killed", why: "exit 137", res: map[string]WallRunResult{at: {ExitCode: 137, Output: []byte("Killed")}}},
+		{name: "stopped", why: context.Canceled.Error(), errs: map[string]error{at: context.Canceled}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			wall := &streamGateWall_internal{red: map[string]bool{"head " + genGate: true}, baseFails: c.baseFails, res: c.res, errs: c.errs}
+			r := streamGateRunner_internal(t, wall)
+			streamGateGit_internal(r).tipErr = c.tipErr
+			rec := streamGateStep_internal(t, r, "p1.w1", nil, []string{genGate})
+			if rec.Outcome.Result != "fault" || rec.State == JobRebased || !strings.HasPrefix(rec.Outcome.Reason, "stream gate ("+genGate+") is red at the head and was not judged at the base") || !strings.Contains(rec.Outcome.Reason, c.why) {
+				t.Fatalf("outcome %+v at %s, want a fault naming the gate and %q", rec.Outcome, rec.State, c.why)
+			}
+			if len(r.baseGates) != 0 {
+				t.Fatalf("kept %v, want nothing: the base was never judged", r.baseGates)
+			}
+		})
 	}
-	if len(r.baseGates) != 0 {
-		t.Fatalf("kept %v, want nothing: the base was never judged", r.baseGates)
+}
+
+// The base run starts from a clean tree: what the head's gates built,
+// ignored build caches too (-x), is removed, so a stale cache cannot
+// decide the base's answer. Nothing runs in the job's tree after it.
+func TestTheBaseRunCleansIgnoredFiles(t *testing.T) {
+	t.Parallel()
+	if argv := baseArgv_internal(testPriorSHA); !strings.Contains(argv[2], "git clean -q -f -d -x") || argv[4] != testPriorSHA {
+		t.Fatalf("base argv %q, want a checkout of the base and git clean -q -f -d -x", argv)
 	}
 }
 

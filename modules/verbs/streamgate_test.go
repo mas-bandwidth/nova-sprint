@@ -82,6 +82,70 @@ func TestCheckPrintsTheStreamGates(t *testing.T) {
 	want(t, w.do("", "check"), 1, "CHECK RED stream s: gate make gen | tee out is not one command", "nova-sprint stream set s --gate <command> again")
 }
 
+// A gate red at a base excuses the cards that met it there, each saying so
+// in its reason (a bench worker's report, a friend's finish) or a read's
+// finding. check counts them, one red line per gate and base, so a red
+// base is not seen only one card's reason at a time.
+func TestCheckNamesAStreamGateRedAtBase(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	withGates(genGate)(&s)
+	red := strings.Repeat("c", 40)
+	for id, line := range map[string]string{
+		"p1.w1": "stream gate " + genGate + " is red at base " + red,
+		"p2.r1": "the work holds; stream gate " + genGate + " is red at base " + red + "; stream gate make lint is red at base " + red,
+	} {
+		c := s.Cards[id]
+		c.Reason = line
+		s.Cards[id] = c
+	}
+	w := worldFrom(t, s)
+	healthy(t, w)
+	want(t, w.do("", "check"), 1, "CHECK RED stream s: stream gate "+genGate+" is red at base cccccccccccc (2 cards excused)", "make the gate green at the stream's tip")
+	if out := w.do("", "check").Output; strings.Contains(out, "make lint is red") {
+		t.Fatalf("check names a red at base for a gate the stream does not have:\n%s", out)
+	}
+}
+
+// A bench worker below the release that runs stream gates ignores the
+// receipt's stream_gates and reports ok without them: stream add and
+// stream set warn naming those hooked bench rows, and check warns per
+// stream with gates. Neither refuses; a friend row (it never beats) is
+// not a bench and runs its gates itself.
+func TestStreamGatesWarnOfWorkersThatDoNotRunThem(t *testing.T) {
+	t.Parallel()
+	old := func(s *store.Snapshot) {
+		for n, v := range map[string]string{"alice": "v2.0.36", "bob": streamGatesRelease} {
+			r := s.Rows[n]
+			r.Version = v
+			s.Rows[n] = r
+		}
+	}
+	s := sprint()
+	old(&s)
+	w := worldFrom(t, s)
+	healthy(t, w)
+	warn := "rows alice run a worker below " + streamGatesRelease + " that does not run stream gates"
+	want(t, w.do("carol", "stream", "set", "s", "--gate", genGate), 0, "GATE "+genGate+"\nWARN stream s: "+warn)
+	want(t, w.do("", "check"), 0, "CHECK WARN stream s: "+warn)
+	want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--gate", genGate), 0, "WARN stream t: "+warn)
+	if out := w.do("carol", "stream", "set", "s", "--gate", "none").Output; strings.Contains(out, "WARN") {
+		t.Fatalf("clearing the gates warns:\n%s", out)
+	}
+	s = sprint()
+	withGates(genGate)(&s)
+	for _, n := range []string{"alice", "bob"} {
+		r := s.Rows[n]
+		r.Version = streamGatesRelease
+		s.Rows[n] = r
+	}
+	w = worldFrom(t, s)
+	healthy(t, w)
+	if out := w.do("", "check").Output; strings.Contains(out, "does not run stream gates") {
+		t.Fatalf("check warns with every bench at %s:\n%s", streamGatesRelease, out)
+	}
+}
+
 // take's receipt carries the stream's gates for the bench worker, and its
 // text gives a friend row each as a STREAM GATE line and the rule for one
 // red at the base too; a stream with none adds nothing.
