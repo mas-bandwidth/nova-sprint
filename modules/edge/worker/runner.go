@@ -938,8 +938,7 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 // job's worktree is a shared clone of the work clone whose origin is the
 // repo's clone URL, so its fetches and pushes go to the repo.
 type OSGitOps struct {
-	// SiblingsRoot holds the staged sibling trees, <name>/<sha> (siblings.go).
-	WorkRoot, MirrorRoot, SiblingsRoot string
+	WorkRoot, MirrorRoot string
 	Exec                 edge.Exec
 	Timeouts             Timeouts
 	Timeout              time.Duration
@@ -951,6 +950,9 @@ type OSGitOps struct {
 	Token, GitHubCredential string
 	mu                      sync.Mutex
 	clones                  map[string]*sync.RWMutex // per clone URL (cloneLock_internal)
+
+	// SiblingsRoot holds the staged sibling trees, <name>/<sha> (siblings.go).
+	SiblingsRoot string
 }
 
 // repoName_internal is the clone's directory name: the URL's last element
