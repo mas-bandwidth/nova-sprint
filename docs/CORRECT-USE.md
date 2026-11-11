@@ -156,7 +156,9 @@ policy activate on every judgement). Refused by a write to a record it did
 not name (a deal, a bench's report, a worker hooking in), the verb reads
 again and commits, up to 5 applies, with no sleep (modules/verbs apply.go
 `fenced`; tla/VerbFence.tla). It is refused only when its own record
-changed, naming what changed, or after the fifth refusal, saying so.
+changed, naming what changed (checked on the fifth refusal too), or after the
+fifth refusal, saying so. A refusal with nothing written between the read and
+the commit is no fence another write tripped: it is the verb's at once.
 
 ## Notifications name their verb
 

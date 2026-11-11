@@ -155,14 +155,11 @@ func (w *fenceWalk) Apply(ctx context.Context, op store.Op) (store.Receipt, erro
 		return r, err
 	}
 	w.tries++
-	switch {
-	case r.Accepted:
+	if r.Accepted {
 		w.atNew, w.atOld, w.ended = before.new.st, before.old.gen, true
 		w.record("Apply", "done")
-	case w.tries < fenceTries:
-		w.record("Apply", "read")
-	default:
-		w.record("Apply", "refused")
+	} else {
+		w.record("Apply", "read") // the verb reads again, its last refusal too (checked for its own first)
 	}
 	return r, err
 }

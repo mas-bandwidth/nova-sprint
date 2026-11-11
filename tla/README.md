@@ -1588,7 +1588,9 @@ or write a card the verb names nowhere (`x`); `Coarse` fences the op on every
 card too, as a stream's hold is. The rule: a refused op is planned again on a
 fresh read, up to `Tries` applies, while the verb's own record (the old card as
 first read) is unchanged; a change to it, or the plan refusing on the fresh
-read (the new card landed or failed), is the refusal.
+read (the new card landed or failed), is the refusal. The last refusal is read
+again too, and checked against the verb's own record before it is called the
+store moving faster than the verb can plan.
 
 Invariants: `Follows` (done: the old card failed, its dependant follows the
 new), `NoOrphan` (the old card fails only in the step its dependant moves),

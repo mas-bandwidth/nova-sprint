@@ -74,16 +74,17 @@ Fenced ==
   /\ dep.gen = snap.dep.gen
   /\ Coarse => x = snap.x
 
-\* The verb reads; a re-read is checked against its own record, then planned.
+\* The verb reads; a re-read is checked against its own record, then against
+\* the tries left (the last refusal is checked for its own first), then planned.
 Read ==
   /\ pc = "read"
   /\ snap' = Cur
   /\ first' = IF tries = 0 THEN old ELSE first
-  /\ pc' = IF (OwnCheck /\ tries > 0 /\ old # first) \/ ~Pre(Cur) THEN "refused" ELSE "planned"
+  /\ pc' = IF (OwnCheck /\ tries > 0 /\ old # first) \/ tries = Tries \/ ~Pre(Cur) THEN "refused" ELSE "planned"
   /\ UNCHANGED <<old, new, dep, x, tries, env, at>>
 
 \* The op reaches the store: accepted (old fails, its dependant follows new,
-\* in one step), or refused and read again while tries remain.
+\* in one step), or refused and read again.
 Apply ==
   /\ pc = "planned"
   /\ tries' = tries + 1
@@ -92,7 +93,7 @@ Apply ==
             /\ dep' = [need |-> "new", gen |-> dep.gen + 1]
             /\ pc' = "done"
             /\ at' = [new |-> new.st, old |-> old.gen]
-       ELSE /\ pc' = IF tries + 1 < Tries THEN "read" ELSE "refused"
+       ELSE /\ pc' = "read"
             /\ UNCHANGED <<old, dep, at>>
   /\ UNCHANGED <<new, x, snap, first, env>>
 

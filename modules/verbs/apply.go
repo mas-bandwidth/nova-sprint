@@ -35,14 +35,18 @@ func (e *Engine) commit(ctx context.Context, op store.Op, fix string) (store.Rec
 // spin, and no sleep is taken between tries (each is a fresh read).
 const fenceTries = 5
 
-// fenced is the op plan makes from snap, committed; a refused op is planned
-// again on a fresh read and committed again, up to fenceTries in all, while
-// own(was, now) is "": what the verb itself read (its target, the epoch,
-// the caller's hook) is as it was on was, the verb's first read, so the
-// refusal was a write to a record the verb neither read nor wrote. own
-// naming a change is the refusal, with the store's reason; so is plan
-// refusing on the fresh read (its precondition no longer holds, named). It
-// returns the receipt and the op it committed.
+// fenced is the op plan makes from snap, committed. An op refused with a
+// write by another between its read and its commit (the refused op's own
+// event is not the next after the read) is planned again on a fresh read
+// and committed again, up to fenceTries in all, while own(was, now) is "":
+// what the verb itself read (its target, the epoch, the caller's hook) is
+// as it was on was, the verb's first read, so the refusal was a write to a
+// record the verb neither read nor wrote. own naming a change is the
+// refusal, with the store's reason, the last try's included; so is plan
+// refusing on the fresh read (its precondition no longer holds, named),
+// and so is an op refused with nothing written between: no fence was
+// tripped, the op itself was refused. It returns the receipt and the op it
+// committed.
 func (e *Engine) fenced(ctx context.Context, snap store.Snapshot, fix string, own func(was, now store.Snapshot) string, plan func(store.Snapshot) (store.Op, error)) (store.Receipt, store.Op, error) {
 	was := snap
 	for try := 1; ; try++ {
@@ -54,14 +58,17 @@ func (e *Engine) fenced(ctx context.Context, snap store.Snapshot, fix string, ow
 		if err != nil || r.Accepted {
 			return r, op, err
 		}
-		if try == fenceTries {
-			return r, op, refuse(fmt.Sprintf("%s (refused %d times, each by a write to records this verb did not read: the store moves faster than it can plan)", r.Reason, try), fix)
+		if r.Seq <= snap.Seq+1 {
+			return r, op, refuse(r.Reason, fix)
 		}
 		if snap, err = e.snapshot(ctx); err != nil {
 			return r, op, err
 		}
 		if what := cmp.Or(epochChange(was, snap), own(was, snap)); what != "" {
 			return r, op, refuse(r.Reason+"; "+what, fix)
+		}
+		if try == fenceTries {
+			return r, op, refuse(fmt.Sprintf("%s (refused %d times, each by a write to records this verb did not read: the store moves faster than it can plan)", r.Reason, try), fix)
 		}
 	}
 }
