@@ -221,14 +221,19 @@ func (e *Engine) load(ctx context.Context, info BackupInfo) error {
 	return lease.Restore(ctx, info.Verified.Digest(), func(w run.RestoreWriter) error { return info.Verified.Execute(ctx, w) })
 }
 
-// restoreHook is the restorer hooked in as coordinator, unless the dump
-// already has it so.
+// restoreHook is the restorer hooked in as coordinator, unless it already is
+// so on the bus hook it has now (the same dump again); on an earlier bus
+// session the hook replaces it in place, as hooked compares.
 func (e *Engine) restoreHook(ctx context.Context, actor string) (string, error) {
+	live, err := e.busSession(ctx, actor)
+	if err != nil {
+		return "", err
+	}
 	snap, err := e.snapshot(ctx)
 	if err != nil {
 		return "", err
 	}
-	if r := snap.Rows[actor]; r.Session != "" && r.Role == "coordinator" {
+	if r := snap.Rows[actor]; r.Session == live && r.Role == "coordinator" {
 		return done("nova-sprint next --as "+actor, "HOOKED "+actor+" role=coordinator (as restored)"), nil
 	}
 	return e.hookAs(ctx, snap, actor, "coordinator")

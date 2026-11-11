@@ -73,21 +73,33 @@ func (e *Engine) originsReadable(ctx context.Context, snap store.Snapshot) error
 // commit identity (the two git config lines) and the command that prints
 // the role's playbook: the hook verb's, and up's and restore's for their
 // coordinator. A row whose recorded bus session is the live one is already
-// hooked in. One whose bus hook was started since is hooked again in place,
+// hooked in: it goes on (next), it never unhooks. One whose bus hook was
+// started since is hooked again in place, in the role it has,
 // the write naming the session it replaces: nothing is unhooked, so the row
 // keeps its state, its hold and its hand, and a coordinator its seat (a
 // session back from a wrap-around loses nothing; tla/Hook.tla, HandKept).
+// A hooked row changes role only through unhook, on the live bus session or
+// an earlier one: a hook in another role is refused, so no hook empties the
+// seat without the run's notice or takes it with a worker's hand
+// (tla/Hook.tla, RoleKept).
 func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string) (string, error) {
 	live, err := e.busSession(ctx, name)
 	if err != nil {
 		return "", err
 	}
 	row := snap.Rows[name]
-	if row.Session == live {
-		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then hook again")
+	if row.Session == live && row.Role == r {
+		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint next --as "+name)
 	}
 	if c := coordinatorOf(snap); r == "coordinator" && c != "" && c != name {
 		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first; only when the operator says so, take the seat: "+takeOverCommand(name))
+	}
+	if row.Session != "" && row.Role != r {
+		keep := "nova-sprint hook --as " + name + " --role " + row.Role
+		if row.Session == live {
+			keep = "nova-sprint next --as " + name
+		}
+		return "", changeRole(name, row, "to stay "+row.Role+": "+keep+"; to change role: ", "nova-sprint hook --as "+name+" --role "+r)
 	}
 	op := e.newOp("hook", name, snap, live, r)
 	op.Writes = []store.Write{store.PutRow{Name: name, Session: live, Role: r, Replaces: row.Session}}
@@ -113,8 +125,8 @@ func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason
 	if old == "" || old == name { // name's own seat, its bus hook started since: the plain hook replaces it in place
 		return e.hookAs(ctx, snap, name, "coordinator")
 	}
-	if row := snap.Rows[name]; row.Session != "" {
-		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then up again")
+	if row := snap.Rows[name]; row.Session != "" { // a worker (the seat is old's): taking the seat changes its role
+		return "", changeRole(name, row, "", takeOverCommand(name))
 	}
 	session, err := e.busSession(ctx, name)
 	if err != nil {
@@ -129,6 +141,15 @@ func (e *Engine) takeOver(ctx context.Context, snap store.Snapshot, name, reason
 		return "", err
 	}
 	return done("nova-sprint next --as "+name, "TOOK OVER from "+old+": "+oneLine(reason)+line, fmt.Sprintf("HOOKED %s role=coordinator", name), identityLines(snap), playbookLine("coordinator")), nil
+}
+
+// changeRole refuses a hook in another role than name's row has: the role
+// changes only through unhook, which returns the hand (and frees a
+// coordinator's seat, with the run's notice). before says how to stay in
+// the role, first, when there is a way: a session that asked for the wrong
+// role must not be led to unhook.
+func changeRole(name string, row store.Row, before, then string) *Fail {
+	return refuse(name+" is hooked in as "+row.Role+"; unhook first to change role", before+"nova-sprint unhook --as "+name+" (it returns your hand), then "+then)
 }
 
 // takeOverCommand is how name takes the coordinator's seat.
