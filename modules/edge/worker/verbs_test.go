@@ -37,12 +37,26 @@ func (s *StoreSprintClient) Hook(ctx context.Context, row string) error {
 	return s.HookRole(ctx, row, "worker")
 }
 
-func (s *StoreSprintClient) Unhook(_ context.Context, row string) error {
+// Unhook is the unhook verb: the row's hook cleared and its whole hand
+// returned to the queue, each live card released with the reason
+// card.Returned names (modules/verbs handBack).
+func (s *StoreSprintClient) Unhook(ctx context.Context, row string) error {
 	if _, ok := s.Hooked[row]; !ok {
 		return fmt.Errorf("%w: %s is not hooked", ErrRefused, row)
 	}
 	delete(s.Hooked, row)
 	s.UnhookCalls++
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	for _, c := range snap.Cards {
+		if c.Holder == row && (c.Kind == "work" || c.Kind == "read") && (c.State == card.Ready || c.State == card.Working) {
+			if err := s.Release(ctx, row, c.ID, c.Gen, "", card.Returned(row, "unhooked")); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

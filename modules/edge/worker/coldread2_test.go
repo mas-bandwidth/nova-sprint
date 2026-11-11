@@ -136,25 +136,30 @@ func TestColdread2DefectProcessTableIgnoresNonce(t *testing.T) {
 	}
 }
 
-// Design restart rule: "A working consumer whose harness is alive is adopted
-// by pid and nonce, its deadline from the recorded start." RecoverRow puts
-// the record in r.adopted (runner.go:290-295), a map nothing reads: the
-// recorded deadline is never enforced and the adopted harness is never
-// harvested or killed.
-func TestColdread2DefectAdoptedHarnessDeadlineNeverEnforced(t *testing.T) {
+// The restart rule (2026-11-10): a bench that restarts gives up its cards
+// and the dealer deals them again; nothing is adopted or resumed. A live
+// harness on a card the row still holds is never this worker's own (its
+// harness ends with its job), so it is a dead worker's: it is killed and the
+// card given back with no blame, never reported and never run again.
+func TestALiveHarnessADeadWorkerLeftIsKilledAndItsCardGivenBack(t *testing.T) {
 	t.Parallel()
 	sp := &cr2Sprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 2}}}}
 	procs := &cr2Procs{alive: true}
-	r := cr2Runner_internal(t, sp, &cr2Wall{}, procs, time.Unix(100000, 0))
+	wall := &liveWall{}
+	r := cr2Runner_internal(t, sp, wall, procs, time.Unix(100000, 0))
 	dir := filepath.Join(r.RootDir, "jobs", "p1.w1")
-	if err := WriteJobRecord(dir, JobRecord{Consumer: "p1.w1", Kind: "work", Row: "vision.ds", Gen: 2, State: JobRunning, PID: 777, Nonce: "n-777", StartedAt: 1000, DeadlineAt: 2000}); err != nil {
+	if err := WriteJobRecord(dir, JobRecord{Consumer: "p1.w1", Kind: "work", Row: "vision.ds", Gen: 2, State: JobRunning, PID: 777, Nonce: "n-777", StartedAt: 1000, DeadlineAt: 200000}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.RecoverRow(context.Background(), "vision.ds"); err != nil {
 		t.Fatal(err)
 	}
-	if len(procs.kills) == 0 {
-		t.Errorf("adopted harness pid 777 is 98000 s past its recorded deadline and was neither killed nor reported")
+	if !slices.Equal(procs.kills, []int{777}) || len(sp.releases) != 1 || !strings.HasPrefix(sp.releases[0], "p1.w1@2 its worker restarted") ||
+		len(sp.reported()) != 0 || len(wall.ran()) != 0 {
+		t.Errorf("a dead worker's live harness: kills %v releases %v reports %+v runs %v, want it killed and the card given back, unreported and not run", procs.kills, sp.releases, sp.reported(), wall.ran())
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("the given-back job's directory must go: %v", err)
 	}
 }
 

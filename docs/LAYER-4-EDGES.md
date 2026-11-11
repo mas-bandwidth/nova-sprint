@@ -284,8 +284,8 @@ Deal to report:
    two-minute step bound, and run the card's done-when gates, inside a slot,
    each until the card's deadline (what is left of it, less the push's 60 s
    kept for the push and the report; the step bound is never a gate's);
-   push. A job restarted from taken or staged keeps the deadline its record
-   holds. A conflict is a `fail` naming the files; a gate still running at
+   push. A job a later pass runs (staged, waiting for a slot) keeps the
+   deadline its record holds. A conflict is a `fail` naming the files; a gate still running at
    its bound (the wall's own timeout of the gate, never of a setup step
    before it, which is a `fault`) is a `fail` saying how long it ran; one
    not started because no time was left is a `fault` that says so (no limit
@@ -343,7 +343,8 @@ again, three times in all; a rate-limit or credit refusal; a staging failure. A 
 reports `ok`, `fix` with its finding, or `fault` (no result file is a
 fault), never `fail`; a read's provider failure is a fault and spends no
 reader (LPM T30). A job the worker's own stop cuts short is "runner
-stopped": not reported, kept to resume.
+stopped": not reported, never a fault; the next start gives its card back
+and retires it.
 
 ```go
 type Harness interface {
@@ -397,17 +398,31 @@ measured 524 s); push 60 s; `gh` 30 s; bus send 5 s; ssh connect 10 s; CI wait, 
 job timeout plus 10 min (v1's land deadline). No silence kill: v1's
 silence heuristic once deleted a running card's home and temp directory.
 
-Restart loses nothing. The store is the truth; the runner keeps only
-`job.json` per job (consumer, gen, attempt, result id, harness pid and
-nonce). On start it lists its job directories and runs `queue --as` per
-row. A `working` consumer whose harness is alive is adopted by pid and
-nonce, its deadline from the recorded start. One whose harness is gone is
-resumed from its take receipt (`receipt.json`): staged again if it was
-taken, run again if it was staged or running, harvested if it left its
-result file; no fault. One with a recorded result id is reported again
-under that id. A `working` consumer with no job directory, or one whose
-job cannot be rebuilt, is released with no blame (`nova-sprint release`,
-with the partial head it pushed). A job directory whose consumer is final,
+A restart gives up the hand (the rule of 2026-11-10: a bench that restarts
+and does not come back must not sit on its cards). The store is the truth;
+the runner keeps only `job.json` per job (consumer, gen, attempt, result
+id, harness pid and nonce) and its take receipt (`receipt.json`). On start,
+after the bus hook, the worker unhooks its own row, and the unhook returns
+the row's whole hand to the queue in its op: each card released, no
+result, no bounce, no blame, its branch and pushed head kept. Then it
+probes and hooks in. Nothing of the old session is resumed or adopted: the
+first pass finds those cards final and retires their job directories
+(below), killing any harness the old session left running (by pid and
+nonce) first and pushing nothing; their reports are never sent. The dealer
+deals the cards again, each to a new consumer whose take starts from the
+branch tip on origin, so a pushed head is kept and the next attempt goes
+on from it. Installing a new build restarts every bench worker, so every
+running bench job is given up and dealt again. Within one session a pass
+goes on with a job an earlier pass left on a card the row holds: one
+staged with no slot is run when a slot is free (its deadline the
+recorded one), one harvested with a fault is reported, one whose report
+is owed is reported again under its result id. A live harness on a card
+the row still holds is never the worker's own (its harness ends with its
+job): it is killed and the card released with no blame, as its worker's
+restart would have. A job whose take receipt is gone cannot go on and is
+released with no blame (`nova-sprint release`, with the partial head it
+pushed). A `working` consumer with no job directory is the pass's to take
+and run. A job directory whose consumer is final,
 or whose generation is stale, is retired on the first pass that sees it:
 nothing pushed, the directory made writable and removed, its record kept in
 `<root>/retired/`; a removal that fails is raised once and moved to
@@ -483,19 +498,24 @@ Wake (duplicated, lost), PassStart and PassEnd (the pass, a process of its
 own: only a pass takes, and it ends whatever its jobs do), Take, Stage,
 StageFail, Run, Die, Harvest, Rebase, Conflict, Push, Report, ReplyLost,
 Clean, Withdraw (the sprint's: the store moves, the job does not), Retire
-(the next pass removes a withdrawn job's directory, pushing nothing),
-HolderPush (the card's next holder pushes its branch from another row),
-Release (the restart's no-blame give-back), Stop (the
-worker's own stop: harnesses killed, jobs kept at staged), Crash and
-Restart (at any step), StoreDown; and the card's branch on origin (who
-wrote its tip, the next holder's write, the job's pushes after final).
+(the next pass removes a withdrawn or returned job's directory, killing a
+harness left running, pushing nothing), HolderTake and HolderPush (the
+card's next holder takes it from the branch tip and pushes from another
+row), Stop (the worker's own stop: harnesses killed, jobs kept at staged,
+unreported), Crash (at any step), Restart (the next start: its self-unhook
+returns the whole hand, nothing is resumed), StoreDown; and the card's
+branch on origin (who wrote its tip, the next holder's write, the job's
+pushes after final).
 Invariants: guarantees 7 to 11; `working`
 within width; slots within capacity; `PassNeverWaitsOnJobs`;
 `StopIsNeverAFault`; `NoPushAfterFinal`; `BranchOnlyByHolder`;
 `NoSlotNeverReleases` (a staged job with every slot held waits for one, never
-gives its card back; the sprint's deadline withdraw bounds the wait). Liveness:
-every `working` consumer of the row ends recorded or withdrawn, and a
-withdrawn job's directory is removed (`FinalDirRemoved`). Reversed witnesses: a slot freed while its
+gives its card back; the sprint's deadline withdraw bounds the wait);
+`RestartReturnsHand` and `ReturnedNeverReports` (after a restart the row
+holds none of its old cards, and no job of the old session reports).
+Liveness: every `working` consumer of the row ends recorded or withdrawn, a
+withdrawn job's directory is removed (`FinalDirRemoved`), and a returned
+card is dealt again (`ReturnedDealtAgain`). Reversed witnesses: a slot freed while its
 harness lives; a reused job directory; Clean before Report (work lost on a
 crash); a fresh result id on retry (two reports); Restart taking a working
 consumer as new (two harnesses on one card); a Die classified `fail` (a
@@ -503,10 +523,15 @@ fault that bounces); a pass that waits on its jobs (`RunnerPassWaitsOnJobs`);
 a stop reported as a fault (`RunnerStopIsAFault`); a withdrawn job that
 pushes (`RunnerWithdrawnPushes`), again on a later pass
 (`RunnerWithdrawnPushesRepeatedly`), and by plain force over the next
-holder's branch (`RunnerForcePushRewinds`); a release for want of a slot
-(`RunnerNoSlotReleases`). Reach checks: a take
-while another job runs, a stop, a stopped job back in a pass, a release, a
-retire, the next holder's push over a head the job pushed.
+holder's branch (`RunnerForcePushRewinds`); a give-back for want of a slot
+(`RunnerNoSlotReleases`); a restart that keeps its hand and resumes, so a
+job reports for a card its row gave up (`RunnerRestartResumes`). Reach
+checks: a take while another job runs, a stop, a harness the old session
+left met by the first pass after a restart, a returned hand, a retire, the
+next holder's push over a head the job pushed. The trace walk's restart
+returns the hand through the store and its retire kills the old harness
+through the worker's own code; the fixture `runner-breaker`, a restart
+that kept its hand, is refused at its Restart record.
 Size: 2 consumers, width 2, 1 slot, 1 Crash.
 
 `tla/Push.tla`, the cursor: events, cursor, sends, lost replies, a crash.
@@ -587,7 +612,7 @@ An estimate from the interfaces and v1's runner, lines of Go without tests:
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
     * `OSGitOps` executes all bench `git` operations through `edge.Exec` with `CleanEnv: true`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and `Timeouts` (`Stage`, `Push`, `RebaseAndTest`); `RebaseOntoStream` returns `*FetchError` on a fetch failure so the pass propagates the failure without reporting a stale head.
     * `sendReportAndClean_internal` requires an accepted store receipt matching the result ID (`receipt.Accepted && store.IsConsumerOp(receipt.Op, req.ResultID)`) before marking `JobRecorded` or removing the job directory; `CLISprintClient.Report` returns a parse error if `--json` output fails to unmarshal, and a report the sprint did not acknowledge with exit 0 (`ErrRefused` included) keeps its job record at `reporting` and is sent again, same id, on the next wake (stitch, row 20).
-    * Each pass's recovery (`recoverRow_internal`) matches disk `JobRecord` entries against the store's working summary by full identity `(epoch, consumer, attempt, gen)` (`jobMatchesSummary_internal`), verifies both PID and `NOVA_WORKER_NONCE` via `OSProcessTable.Alive`, kills and reports `fault` for any adopted harness past its recorded `DeadlineAt`, leaves `JobTaken`/`JobStaged` (`ErrNoSlot`) records untouched for retry, and completes `rebaseAndPRSteps_internal` for `JobHarvested` `"ok"` jobs before reporting.
+    * Each pass's recovery (`recoverRow_internal`) matches disk `JobRecord` entries against the store's working summary by full identity `(epoch, consumer, attempt, gen)` (`jobMatchesSummary_internal`), verifies both PID and `NOVA_WORKER_NONCE` via `OSProcessTable.Alive`, kills any harness a dead worker left on a card it still holds and releases that card with no blame (a restart adopts nothing: its self-unhook gave the hand back), leaves `JobTaken`/`JobStaged` (`ErrNoSlot`) records untouched for retry, and completes `rebaseAndPRSteps_internal` for `JobHarvested` `"ok"` jobs before reporting.
 - `tla/Push.tla`, `tla/LandEdge.tla` (rewritten 2026-11-07 for the three rungs; its witnesses are now `LandEdgeRedLands`, `LandEdgeStaleGate`, `LandEdgeJudgementHoldsStream`, below), `tla/Runner.tla` and, as first built, 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
 
 ### Seam rulings (Rowan, 2026-11-06)
@@ -1108,21 +1133,25 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   holds the row unhooked with the probe's reason on stderr and probes again
   after `ProbeBackoff` (30 s) doubling to `ProbeBackoffMax` (10 min), both
   guesses.
-- **Restart and stop (70, 73).** The take receipt is kept as
-  `receipt.json` at take; a restart rebuilds the job from it (a re-take
-  would replay the take's op id at the pre-take gen): taken is staged again,
-  staged or running with no live harness is run again, running with a
-  result file is harvested. A job with no slot stays staged and the next
-  pass runs it. A job directory with no receipt is released with no blame:
+- **Restart and stop (70, 73; restart since 2026-11-10).** The take
+  receipt is kept as `receipt.json` at take; a later pass rebuilds a job the
+  row still holds from it (a re-take would replay the take's op id at the
+  pre-take gen). A restart resumes nothing: the start's self-unhook returns
+  the row's whole hand (released, no blame, branches and pushed heads
+  kept), the dealer deals the cards again, and the first pass retires the
+  old jobs, killing a harness left running. A job with no slot stays staged
+  and the next pass runs it. A job directory with no receipt is released with no blame:
   `release` gains `--head` so the worker hands back
   the partial head it pushed (checked as a finish's head is). "runner lost
   the job" is gone, and so is releasing a card in hand with no job
   directory: under deal is take that card is the pass's to run (its take,
   the acknowledgement, prints the same receipt again). The worker's own stop cancels its jobs: each is "runner
-  stopped", its record kept at its state with no pid, never reported;
+  stopped", its record kept at its state with no pid, never reported (the
+  next start gives its card back);
   `edge.Exec` classifies a cancelled command as `canceled` ("stopped by its
-  caller"), never a timeout. Model: Stop, Release, `StopIsNeverAFault`,
-  witness `RunnerStopIsAFault`.
+  caller"), never a timeout. Model: Stop, Restart, `StopIsNeverAFault`,
+  `RestartReturnsHand`, `ReturnedNeverReports`, `ReturnedDealtAgain`,
+  witnesses `RunnerStopIsAFault`, `RunnerRestartResumes`.
 - **A read's outcome (67).** `ReadOutcome` has three values (ok, fix,
   fault) and a read's report is built only from it, so a read cannot send
   "fail". No result file for a read is a fault; a harness's own fail
@@ -1193,7 +1222,8 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   no release: the pass runs it. `Runner.tla` with `Runner.cfg`: no error, 16,928 states
   generated, 4,245 distinct. The whole of `ci-tlc.sh`: 266 ok, 0 FAIL (Runner, the eight Runner
   witnesses and the four Runner reach checks among them). `make-traces.sh check`: 88 ok, 0
-  FAIL; the runner walks check at 22, 29 and 30 steps.
+  FAIL; the runner walks check at 22, 29 and 30 steps. (Superseded 2026-11-10: `Release` is
+  gone from the model; a restart returns the whole hand and resumes nothing, `Restart` above.)
 
 ### Built: a branch is its holder's (stitch w4W, 2026-11-07, defect 78)
 
@@ -1228,9 +1258,9 @@ time rewinding the new holder's branch to the stale head. Files:
   (the rebased head): lease from the head just pushed; a refused push is a
   fault that reports the head that did land, so the next attempt's prior
   head is the branch as it stands. `harvestPartialPush_internal`: only for
-  a job that still holds its card (`faultAndReportJob_internal`, an adopted
-  harness past its deadline; `releaseNoBlame_internal`, once before the
-  release, skipping a head already pushed). `withdrawRunningJob_internal`:
+  a job that still holds its card (`releaseNoBlame_internal`, once before
+  the release, skipping a head already pushed; the adopted-harness fault
+  that also pushed here is gone with adoption, 2026-11-10). `withdrawRunningJob_internal`:
   pushes nothing (it stops the harness only).
 - **Who holds.** `holds_internal`: the worker records, per epoch and
   consumer, the generation below which its jobs hold nothing

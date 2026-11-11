@@ -245,14 +245,14 @@ func TestDoneWhenPastTheCardsDeadlineIsNotStarted(t *testing.T) {
 	}
 }
 
-// A job restarted from taken or staged keeps the deadline its record
-// holds: the sprint counts the card's deadline from the deal, and a fresh
-// one let a gate run long past the sprint's withdraw.
+// A job a later pass goes on with (staged, waiting for a slot) keeps the
+// deadline its record holds: the sprint counts the card's deadline from the
+// deal, and a fresh one let a gate run long past the sprint's withdraw.
 func TestResumedJobKeepsItsRecordedDeadline(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct{ recorded, want int64 }{
 		"recorded":      {recorded: 2400, want: 2400},
-		"none recorded": {recorded: 0, want: 1600 + 900}, // a record from before deadlines: counted from the restart
+		"none recorded": {recorded: 0, want: 1600 + 900}, // a record from before deadlines: counted from now
 	} {
 		clock := &gateClock_internal{sec: 1600}
 		r, err := NewRunner(Runner{Now: clock.now, Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: &cr2Sprint{}, Wall: &gateWall_internal{}, DefaultHarness: &ScriptHarness{}, Warn: func(string) {}})

@@ -20,12 +20,16 @@ import (
 const RefusalLimit = 3
 
 // ReceiptName is the take receipt as the worker read it, kept in the job
-// directory from the take on, so a job the runner stopped can be resumed
-// (defects 61, 70) without asking the sprint for it again.
+// directory from the take on, so a job a pass left (staged with no slot, or
+// harvested with a fault to send) goes on in a later pass (defects 61, 70)
+// without asking the sprint for it again.
 const ReceiptName = "receipt.json"
 
-// recoverRow_internal does a pass's recovery and returns the jobs to
-// resume (not yet claimed), and the reports it owed and could not send.
+// recoverRow_internal does a pass's recovery and returns the jobs to go on
+// with (not yet claimed), and the reports it owed and could not send. A
+// restart resumes nothing: the start's self-unhook gave the row's whole hand
+// back (2026-11-10: a bench that restarts gives up its cards and the dealer
+// deals them again), so the old session's jobs are final here and retired.
 // One record the sprint keeps refusing never ends it (defect 69): it is
 // logged, kept, and sent again next pass.
 func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_internal, error, error) {
@@ -91,9 +95,11 @@ func (r *Runner) finalJob_internal(f ConsumerSummary, rec JobRecord) {
 }
 
 // recoverWorkingJob_internal acts on a working card's record: a report it
-// owes is sent; a live harness is adopted (and killed past its deadline);
-// anything else (taken, staged, a harness gone, harvested) is resumed, which
-// the second result says. The error is an owed report not sent.
+// owes is sent; anything else (staged with no slot, harvested with a fault
+// to send) goes on, which the second result says. A live harness is never
+// this worker's own (its harness ends with its job), so it is a dead
+// worker's: it is killed and the card given back, as that worker's restart
+// gives up its hand. The error is an owed report not sent.
 func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSummary, rec JobRecord) (JobRecord, bool, error) {
 	jobDir := filepath.Join(r.RootDir, "jobs", w.ID)
 	switch {
@@ -102,34 +108,23 @@ func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSumma
 	case rec.State == JobCIWait || rec.State == JobReporting || rec.State == JobRebased:
 		return rec, false, r.resend_internal(ctx, jobDir, rec)
 	case rec.State == JobRunning && r.Procs != nil && r.Procs.Alive(rec.PID, rec.Nonce):
-		r.adopt_internal(ctx, jobDir, w, rec)
+		r.killTracked_internal("stopping the harness a dead worker left for "+w.ID, rec.PID, rec.Nonce)
+		r.releaseNoBlame_internal(ctx, rec, "its worker restarted")
 		return rec, false, nil
 	}
 	return rec, true, nil
 }
 
-// adopt_internal keeps a live harness a stopped runner left: its deadline is
-// the recorded one, and past it the harness is killed and the job faulted
-// (the harness ran too long; its stop was not the runner's).
-func (r *Runner) adopt_internal(ctx context.Context, jobDir string, w ConsumerSummary, rec JobRecord) {
-	if rec.DeadlineAt > 0 && r.Now().Unix() >= rec.DeadlineAt {
-		r.report("killing adopted harness "+w.ID, r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
-		r.resendErr_internal(ctx, jobDir, rec, r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "adopted harness timed out past deadline"))
-		return
-	}
-	r.logStep_internal(rec.Row, w.ID, "adopt", fmt.Sprintf("pid=%d", rec.PID), 0)
-}
-
-// prepareResume_internal builds a stopped job back from its directory: the
-// receipt it was taken under, its record, and where it stood. A job with
-// no receipt (a directory from before receipts were kept) cannot be run
-// again; it is released for a redeal with no fault and no blame.
+// prepareResume_internal builds a job a pass left back from its directory:
+// the receipt it was taken under, its record, and where it stood. A job
+// with no receipt cannot go on; it is released for a redeal with no fault
+// and no blame.
 func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal) {
 	rec, jobDir := *p.resume, filepath.Join(r.RootDir, "jobs", p.resume.Consumer)
 	info, err := readReceipt_internal(jobDir)
 	if err != nil {
 		p.end = true
-		r.releaseNoBlame_internal(p.ctx, rec, "runner restarted: the job cannot be resumed: "+err.Error())
+		r.releaseNoBlame_internal(p.ctx, rec, "the job cannot go on: "+err.Error())
 		return
 	}
 	p.job, _ = buildJob_internal(next, info, jobDir, r.ProxyAddr, r.Now())
@@ -138,18 +133,15 @@ func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal)
 	switch {
 	case rec.State == JobHarvested:
 		return
-	case rec.State == JobRunning && fileExists_internal(filepath.Join(jobDir, "result.json")):
-		p.harvestOnly = true
-		return
 	case rec.State == JobTaken || !fileExists_internal(p.job.WorktreeDir):
 		p.stage, p.rec.State = true, JobTaken
 	default:
 		p.rec.State, p.rec.PID, p.rec.Nonce = JobStaged, 0, ""
 	}
 	// The record's deadline stands: the sprint counts the card's from the
-	// deal, whatever the worker's restarts, and the done-when gates run
-	// until it (doneWhenBound_internal). Only a record without one (from
-	// before deadlines were recorded) counts from the restart.
+	// deal, however many passes the job waited for a slot, and the done-when
+	// gates run until it (doneWhenBound_internal). Only a record without one
+	// (from before deadlines were recorded) counts from now.
 	if p.rec.DeadlineAt == 0 {
 		p.rec.DeadlineAt = r.Now().Unix() + int64(info.Deadline)
 	}
