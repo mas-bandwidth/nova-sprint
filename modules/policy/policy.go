@@ -126,8 +126,8 @@ type Timeouts struct {
 	// OverloadSpan is how long a bench row stays over (or back under) the
 	// overload bound before it counts (optional, default DefaultOverloadSpan).
 	OverloadSpan int
-	BaseRegate                                                                                                          []int
-	Consumer                                                                                                            map[string]int
+	BaseRegate   []int
+	Consumer     map[string]int
 }
 
 // DefaultJudgementUnseen is timeouts judgement_unseen for a policy that does
