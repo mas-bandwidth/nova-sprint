@@ -55,6 +55,7 @@ type Ticker struct {
 	limits     policy.Limits
 	timeouts   policy.Timeouts
 	kin        kinLife
+	loads      LoadWatch // each bench row's load across its beats (Inputs.Overloads)
 }
 
 // Limits and Timeouts are the last answered tick's (the active policy's):
@@ -344,7 +345,8 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	}
 	o.Roster = o.Roster.Advertised(t.snap.Rows, o.Version) // a worker's own width and tiers (defect 74), none when its binary is behind the run's (D3)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
-		Seen: maps.Clone(t.seen), Alive: t.kin.evidence(), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted, Bases: o.Bases}
+		Seen: maps.Clone(t.seen), Alive: t.kin.evidence(), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted, Bases: o.Bases,
+		Overloads: t.loads.Observe(t.snap.Rows, o.Now, t.limits.OverloadFactorOr(), time.Duration(t.timeouts.OverloadSpanOr())*time.Second)}
 	a := t.asker(ctx, o.Roster)
 	plan := steps.Tick(t.view, in, a)
 	t.push.Nudge(append(plan.Nudges, challenges...))

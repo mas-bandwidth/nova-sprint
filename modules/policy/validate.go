@@ -183,11 +183,16 @@ var limitKeys = []string{"bounces", "faults", "same_finding", "reports_per_tick"
 // above escalate_after, route_rest_after at most route_rest_window; the
 // two fractions in (0, 1].
 func checkLimits(v starlark.Value) (Limits, string) {
-	d, msg := dictSome(v, limitKeys, "chain_limit")
+	d, msg := dictSome(v, limitKeys, "chain_limit", "overload_factor")
 	if msg != "" {
 		return Limits{}, msg
 	}
-	l := Limits{ChainLimit: 3}
+	l := Limits{ChainLimit: 3, OverloadFactor: DefaultOverloadFactor}
+	if d["overload_factor"] != nil {
+		if l.OverloadFactor, msg = perCore("overload_factor", d["overload_factor"]); msg != "" {
+			return Limits{}, msg
+		}
+	}
 	if d["chain_limit"] != nil {
 		if l.ChainLimit, msg = intIn("chain_limit", d["chain_limit"], 1, 100); msg != "" {
 			return Limits{}, msg
@@ -216,6 +221,18 @@ func checkLimits(v starlark.Value) (Limits, string) {
 	}
 	l.LandTarget, msg = fraction("land_target", d["land_target"])
 	return l, msg
+}
+
+// perCore is a load per core: a number (an int or a float) in (0, 1000].
+func perCore(what string, v starlark.Value) (float64, string) {
+	f, ok := starlark.AsFloat(v)
+	if _, isNum := v.(starlark.Float); !ok || !isNum && v.Type() != "int" {
+		return 0, refuse("%s is %s, not a number", what, kind(v))
+	}
+	if !(f > 0 && f <= 1000) { // NaN is outside too
+		return 0, refuse("%s %s is outside (0, 1000]", what, cut(v.String(), 64))
+	}
+	return f, ""
 }
 
 // fraction is a number (an int or a float) in (0, 1].
@@ -267,15 +284,15 @@ func checkLanding(v starlark.Value) (Landing, string) {
 // before them lacks them, so for it alone the same values are filled in
 // here and it still answers.
 func checkTimeouts(v starlark.Value) (Timeouts, string) {
-	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take", "judgement_unseen")
+	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take", "judgement_unseen", "overload_span")
 	if msg != "" {
 		return Timeouts{}, msg
 	}
-	t := Timeouts{ReadyNag: 1, ReadyTake: 180, JudgementUnseen: DefaultJudgementUnseen}
+	t := Timeouts{ReadyNag: 1, ReadyTake: 180, JudgementUnseen: DefaultJudgementUnseen, OverloadSpan: DefaultOverloadSpan}
 	for _, f := range []struct {
 		key string
 		dst *int
-	}{{"ready_nag", &t.ReadyNag}, {"ready_take", &t.ReadyTake}, {"judgement_unseen", &t.JudgementUnseen}} {
+	}{{"ready_nag", &t.ReadyNag}, {"ready_take", &t.ReadyTake}, {"judgement_unseen", &t.JudgementUnseen}, {"overload_span", &t.OverloadSpan}} {
 		if d[f.key] != nil {
 			if *f.dst, msg = intIn(f.key, d[f.key], 1, maxSeconds); msg != "" {
 				return Timeouts{}, msg

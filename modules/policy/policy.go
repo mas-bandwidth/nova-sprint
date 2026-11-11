@@ -101,6 +101,10 @@ type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
 	EscalateAfter, FrontierAfter, FlapLimit, FleetWidthCap, ChainLimit            int
 	IdleFloor, LandTarget                                                         float64
+	// OverloadFactor is the load per core over which a bench row is
+	// overloaded (optional, default DefaultOverloadFactor; the overload
+	// judgement).
+	OverloadFactor float64
 }
 
 // Landing is the merging count at which a stream backs up (rung 2) and the
@@ -119,6 +123,9 @@ type Landing struct{ BackedUp, Flowing, CIWait int }
 // worker reads it from the take receipt, never a Go literal).
 type Timeouts struct {
 	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick, ReadyNag, ReadyTake, JudgementUnseen int
+	// OverloadSpan is how long a bench row stays over (or back under) the
+	// overload bound before it counts (optional, default DefaultOverloadSpan).
+	OverloadSpan int
 	BaseRegate                                                                                                          []int
 	Consumer                                                                                                            map[string]int
 }
@@ -128,6 +135,32 @@ type Timeouts struct {
 // 2026-11-08: 60 judgements sat an hour behind a hook whose pushes went to
 // a log file).
 const DefaultJudgementUnseen = 300
+
+// DefaultOverloadFactor and DefaultOverloadSpan are limits overload_factor
+// and timeouts overload_span for a policy that does not name them
+// (default.star's values; 2026-11-10, a bench at load 350-830 on 64
+// threads for hours). Both are unmeasured guesses.
+const (
+	DefaultOverloadFactor = 2.0
+	DefaultOverloadSpan   = 300
+)
+
+// OverloadFactorOr is OverloadFactor, or the default when unset (a zero
+// Limits before the first answer, or a version stored before it).
+func (l Limits) OverloadFactorOr() float64 {
+	if l.OverloadFactor > 0 {
+		return l.OverloadFactor
+	}
+	return DefaultOverloadFactor
+}
+
+// OverloadSpanOr is OverloadSpan in seconds, or the default when unset.
+func (t Timeouts) OverloadSpanOr() int {
+	if t.OverloadSpan > 0 {
+		return t.OverloadSpan
+	}
+	return DefaultOverloadSpan
+}
 
 // Price is micro-dollars per million tokens of each class: uncached input,
 // cached input read, cache write and output (reasoning is billed as

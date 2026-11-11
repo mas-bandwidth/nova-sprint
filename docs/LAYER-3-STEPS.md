@@ -301,7 +301,7 @@ for each candidate, and the engine refuses one below the card's tier.
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `no-model`,
-  `no-policy`, `undealt`, `admission`, `base-red` (`conflict`,
+  `no-policy`, `undealt`, `admission`, `base-red`, `overload` (`conflict`,
   `no-ci` and `forge` went with intent rule 32, 2026-11-07; `base-red`
   came back 2026-11-10 as a push only, below). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
@@ -326,6 +326,18 @@ for each candidate, and the engine refuses one below the card's tier.
   set stays quiet for the judgement timeout, then opens `STILL RED`.
   Nothing is held, stopped or dealt differently: the push only (v1's
   TickBaseCI; `tla/BaseRed.tla`).
+- `overload` (`modules/steps/overload.go`; 2026-11-10, a 64-thread bench at
+  load 350-830 for hours under CI): layer 6 samples each row's last beat
+  once a tick (`run.LoadWatch`; no new poll) and passes, per row with
+  cores, whether its load has been over `overload_factor` x cores on every
+  sample for `overload_span`, or back under for the span, in
+  `Inputs.Overloads`; a shorter spike or dip changes nothing. A bench row
+  (one the roster names a worker) that is up and overloaded has one open
+  `overload` about the row, choice `retry`, naming its cores, its load now
+  and over the span, and its working cards against its width and slots. It
+  clears when the row is under for the span, escalates unanswered, and stays
+  quiet for the span after an answer. A friend row never gets one. Nothing is
+  held, narrowed or dealt differently (`tla/Overload.tla`).
 - Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 

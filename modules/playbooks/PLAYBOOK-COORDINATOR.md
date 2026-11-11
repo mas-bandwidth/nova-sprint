@@ -130,6 +130,16 @@ What each judgement kind asks of you, and where to look before you choose:
   clears by itself when a later tip is green; a different red (other checks, other jobs) is
   pushed again as its next episode; unanswered, it escalates like the others. The sprint holds,
   stops and deals nothing differently because of it: the fix is yours (section 5).
+- `overload`: a bench row's 1-minute load has stayed over policy's `overload_factor` times its
+  cores (default 2) on every beat for `overload_span` (default 300 s). There is at most one per
+  row, and a friend row never gets one. It names the row, its cores, its load now and its low
+  and high over the span, and how many cards it is working against its width and nova-reserve
+  slots. If the cards are few against the load, the load is something else, usually CI.
+  This machine is overloaded: find what is loading it and fix it now. For CI, lower the runner
+  count or the per-job parallelism (jobs that size themselves by `nproc` multiply); for card
+  work, ask for a narrower width. Then answer `retry`. It stays quiet for the span while the
+  load settles, and clears by itself once the load stays under the bound for the span. The
+  sprint holds, narrows and deals nothing differently because of it.
 - `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unhold`, or `drop`. An unhold gives the card a full fresh bounce budget (the limit

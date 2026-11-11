@@ -72,6 +72,7 @@ def limits():
         "idle_floor": 0.5,         # guess (LESSONS 3.18: under half the open width)
         "land_target": 0.3,        # guess (layer 3's engine default, over 20 landings)
         "chain_limit": 3,          # Glenn 2026-11-08: wide and flat; add refuses a longer NEEDS chain
+        "overload_factor": 2,      # unmeasured guess: a bench whose 1-minute load stays over 2x its cores is overloaded
     }
 
 def landing(stream):
@@ -90,6 +91,7 @@ def timeouts():
         "ready_nag": 30,              # nag an unacknowledged deal every 30s, not every 1s
         "ready_take": 180,            # Glenn 2026-11-07: a card ready this long is dealt elsewhere
         "judgement_unseen": 300,      # Glenn 2026-11-08: a judgement open this long was pushed to nobody
+        "overload_span": 300,         # unmeasured guess: over the overload bound on every beat this long opens overload
         "consumer": {                 # a consumer's deadline by tier
             "flash": 3600,
             "pro": 7200,

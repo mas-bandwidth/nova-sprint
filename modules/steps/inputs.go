@@ -30,6 +30,10 @@ type Inputs struct {
 	// BaseAbout: red or green at a tip. One with no completed read has no
 	// entry, and neither opens nor clears a base-red judgement (basered.go).
 	Bases map[string]BaseCI
+	// Overloads is each bench row's load fact across its beats, by row:
+	// over the bound for the span, or back under it (overload.go). A row with
+	// no entry is no fact.
+	Overloads map[string]Overload
 }
 
 // InboxItem is one thing that arrived for the tick: a row's report or take

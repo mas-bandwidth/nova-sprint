@@ -16,6 +16,9 @@
 #   BaseRed.tla with BaseRed.cfg (the base-red judgement) must pass;
 #     its witness BaseRedNoPush and reach checks BaseRedNever{Opens,Replaced}
 #     must be violated
+#   Overload.tla with Overload.cfg (the overload judgement) must pass; its
+#     witnesses OverloadNoPush and OverloadEarly and reach checks
+#     OverloadNever{Opens,Cleared} must be violated
 #   KinAlive.tla with KinAlive.cfg (kin liveness by challenge)
 #                                      must pass            (TLC exit 0);
 #     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
@@ -200,6 +203,7 @@ run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run KinAlive pass . KinAlive.cfg KinAlive.tla 2
 run BaseRed pass . BaseRed.cfg BaseRed.tla 2
+run Overload pass . Overload.cfg Overload.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
 run Run pass . Run.cfg Run.tla 2
@@ -236,13 +240,17 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
          KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
-         BaseRedNoPush; do
+         BaseRedNoPush OverloadNoPush OverloadEarly; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
 # BaseRed's reach checks (a judgement opens; a changed red set opens the next).
 for m in NeverOpens NeverReplaced; do
     run "reach-BaseRed$m" violate . "BaseRed$m.cfg" BaseRed.tla 1
+done
+# Overload's reach checks (a judgement opens; one clears on recovery).
+for m in NeverOpens NeverCleared; do
+    run "reach-Overload$m" violate . "Overload$m.cfg" Overload.tla 1
 done
 
 # KinAlive's reach checks (a kin row goes down, and comes back on a pong).
