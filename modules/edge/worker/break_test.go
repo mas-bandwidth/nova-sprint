@@ -260,7 +260,9 @@ func TestFunctionalBreakHarnessOutputUnbounded(t *testing.T) {
 func TestFunctionalBreakHarnessTimeoutHangsOnBackgroundChild(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	w := &OSReserveWall{Config: WallConfig{ReserveDir: t.TempDir()}} // its own slots, never the host's
+	// Its own slots, never the host's; a short slot wait, which bounds the
+	// run with the timeout (the wait and the run are timed apart).
+	w := &OSReserveWall{Config: WallConfig{ReserveDir: t.TempDir(), ReserveWait: 200 * time.Millisecond}}
 	done := make(chan time.Duration, 1)
 	go func() {
 		start := time.Now()
