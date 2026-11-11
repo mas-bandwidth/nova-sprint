@@ -99,6 +99,5 @@ func (t *tick) clearedMoved(s string) string {
 			return ""
 		}
 	}
-	st := t.v.Streams[s]
-	return fmt.Sprintf("cleared: %s %s has not been moved by anything but the sprint's landing for one CIWait", st.Repo, st.Base)
+	return fmt.Sprintf("cleared: stream %s's base %s has not been moved by anything but the sprint's landing for one CIWait", s, t.v.Streams[s].Base)
 }

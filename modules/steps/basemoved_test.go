@@ -59,5 +59,5 @@ func TestBaseMovedWakesTheCoordinator(t *testing.T) {
 	s.moves = nil // a CIWait with no foreign move
 	s.run(1)
 	require.Empty(t, s.openJudgements("base-moved"))
-	assert.Equal(t, "cleared: o/r main has not been moved by anything but the sprint's landing for one CIWait", s.snap().Judgements["base-moved.s2.2"].Answer)
+	assert.Equal(t, "cleared: stream s2's base main has not been moved by anything but the sprint's landing for one CIWait", s.snap().Judgements["base-moved.s2.2"].Answer)
 }
