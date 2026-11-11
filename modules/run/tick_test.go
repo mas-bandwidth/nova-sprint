@@ -36,6 +36,7 @@ const testReadyNag = 10
 func (a *answering) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
 	a.asks++
 	names := slices.Sorted(maps.Keys(ro.Workers))
+	names = append(names, slices.Sorted(maps.Keys(ro.Kin))...)
 	out := policy.Answers{Version: snap.Policy, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
 		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 3, ReportsPerTick: 100, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
 		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyNag: testReadyNag, ReadyTake: 180, BaseRegate: []int{120}}}

@@ -51,6 +51,7 @@ type Ticker struct {
 	landingsOK bool
 	limits     policy.Limits
 	timeouts   policy.Timeouts
+	kin        kinLife
 }
 
 // Limits and Timeouts are the last answered tick's (the active policy's):
@@ -62,7 +63,11 @@ func (t *Ticker) Timeouts() policy.Timeouts { return t.timeouts }
 // Push sends this tick's envelopes (Pusher.Push) and returns the
 // recipients whose send failed.
 func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []PushFailure {
-	return t.push.Push(ctx, b, t.store, t.snap.Epoch, now)
+	failed := t.push.Push(ctx, b, t.store, t.snap.Epoch, now)
+	for _, f := range failed {
+		t.kin.failed(f.To)
+	}
+	return failed
 }
 
 // judgementOp is the tick's policy judgements (policy.Judgements): one per
@@ -228,6 +233,7 @@ func (t *Ticker) Fold(ctx context.Context) error {
 			}
 			t.snap = store.Fold(t.snap, []store.Event{e})
 			t.push.Observe(e, t.snap)
+			t.kin.fold(e)
 			if p, ok := policy.PrevOf(e); ok {
 				t.prev = p
 			}
@@ -285,18 +291,20 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	for _, name := range o.Present {
 		t.seen[name] = o.Now
 	}
-	if err := t.raiseSeen(ctx, o); err != nil { // presence deals nothing, so it runs while stopped too
+	challenges := t.kin.observe(t.snap.Rows, o.Roster, o.Present, o.Now) // kin answer while stopped too
+	if err := t.raiseSeen(ctx, o); err != nil {                          // presence deals nothing, so it runs while stopped too
 		return nil, err
 	}
 	if t.snap.Stopped {
+		t.push.Nudge(challenges)
 		return nil, nil
 	}
 	o.Roster = o.Roster.Advertised(t.snap.Rows, o.Version) // a worker's own width and tiers (defect 74), none when its binary is behind the run's (D3)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
-		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted}
+		Seen: maps.Clone(t.seen), Alive: t.kin.evidence(), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted}
 	a := t.asker(ctx, o.Roster)
 	plan := steps.Tick(t.view, in, a)
-	t.push.Nudge(plan.Nudges)
+	t.push.Nudge(append(plan.Nudges, challenges...))
 	if a.asked {
 		t.limits, t.timeouts = a.answers.Limits, a.answers.Timeouts
 	}
@@ -320,11 +328,16 @@ func (t *Ticker) Seen() bool { return len(t.seen) > 0 }
 // on the bus this tick comes up, one op each, applied before the plan so a
 // row that has just hooked in is open for this tick's deal. Gone, the flip
 // down, is the steps' silence rule. Without this a hooked row stayed down
-// and nothing was ever dealt (the end-to-end test, 2026-11-07).
+// and nothing was ever dealt (the end-to-end test, 2026-11-07). A kin row
+// comes up only on a pong since it last went down (kinLife): its bus hook
+// can be present with no session behind it, so presence alone raises none.
 func (t *Ticker) raiseSeen(ctx context.Context, o Observed) error {
 	var ops []store.Op
 	for _, name := range o.Present {
 		if r, ok := t.snap.Rows[name]; !ok || r.State != card.Down {
+			continue
+		}
+		if _, isKin := o.Roster.Kin[name]; isKin && !t.kin.answeredSince(name, t.view.Down[name], o.Now) {
 			continue
 		}
 		op, why := steps.Verb(t.view, steps.Inputs{Now: o.Now}, steps.Request{Actor: steps.Actor, Row: name, Event: card.Seen{}})
