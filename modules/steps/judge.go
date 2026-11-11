@@ -248,11 +248,8 @@ func (t *tick) cleared(j store.Judgement) string {
 			return "working at or above three quarters of the open width"
 		}
 	case "land-rate":
-		if !t.leftToLand(j.About) {
-			return "stream " + j.About + " has no card left to land"
-		}
-		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= t.lim.LandTarget {
-			return "land rate back at target"
+		if why := t.landRateCleared(j.About); why != "" {
+			return why
 		}
 	case "engine":
 		if strings.HasPrefix(j.Question, noHead(j.About)) && t.in.Heads[j.About] != "" {
@@ -263,6 +260,18 @@ func (t *tick) cleared(j store.Judgement) string {
 		}
 	}
 	return t.clearedDeal(j)
+}
+
+// landRateCleared is cleared for stream s's land-rate: no card is left to
+// land, or the rate is back at target.
+func (t *tick) landRateCleared(s string) string {
+	if !t.leftToLand(s) {
+		return "stream " + s + " has no card left to land"
+	}
+	if rate, n := t.landRate(s); n < Engine.LandSample || rate >= t.lim.LandTarget {
+		return "land rate back at target"
+	}
+	return ""
 }
 
 // clearedDeal is cleared for the deal's own kinds: a tier a model can now be
