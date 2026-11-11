@@ -227,7 +227,9 @@ func (f FleetServices) Apply(ctx context.Context, s FleetService) error { return
 // Restart is Apply that also restarts the service's unit: its unit file is
 // unchanged by a new binary on disk, so only naming it restarts the process
 // onto that binary.
-func (f FleetServices) Restart(ctx context.Context, s FleetService) error { return f.play(ctx, s, true) }
+func (f FleetServices) Restart(ctx context.Context, s FleetService) error {
+	return f.play(ctx, s, true)
+}
 
 func (f FleetServices) play(ctx context.Context, s FleetService, restart bool) error {
 	if !s.valid() {

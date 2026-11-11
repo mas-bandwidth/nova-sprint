@@ -103,7 +103,7 @@ func TestDescribeHolder(t *testing.T) {
 func TestChooserConfigErrorHidesDSN(t *testing.T) {
 	t.Parallel()
 	const secret = "secret-token-for-test"
-	_, err := OpenChooser(context.Background(), "postgres://u:"+secret+"@%broken/db", "", "host", 1, &fakeHook{})
+	_, err := OpenChooser(context.Background(), "postgres://u:"+secret+"@%broken/db", "", "host", 1, "v2.0.0", &fakeHook{})
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("unsafe config error: %v", err)
 	}

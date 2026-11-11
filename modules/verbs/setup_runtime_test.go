@@ -257,6 +257,9 @@ func TestRuntimeSetupRestartsARunOfAnOlderBuild(t *testing.T) {
 	cmd := func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
 		case "nova-fleet":
+			if args[0] != "services" {
+				return nil, nil
+			}
 			plays = append(plays, args)
 			if slices.Contains(args, "nova_service_restart=sprint-run") {
 				run.behind = false
