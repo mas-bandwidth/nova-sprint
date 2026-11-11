@@ -19,10 +19,12 @@
 #   AnsweredQuiet.tla with AnsweredQuiet.cfg (an answered watch judgement's
 #     quiet) must pass; its witnesses AnsweredQuiet{Reopens,Swallows} and
 #     reach check AnsweredQuietNeverReopens must be violated
-#   KinAlive.tla with KinAlive.cfg (kin liveness by challenge)
+#   RowAlive.tla with RowAlive.cfg (every row up on its hook, down off it,
+#     its hand returned and dealt again: docs/README.md "Hard requirements" 1, 2)
 #                                      must pass            (TLC exit 0);
-#     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
-#     checks KinAliveNever{Down,Back}, beside it, must be violated
+#     its witnesses RowAlive{ManualUp,NoGone,GoneKeeps,HoldKeeps,NoRedeal}
+#     and reach checks RowAliveNever{Down,Back}, each a cfg on RowAlive.tla,
+#     must be violated
 #   VerbFence.tla with VerbFence.cfg and VerbFenceCoarse.cfg (a verb on a store others write)
 #                                      must pass            (TLC exit 0);
 #     its witnesses VerbFence{OneTry,OneTryCoarse,NoOwn} and reach checks
@@ -210,7 +212,7 @@ run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run LandEdgeLive pass . LandEdgeLive.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
-run KinAlive pass . KinAlive.cfg KinAlive.tla 2
+run RowAlive pass . RowAlive.cfg RowAlive.tla 2
 run VerbFence pass . VerbFence.cfg VerbFence.tla 2
 run VerbFenceCoarse pass . VerbFenceCoarse.cfg VerbFence.tla 2
 run BaseRed pass . BaseRed.cfg BaseRed.tla 2
@@ -251,7 +253,6 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
-         KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
          HookAnySession HookReplaceUnhooks HookReplaceChangesRole \
          BaseRedNoPush BaseRedQuietSwallows AnsweredQuietReopens AnsweredQuietSwallows; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
@@ -270,9 +271,14 @@ for m in NeverOpens NeverReplaced; do
 done
 run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg AnsweredQuiet.tla 1
 
-# KinAlive's reach checks (a kin row goes down, and comes back on a pong).
+# RowAlive's reversed witnesses (one per requirement it holds) and reach
+# checks (a row goes down, and comes back up by itself), each a cfg on
+# RowAlive.tla.
+for m in ManualUp NoGone GoneKeeps HoldKeeps NoRedeal; do
+    run "witness-RowAlive$m" violate . "RowAlive$m.cfg" RowAlive.tla 1
+done
 for m in NeverDown NeverBack; do
-    run "reach-KinAlive$m" violate . "KinAlive$m.cfg" KinAlive.tla 1
+    run "reach-RowAlive$m" violate . "RowAlive$m.cfg" RowAlive.tla 1
 done
 
 # Hook's reach checks (a stale hook is replaced with a hand held, and a name

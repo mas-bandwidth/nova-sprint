@@ -27,11 +27,10 @@ verb you run print `UNSEEN <n> judgements open, oldest <age>` first, counting th
 hook, then answer them. A held card's judgement waits for you by design and never raises
 UNSEEN; `judge`, `next` and `check` still list it, and `check` reds it on its own line.
 
-Every 5 minutes the run sends each friend's session, yours included, a `CHALLENGE` line: run
-the `nova-sprint pong` command it prints. A friend that answers none for 10 minutes is down:
-its hand goes back to the queue, the deal skips it, and a `down` judgement names it. It comes
-back up on its next answer; bus presence alone never brings it back. Benches are not
-challenged (`nova-sprint help pong`).
+Every row, friend or bench, is up while its bus hook is on the bus and goes down after 10 minutes
+off it, its hand back to the queue in the same op and dealt again; a friend that goes down
+also opens a `down` judgement naming it. It comes back up by itself when its hook returns.
+No row runs anything to stay up. A row you hold has its whole hand returned and dealt again.
 
 ## Who you are now
 

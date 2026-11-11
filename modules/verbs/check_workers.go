@@ -115,8 +115,8 @@ type workerView struct {
 // the doctor is not configured; the bus read for the fact, unknown when it
 // does not answer (check's bus line says so).
 func (e *Engine) showRow(ctx context.Context, row store.Row, snap store.Snapshot) any {
-	if e.Doctor == nil {
-		return row
+	if e.Doctor == nil || e.isFriend(ctx, row.Name) {
+		return row // bench-only checks never judge a friend row (docs/README.md "Hard requirements" 3)
 	}
 	u, isBench, err := e.Doctor.Worker(ctx, row.Name)
 	switch {
@@ -134,4 +134,17 @@ func (e *Engine) showRow(ctx context.Context, row store.Row, snap store.Snapshot
 		view.Problem, view.Fix = f.What, f.Fix
 	}
 	return rowView{Row: row, Worker: view}
+}
+
+// isFriend says whether nova-config's roster names row a friend: the bench
+// list is never read for one, so a bench-only failure (the control seat's
+// machine inventory unreadable) never lands on a friend's row. An
+// unreadable roster says no, and the bench read goes on as before.
+func (e *Engine) isFriend(ctx context.Context, row string) bool {
+	if e.Roster == nil {
+		return false
+	}
+	ro, err := e.Roster.ReadRosterAt(ctx, 1) // the width cap moves no name in or out of Kin
+	_, kin := ro.Kin[row]
+	return err == nil && kin
 }

@@ -1613,3 +1613,35 @@ below the code's 5 tries), and records each read, apply and other write as a
 `VerbFenceTrace.tla` step; `make-traces.sh check verbs` checks them. The
 breaker (`tla/traces/verbfence-breaker/`) is a verb that plans again after
 the old card changed under it, and commits: refused at 5 of 6 (the re-read).
+
+# A row's up, down and hand (RowAlive.tla, layers 3 and 6)
+
+`RowAlive.tla` holds the sprint's hard requirements 1 and 2
+(docs/README.md "Hard requirements"), for friend and bench rows alike: a row
+is up while its bus hook is on nova-bus (modules/run/tick.go `raiseSeen`) and
+down after `Bound` ticks off it (modules/steps/limits.go `rowLimits`, the
+`row_silent_gone` timeout); the Gone and the coordinator's hold return the
+row's whole hand in the same op (modules/steps/holds.go `handMoves`), and a
+card in the queue is dealt to a row that is open. Time moves only when no tick
+step is due. Kinds are not modelled because no rule reads a row's kind for up
+or down: v2.0.36 to v2.0.41 raised a friend only on a `pong` its model ran by
+hand, which is the `ManualUp` witness.
+
+Invariants: `HookedWhileUp` (no row up past `Bound` of bus silence),
+`HandEmptyWhenClosed` (a down or held row holds no card); liveness `AutoUp` (a
+down row whose hook is on the bus comes up, unless the hook leaves first) and
+`Redealt` (a queued card is dealt while some row is open), under weak fairness
+of the run's own steps only.
+
+    RowAlive.cfg              Bound 2, MaxClock 7, MaxEnv 4         pass (43,564 states)
+    RowAliveManualUp.cfg      up only on an answer (v2.0.36-41)     AutoUp violated
+    RowAliveNoGone.cfg        no Gone                               HookedWhileUp violated
+    RowAliveGoneKeeps.cfg     the Gone keeps the hand               HandEmptyWhenClosed violated
+    RowAliveHoldKeeps.cfg     the hold keeps the hand               HandEmptyWhenClosed violated
+    RowAliveNoRedeal.cfg      a returned card is never dealt again  Redealt violated
+    RowAliveNeverDown.cfg     reach: a row goes down                violated
+    RowAliveNeverBack.cfg     reach: a row comes back up by itself  violated
+
+The tests beside it: modules/run/rowalive_test.go (each requirement, for a
+friend and a bench). The model is not yet trace-bound: the code's walk does
+not emit RowAlive traces (owed, as it was for KinAlive before it).

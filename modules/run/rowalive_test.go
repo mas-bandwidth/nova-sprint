@@ -13,7 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// The sprint's hard requirements on a row (README "Hard requirements",
+// The sprint's hard requirements on a row (docs/README.md "Hard requirements",
 // tla/RowAlive.tla), for a friend and a bench alike:
 //
 //	R1 a row is up while its hook is on the bus and down when it has been

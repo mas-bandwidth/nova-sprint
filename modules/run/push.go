@@ -1,7 +1,6 @@
 package run
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -151,7 +150,7 @@ func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int,
 					continue
 				}
 			}
-			q = append(q, pending{0, Notice{Subject: cmp.Or(n.Subject, "NUDGE"), Line: n.Line}})
+			q = append(q, pending{0, Notice{Subject: "NUDGE", Line: n.Line}})
 			sentNudges = append(sentNudges, key)
 		}
 		if len(q) == 0 {

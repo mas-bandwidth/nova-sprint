@@ -43,20 +43,11 @@ func ShellWord(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// PongOpID is the id of row's pong to the challenge that carried nonce in
-// epoch: the pong verb writes an op by this id, and run counts it only for
-// a nonce it issued. A repeat applies once.
-func PongOpID(epoch int, row, nonce string) string {
-	sum := sha256.Sum256(fmt.Appendf(nil, "%d:%s:%s", epoch, row, nonce))
-	return fmt.Sprintf("pong.%x", sum[:16])
-}
-
 // Nudge is one push run sends to a row this tick, outside the event log: a
-// dealt card the row has not acknowledged, and the command that does, or
-// run's challenge (Subject CHALLENGE). Subject "" is NUDGE.
+// dealt card the row has not acknowledged, and the command that does.
 type Nudge struct {
-	Row, Card, Line, Subject string
-	Every                    time.Duration
+	Row, Card, Line string
+	Every           time.Duration
 }
 
 // dealtAt is when consumer c was dealt (went working): the fold's witness,

@@ -16,12 +16,8 @@ type Inputs struct {
 	Inflight []EdgeRequest        // edge requests dispatched and not yet answered by a consumed result
 	Heads    map[string]string    // stream -> the head of its branch: the base a Start records
 	Seen     map[string]time.Time // row -> when it was last seen on the bus (layer 6 keeps it)
-	// Alive is kin row -> its last evidence of life: a pong to one of the
-	// run's challenges, or when layer 6 first saw its session. A kin row's
-	// bus hook is not its model, so its silence is read here, not in Seen.
-	Alive   map[string]time.Time
-	Refused []RefusedOp   // the last tick's refused ops, from their receipts (OpGroups)
-	Roster  roster.Roster // nova-config: each row's kind, width and tiers, by name
+	Refused  []RefusedOp          // the last tick's refused ops, from their receipts (OpGroups)
+	Roster   roster.Roster        // nova-config: each row's kind, width and tiers, by name
 	// Unadmitted is each producer that failed add's admission (check's
 	// re-proof) when layer 6 last proved its stream, at the base it has now,
 	// and the refusal with its fix: it is never dealt (admission.go).

@@ -381,6 +381,20 @@ func TestShowRowWithoutAWorker(t *testing.T) {
 	want(t, w.do("carol", "show", "alice"), 0, `"unread": "connection refused"`)
 }
 
+// Bench-only checks never judge a friend row (docs/README.md "Hard requirements" 3):
+// with the bench list unreadable, show of friend dave is the store's row
+// alone, never a worker unit with the bench list's error (Stella's row,
+// 2026-11-11, showed "nova-config machine list --json: control-seat
+// secrets configuration is incomplete").
+func TestShowFriendRowIsNeverABench(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.doctor.unitsErr = errBroken
+	if out := w.ok(t, "carol", "show", "dave"); strings.Contains(out, `"worker"`) || strings.Contains(out, "unread") {
+		t.Fatalf("friend dave was judged as a bench:\n%s", out)
+	}
+}
+
 // A bench whose seat lacks GH_GATE_TOKEN (its git's one github credential)
 // refuses at worker start in one line naming the grant; check quotes that
 // line, from the unit's log, in its red (#672).

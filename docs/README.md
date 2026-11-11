@@ -100,6 +100,30 @@ card waits with its reason. A worker's failure sends it back to `ready`, or to
 `fail`. Dependencies become usable
 when their producers land, not when a worker finishes them.
 
+### Hard requirements
+
+The sprint always does these three things, for friend rows and bench rows
+alike. Each is held by a TLA+ property in `tla/RowAlive.tla` (checked with a
+reversed witness that breaks it, `tla/ci-tlc.sh`) and by a test.
+
+1. **Up and down are automatic.** A row is up while its bus hook is on
+   nova-bus and goes down after `row_silent_gone` (10 minutes by default) off
+   it. Nothing manual keeps a row up or brings it back: no command, no answer.
+   Held by `RowAlive.AutoUp` and `RowAlive.HookedWhileUp` (witnesses
+   `RowAliveManualUp`, `RowAliveNoGone`) and `TestRowUpWhileHookOnBus`,
+   `TestRowStaysUpWhileHookOnBus`, `TestRowDownWhenHookGoneAndHandDealtAgain`
+   (`modules/run/rowalive_test.go`).
+2. **A row that goes down or is held gives its cards back, and they are dealt
+   again.** Every card in its hand, taken or not, returns to the queue in the
+   same operation (branches and heads kept) and is dealt to a row that is up.
+   Held by `RowAlive.HandEmptyWhenClosed` and `RowAlive.Redealt` (witnesses
+   `RowAliveGoneKeeps`, `RowAliveHoldKeeps`, `RowAliveNoRedeal`) and
+   `TestRowDownWhenHookGoneAndHandDealtAgain`, `TestHeldRowHandDealtAgain`.
+3. **Bench-only checks never judge a friend row.** A friend row is never read
+   as a worker bench, so a bench failure (an unreadable machine inventory, a
+   worker unit's log) never lands on it. Held by
+   `TestShowFriendRowIsNeverABench` (`modules/verbs/check_test.go`).
+
 Every dealt attempt has an id and generation, written `<card>@<gen>`, and a
 sprint epoch. Copy these from the latest receipt. They prevent an old session
 from reporting into a newer attempt or a different sprint.

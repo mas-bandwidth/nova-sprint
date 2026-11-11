@@ -132,11 +132,12 @@ func (t *tick) hasLive(p string) bool {
 // from the deal plus the take window, so never before the take receipt's
 // deadline) with no report is withdrawn.
 //
-// A kin row's silence is its time since its last evidence of life
-// (Inputs.Alive: a pong to the run's challenge), not the bus: its hook can
-// stay present with no session behind it. With none for two challenge
-// windows it goes down, its hand returned, and a down judgement tells the
-// coordinator.
+// Every row, friend and bench alike, is judged by one rule: its silence
+// is its time off the bus (Inputs.Seen), and silent for RowSilentGone it
+// goes down with its whole hand returned in the same op (docs/README.md "Hard
+// requirements" 1 and 2; tla/RowAlive.tla). Nothing manual keeps a row up
+// or brings it back: raiseSeen does on its hook alone. A friend row that
+// goes down also opens a down judgement for the coordinator.
 func (t *tick) rowLimits(n string) {
 	r := t.v.Rows[n]
 	if r.Flaps >= t.lim.FlapLimit {
@@ -144,10 +145,6 @@ func (t *tick) rowLimits(n string) {
 	}
 	seen, known := t.in.Seen[n]
 	gone, kin := seconds(t.tmo.RowSilentGone), t.kind(n) == roster.KindKin
-	if kin {
-		seen, known = t.in.Alive[n]
-		gone = 2 * seconds(Engine.ChallengeEvery)
-	}
 	if !known {
 		seen = t.v.Since
 	}
@@ -167,7 +164,7 @@ func (t *tick) rowLimits(n string) {
 	if r.State == "up" && silent >= gone && t.unclaimed(n) {
 		g := t.group("gone", "", t.handMoves(n, "down", card.Gone{})...)
 		if g != nil && kin {
-			g.judge = t.riding("down", n, fmt.Sprintf("kin row %s answered no challenge for %s and is down; its hand went back to the queue, branches kept. It comes back when its session answers one (nova-sprint pong); if it is gone for good, nova-sprint unhook %s", n, silent.Truncate(time.Second), n))
+			g.judge = t.riding("down", n, fmt.Sprintf("friend row %s was off the bus for %s and is down; its hand went back to the queue, branches kept. It comes back up by itself when its hook is on the bus again; if it is gone for good, nova-sprint unhook %s", n, silent.Truncate(time.Second), n))
 		}
 	}
 }

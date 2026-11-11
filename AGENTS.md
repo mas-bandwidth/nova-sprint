@@ -19,6 +19,23 @@ Use the CLI for sprint operations. Copy the current row, generation and epoch
 from receipts. A successful finish reports a head; review, CI and landing are
 separate outcomes. Report only what you observed.
 
+## Hard requirements: never regress these
+
+Every change keeps all three, for friend rows and bench rows alike
+([the guide](docs/README.md#hard-requirements) has the detail):
+
+1. A row is up while its bus hook is on nova-bus and down after
+   `row_silent_gone` off it, with nothing manual (no pong, no command):
+   `tla/RowAlive.tla` AutoUp and HookedWhileUp; `modules/run/rowalive_test.go`.
+2. A row that goes down or is held returns every card it holds to the queue in
+   the same op, and they are dealt again: `tla/RowAlive.tla`
+   HandEmptyWhenClosed and Redealt; `TestRowDownWhenHookGoneAndHandDealtAgain`,
+   `TestHeldRowHandDealtAgain`.
+3. Bench-only checks never judge a friend row:
+   `TestShowFriendRowIsNeverABench` (`modules/verbs/check_test.go`).
+
+A change that needs to break one of them is Glenn's decision, asked first.
+
 ## Change nova-sprint
 
 Before contributing, read the [Contributor Assignment Agreement](https://github.com/mas-bandwidth/.github/blob/main/CAA.md).
