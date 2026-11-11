@@ -145,7 +145,7 @@ var okReadReceipt_internal = TakeInfo{Producer: "p1", Kind: "read", Stream: "s1"
 func TestStitchStartupOrderIsBusUnhookHookThenNext(t *testing.T) {
 	t.Parallel()
 	hook := newFakeWakeHook()
-	sp := &loopSprint{next: NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1}, unhookErr: fmt.Errorf("%w: vision.ds is not hooked", ErrRefused), nexts: make(chan struct{}, 8)}
+	sp := &loopSprint{next: NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1}, nexts: make(chan struct{}, 8)} // the unhook exits 0 ("nothing to unhook" too); a refused one ends the start (restart_test.go)
 	r, _ := loopRunner_internal(t, sp, hook, &crWall{})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

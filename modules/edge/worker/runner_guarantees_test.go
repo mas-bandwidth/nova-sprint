@@ -322,10 +322,11 @@ func TestReadHarnessNonZeroExitWithNoResultIsAFault(t *testing.T) {
 	}
 }
 
-// Guarantee 7 and the restart rule ("adopted by pid and nonce"). The pid is
-// written to job.json only after RunHarness returns (runner.go:417-424), i.e.
-// after the harness exited. While it runs, job.json says running with pid 0, so
-// a restarted runner cannot adopt it and reports it as gone.
+// Guarantee 7 and the restart rule (a restart gives up its cards; the first
+// pass after it kills the harness the old session left, by pid and nonce).
+// The pid was written to job.json only after RunHarness returned, so while
+// the harness ran job.json said pid 0 and a restarted runner could not find
+// it to kill it.
 func TestColdreadDefectPidNotRecordedWhileHarnessRuns(t *testing.T) {
 	t.Parallel()
 	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
@@ -335,7 +336,7 @@ func TestColdreadDefectPidNotRecordedWhileHarnessRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(w.pidsSeen) == 0 || w.pidsSeen[0] == 0 {
-		t.Errorf("job.json during the harness run held pid %v: restart cannot adopt a live harness", w.pidsSeen)
+		t.Errorf("job.json during the harness run held pid %v: a restarted runner cannot kill the harness left running", w.pidsSeen)
 	}
 }
 

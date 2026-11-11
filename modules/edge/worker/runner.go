@@ -308,15 +308,6 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 	}
 	return out, nil
 }
-func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id string, rec JobRecord, reason string) error {
-	rec.PushedHead = cmp.Or(r.harvestPartialPush_internal(ctx, jobDir, rec), rec.PushedHead)
-	rec.ResultID = cmp.Or(rec.ResultID, resultID_internal(rec.Epoch, id, rec.Gen))
-	rec.Outcome, rec.State = Outcome{Result: "fault", Head: rec.PushedHead, Reason: reason}, JobReporting
-	if err := WriteJobRecord(jobDir, rec); err != nil {
-		return err
-	}
-	return r.sendReportAndClean_internal(ctx, jobDir, rec)
-}
 
 // withdrawRunningJob_internal stops the harness of a job whose consumer is
 // final (withdrawn): it pushes nothing, since the branch is the next
@@ -331,9 +322,8 @@ func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
 }
 
 // harvestPartialPush_internal pushes the commits a work job's tree holds,
-// once, while its job still holds the consumer (a fault past the deadline,
-// a restart's release); the head pushed, or "" when nothing was (a failed
-// push is said).
+// once, while its job still holds the consumer (a release with no blame);
+// the head pushed, or "" when nothing was (a failed push is said).
 func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string, rec JobRecord) string {
 	if rec.Kind != "work" || r.Git == nil {
 		return ""
@@ -372,7 +362,10 @@ func (r *Runner) cancelRunning_internal(id string) {
 }
 
 // busHook_internal is the start's first half: the bus hook, which claims
-// the row's name, then the self-unhook of a dead worker's sprint hook.
+// the row's name; then every harness a dead worker of this row left
+// running is killed, from the job records on disk; then the row's hand is
+// given up (giveUpHand_internal). A restart resumes nothing: the dealer
+// deals those cards again (tla/Runner.tla KillLeftover, Restart).
 func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, error) {
 	if r.BusHook == nil {
 		return nil, errors.New("worker refused: no bus hook configured: start the worker through nova-sprint worker")
@@ -381,11 +374,67 @@ func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, er
 	if err != nil {
 		return nil, err
 	}
-	if err := r.Sprint.Unhook(ctx, row); err != nil && !errors.Is(err, ErrRefused) {
+	r.killLeftovers_internal(row)
+	if err := r.giveUpHand_internal(ctx, row); err != nil {
 		hook.Stop()
 		return nil, err
 	}
 	return hook, nil
+}
+
+// StartUnhookTries is how many times a start unhooks its row before it
+// ends the worker; StartUnhookWait is the wait between tries (a guess).
+const (
+	StartUnhookTries = 3
+	StartUnhookWait  = 2 * time.Second
+)
+
+// giveUpHand_internal is the start's self-unhook (2026-11-10: a bench that
+// restarts gives up its cards): the unhook returns the row's whole hand to
+// the queue in its op (released, no blame, branches and pushed heads
+// kept). A refused unhook (the CLI's every exit but 0 and the store's
+// down: a commit whose card moved between the unhook's read and its
+// commit, among them) is tried again, read afresh, StartUnhookTries times
+// in all; then the worker ends with the refusal's words, and the service
+// starts it again. It never hooks in after a refused unhook. The store
+// down ends the start at once.
+func (r *Runner) giveUpHand_internal(ctx context.Context, row string) error {
+	var err error
+	for try := 1; try <= StartUnhookTries; try++ {
+		if try > 1 && r.Sleep != nil {
+			r.Sleep(StartUnhookWait)
+		}
+		if err = r.Sprint.Unhook(ctx, row); err == nil || !errors.Is(err, ErrRefused) {
+			return err
+		}
+		r.report(fmt.Sprintf("giving up %s's hand at the start, try %d of %d", row, try, StartUnhookTries), err)
+	}
+	return fmt.Errorf("worker refused: the start could not give up %s's hand in %d tries, and a restart never runs with a kept hand; the service starts the worker again: %w", row, StartUnhookTries, err)
+}
+
+// killLeftovers_internal ends, before the unhook and the probe, whatever a
+// dead worker of row left running for its jobs: the harness by the pid and
+// nonce its record holds (OSProcessTable.Alive reads the nonce from /proc,
+// so not on macOS), then every process of the job directory
+// (endJobTree_internal: by the job's environment marks, on Linux and
+// macOS). Nothing of this worker runs yet. The directory is retired by the
+// first pass, which finds its card final.
+func (r *Runner) killLeftovers_internal(row string) {
+	entries, err := os.ReadDir(filepath.Join(r.RootDir, "jobs"))
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		jobDir := filepath.Join(r.RootDir, "jobs", e.Name())
+		rec, err := ReadJobRecord(jobDir)
+		if err != nil || !e.IsDir() || rec.Row != row || rec.State == JobCleaned {
+			continue
+		}
+		if rec.State == JobRunning && rec.PID > 0 {
+			r.killTracked_internal("stopping the harness a dead worker left for "+rec.Consumer, rec.PID, rec.Nonce)
+		}
+		r.endJobTree_internal(jobDir, rec, "start")
+	}
 }
 
 // sprintHook_internal is the start's second half: nova-sprint hook.
@@ -468,7 +517,7 @@ func (r *Runner) refuseReceipt_internal(ctx context.Context, jobDir string, rowI
 }
 
 // initJob_internal makes the job directory of a card just taken, with its
-// receipt (to resume it after a stop) and its record at taken.
+// receipt (for a later pass to go on with it) and its record at taken.
 func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir string) (Job, JobRecord, error) {
 	for _, sub := range []string{"home", "tmp", "data"} {
 		if err := os.MkdirAll(filepath.Join(jobDir, sub), 0o755); err != nil && sub == "home" {

@@ -576,7 +576,10 @@ func TestRunnerRebaseConflictStageFaultAndLeftTree(t *testing.T) {
 	}
 }
 
-func TestRunnerRestartRecovery(t *testing.T) {
+// A job on a card the row holds whose take receipt is gone cannot go on:
+// its commits are pushed and the card given back with no blame, the head
+// kept for the next deal.
+func TestAJobWithNoReceiptIsReleasedWithItsHead(t *testing.T) {
 	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
@@ -592,33 +595,21 @@ func TestRunnerRestartRecovery(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(jobDir, "repo"), 0o755)
 	git.headByWT[filepath.Join(jobDir, "repo")] = testPriorSHA
 
-	procs := &fakeProcTable{alive: map[string]bool{"777:nonce-live": true}}
 	writeStagedRecord_internal(t, jobDir, JobRecord{
 		Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1",
 		Branch: taken.Branch, BaseSHA: taken.BaseSHA, Gen: taken.Gen, Attempt: 1,
-		ResultID: "res-p1.w1-g3", State: JobRunning, PID: 777, Nonce: "nonce-live",
+		ResultID: "res-p1.w1-g3", State: JobStaged,
 	})
-	r1, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
-	if err := r1.RecoverRow(ctx, row); err != nil {
-		t.Fatalf("RecoverRow live: %v", err)
-	}
-	if snap, _ := st.Snapshot(ctx); snap.Cards["p1.w1"].State != card.Working {
-		t.Fatalf("a live harness (pid 777) must be adopted and left working on restart: %+v", snap.Cards["p1.w1"])
-	}
-
-	// Simulate harness death while runner was down, then restart and recover on r2.
-	delete(procs.alive, "777:nonce-live")
-	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
-	if err := r2.RecoverRow(ctx, row); err != nil {
-		t.Fatalf("RecoverRow dead: %v", err)
+	r, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: &fakeProcTable{alive: map[string]bool{}}, Now: clock})
+	if err := r.RecoverRow(ctx, row); err != nil {
+		t.Fatalf("RecoverRow: %v", err)
 	}
 	snap, _ := st.Snapshot(ctx)
-	// Defect 73: one the restart cannot resume (no receipt) is released with no blame.
 	if snap.Cards["p1"].State != "ready" || snap.Cards["p1"].Bounces != 0 || snap.Cards["p1"].Head != testPriorSHA {
-		t.Fatalf("dead harness on restart must release with no blame (0 bounces) and keep partial head %s: %+v", testPriorSHA, snap.Cards["p1"])
+		t.Fatalf("a job with no receipt must be released with no blame (0 bounces) and keep its pushed head %s: %+v", testPriorSHA, snap.Cards["p1"])
 	}
-	if w := snap.Cards["p1.w1"]; w.Result == "fault" || !strings.HasPrefix(w.Reason, "released: runner restarted") || strings.Contains(w.Reason, "lost") {
-		t.Fatalf("restart must release p1.w1 with no fault and no blame: %+v", w)
+	if w := snap.Cards["p1.w1"]; w.Result == "fault" || !strings.HasPrefix(w.Reason, "released: the job cannot go on") {
+		t.Fatalf("p1.w1 must be released with no fault and no blame: %+v", w)
 	}
 }
 

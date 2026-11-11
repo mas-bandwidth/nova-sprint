@@ -19,8 +19,9 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 }
 
 // RecoverRow is one recovery of the row's jobs, run to the end: what is
-// owed is sent, finished cards' directories are cleaned, a live harness is
-// adopted, and every job a stopped runner left is resumed (and waited for).
+// owed is sent, final cards' directories are retired (a harness left on one
+// killed), and every job a pass left on a working card goes on (and is
+// waited for).
 func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 	resumes, unsent, err := r.recoverRow_internal(ctx, row)
 	if err != nil || len(resumes) == 0 {
