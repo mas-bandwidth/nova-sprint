@@ -316,7 +316,10 @@ for each candidate, and the engine refuses one below the card's tier.
   (`run.BaseWatch`) and passes the last completed read per repository and
   base in `Inputs.Bases`. A red read (a check failed and none still
   running, or a check failed and the tip has waited `CIWait`, the
-  landing's bound; a tip still running is not polled past it)
+  landing's bound; a tip is asked every `LandPoll` inside `CIWait` of its
+  first ask, then every `CIWait`, done or not, so a red that completes
+  late or a re-run that turns a green tip red is read: one checks call
+  per `CIWait` for a base whose tip does not move)
   with live producers on its streams has one open `base-red` about
   `<repo>@<base>`, choice `retry`: the tip, the red checks, the first
   failing lines of up to three jobs, the first red tip of the stretch and
@@ -326,8 +329,11 @@ for each candidate, and the engine refuses one below the card's tier.
   the next episode, opened in the same op; a green read clears it; no read
   (pending, rested, failed) neither opens nor clears; a base that leaves the
   watch (no live cards) forgets its read, and a land pass that finds the
-  base red at a tip that read green reads it again. Answered, the same red
-  set stays quiet for the judgement timeout, then opens `STILL RED`.
+  base red at a tip that read green reads it again at once. Answered, the
+  same red set in the same red stretch stays quiet for the judgement
+  timeout, then opens `STILL RED`; a stretch the watch began after the
+  answer (a green read between) opens at once, plain. An all-cancelled
+  tip is no fact: the open judgement keeps naming the last tip read red.
   Nothing is held, stopped or dealt differently: the push only (v1's
   TickBaseCI; `tla/BaseRed.tla`, bound to the code by the trace walk
   `modules/run/basered_trace_test.go`).
@@ -335,7 +341,12 @@ for each candidate, and the engine refuses one below the card's tier.
   `judge`, 2026-11-10: a stall answered `retry` reopened seconds later,
   again and again): one answered while its cause still holds stays quiet
   for the judgement timeout, then reopens as `STILL HOLDS <d> after your
-  answer: ...` (`tla/AnsweredQuiet.tla`).
+  answer: ...`. The quiet belongs to one unbroken stretch of the cause: a
+  tick that sees the cause not holding ends it (`Plan.Broken`, which
+  layer 6 carries to the next tick as `Inputs.Broken`), so the cause
+  coming back opens at once, plain; an answer from before the run's view
+  began is no quiet (`tla/AnsweredQuiet.tla`, bound to the code by the
+  trace walk `modules/run/answeredquiet_trace_test.go`).
 - Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 

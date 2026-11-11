@@ -148,8 +148,10 @@ What each judgement kind asks of you, and where to look before you choose:
   stops and deals nothing differently because of it: the fix is yours (section 5). When it says
   red since only since the run began watching the base, it may have been red for longer.
 - Any watch judgement (one whose one choice is `retry`) that you answer stays quiet while its
-  cause still holds, for the judgement timeout (one hour by default); then it reopens as `STILL
-  HOLDS <d> after your answer: ...`. Answering `retry` is "I am on it", not "it is fixed".
+  cause still holds without a break, for the judgement timeout (one hour by default); then it
+  reopens as `STILL HOLDS <d> after your answer: ...` (`STILL RED` for a base). A cause that
+  cleared and came back is new: it is pushed at once, plain. Answering `retry` is "I am on it",
+  not "it is fixed".
 - `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unhold`, or `drop`. An unhold gives the card a full fresh bounce budget (the limit
