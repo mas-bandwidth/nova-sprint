@@ -134,7 +134,7 @@ func TestHookRefusals(t *testing.T) {
 		{name: "no role", as: "dave", args: []string{"hook"}, exit: 2, want: []string{"--role is worker or coordinator"}},
 		{name: "a bad role", as: "dave", args: []string{"hook", "--role", "owner"}, exit: 2, want: []string{"--role is worker or coordinator"}},
 		{name: "not on the bus", as: "erin", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"erin is not on the bus"}},
-		{name: "a second hook", as: "alice", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"alice is already hooked in as worker", "nova-sprint unhook --as alice"}},
+		{name: "a second hook", as: "alice", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"alice is already hooked in as worker: nova-sprint next --as alice"}},
 		{name: "a second coordinator", as: "dave", args: []string{"hook", "--role", "coordinator"}, exit: 1, want: []string{"the sprint's coordinator is carol", "nova-sprint unhook --as carol"}},
 		{name: "a bus hook with no session id", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
 			prep: func(_ *testing.T, w *world) { w.bus.noSession = true },

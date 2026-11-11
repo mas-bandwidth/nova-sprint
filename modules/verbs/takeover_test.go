@@ -217,7 +217,7 @@ func TestUpTakeOverRefusals(t *testing.T) {
 			want: []string{"the sprint's coordinator is carol", "only when the operator says so, take the seat: " + hint}},
 		{name: "the taker is hooked already", prep: func(t *testing.T, w *world) { w.ok(t, "dave", "hook", "--role", "worker") },
 			args: []string{"up", "--take-over", "--reason", "carol is gone"}, exit: 1,
-			want: []string{"dave is already hooked in as worker", "nova-sprint unhook --as dave"}},
+			want: []string{"dave is hooked in as worker; unhook first to change role", "nova-sprint unhook --as dave", "then " + hint}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

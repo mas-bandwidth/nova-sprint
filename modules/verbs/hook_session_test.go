@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -32,7 +33,53 @@ func TestNewBusSessionHooksInBeforeItActs(t *testing.T) {
 		t.Fatalf("row %+v", r)
 	}
 	want(t, w.do("carol", "hold", "alice", "--reason", "r"), 0, "row alice held=true")
-	want(t, w.do("carol", "hook", "--role", "coordinator"), 1, "carol is already hooked in as coordinator", "nova-sprint unhook --as carol")
+	want(t, w.do("carol", "hook", "--role", "coordinator"), 1, "SPRINT REFUSED hook: carol is already hooked in as coordinator: nova-sprint next --as carol")
+}
+
+// A name hooked in on the bus hook it has now is told to go on, never to
+// unhook: the line a session follows must not hand back its hand or its
+// seat.
+func TestAlreadyHookedInNamesNext(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	for name, role := range map[string]string{"alice": "worker", "carol": "coordinator"} {
+		r := w.do(name, "hook", "--role", role)
+		want(t, r, 1, "SPRINT REFUSED hook: "+name+" is already hooked in as "+role+": nova-sprint next --as "+name)
+		if strings.Contains(r.Output, "unhook") {
+			t.Fatalf("the refusal names unhook:\n%s", r.Output)
+		}
+	}
+}
+
+// A hooked row changes role only through unhook. A hook in another role is
+// refused whether the row's bus session is the live one or an earlier one,
+// so a coordinator whose bus hook was started again never empties the seat
+// by hooking as a worker, and a worker never takes an empty seat in place,
+// its worker cards in hand. The refusal names the hook that keeps the role
+// and the unhook that changes it; the same role still replaces in place.
+func TestHookNeverChangesRoleInPlace(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.bus.session = map[string]string{"carol": "bus-2"}
+	want(t, w.do("carol", "hook", "--role", "worker"), 1, "SPRINT REFUSED hook: carol is hooked in as coordinator; unhook first to change role",
+		"nova-sprint hook --as carol --role coordinator", "nova-sprint unhook --as carol")
+	if s := w.snap(t); s.Rows["carol"].Session != "s-carol" || s.Rows["carol"].Role != "coordinator" || coordinatorOf(s) != "carol" {
+		t.Fatalf("the refused hook moved the seat: %+v", s.Rows["carol"])
+	}
+	want(t, w.do("carol", "hook", "--role", "coordinator"), 0, "HOOKED carol role=coordinator")
+	want(t, w.do("carol", "unhook"), 0, "UNHOOKED carol")
+
+	// the seat is empty: a worker on a new bus session does not take it in place
+	w.bus.session["alice"] = "bus-3"
+	want(t, w.do("alice", "hook", "--role", "coordinator"), 1, "SPRINT REFUSED hook: alice is hooked in as worker; unhook first to change role",
+		"nova-sprint hook --as alice --role worker", "nova-sprint unhook --as alice")
+	if s := w.snap(t); s.Rows["alice"].Session != "s-alice" || s.Rows["alice"].Role != "worker" || coordinatorOf(s) != "" || s.Cards["p1.w1"].State != "working" {
+		t.Fatalf("the refused hook took the seat: %+v", s.Rows["alice"])
+	}
+	// nor one on the bus session it hooked in on
+	want(t, w.do("bob", "hook", "--role", "coordinator"), 1, "SPRINT REFUSED hook: bob is hooked in as worker; unhook first to change role",
+		"nova-sprint next --as bob", "nova-sprint unhook --as bob")
+	want(t, w.do("alice", "hook", "--role", "worker"), 0, "HOOKED alice role=worker")
 }
 
 // A row whose bus hook was started again mid-card gets "hook in first" on
