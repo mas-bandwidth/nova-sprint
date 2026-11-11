@@ -74,6 +74,31 @@ func epochChange(was, now store.Snapshot) string {
 	return fmt.Sprintf("the sprint moved from epoch %d to %d since this verb read it", was.Epoch, now.Epoch)
 }
 
+// owns is the first change any of checks names, or "".
+func owns(checks ...func(was, now store.Snapshot) string) func(was, now store.Snapshot) string {
+	return func(was, now store.Snapshot) string {
+		for _, c := range checks {
+			if what := c(was, now); what != "" {
+				return what
+			}
+		}
+		return ""
+	}
+}
+
+// hookChange is the caller's own hook changed: a verb fenced on the hooks
+// (UnchangedSince Hooks) so that its caller is still the coordinator it was
+// read as is refused by any row's hook; only the caller's is its own.
+func hookChange(actor string) func(was, now store.Snapshot) string {
+	return func(was, now store.Snapshot) string {
+		a, b := was.Rows[actor], now.Rows[actor]
+		if a.Session == b.Session && a.Role == b.Role {
+			return ""
+		}
+		return fmt.Sprintf("row %s's hook changed since this verb read it (session %s role %s, now session %s role %s)", actor, orWord(a.Session, "none"), orWord(a.Role, "none"), orWord(b.Session, "none"), orWord(b.Role, "none"))
+	}
+}
+
 // applyOnce is op through write (st.Apply, or st.Clear) exactly once: on an
 // unknown outcome, the receipt its id already got, else the same op again.
 func applyOnce(ctx context.Context, st store.Store, op store.Op, write func(context.Context, store.Op) (store.Receipt, error)) (store.Receipt, error) {

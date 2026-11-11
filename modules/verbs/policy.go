@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -38,17 +39,40 @@ func runPolicy(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (
 // policyWrite is set and activate, by the coordinator, with a reason.
 func policyWrite(ctx context.Context, e *Engine, in *input, snap store.Snapshot, ro roster.Roster) (string, error) {
 	reason := in.str("reason")
-	c := policy.Caller{Actor: in.actor, Coordinator: true, OpID: e.newOp(strings.ReplaceAll(in.verb, " ", "-"), in.actor, snap, in.args).ID, At: e.Now()}
-	var r policy.Result
-	var err error
-	if in.verb == "policy set" {
-		r, err = policy.Set(ctx, e.Store, ro, e.Policy, c, in.arg(0), reason)
-	} else {
+	write := func(c policy.Caller) (policy.Result, error) {
+		return policy.Set(ctx, e.Store, ro, e.Policy, c, in.arg(0), reason)
+	}
+	if in.verb == "policy activate" {
 		v, f := version(in.arg(0))
 		if f != nil {
 			return "", f
 		}
-		r, err = policy.Activate(ctx, e.Store, ro, e.Policy, c, v, reason)
+		write = func(c policy.Caller) (policy.Result, error) {
+			return policy.Activate(ctx, e.Store, ro, e.Policy, c, v, reason)
+		}
+	}
+	// activate, and a set that activates, answer the open policy judgements
+	// they read, so they are fenced on every judgement (policy.fenced): one
+	// the run opened or closed between (a red, a down) is not their own, and
+	// they read and run again, up to fenceTries in all, as fenced does. The
+	// store names the part an UnchangedSince refusal wrote; a policy stored
+	// between is their own, and the refusal.
+	var r policy.Result
+	var err error
+	for try := 1; ; try++ {
+		c := policy.Caller{Actor: in.actor, Coordinator: true, OpID: e.newOp(strings.ReplaceAll(in.verb, " ", "-"), in.actor, snap, in.args).ID, At: e.Now()}
+		r, err = write(c)
+		var ref *policy.Refusal
+		if !errors.As(err, &ref) || !strings.HasSuffix(ref.What, " wrote judgements") {
+			break
+		}
+		if try == fenceTries {
+			ref.What += fmt.Sprintf(" (refused %d times, each by a judgement it does not answer: the store moves faster than it can plan)", try)
+			break
+		}
+		if snap, err = e.snapshot(ctx); err != nil {
+			return "", err
+		}
 	}
 	if err != nil {
 		return "", err

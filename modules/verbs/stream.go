@@ -48,24 +48,34 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	// ticks move the store: the op is planned on a snapshot read after it
 	// and fenced on the streams it read (the name absent, the next pos) and
 	// the hooks (the caller the coordinator), never on the seq, which every
-	// worker's beat moves.
+	// worker's beat moves. Another stream or another row's hook written
+	// between is not its own: it reads again, the pos again (fenced).
 	if snap, err = e.snapshot(ctx); err != nil {
 		return "", err
 	}
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint show "+name)
 	}
-	pos := 0
-	for _, s := range snap.Streams {
-		pos = max(pos, s.Pos+1)
+	plan := func(s store.Snapshot) (store.Op, error) {
+		pos := 0
+		for _, st := range s.Streams {
+			pos = max(pos, st.Pos+1)
+		}
+		op := e.newOp("stream-add", in.actor, s, name)
+		op.Expect = []store.Expect{store.UnchangedSince{Seq: s.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
+		op.Writes = []store.Write{store.PutStream{Name: name, Repo: repo, Base: base, Pos: pos, Mode: mode, Forge: forge}}
+		if len(gates) > 0 {
+			op.Writes = append(op.Writes, store.SetStreamGates{Stream: name, Gates: gates})
+		}
+		return op, nil
 	}
-	op := e.newOp("stream-add", in.actor, snap, name)
-	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
-	op.Writes = []store.Write{store.PutStream{Name: name, Repo: repo, Base: base, Pos: pos, Mode: mode, Forge: forge}}
-	if len(gates) > 0 {
-		op.Writes = append(op.Writes, store.SetStreamGates{Stream: name, Gates: gates})
+	added := func(_, now store.Snapshot) string {
+		if _, ok := now.Streams[name]; ok {
+			return "stream " + name + " was added since this verb read it"
+		}
+		return ""
 	}
-	r, err := e.commit(ctx, op, "nova-sprint show "+name)
+	r, _, err := e.fenced(ctx, snap, "nova-sprint show "+name, owns(hookChange(in.actor), added), plan)
 	if err != nil {
 		return "", err
 	}
@@ -152,14 +162,37 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 			return "", err
 		}
 	}
-	op := e.newOp("stream-set", in.actor, snap, name, mode, forge, gates)
-	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
-	op.Writes = ws
-	r, err := e.commit(ctx, op, "nova-sprint show "+name)
+	// fenced on the streams (this one as read) and the hooks (the caller the
+	// coordinator); another stream, this one's hold, or another row's hook
+	// written between is not its own: it reads again (fenced)
+	plan := func(cur store.Snapshot) (store.Op, error) {
+		op := e.newOp("stream-set", in.actor, cur, name, mode, forge, gates)
+		op.Expect = []store.Expect{store.UnchangedSince{Seq: cur.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
+		op.Writes = ws
+		return op, nil
+	}
+	r, _, err := e.fenced(ctx, snap, "nova-sprint show "+name, owns(hookChange(in.actor), streamChange(name)), plan)
 	if err != nil {
 		return "", err
 	}
 	return done(waitNext, append(append([]string{fmt.Sprintf("STREAM %s mode=%s forge=%s applied at seq %d", name, mode, orWord(forge, "none"), r.Seq)}, gateLines(gates)...), e.gatelessWarn(ctx, snap, store.Stream{Name: name, Gates: gates})...)...), nil
+}
+
+// streamChange is stream name's own record changed: what stream set read
+// and admitted (repository, base, mode, forge, gates), or the stream gone.
+// Its hold and its position are not stream set's.
+func streamChange(name string) func(was, now store.Snapshot) string {
+	return func(was, now store.Snapshot) string {
+		a, b := was.Streams[name], now.Streams[name]
+		if _, ok := now.Streams[name]; !ok {
+			return "stream " + name + " is gone since this verb read it"
+		}
+		if a.Repo != b.Repo || a.Base != b.Base || a.Mode != b.Mode || a.Forge != b.Forge || !slices.Equal(a.Gates, b.Gates) {
+			return fmt.Sprintf("stream %s changed since this verb read it (repo=%s base=%s mode=%s forge=%s gates=%d, now repo=%s base=%s mode=%s forge=%s gates=%d)",
+				name, a.Repo, a.Base, orWord(a.Mode, store.StreamAuto), orWord(a.Forge, "none"), len(a.Gates), b.Repo, b.Base, orWord(b.Mode, store.StreamAuto), orWord(b.Forge, "none"), len(b.Gates))
+		}
+		return ""
+	}
 }
 
 // streamGates is --gate over the stream's own gates: each given one
