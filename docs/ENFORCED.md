@@ -145,7 +145,7 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 | L5-15 | `LAYER-5-POLICY.md` Built, Round 5 (store round 22) | Every row fact a question reads (kind, width, tiers, model, harness) is the roster's (nova-config's) by the row's name; a row the roster does not name is in no question and opens one roster judgement, "row <name> is not in nova-config" | `test TestRosterIsTheSourceOfRowFacts`, `test TestDefaultAnswersEverySnapshot` |
 | L5-16 | `LAYER-5-POLICY.md` Built, Round 5 (cold read 3 ruling 1, the clock seam) | A process engine runs every version in a child process killed when a run it abandoned at the deadline still runs or when it misses the deadline; the deadline and the early fallback are on the engine's `Clock`, counted from the tick's first byte | `test TestFunctionalEvaluator`, `test TestDeadlineOnTheClock`, `test TestFallbackCountsFromTheFirstByte`, `test TestColdread3DefectAbandonedRunOutlivesDeadline`, `test TestFunctionalBreakFallbackTimerStartsAfterTheInputs`, `test TestFunctionalBreakProseMakesTheInputsOutrunTheTickDeadline` |
 | L5-17 | `LAYER-5-POLICY.md` The verbs, Built Round 5 (rowan2's probes) | A verb refuses, naming the field, any string the store would refuse before it builds an op; `set` is fenced at its snapshot (a racing equal body is "already stored"), compares bodies with script versions only, and refuses keyword-only parameters; `check` asks landing on both rungs; tuple, list and augmented top-level bindings are refused at their line | `test TestBreakSetBodyOrNameTheStoreRefusesReachesItAsErrInvalid`, `test TestBreakReasonInInvalidUTF8ReachesTheStoreAsErrInvalid`, `test TestBreakSetRaceStoresOneBodyTwice`, `test TestColdread3DefectSetEqualBodyNamesDataVersion`, `test TestColdread3DefectKeywordOnlyParamPassesArity`, `test TestColdread3DefectCheckBlindToBackedUpRung`, `test TestColdread3DefectTupleBoundNameRefusedWithoutLine` |
-| L5-18 | `LAYER-3-STEPS.md` The asker; `LAYER-5-POLICY.md` The model | A tick no version answered (a tick timeout) runs on the last answered tick's limits and timeouts, never the engine's: one timeout neither fails a live consumer nor holds a producer under bounds the policy did not set | `invariant Policy.NoAnswerKeepsTheBounds`, `witness PolicyNoAnswerDefaultBounds`, `test TestAskerNoAnswerKeepsTheLastBounds`, `test TestLimitsReleaseLostCards`, `test TestNoAnswerKeepsTheLastAnsweredBounds` |
+| L5-18 | `LAYER-3-STEPS.md` The asker; `LAYER-5-POLICY.md` The model | A tick no version answered (a tick timeout) runs on the last answered tick's limits and timeouts, never the engine's: one timeout neither fails a live consumer nor holds a producer under bounds the policy did not set | `invariant Policy.NoAnswerKeepsTheBounds`, `witness PolicyNoAnswerDefaultBounds`, `test TestAskerNoAnswerKeepsTheLastBounds`, `test TestLimitsReleaseLostCards` |
 
 ---
 
@@ -177,10 +177,10 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 
 ## Summary Counts
 
-Total rules audited: 113
+Total rules audited: 114
 
-- held by a model: 58
-- held by a test: 91
+- held by a model: 59
+- held by a test: 92
 - held by the schema: 16
 - held by nothing: 20
 
