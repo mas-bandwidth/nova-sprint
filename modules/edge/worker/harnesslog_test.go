@@ -138,3 +138,19 @@ func TestCleanKeepsTheLogsOfAJobThatDidNotEndOK(t *testing.T) {
 		t.Errorf("kept %d jobs' logs (%v), want the newest %d", len(entries), err, KeptLogJobs)
 	}
 }
+
+// A key the harness wrote into its log or its last output never reaches a
+// stored reason: the reason is the store's, read by every row.
+func TestAHarnessKeyNeverReachesTheReason(t *testing.T) {
+	t.Parallel()
+	const key = "sk-live0123456789abcdefghijklmnop"
+	dir := t.TempDir()
+	writeHarnessLog_internal(t, dir, `timestamp=2026-11-10T21:47:59Z level=ERROR message="session error" error="APICallError: 401 bad key `+key+`"`+"\n")
+	got := harnessLogErrors_internal(dir, filepath.Join("data", "opencode", "log"))
+	if strings.Contains(got, key) || !strings.Contains(got, "APICallError: 401 bad key") {
+		t.Errorf("the log's error line: %q, want the cause kept and the key gone", got)
+	}
+	if out := noVerdict_internal("the harness exited 1 without writing result.json", "auth failed with "+key); strings.Contains(out.Reason, key) {
+		t.Errorf("the last output's key is in the reason: %q", out.Reason)
+	}
+}
