@@ -281,7 +281,16 @@ Deal to report:
    each until the card's deadline (what is left of it; the step bound is
    never a gate's); push. A conflict is a `fail` naming the files; a gate
    still running at the deadline is a `fail` saying how long it ran, and
-   one not started because the deadline had passed is a `fault`.
+   one not started because the deadline had passed is a `fault`. Then the
+   stream's gates (the take receipt's `stream_gates`) run the same way at
+   the same head. One red at the head (it ran and exited non-zero) runs
+   once at the card's base sha, in the job's tree checked out there (an
+   answer kept per repository, base and gate for the life of the worker):
+   red there too, it is the base's and does not fail the attempt, whose
+   report's reason says `stream gate <command> is red at base <sha>`;
+   green there, or not judged there, it is a `fail` naming the stream gate.
+   Runner.tla's Rebase and Conflict are this step's outcomes as before: a
+   stream gate adds inputs to the step, no transition.
 7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
    CI is read by the landing on the group sha, not by the worker.
 8. **Report** with a result id written to `job.json` before the first try;

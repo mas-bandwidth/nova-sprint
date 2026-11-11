@@ -291,7 +291,11 @@ func (t *fakeTx) open() error { t.st.epoch++; return nil }
 
 func (t *fakeTx) putCard(c Card) error { t.st.cards[t.k(c.ID)] = cardCopy(c); return nil }
 
-func (t *fakeTx) putStream(s Stream) error        { t.st.streams[t.k(s.Name)] = s; return nil }
+func (t *fakeTx) putStream(s Stream) error {
+	s.Gates = normList(s.Gates)
+	t.st.streams[t.k(s.Name)] = s
+	return nil
+}
 func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = r; return nil }
 func (t *fakeTx) putPolicy(p PolicyVersion) error { t.st.policies[p.Version] = p; return nil }
 

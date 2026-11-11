@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -82,6 +83,7 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 		}
 		heads[s.Name] = sha
 		r.ok("stream %s: %s reachable, base %s at %s", s.Name, s.Repo, s.Base, shortSHA(sha))
+		checkStreamGates(r, s)
 		if agree[i][0] != "" {
 			r.warn(agree[i][0], agree[i][1])
 		}
@@ -95,6 +97,19 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 		}
 	}
 	return heads
+}
+
+// checkStreamGates is one line per gate of stream s, each re-parsed as
+// stream set admitted it (a restore or an older build is held to today's
+// rule): ok when it is one command, red naming the fix when it is not.
+func checkStreamGates(r *checkReport, s store.Stream) {
+	for _, g := range s.Gates {
+		if _, why := edge.ParseGate(g); why != "" {
+			r.red(refuse("stream "+s.Name+": gate "+clip(g)+" is not one command: "+why, edge.GateFix+", then nova-sprint stream set "+s.Name+" --gate <command> again"))
+			continue
+		}
+		r.ok("stream %s gate: %s (every card of the stream passes it at its finished head)", s.Name, g)
+	}
 }
 
 // streamsInOrder is the streams by position, then name.

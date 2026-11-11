@@ -182,7 +182,8 @@ type Runner struct {
 	running                   map[string]context.CancelFunc
 	backoffSeq                uint64
 	lastBeatErr               string
-	advertised                string // the tiers the heartbeat says this harness serves (advertise_internal)
+	advertised                string          // the tiers the heartbeat says this harness serves (advertise_internal)
+	baseGates                 map[string]bool // per repository, base sha and stream gate: red there (baseGateRed_internal)
 }
 
 // NewRunner is a runner on any machine nova-config gives the bench role;
@@ -203,7 +204,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	}
 	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
 	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
-	cfg.running, cfg.gone = map[string]context.CancelFunc{}, map[string]int{}
+	cfg.running, cfg.gone, cfg.baseGates = map[string]context.CancelFunc{}, map[string]int{}, map[string]bool{}
 	return &cfg, nil
 }
 func (r *Runner) harnessFor_internal(name string) (Harness, error) {
@@ -480,7 +481,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		PriorHead: info.PriorHead, Head: info.Head, Tier: info.Tier,
 		Model: info.Model, HarnessName: rowInfo.Harness, Brief: info.Brief,
 		Prose: info.Prose, Finding: info.Finding, Paths: info.Paths,
-		DoneWhen: info.DoneWhen, Gen: info.Gen, Attempt: info.Attempt,
+		DoneWhen: info.DoneWhen, StreamGates: info.StreamGates, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
 		ProxyAddr: proxyAddr, CommitName: info.CommitName,
 		CommitEmail: info.CommitEmail, Forge: info.Forge, Deadline: deadline,
@@ -489,7 +490,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
 		Row: rowInfo.Row, Stream: info.Stream, Repo: info.Repo, Base: info.Base,
 		StreamRef: info.StreamRef, Branch: info.Branch, BaseSHA: info.BaseSHA,
-		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen),
+		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen), StreamGates: cloneStrings_internal(info.StreamGates),
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
 	}
@@ -816,11 +817,18 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		if strings.TrimSpace(cmd) == "" || r.Wall == nil {
 			continue
 		}
-		if out, red := r.doneWhen_internal(ctx, tJob, *rec, cmd); red {
+		if out, red, _ := r.doneWhen_internal(ctx, tJob, *rec, doneWhenGate, cmd); red {
 			rec.Outcome = out
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
+	}
+	if out, red, note := r.streamGates_internal(ctx, tJob, *rec); red {
+		rec.Outcome = out
+		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
+		return nil
+	} else if note != "" {
+		rec.Outcome.Reason = TailBytes([]byte(strings.TrimPrefix(rec.Outcome.Reason+"; "+note, "; ")), MaxReasonBytes)
 	}
 	if r.Git != nil && rec.Outcome.Head != "" && rec.Outcome.Head != rec.PushedHead {
 		if err := r.pushBranch_internal(ctx, rec, rec.Outcome.Head); err != nil {
@@ -859,10 +867,11 @@ func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound time.Duration, wha
 // run out of it again, and a fail's bounce reaches the bounce limit where
 // a fault is dealt again for ever. A gate not started because the deadline
 // has passed, a wall that could not run it and a missing toolchain are
-// faults: that gate did not run.
-func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, cmd string) (out Outcome, red bool) {
-	notRun := func(why string) (Outcome, bool) {
-		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("done-when test (%s) did not run: %s", cmd, why)), MaxReasonBytes)}, true
+// faults: that gate did not run. testsRed: it ran and exited non-zero, the
+// one red a stream gate's run at the base can excuse (streamGates_internal).
+func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, kind gateKind, cmd string) (out Outcome, red, testsRed bool) {
+	notRun := func(why string) (Outcome, bool, bool) {
+		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("%s (%s) did not run: %s", kind.name, cmd, why)), MaxReasonBytes)}, true, false
 	}
 	bound, what := r.doneWhenBound_internal(rec)
 	if bound <= 0 {
@@ -870,12 +879,12 @@ func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, cm
 	}
 	tres, err := r.Wall.RunTest(ctx, j, cmd, bound)
 	if err == nil && tres.ExitCode == 0 {
-		return Outcome{}, false
+		return Outcome{}, false, false
 	}
 	var xe *edge.ExecError
 	if errors.As(err, &xe) && xe.Kind == edge.ErrTimeout {
-		return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("done-when test (%s) timed out after %s, %s: %s",
-			cmd, bound.Round(time.Second), what, cmp.Or(GateTail(tres.Output, MaxReasonBytes), "no output"))}, true
+		return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("%s (%s) timed out after %s, %s: %s",
+			kind.name, cmd, bound.Round(time.Second), what, cmp.Or(GateTail(tres.Output, MaxReasonBytes), "no output"))}, true, false
 	}
 	if fault, why := isInfraFault_internal(tres, err); fault {
 		return notRun(why)
@@ -883,7 +892,109 @@ func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, cm
 	if fault, why := isMissingTestToolchain_internal(tres); fault {
 		return notRun(why)
 	}
-	return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, GateTail(tres.Output, MaxReasonBytes))}, true
+	return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("%s (%s): %s", kind.red, cmd, GateTail(tres.Output, MaxReasonBytes))}, true, true
+}
+
+// gateKind names a gate in its reasons: a card's DONE-WHEN, or a gate of
+// its stream (store.Stream.Gates).
+type gateKind struct{ name, red string }
+
+var (
+	doneWhenGate = gateKind{name: "done-when test", red: "tests red"}
+	streamGate   = gateKind{name: "stream gate", red: "stream gate red"}
+)
+
+// streamGates_internal runs the stream's gates of rec after its DONE-WHENs,
+// at the same head, each as doneWhen_internal runs a DONE-WHEN (the same
+// bound and reason rules). A gate that is red at the head (it ran and
+// exited non-zero) and red at the base the card started from (rec.BaseSHA)
+// is the base's fault, not the card's: it does not fail the attempt, and
+// note says "stream gate <cmd> is red at base <sha>" for the report's
+// reason. A gate red at the head and green at the base, or one the base run
+// could not judge, fails the attempt as a red DONE-WHEN does; so does a
+// stream gate that timed out or did not run, at the head, whatever the base.
+func (r *Runner) streamGates_internal(ctx context.Context, j Job, rec JobRecord) (out Outcome, red bool, note string) {
+	if r.Wall == nil {
+		return Outcome{}, false, ""
+	}
+	var reds []string
+	outs := map[string]Outcome{}
+	for _, cmd := range rec.StreamGates {
+		if strings.TrimSpace(cmd) == "" {
+			continue
+		}
+		o, isRed, testsRed := r.doneWhen_internal(ctx, j, rec, streamGate, cmd)
+		if isRed && !testsRed {
+			return o, true, ""
+		}
+		if isRed {
+			reds, outs[cmd] = append(reds, cmd), o
+		}
+	}
+	if len(reds) == 0 {
+		return Outcome{}, false, ""
+	}
+	atBase := r.baseGateRed_internal(ctx, j, rec, reds)
+	var notes []string
+	for _, cmd := range reds {
+		if !atBase[cmd] {
+			return outs[cmd], true, ""
+		}
+		notes = append(notes, fmt.Sprintf("stream gate %s is red at base %s", cmd, rec.BaseSHA))
+	}
+	return Outcome{}, false, strings.Join(notes, "; ")
+}
+
+// baseGateRed_internal is whether each of cmds is red (ran and exited
+// non-zero) at rec.BaseSHA, the base the card started from. An answer is
+// kept per repository, base sha and gate for the life of the worker, so a
+// red base costs one run of each gate on this bench, not one per card. The
+// gates not yet answered run in the job's tree checked out at the base
+// (baseArgv_internal), after its head's gates: nothing runs in the tree
+// after them. A base that cannot be checked out, and a gate that times out
+// or does not run there, answer nothing (not red) and are not kept.
+func (r *Runner) baseGateRed_internal(ctx context.Context, j Job, rec JobRecord, cmds []string) map[string]bool {
+	out := map[string]bool{}
+	if rec.BaseSHA == "" {
+		return out
+	}
+	key := func(cmd string) string { return rec.Repo + "\x00" + rec.BaseSHA + "\x00" + cmd }
+	var ask []string
+	r.mu.Lock()
+	for _, cmd := range cmds {
+		if red, ok := r.baseGates[key(cmd)]; ok {
+			out[cmd] = red
+		} else {
+			ask = append(ask, cmd)
+		}
+	}
+	r.mu.Unlock()
+	if len(ask) == 0 {
+		return out
+	}
+	res, err := r.Wall.RunStep(ctx, j, baseArgv_internal(rec.BaseSHA), r.Timeouts.RebaseAndTest)
+	if fault, why := isInfraFault_internal(res, err); fault || res.ExitCode != 0 {
+		r.logStep_internal(rec.Row, rec.Consumer, "stream gates at base", strings.TrimSpace(fmt.Sprintf("base %s not checked out: exit=%d %s %s", rec.BaseSHA, res.ExitCode, why, TailBytes(res.Output, 512))), res.Elapsed)
+		return out
+	}
+	for _, cmd := range ask {
+		_, isRed, testsRed := r.doneWhen_internal(ctx, j, rec, streamGate, cmd)
+		if isRed && !testsRed {
+			continue // not judged at the base: nothing kept
+		}
+		out[cmd] = isRed
+		r.mu.Lock()
+		r.baseGates[key(cmd)] = isRed
+		r.mu.Unlock()
+	}
+	return out
+}
+
+// baseArgv_internal checks the base sha out in the job's tree, in the
+// wall, for a stream gate's run at the base: what the head's gates left
+// untracked is cleaned away, ignored files (build caches) are kept.
+func baseArgv_internal(sha string) []string {
+	return []string{"sh", "-c", `set -e; git checkout -q -f --detach "$1"; git clean -q -f -d`, "base", sha}
 }
 
 // applyRebased_internal checks the rebased head out in the job's tree,
@@ -892,7 +1003,7 @@ func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, cm
 // no tests. fault: the failure is the worker's or the wall's (the export,
 // or isInfraFault_internal), not the card's.
 func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) (bool, error) {
-	if r.Git == nil || r.Wall == nil || rec.StreamRef == "" || !slices.ContainsFunc(rec.DoneWhen, func(c string) bool { return strings.TrimSpace(c) != "" }) {
+	if r.Git == nil || r.Wall == nil || rec.StreamRef == "" || !slices.ContainsFunc(slices.Concat(rec.DoneWhen, rec.StreamGates), func(c string) bool { return strings.TrimSpace(c) != "" }) {
 		return false, nil
 	}
 	bundle := filepath.Join(j.JobDir, RebasedBundle)

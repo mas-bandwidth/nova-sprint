@@ -2,12 +2,12 @@ package verbs
 
 func coordinateVerbs() []*verb {
 	return []*verb{
-		{name: "stream add", group: "coordinate", role: roleCoordinator, usage: "<s> --repo <org/repo> [--base main] [--mode auto|group|hand] [--forge github]", flags: "repo= base= mode= forge=", min: 1, max: 1, run: runStreamAdd,
-			about: "adds a stream: its repository (<org>/<repo> with --forge github, reached at https://github.com/<org>/<repo>.git as the process's GitHub identity; or a clone URL or path), base branch, landing mode (auto by default) and forge (none: no PR or CI, landed by hand)",
-			needs: []string{"the stream exists: nova-sprint show <s>", "the base branch is not at origin: push it, or pass --base", "card branches sprint/<s>/<card> cannot be created (a bad name, or a branch sprint or sprint/<s>): rename or delete it", "with --forge github, this host's gh cannot write the repository: gh auth login as an identity that can"}},
-		{name: "stream set", group: "coordinate", role: roleCoordinator, usage: "<s> [--mode auto|group|hand] [--forge github|none]", flags: "mode= forge=", min: 1, max: 1, run: runStreamSet,
-			about: "changes a stream's landing mode or forge",
-			needs: []string{"an unknown stream: nova-sprint stream add <s> --repo <org/repo>"}},
+		{name: "stream add", group: "coordinate", role: roleCoordinator, usage: "<s> --repo <org/repo> [--base main] [--mode auto|group|hand] [--forge github] [--gate <command>]...", flags: "repo= base= mode= forge= gate=*", min: 1, max: 1, run: runStreamAdd,
+			about: "adds a stream: its repository (<org>/<repo> with --forge github, reached at https://github.com/<org>/<repo>.git as the process's GitHub identity; or a clone URL or path), base branch, landing mode (auto by default), forge (none: no PR or CI, landed by hand) and gates (each --gate one command, as a DONE-WHEN is, that every card of the stream must pass at its finished head beside its own DONE-WHENs; a gate red at the card's base too is the base's, not the card's)",
+			needs: []string{"the stream exists: nova-sprint show <s>", "the base branch is not at origin: push it, or pass --base", "card branches sprint/<s>/<card> cannot be created (a bad name, or a branch sprint or sprint/<s>): rename or delete it", "with --forge github, this host's gh cannot write the repository: gh auth login as an identity that can", "a --gate that is not one command: write it as one (sh -c '...' for a shell)"}},
+		{name: "stream set", group: "coordinate", role: roleCoordinator, usage: "<s> [--mode auto|group|hand] [--forge github|none] [--gate <command>... | --gate none]", flags: "mode= forge= gate=*", min: 1, max: 1, run: runStreamSet,
+			about: "changes a stream's landing mode, forge or gates (--gate given once or more replaces the whole list; --gate none clears it)",
+			needs: []string{"an unknown stream: nova-sprint stream add <s> --repo <org/repo>", "a --gate that is not one command: write it as one (sh -c '...' for a shell)"}},
 		{name: "add", group: "coordinate", role: roleCoordinator, usage: "--stream <s> --brief-file <f>... [--dry-run] | --stream <s> --sentinel <id> --needs <a,b>", flags: "stream= brief-file=* needs= sentinel= dry-run", max: 0, run: runAdd,
 			about: "adds producers from briefs that pass the card contract, or a sentinel that lands when its needs land",
 			needs: []string{"an unknown stream: nova-sprint stream add", "a brief missing a contract section, by name", "an unknown need, or a cycle, named",

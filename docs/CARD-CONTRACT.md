@@ -62,6 +62,34 @@ hetzner2" (LESSONS C.11). Every gate keeps its command, exit code and full
 log; a finding names the path, and a read verdict without a file:line
 finding is refused (LESSONS C.16).
 
+## Stream gates
+
+A rule every card of a stream must keep is declared once, on the stream,
+never left to each brief to remember: on 2026-11-10 cards changed code
+emitters without regenerating the committed generated tree three times in
+one night, though every brief said to, and each was caught only at landing.
+`nova-sprint stream set <s> --gate "<command>"` (and `stream add` with the
+same flag; repeatable; given, it replaces the whole list, and a lone
+`--gate none` clears it) stores the stream's gates
+on its record (`sprint.streams.gates`, round 31). Each is parsed by
+`edge.ParseGate` as a DONE-WHEN is, and refused at `stream add` and
+`stream set` in the same words; `check` re-parses and prints each; `show
+<s>` lists them; take carries them (`stream_gates`, and a `STREAM GATE:`
+line per gate in its text).
+
+A bench's worker runs the stream's gates after the card's DONE-WHENs, at the
+same head, with the same bound and reason rules; a red one fails the
+attempt, its reason naming the stream gate and keeping the lines that say
+what failed. A stream gate that ran red at the head is run once at the base
+the card started from (the consumer's base sha; the answer is kept per
+repository, base and gate for the life of the worker): red there too, it is
+the base's fault, not the card's, and the attempt is not failed for it; its
+report's reason says `stream gate <command> is red at base <sha>`. A
+stream gate that timed out or did not run fails or faults as a DONE-WHEN
+does, whatever the base. Friend rows and reads run the stream gates
+themselves under the same rule, as they run DONE-WHENs: no program checks
+a friend's finish.
+
 ## What the brief tells the worker
 
 The brief tells the worker to cite the base-reds table instead of
