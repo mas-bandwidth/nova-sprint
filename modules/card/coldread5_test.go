@@ -478,7 +478,7 @@ func cold5Exact(a, b store.Snapshot) string {
 		}
 	}
 	for n, x := range a.Streams {
-		if b.Streams[n] != x {
+		if !reflect.DeepEqual(b.Streams[n], x) {
 			return fmt.Sprintf("stream %s: %+v vs %+v", n, x, b.Streams[n])
 		}
 	}
