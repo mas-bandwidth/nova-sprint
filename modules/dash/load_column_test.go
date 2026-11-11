@@ -55,8 +55,10 @@ func TestFleetAndFriendsTablesEndInTheLoadColumn(t *testing.T) {
 	}
 }
 
-// Both tables' rows carry the load the page shows, from the heartbeat's CPU peak.
-func TestFleetAndFriendsRowsCarryTheCPUPeak(t *testing.T) {
+// A Fleet row carries the load the page shows, from the heartbeat's CPU peak;
+// a Friends row never does, and the page shows "-" (the human, 2026-11-10:
+// "load is only for fleet machines").
+func TestFleetRowsCarryTheCPUPeakFriendsNone(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{Workers: map[string]roster.Worker{"w": {Name: "w", Width: 4}}, Kin: map[string]roster.Kin{"k": {Name: "k", Width: 2}}}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
@@ -64,7 +66,7 @@ func TestFleetAndFriendsRowsCarryTheCPUPeak(t *testing.T) {
 		"k": {Name: "k", State: "up", Load1Centi: 900, CPUPeakDeci: 1000, Cores: 4},
 	}}
 	d := mapSnapshot(snap, ros, time.Time{})
-	for table, want := range map[string]map[string]string{"fleet": {"w": "41.2%"}, "friends": {"k": "100.0%"}} {
+	for table, want := range map[string]map[string]string{"fleet": {"w": "41.2%"}, "friends": {"k": ""}} {
 		body, err := json.Marshal(d.Tables[table])
 		if err != nil {
 			t.Fatal(err)
