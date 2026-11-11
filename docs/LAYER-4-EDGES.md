@@ -409,26 +409,46 @@ A restart gives up the hand (the rule of 2026-11-10: a bench that restarts
 and does not come back must not sit on its cards). The store is the truth;
 the runner keeps only `job.json` per job (consumer, gen, attempt, result
 id, harness pid and nonce) and its take receipt (`receipt.json`). On start,
-after the bus hook, the worker unhooks its own row, and the unhook returns
-the row's whole hand to the queue in its op: each card released, no
-result, no bounce, no blame, its branch and pushed head kept. Then it
-probes and hooks in. Nothing of the old session is resumed or adopted: the
-first pass finds those cards final and retires their job directories
-(below), killing any harness the old session left running (by pid and
-nonce) first and pushing nothing; their reports are never sent. The dealer
-deals the cards again, each to a new consumer whose take starts from the
-branch tip on origin, so a pushed head is kept and the next attempt goes
-on from it. Installing a new build restarts every bench worker, so every
-running bench job is given up and dealt again. Within one session a pass
+after the bus hook, the worker first ends what a dead worker of its row
+left running, from the job records on disk: the harness by pid and nonce
+(`OSProcessTable` finds the nonce in `/proc`, so not on macOS), then every
+process of each of the row's job directories by the job's environment
+marks (`OSKillJob`, Linux and macOS). Then it unhooks its own row: the
+unhook returns the row's whole hand to the queue in its op, each card
+released, no result, no bounce, no blame, its branch and pushed head
+kept. A refused unhook (any exit of `nova-sprint unhook` but 0 and the
+store's down, a commit refused because a card moved between the unhook's
+read and its commit among them: the exit codes do not tell these apart,
+only the words do) is tried again, read afresh, `StartUnhookTries` (3)
+times in all, `StartUnhookWait` (2 s, a guess) apart; then the worker
+ends, non-zero, with the refusal's words, and its service starts it
+again. It never hooks in after a refused unhook. Not covered: an unhook
+that exits 0 and leaves a card (a row with no session, "nothing to
+unhook", or a card the card machine would not withdraw, which `handBack`
+names for the run's next tick) is returned by the run's tick only while
+the row is not hooked in; a worker that hooks in first keeps it. Then it probes
+and hooks in. Nothing of the old session is resumed or adopted: the first
+pass finds those cards final and retires their job directories (below),
+pushing nothing; their reports are never sent. The dealer deals the cards
+again, each to a new consumer whose take starts from the branch tip on
+origin, so a pushed head is kept and the next attempt goes on from it.
+The cost the rule accepts: a restart throws away every harness's work on
+that bench that was not pushed (a job pushes at harvest; a harness killed
+mid-run has pushed nothing of its own). `nova-fleet install` replaces the
+binary only; a worker runs the new one when its service restarts (the
+services play restarts a unit whose file changed or that
+`nova_service_restart` names), and every such restart gives up that
+bench's hand. Within one session a pass
 goes on with a job an earlier pass left on a card the row holds: one
 staged with no slot is run when a slot is free (its deadline the
 recorded one), one harvested with a fault is reported, one whose report
 is owed is reported again under its result id. A live harness on a card
 the row still holds is never the worker's own (its harness ends with its
-job): it is killed and the card released with no blame, as its worker's
-restart would have. A job whose take receipt is gone cannot go on and is
-released with no blame (`nova-sprint release`, with the partial head it
-pushed). A `working` consumer with no job directory is the pass's to take
+job): it is killed and the card released with no blame. A job whose take
+receipt is gone cannot go on and is released with no blame. Both releases
+go through `releaseNoBlame_internal`, which, unlike the restart, still
+holds the card: it seals the job's tree, pushes the partial head by lease
+once, then `nova-sprint release --head` names it, so that work is kept. A `working` consumer with no job directory is the pass's to take
 and run. A job directory whose consumer is final,
 or whose generation is stale, is retired on the first pass that sees it:
 nothing pushed, the directory made writable and removed, its record kept in
@@ -509,8 +529,11 @@ Clean, Withdraw (the sprint's: the store moves, the job does not), Retire
 harness left running, pushing nothing), HolderTake and HolderPush (the
 card's next holder takes it from the branch tip and pushes from another
 row), Stop (the worker's own stop: harnesses killed, jobs kept at staged,
-unreported), Crash (at any step), Restart (the next start: its self-unhook
-returns the whole hand, nothing is resumed), StoreDown; and the card's
+unreported), Crash (at any step), the next start's KillLeftover (a harness
+the dead worker left, killed from its record before the unhook),
+UnhookRefused (tried again, up to three tries), Exit (every try refused:
+the worker ends and is started again) and Restart (its self-unhook returns
+the whole hand, nothing is resumed), StoreDown; and the card's
 branch on origin (who wrote its tip, the next holder's write, the job's
 pushes after final).
 Invariants: guarantees 7 to 11; `working`
@@ -519,7 +542,8 @@ within width; slots within capacity; `PassNeverWaitsOnJobs`;
 `NoSlotNeverReleases` (a staged job with every slot held waits for one, never
 gives its card back; the sprint's deadline withdraw bounds the wait);
 `RestartReturnsHand` and `ReturnedNeverReports` (after a restart the row
-holds none of its old cards, and no job of the old session reports).
+holds none of its old cards, and no job of the old session reports);
+`KeptHandNeverRuns` (a worker past its start holds no card dealt before it).
 Liveness: every `working` consumer of the row ends recorded or withdrawn, a
 withdrawn job's directory is removed (`FinalDirRemoved`), and a returned
 card is dealt again (`ReturnedDealtAgain`). Reversed witnesses: a slot freed while its
@@ -532,13 +556,18 @@ pushes (`RunnerWithdrawnPushes`), again on a later pass
 (`RunnerWithdrawnPushesRepeatedly`), and by plain force over the next
 holder's branch (`RunnerForcePushRewinds`); a give-back for want of a slot
 (`RunnerNoSlotReleases`); a restart that keeps its hand and resumes, so a
-job reports for a card its row gave up (`RunnerRestartResumes`). Reach
-checks: a take while another job runs, a stop, a harness the old session
-left met by the first pass after a restart, a returned hand, a retire, the
-next holder's push over a head the job pushed. The trace walk's restart
-returns the hand through the store and its retire kills the old harness
-through the worker's own code; the fixture `runner-breaker`, a restart
-that kept its hand, is refused at its Restart record.
+job reports for a card its row gave up (`RunnerRestartResumes`); a start
+that ignores a refused unhook and hooks in over the kept hand
+(`RunnerRefusedUnhookKeepsHand`). Reach checks: a take while another job
+runs, a stop, a harness the old session left met by the first pass after a
+restart, a leftover killed at the start, a worker that ended on refused
+unhooks and a later start that gave the hand up, a returned hand, a
+retire, the next holder's push over a head the job pushed. The trace
+walk's start is the worker's own `busHook_internal` (the kill, the unhook
+through the store's client, its refusals and retries); its retire is the
+worker's `finalJob_internal`. Fixtures: `runner-restart` (accepted), and
+`runner-breaker-refused` (a refusal ignored) and `runner-breaker` (a
+restart that kept its hand), each refused at its last record.
 Size: 2 consumers, width 2, 1 slot, 1 Crash.
 
 `tla/Push.tla`, the cursor: events, cursor, sends, lost replies, a crash.
@@ -1143,10 +1172,12 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
 - **Restart and stop (70, 73; restart since 2026-11-10).** The take
   receipt is kept as `receipt.json` at take; a later pass rebuilds a job the
   row still holds from it (a re-take would replay the take's op id at the
-  pre-take gen). A restart resumes nothing: the start's self-unhook returns
-  the row's whole hand (released, no blame, branches and pushed heads
-  kept), the dealer deals the cards again, and the first pass retires the
-  old jobs, killing a harness left running. A job with no slot stays staged
+  pre-take gen). A restart resumes nothing: the start kills the harnesses
+  the dead worker left, its self-unhook returns the row's whole hand
+  (released, no blame, branches and pushed heads kept; a refusal is tried
+  again, and the worker ends rather than hook in over a kept hand), the
+  dealer deals the cards again, and the first pass retires the old jobs.
+  A job with no slot stays staged
   and the next pass runs it. A job directory with no receipt is released with no blame:
   `release` gains `--head` so the worker hands back
   the partial head it pushed (checked as a finish's head is). "runner lost
@@ -1157,8 +1188,10 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   next start gives its card back);
   `edge.Exec` classifies a cancelled command as `canceled` ("stopped by its
   caller"), never a timeout. Model: Stop, Restart, `StopIsNeverAFault`,
-  `RestartReturnsHand`, `ReturnedNeverReports`, `ReturnedDealtAgain`,
-  witnesses `RunnerStopIsAFault`, `RunnerRestartResumes`.
+  KillLeftover, UnhookRefused, Exit, `RestartReturnsHand`,
+  `ReturnedNeverReports`, `KeptHandNeverRuns`, `ReturnedDealtAgain`,
+  witnesses `RunnerStopIsAFault`, `RunnerRestartResumes`,
+  `RunnerRefusedUnhookKeepsHand`.
 - **A read's outcome (67).** `ReadOutcome` has three values (ok, fix,
   fault) and a read's report is built only from it, so a read cannot send
   "fail". No result file for a read is a fault; a harness's own fail

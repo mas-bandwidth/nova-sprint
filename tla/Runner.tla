@@ -29,7 +29,13 @@
 (* the branch tip (HolderTake). RestartReturnsHand, ReturnedNeverReports,  *)
 (* ReturnedDealtAgain; reversed witness RunnerRestartResumes (the restart  *)
 (* that kept the hand and resumed: a job reports for a card its row gave   *)
-(* back). A dealt card with no job directory is the pass's to acknowledge  *)
+(* back). The start kills the harnesses the dead worker left before its    *)
+(* unhook (KillLeftover); a refused unhook is tried again, and when every  *)
+(* try is refused the worker ends and is started again (UnhookRefused,     *)
+(* Exit): it never hooks in over a kept hand (KeptHandNeverRuns; reversed  *)
+(* witness RunnerRefusedUnhookKeepsHand, the start that ignored a refusal, *)
+(* as the code did before 2026-11-11).                                     *)
+(* A dealt card with no job directory is the pass's to acknowledge         *)
 (* and run. A staged job that finds every slot held waits for a slot and   *)
 (* keeps its card (2026-11-09: a busy bench gave back 124 cards in 20      *)
 (* minutes, each dealt to it again); the sprint's deadline withdraw bounds *)
@@ -130,7 +136,7 @@ Init ==
                                       prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
-  /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, returned |-> {}, restarted |-> FALSE]
+  /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, returned |-> {}, restarted |-> FALSE, tries |-> 0, refusals |-> 0]
   /\ pass = "idle"
   /\ branch = [c \in Consumers |-> [tip |-> "none", holderWrote |-> FALSE, finalPushes |-> 0, known |-> "none", from |-> "unset"]]
 
@@ -355,7 +361,8 @@ Crash ==
 
 \* The worker's own stop (ctx cancelled): every live harness is killed and
 \* its slot freed; its job is kept at staged, marked stopped, with no pid,
-\* no outcome and no report, to be run again after Restart.
+\* no outcome and no report. The next start gives its card back (Restart)
+\* and the first pass retires it: a stopped job is never run again.
 Stop ==
   /\ ~env.crashed
   /\ env.crashes < MaxCrashes
@@ -381,16 +388,48 @@ PassEnd ==
   /\ pass' = "idle"
   /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, branch>>
 
-\* The next start (runner.go busHook_internal): its self-unhook returns the
-\* row's whole hand to the queue in the unhook's op (Steps.tla ReturnHand),
-\* each card released: no result, no bounce, branch and pushed head kept.
-\* Nothing is resumed: the old session's jobs are final, and the first pass
-\* retires them (Retire). A start whose unhook cannot reach the store does
-\* not start, so the store is up here.
+\* The next start (runner.go busHook_internal), in order. KillLeftover:
+\* each harness the dead worker left is killed from its job record, before
+\* the unhook and the probe (the pid and nonce, then the job directory's
+\* processes, OSKillJob); best effort, so Retire kills what is left.
+\* UnhookRefused: the unhook is refused (a commit whose card moved between
+\* its read and its commit); nothing changes, and it is tried again, up to
+\* UnhookTries tries (giveUpHand_internal). Exit: every try refused, the
+\* worker ends and its service starts it again, a new start. Restart: the
+\* unhook returns the row's whole hand to the queue in its op (Steps.tla
+\* ReturnHand), each card released: no result, no bounce, branch and pushed
+\* head kept; then the sprint hook. Nothing is resumed: the old session's
+\* jobs are final, and the first pass retires them (Retire). A start whose
+\* unhook cannot reach the store does not start, so the store is up here.
+\* Refusals are bounded (MaxRefusals) so a behaviour ends in a start.
+UnhookTries == 3     \* runner.go StartUnhookTries
+MaxRefusals == UnhookTries + 1   \* one exit, then one more refusal
+
+KillLeftover(c) ==
+  /\ env.crashed
+  /\ harnessAlive[c] = 1
+  /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
+  /\ slotsInUse' = slotsInUse - 1
+  /\ UNCHANGED <<storeState, jobState, width, jobDir, appliedOps, env, pass, branch>>
+
+UnhookRefused ==
+  /\ env.crashed
+  /\ env.tries < UnhookTries
+  /\ env.refusals < MaxRefusals
+  /\ env' = [env EXCEPT !.tries = @ + 1, !.refusals = @ + 1]   \* tried again, the hand untouched
+  /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, pass, branch>>
+
+Exit ==
+  /\ env.crashed
+  /\ env.tries = UnhookTries
+  /\ env' = [env EXCEPT !.tries = 0]
+  /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, pass, branch>>
+
 Restart ==
   /\ env.crashed
+  /\ env.tries < UnhookTries
   /\ LET hand == {c \in Consumers : storeState[c] \in {"ready", "working"}}
-     IN /\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE, !.restarted = TRUE, !.returned = @ \cup hand]
+     IN /\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE, !.restarted = TRUE, !.returned = @ \cup hand, !.tries = 0]
         /\ storeState' = [c \in Consumers |-> IF c \in hand THEN "fail" ELSE storeState[c]]   \* the hand, returned
   /\ harnessAlive' = harnessAlive   \* a harness left running is never adopted and never doubled: the first pass kills it
   /\ UNCHANGED <<jobState, slotsInUse, width, jobDir, appliedOps, pass, branch>>
@@ -433,7 +472,10 @@ Next ==
        \/ Retire(c)
        \/ HolderPush(c)
        \/ HolderTake(c)
+       \/ KillLeftover(c)
   \/ Crash
+  \/ UnhookRefused
+  \/ Exit
   \/ Restart
   \/ StoreDown
   \/ StoreUp
@@ -457,7 +499,7 @@ FairConsumer(c) ==
 
 \* The dealer deals a card that went back to the queue again: Steps.tla's
 \* liveness (DealtWithinKTicks), assumed here as HolderTake's fairness.
-Spec == Init /\ [][Next]_vars /\ WF_vars(Restart) /\ WF_vars(StoreUp) /\ WF_vars(PassStart) /\ WF_vars(PassEnd)
+Spec == Init /\ [][Next]_vars /\ WF_vars(Restart) /\ WF_vars(Exit) /\ WF_vars(StoreUp) /\ WF_vars(PassStart) /\ WF_vars(PassEnd)
         /\ FairConsumer("c1") /\ FairConsumer("c2") /\ \A c \in Consumers : WF_vars(HolderTake(c))
 
 TypeOK ==
@@ -546,6 +588,13 @@ RestartReturnsHand ==
 ReturnedNeverReports ==
   \A c \in env.returned : ~(\E op \in appliedOps : op.c = c)
 
+\* A restarted worker never runs with a kept hand: once it is past its
+\* start, its row holds none of the cards dealt to it before (none is dealt
+\* to it after in this model). Witness RunnerRefusedUnhookKeepsHand: the
+\* start that ignored a refused unhook and hooked in over the hand.
+KeptHandNeverRuns ==
+  (env.restarted /\ ~env.crashed) => \A c \in Consumers : storeState[c] \notin {"ready", "working"}
+
 \* The head a job pushes keeps the history of the head it started from:
 \* the stream is merged in, never rebased (a rebase drops a merge commit
 \* that resolved a conflict, and the conflict comes back every attempt).
@@ -579,6 +628,8 @@ NeverTakesWhileAJobRuns ==
 NeverStopped == \A c \in Consumers : ~jobDir[c].stopped
 NeverLeftoverAfterRestart == ~(\E c \in env.returned : harnessAlive[c] = 1 /\ ~env.crashed /\ pass = "planning")
 NeverReturned == env.returned = {}
+NeverExitedThenStarted == ~(env.refusals >= UnhookTries /\ env.restarted)   \* every try refused, the worker ended, and a later start gave the hand up
+NeverKilledAtStart == ~(env.crashed /\ \E c \in Consumers : jobState[c] = "running" /\ harnessAlive[c] = 0 /\ storeState[c] = "working")   \* a leftover killed before the unhook
 NeverRetired == ~(\E c \in Consumers : storeState[c] = "fail" /\ jobDir[c].creates > 0 /\ ~jobDir[c].exists /\ ~jobDir[c].pushed)
 NeverHolderPushedOverJob == ~(\E c \in Consumers : branch[c].holderWrote /\ jobDir[c].pushed /\ jobDir[c].creates > 0)
 

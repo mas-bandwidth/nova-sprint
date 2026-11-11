@@ -480,10 +480,13 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
 
 1. A new nova-sprint build is adopted with `nova-sprint up --version <v>`: it checks that the
    nova-sprint on PATH is that release and that its `check` passes; when it is not, it names the
-   `nova-fleet install` command that installs it. Never copy a binary by hand. Installing a
-   build restarts every bench worker, and a restart gives up the row's whole hand (section 7,
-   item 4): every running bench job stops, is never reported, and its card is dealt again,
-   from its branch with the pushed head kept. Install at a quiet moment.
+   `nova-fleet install` command that installs it. Never copy a binary by hand. `nova-fleet
+   install` replaces the binary only; a running worker keeps the old one until its service is
+   restarted, which the `services` play does for a unit whose file changed or that
+   `nova_service_restart` names. Every worker restart gives up the row's whole hand (section 7,
+   item 4): every running bench job stops, is never reported, and its card is dealt again, from
+   its branch with the pushed head kept; work a harness had not pushed is lost. Restart the
+   workers at a quiet moment.
 2. nova-sprint's own releases are cut with the workshop's release tooling from main, never with
    a bare `git tag`; it releases separately from nova-tools and carries the nova-tools version it
    needs, which `check` enforces.

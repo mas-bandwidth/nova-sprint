@@ -59,6 +59,9 @@ TraceAction(k) ==
        [] a = "PassEnd"   -> PassEnd
        [] a = "Stop"      -> Stop
        [] a = "Crash"     -> Crash
+       [] a = "KillLeftover" -> KillLeftover(c)
+       [] a = "UnhookRefused" -> UnhookRefused
+       [] a = "Exit"      -> Exit
        [] a = "Restart"   -> Restart
        [] a = "StoreDown" -> StoreDown
        [] a = "StoreUp"   -> StoreUp

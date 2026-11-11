@@ -43,8 +43,9 @@ DROPPED = {
 # and it moves the tip after the next holder's take: neither is HolderStartsFromTip.
 for _name in DROPPED:
     DROPPED[_name] = DROPPED[_name] + ["PushOnlySealed", "HolderStartsFromTip"]
-# The kept hand is the fault: the restart's state already breaks RestartReturnsHand, before any report.
-DROPPED["RunnerRestartResumes"] = ["RestartReturnsHand"]
+# The kept hand is the fault: the restart's state already breaks RestartReturnsHand and
+# KeptHandNeverRuns, before any report.
+DROPPED["RunnerRestartResumes"] = ["RestartReturnsHand", "KeptHandNeverRuns"]
 
 # name, target invariant, fault, exact replacement pairs
 WITNESSES = [
@@ -75,6 +76,10 @@ WITNESSES = [
      "A restart keeps the row's hand and resumes its jobs (the rule before 2026-11-10): a job reports for a card its row was to give up.",
      [("        /\\ storeState' = [c \\in Consumers |-> IF c \\in hand THEN \"fail\" ELSE storeState[c]]   \\* the hand, returned\n",
        "        /\\ storeState' = storeState   \\* the hand kept, its jobs resumed\n")]),
+    ("RunnerRefusedUnhookKeepsHand", "KeptHandNeverRuns",
+     "A refused unhook at the start is ignored (the code before 2026-11-11): the sprint hook goes in over the kept hand.",
+     [("  /\\ env' = [env EXCEPT !.tries = @ + 1, !.refusals = @ + 1]   \\* tried again, the hand untouched\n",
+       "  /\\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE, !.restarted = TRUE, !.refusals = @ + 1]   \\* FAULT: the refusal ignored\n")]),
     ("RunnerRebaseDropsPrior", "PushKeepsPrior", "The stream step rebases the job's head, dropping the history it started from.",
      [("/\\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass, branch>>   \\* the stream merged in: keepsPrior",
        "/\\ jobDir' = [jobDir EXCEPT ![c].keepsPrior = FALSE]\n  /\\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>")]),
