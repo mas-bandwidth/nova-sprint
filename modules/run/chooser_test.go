@@ -137,8 +137,8 @@ func TestChooserCleanupSurvivesCancelledCaller(t *testing.T) {
 func TestChooserNameVersion(t *testing.T) {
 	t.Parallel()
 	for name, want := range map[string]string{
-		"nova-sprint run studio 4121 v2.0.38": "v2.0.38",
-		"nova-sprint run studio 4121":         "",
+		"nova-sprint run studio 4121 v2.0.38":                                      "v2.0.38",
+		"nova-sprint run studio 4121":                                              "",
 		("nova-sprint run " + strings.Repeat("h", 39) + " 4121 v2.0.38")[:NameMax]: VersionUnknown,
 		("nova-sprint run " + strings.Repeat("h", 50) + " 4121 v2.0.38")[:NameMax]: VersionUnknown,
 	} {
