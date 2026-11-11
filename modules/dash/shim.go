@@ -151,8 +151,6 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 		total := w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 		if total > 0 && w.Landed == total {
 			streams[i].State = "landed"
-		} else if total > 0 && w.Fail > 0 && w.Landed+w.Fail == total {
-			streams[i].State = "fail"
 		} else if streams[i].State != "held" && w.Ready+w.Working+w.Review+w.Fix+w.Merging > 0 {
 			streams[i].State = "working"
 		}
@@ -181,7 +179,9 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 			status = "down"
 		}
 		f := &fleetRow{Status: status, Width: width}
-		f.Load, f.Slots = loadCells(r)
+		if kind != roster.KindKin { // load is only for fleet machines (the human, 2026-11-10)
+			f.Load, f.Slots = loadCells(r)
+		}
 		tableOf(kind, fleet, friends)[n] = f
 	}
 }

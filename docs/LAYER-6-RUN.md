@@ -69,7 +69,8 @@ is the engine's, FIFO: a burst of moves costs each a tick or two and is never re
 push cursor (`push:<name>` in `sprint.cursors`) and sends one message per recipient per
 tick, one line per item (always batch), by `nova-bus send --as sprint --to <name> <subject>
 <body>`, and sets the cursor only after the send exits 0. A crash in between resends on
-restart, and every line is safe twice (`take` of a card already held prints the same brief).
+restart, except the take-over notice to the coordinator it unhooked (section 5, Taking the
+seat), and every line is safe twice (`take` of a card already held prints the same brief).
 Bodies are bounded: logs, diffs and findings travel as the command that shows them (LESSONS
 4.4). No send, exec, git or HTTP call runs under the store's writer lock (LESSONS 3.23).
 
@@ -109,11 +110,11 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | (none) | | runs `next --as <me>` | | 0 |
 | `next` | `[--as <name>]` | never; a broken prerequisite is its answer | the one command (section 4) | 0; 2 if it cannot look |
 | `help` | `[<verb>\|<group>]`, or `-h` | unknown verb: the index | `nova-sprint` | 0 |
-| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded (the fix names that coordinator's `unhook`, and for one who is gone, `up --take-over --reason`); `worker` on a sprint with no commit identity: `identity` | `next --as <name>` | 0, 1 |
+| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` while another row holds the seat (the fix names that coordinator's `unhook`, or, only when the operator says so, taking the seat with `up --take-over --reason`); `worker` on a sprint with no commit identity: `identity` | `next --as <name>` | 0, 1 |
 | `identity` | `[--name <git user.name> --email <git user.email> --reason <why>]` | coordinator only; none set and none given; a quote, backslash, `$`, backtick or angle bracket, or an email that is not one address; no reason | `check` | 0, 1 |
 | `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
 | `check` | `[--integrity]` | prints every line; red (exit 1, or 2 when a read failed): fleet not green; nova-tools below the pin (above: a warning); `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable; a stream whose repository or base cannot be read; an open judgement (one line per kind); nothing runs the sprint; ready producers and nothing dealt (with why); a landing waiting on a judgement, run or a hold | `next`, or the first red line's fix | 0, 1, 2 |
-| `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>] [--take-over --reason "<why>"]` | the first unverified step, with its fix (section 5); another coordinator recorded (ask them to `unhook`; one who is gone: `--take-over`); `--take-over` without `--reason`; `--take-over` while the recorded coordinator is on the bus (ask them to `unhook`) | the next step, then `stream add` | 0, 1 |
+| `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>] [--take-over --reason "<why>"]` | the first unverified step, with its fix (section 5); another coordinator recorded (ask them to `unhook`, or, only when the operator says so, take the seat with `--take-over`, which needs nothing from them and the run tells them `TAKEN OVER`); `--take-over` without `--reason` | the next step, then `stream add` | 0, 1 |
 | `stream add` | `<s> --repo <owner/name> [--base main] [--mode auto\|hand] [--forge github\|none]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>`; with a forge, the group branch `sprint-group/<s>` cannot be created (a name git refuses, a branch at origin in its way, origin's branches unreadable, the push refused), naming the fix | `add --stream <s> --brief-file <f>` | 0, 1 |
 | `add` | `--stream <s> --brief-file <f>... [--dry-run]`, or `--stream <s> --sentinel <id> --needs <a,b>` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
 | `run` | `[--listen <addr>]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
@@ -290,7 +291,7 @@ Each step's action is idempotent.
 | 2 runner-packages | runs nova-fleet's `runner-packages` play on every bench (`-l` the inventory's benches), with the play's defaults | the play in check mode (`--check`) reports `changed=0`, `unreachable=0` and `failed=0` for every bench in its PLAY RECAP; a play that fails is the refusal, in the play's own words, with its fix | no |
 | 3 netwatch | runs nova-fleet's `netwatch` play on every bench the same way (a Mac is skipped by the play) | as step 2, for `netwatch` | no |
 | 4 store | `Migrate`; the role `sprint` through nova-fleet's postgres play | `sprint.meta` at this binary's version and hash; the role owns the schema | no |
-| 5 coordinator | records the name | that name is in `nova-bus who` | the name, once (`--as`) |
+| 5 coordinator | records the name: the caller, the hooked coordinator (again after a take-over) | that name is in `nova-bus who` | the name, once (`--as`) |
 | 6 run | installs the `run` service on the chosen host (default: this one) | the advisory lock is held (`pg_locks`) and `sprint` is in `nova-bus who` | the host, only with `--run-on` |
 | 7 dashboard | installs `run --listen` on the tailnet, or `dash --pull` on the public host | `/healthz` 200 and `/api/sprint` at the store's epoch, fetched from this machine; for public, from the public address, with the cache headers | tailnet or public, once |
 | 8 services | for each chosen service, the key at a hidden prompt, piped into `nova-secrets set <SERVICE>_API_KEY` on stdin, then the grants, seats, worker rows and service rows | one request to the service's model list through `nova-secrets exec`, judged by its exit code only | which services, once; each key, once |
@@ -298,16 +299,20 @@ Each step's action is idempotent.
 | 10 first deal | nothing: a fresh sprint is stopped until `start` and moves nothing, so up deals no card | every worker row hooked, `up` and dealable (cores set in nova-config; a bench without is held at width 0) | no |
 
 **Taking the seat** (Glenn, 2026-11-10: "Add takeover to up"). The coordinator's seat is the
-row hooked in with role `coordinator`, and only `unhook` frees it: by that row, or by the
-coordinator, which is that row. A coordinator whose host or session is gone can run neither, so
-`up --as <you> --take-over --reason "<why>"` moves the seat. It refuses without `--reason`, and
-while the recorded coordinator is in `nova-bus who` (the same presence the run loop reads),
-naming their `unhook`. Otherwise, where `up` hooks the caller in (after step 4, the store), one op logged
-under kind `take-over` with the reason as its note clears the old coordinator's hook as `unhook`
-clears it and hooks the caller in as coordinator, fenced on the seq it read (one coordinator);
-the walk then goes on. The old coordinator's cards stay where they are: a row going down never
-takes its cards back, and the `orphan` judgement brings them to the new coordinator. With no
-coordinator recorded, `--take-over` is the plain hook. No model covers the seat
+row hooked in with role `coordinator`, and `unhook` frees it: by that row, or by the
+coordinator, which is that row. `up --as <you> --take-over --reason "<why>"` moves the seat
+with nothing from that row, on the bus or gone; it is for when the operator says so, and the
+refusal of a second coordinator says that. It refuses without `--reason`. Where `up` hooks the
+caller in (after step 4, the store), one op logged under kind `take-over` with the reason as its
+note clears the old coordinator's hook as `unhook` clears it, returns its hand to the queue
+(each card released with its branch and head kept; a card that cannot be withdrawn in that op
+is named and returned by the run's next tick), and hooks the caller in as coordinator, refused
+if any hook changed since the seq it read (one coordinator). The run sends the old coordinator
+`TAKEN OVER by=<you>: ...` with the reason and its `WITHDRAWN` lines, and the new coordinator a
+`RETURNED` line per card; a failed send to the old coordinator is sent again each tick while
+the run stays up, but a restart before it is sent may not send it. The walk then goes on, and
+step 5 records the caller, the hooked coordinator, as the coordinator. With no coordinator
+recorded, `--take-over` is the plain hook. No model covers the seat
 (`docs/roadmap.sexp`, `coordinator-seat-model`): Setup.tla has the walk's steps, Store.tla the
 PutRow write; the guard is unit-tested (`modules/verbs/takeover_test.go`).
 
@@ -656,13 +661,13 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   --state-dir .local/state` (built in one function, `workerArgv`; directories under the bench
   login's home, which `nova-sprint worker` now resolves there), seat the machine's, keys
   `NOVA_SPRINT_PG_PASSWORD`, `NOVA_BUS_PASSWORD` (when the bus has a user, as sprint-run),
-  `DEEPSEEK_API_KEY`, `INCEPTION_API_KEY` (Paper Instruments left out until its upstream is known), env `NOVA_PG_DSN`,
+  `DEEPSEEK_API_KEY`, `INCEPTION_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY` (Ultramarine left out, not a fit), env `NOVA_PG_DSN`,
   `NOVA_BUS_REDIS`, `NOVA_BUS_USER` as sprint-run's. All are applied in one play (`nova-fleet
   services -- -l <benches> -e nova_service_only=<records>`), not one per machine. Every bench
   gets a worker, the run machine too when it has the bench role (merged with the worker's
   change of the same night, which dropped its coordinator-host refusal); the UP DONE count is of
   worker benches. The record's argv carries the worker's per-repo roots (`--work-root`) and its
-  provider routes (`--providers`: DeepSeek and Inception; Paper Instruments left out until its upstream is known). `harness` is opencode because nova-config's machines carry
+  provider routes (`--providers`: DeepSeek, Inception, OpenCode Zen and OpenRouter; Ultramarine left out, not a fit). `harness` is opencode because nova-config's machines carry
   no harness field.
 - Step 7 verifies from one inventory read, one snapshot and one `nova-bus who`
   (`ExecEnvironment.Present`); a not-ready step is a `verbs.WorkloadNotReady`: up acts once, then

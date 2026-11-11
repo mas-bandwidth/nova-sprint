@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -561,8 +562,8 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, job.Deadline)
 		if errors.Is(runErr, ErrNoSlot) {
 			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
-			rec.NoSlots++
 			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
+			r.logStep_internal(job.Row, job.Consumer, "run", "no nova-reserve slot on "+r.Host+"; staged, waiting for one", 0)
 			return last, runErr
 		}
 		if last.PID > 0 && last.PID != os.Getpid() {
@@ -639,20 +640,25 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 		return Outcome{Result: "fault", Reason: "missing git edge for a work consumer: start the worker through nova-sprint worker, which gives it one"}
 	}
 	sha, herr := r.sealAndCollect_internal(ctx, job, *rec)
+	// The verdict is the head's (v1's path, tla/Runner.tla Harvest): a new
+	// head is ok here and its done-when tests decide it
+	// (rebaseAndTestStep_internal); the harness's own word, or none, never
+	// does. Only its fault and its refutation stand.
+	byHead := out.Result != "fault" && !card.Refuted(out.Reason)
 	switch {
-	case herr != nil && out.Result == "ok":
+	case herr != nil && byHead:
 		return Outcome{Result: "fault", Reason: "seal fault: " + herr.Error()}
 	case herr != nil:
 		r.report("sealing the tree of "+job.Consumer, herr)
 		return out
 	case sha != "" && sha != job.BaseSHA && sha != job.PriorHead:
 		if perr := r.pushBranch_internal(ctx, rec, sha); perr != nil {
-			if out.Result == "ok" || out.NoVerdict {
+			if byHead {
 				return Outcome{Result: "fault", Head: rec.PushedHead, Reason: "push fault: " + perr.Error()}
 			}
 			return out
 		}
-		if out.NoVerdict {
+		if byHead {
 			return Outcome{Result: "ok", Head: sha}
 		}
 		out.Head = sha
@@ -1670,10 +1676,44 @@ func noSlot_internal(res edge.Result) bool {
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
 	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") || strings.HasPrefix(first, "nova-reserve: no exclusive hold within "))
 }
+
+// sdkWallKeeps_internal are the names the wall sets itself, which the
+// bench's SDK environment never changes, and the shell's own.
+var sdkWallKeeps_internal = []string{"HOME", "TMPDIR", "XDG_DATA_HOME", "DOTNET_CLI_HOME", "PWD", "OLDPWD", "SHLVL", "_"}
+
+// sdkWallEnv_internal is env with what the bench's SDK environment
+// (w.Config.SDKEnv, the sdk-toolchain role's env.sh) exports when sourced
+// outside the wall in env alone, with the job's HOME: its PATH, the make
+// variables and the toolchains' homes, as a make run on the bench gets them.
+// The wall's own names keep the wall's values. env as it is on a bench
+// without one; a failing env.sh refuses the command, naming the file.
+func (w *OSReserveWall) sdkWallEnv_internal(ctx context.Context, env []string, timeout time.Duration) ([]string, error) {
+	if w.Config.SDKEnv == "" {
+		return env, nil
+	}
+	argv := []string{"/bin/sh", "-c", `. "$1" >&2 && exec /usr/bin/env -0`, "sh", w.Config.SDKEnv}
+	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: argv, Env: env, CleanEnv: true, Timeout: min(timeout, 30*time.Second)})
+	if err != nil || res.ExitCode != 0 {
+		return nil, fmt.Errorf("worker: the bench's SDK environment %s failed: %w", w.Config.SDKEnv, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
+	}
+	for _, kv := range strings.Split(res.Stdout, "\x00") {
+		name, _, ok := strings.Cut(kv, "=")
+		if !ok || name == "" || slices.Contains(sdkWallKeeps_internal, strings.ToUpper(name)) || strings.HasPrefix(name, "NOVA_WORKER_") || slices.Contains(env, kv) {
+			continue
+		}
+		env = append(slices.DeleteFunc(env, func(e string) bool { return strings.HasPrefix(e, name+"=") }), kv)
+	}
+	return env, nil
+}
+
 func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg WallConfig, cmdArgv, env []string, timeout time.Duration) (WallRunResult, error) {
 	fallbackPID := nextWallPID_internal()
 	nonce := fmt.Sprintf("n-%d", fallbackPID)
-	env, err := CargoWallEnv(GoWallEnv(slices.Clone(env), w.Config), w.Config, j.JobDir)
+	env, err := w.sdkWallEnv_internal(ctx, slices.Clone(env), timeout)
+	if err != nil {
+		return WallRunResult{}, err
+	}
+	env, err = CargoWallEnv(GoWallEnv(env, w.Config), w.Config, j.JobDir)
 	if err != nil {
 		return WallRunResult{}, err
 	}

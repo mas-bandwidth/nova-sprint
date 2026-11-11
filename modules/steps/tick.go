@@ -29,6 +29,7 @@ type tick struct {
 	claimed   set                   // cards and rows an earlier step claimed
 	resolved  set                   // producers resolved this tick (the idle judgement reads it)
 	tally     map[string]int        // consumers dealt per row this tick
+	provTally map[string]int        // consumers dealt per provider this tick (the concurrency budget)
 	rested    set                   // rows resting after faults (LPM R34): a deal filter
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
@@ -71,7 +72,7 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 }
 
 func newTick(v *View, in Inputs) *tick {
-	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{},
+	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, provTally: map[string]int{}, rested: set{}, expires: map[string]string{},
 		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{},
 		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{}}
 }

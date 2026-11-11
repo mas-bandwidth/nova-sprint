@@ -168,10 +168,10 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	return s, nil
 }
 
-// Read is Snapshot with only the cards scope names.
+// Read is Snapshot with only the cards and judgements scope names.
 func (f *Fake) Read(ctx context.Context, scope Scope) (Snapshot, error) {
 	s, err := f.Snapshot(ctx)
-	s.Cards = scope.of(s.Cards)
+	s.Cards, s.Judgements = scope.of(s.Cards), scope.judgements(s.Judgements)
 	return s, err
 }
 

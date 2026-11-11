@@ -48,7 +48,7 @@ func TestColdreadDefectDefaultRefusedByJointCheck(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	w.configure(rc{"r5", "kin", 0, []string{"heavy", "frontier"}, "m-frontier"})
-	w.apply(store.PutRow{Name: "r5"})
+	w.apply(hooked("r5"))
 	w.apply(store.SetRowState{Row: "r5", State: "up"})
 	snap := w.snap()
 	a, fs := testEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
@@ -135,7 +135,7 @@ func TestColdreadDefectTickStepsUnbounded(t *testing.T) {
 	breakTiming(t)
 	ro := handRoster(rc{"r", "worker", 2, store.Tiers, ""})
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},
-		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}}}
+		Rows: map[string]store.Row{"r": {Name: "r", State: "up", Session: "s-r", Role: "worker"}}}
 	for i := range 2000 {
 		id := fmt.Sprintf("p%04d", i)
 		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: "s", State: "ready", Tier: "pro", Score: i, Priority: "normal"}

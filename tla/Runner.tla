@@ -15,11 +15,14 @@
 (* stop (defect 73): each live harness is killed, its job kept at staged   *)
 (* (stopped) to be resumed, never a fault (StopIsNeverAFault). Release is  *)
 (* the restart's no-blame give-back of a job it cannot resume (a job       *)
-(* directory with no receipt), or of a staged job that keeps finding no    *)
-(* slot (NoSlotLimit): its commits pushed, the consumer withdrawn          *)
+(* directory with no receipt): its commits pushed, the consumer withdrawn  *)
 (* with no result and no report, the directory gone; the producer's redeal *)
 (* is a new consumer, the card machine's. A dealt card with no job         *)
-(* directory is no release: the pass acknowledges it and runs it.          *)
+(* directory is no release: the pass acknowledges it and runs it. A staged *)
+(* job that finds every slot held is no release either: it waits for a    *)
+(* slot (2026-11-09: a busy bench gave back 124 cards in 20 minutes, each  *)
+(* dealt to it again); the sprint's deadline withdraw bounds the wait.     *)
+(* NoSlotNeverReleases; reversed witness RunnerNoSlotReleases.             *)
 (*                                                                         *)
 (* A branch is its holder's (defect 78, 2026-11-07): branch[c] is consumer *)
 (* c's card branch on origin: who wrote its tip (none, this job, or the    *)
@@ -84,7 +87,7 @@ Init ==
   /\ jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE, keepsPrior |-> TRUE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
-  /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, released |-> FALSE]
+  /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, released |-> FALSE, restarted |-> FALSE]
   /\ pass = "idle"
   /\ branch = [c \in Consumers |-> [tip |-> "none", holderWrote |-> FALSE, finalPushes |-> 0, known |-> "none", from |-> "unset"]]
 
@@ -310,13 +313,12 @@ PassEnd ==
 \* receipt) is given back with no blame: its commits pushed once, by lease,
 \* while it still holds the card, then the consumer withdrawn with no result
 \* (no outcome, no bounce, no report), and its directory retired once the
-\* release is recorded. A staged job that keeps finding every slot held is
-\* given back the same way (NoSlotLimit runs with no slot, abstracted to
-\* every slot held), so a busy bench never holds a card for ever.
+\* release is recorded. A staged job that finds every slot held is never
+\* given back: it waits for a slot (Run).
 Release(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
-  /\ (env.crashes > 0 \/ (jobState[c] = "staged" /\ slotsInUse = MaxSlots))
+  /\ env.restarted   \* only after a restart
   /\ ~env.released
   /\ storeState[c] = "working"
   /\ jobState[c] \in {"staged", "harvested"}
@@ -331,7 +333,7 @@ Release(c) ==
 
 Restart ==
   /\ env.crashed
-  /\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE]
+  /\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE, !.restarted = TRUE]
   /\ harnessAlive' = harnessAlive   \* adopt live harnesses by pid and nonce, never spawn a second
   /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, appliedOps, pass, branch>>
 
@@ -463,6 +465,11 @@ BranchOnlyByHolder ==
 \* the wall; the push is from the worker's clone, never the job directory.
 PushOnlySealed ==
   \A c \in Consumers : branch[c].tip = "job" => jobDir[c].sealed
+
+\* 2026-11-09: a card is given back only after a restart (a crash or the
+\* worker's stop), never because every slot is held.
+NoSlotNeverReleases ==
+  env.released => env.restarted
 
 \* The head a job pushes keeps the history of the head it started from:
 \* the stream is merged in, never rebased (a rebase drops a merge commit

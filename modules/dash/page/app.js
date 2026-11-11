@@ -319,7 +319,7 @@ function renderStreams(d) {
   // Rows are grouped by status (landed, working, stopped, held), by name within a group,
   // with a thin rule between groups; each row also carries its status pill. Rows are keyed by stream, so a reorder
   // only moves nodes and flashes nothing.
-  var RANK = { landed: 0, working: 1, stopped: 2, held: 3, waiting: 4, fail: 5 };
+  var RANK = { landed: 0, working: 1, stopped: 2, held: 3, waiting: 4 };
   var statusOf = Object.create(null);
   streamOrder(d).forEach(function (k) {
     var c = {}, total = 0; FLOW.forEach(function (st) { c[st] = int(work[k][st]); total += c[st]; });
@@ -370,8 +370,8 @@ function renderStreams(d) {
     r.node.classList.toggle("group-start", prevRank !== null && rank(k) !== prevRank);
     prevRank = rank(k);
     setText(r.nameT, k);
-    var tone = { landed: "done", fail: "failed", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
-    setPill(r.pill, status, tone, status === "fail" ? "fail · stream failed" : status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
+    var tone = { landed: "done", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
+    setPill(r.pill, status, tone, status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
     // an archived stream shown is marked: the total row leaves it out
     var tags = arch[k] ? ["archived"] : []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
     setText(r.tag, tags.join(" · "));

@@ -269,23 +269,27 @@ func (w *resultWall_internal) RunHarness(_ context.Context, j Job, _, _ []string
 	return WallRunResult{ExitCode: 1, PID: 4242, Nonce: "n-4242"}, nil
 }
 
-// A job with no slot was staged again and resumed by every pass, its
-// deadline reset each time, for ever: after NoSlotLimit tries it is given
-// back for a redeal (release, no blame). And a run never starts with an
-// earlier run's result.json in place, which would be read as its verdict.
-func TestColdread3NoSlotIsCappedAndAStaleVerdictIsCleared(t *testing.T) {
+// A job with no slot waits for one: every pass runs it again from staged,
+// never giving the card back (live 2026-11-09: a bench released 124 cards in
+// 20 minutes, each to be dealt to it again). The card's deadline bounds the
+// wait: past it the sprint withdraws the consumer (the steps' limits). And a
+// run never starts with an earlier run's result.json in place, which would
+// be read as its verdict.
+func TestColdread3NoSlotWaitsAndAStaleVerdictIsCleared(t *testing.T) {
 	t.Parallel()
 	next := NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2, Attempt: 1}}}
 	sp := &cr2Sprint{next: next}
 	wall := &resultWall_internal{noSlot: true}
 	r, _ := warnRunner_internal(t, sp, wall)
-	for range NoSlotLimit {
+	const passes = 10
+	for range passes {
 		if err := r.StepRow(context.Background(), "vision.ds"); !errors.Is(err, ErrNoSlot) {
 			t.Fatalf("pass: %v, want no slot", err)
 		}
 	}
-	if len(sp.releases) != 1 || len(sp.reported()) != 0 || fileExists_internal(filepath.Join(r.RootDir, "jobs", "p1.r1")) {
-		t.Errorf("after %d passes with no slot: releases %v reports %+v, want one release and the job directory retired", NoSlotLimit, sp.releases, sp.reported())
+	rec, err := ReadJobRecord(filepath.Join(r.RootDir, "jobs", "p1.r1"))
+	if len(sp.releases) != 0 || len(sp.reported()) != 0 || err != nil || rec.State != JobStaged || len(wall.seen) != passes {
+		t.Errorf("after %d passes with no slot: releases %v reports %+v record %+v (%v) runs %d, want the job kept staged and run each pass", passes, sp.releases, sp.reported(), rec, err, len(wall.seen))
 	}
 
 	sp2 := &cr2Sprint{next: next}

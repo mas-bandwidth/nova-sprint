@@ -55,12 +55,11 @@ func (s SetupPrerequisites) Coordinator(ctx context.Context, actor string) (Setu
 	if s.Env.Choices.Store == nil {
 		return SetupCheck{}, fmt.Errorf("setup choices unavailable")
 	}
-	saved, found, err := s.Env.Choices.Get(ctx, "coordinator")
+	// The walk's caller is the hooked coordinator (leased), so after a
+	// take-over the answer follows the seat; with no caller, the saved one.
+	saved, found, err := s.Env.Choices.Effective(ctx, "coordinator", actor)
 	if err != nil {
 		return SetupCheck{}, err
-	}
-	if !found {
-		saved = actor
 	}
 	if saved == "" {
 		return SetupCheck{Line: "UP 5/10 coordinator: name is required", Next: "nova-sprint up --as <name>"}, nil

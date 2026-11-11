@@ -174,6 +174,27 @@ func TestEngineDefaultsAreTheBuiltIns(t *testing.T) {
 	assert.Equal(t, d.Landing, steps.LandingAnswer{BackedUp: ld.BackedUp, Flowing: ld.Flowing, CIWait: ld.CIWait})
 }
 
+// TestSeatMoveLeavesNoCandidate: the coordinator's seat moved (k1 unhooked,
+// its row still up; k2 hooked in as coordinator). rows offers only rows
+// hooked in, the rows layer 3 deals to, so the policy needs no edit: no
+// answer names k1, and no policy judgement is raised for it.
+func TestSeatMoveLeavesNoCandidate(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	w.configure(rc{"k1", roster.KindKin, 1, []string{"pro"}, "m-pro"})
+	w.configure(rc{"k2", roster.KindKin, 1, []string{"pro"}, "m-pro"})
+	w.apply(store.PutRow{Name: "k1", Session: "s-k1", Role: "coordinator"}, store.PutRow{Name: "k2"})
+	w.apply(store.SetRowState{Row: "k1", State: "up"}, store.SetRowState{Row: "k2", State: "up"})
+	w.apply(store.PutRow{Name: "k1"})
+	w.apply(store.PutRow{Name: "k2", Session: "s-k2", Role: "coordinator"})
+	snap := w.snap()
+	a, fs := testEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
+	require.Empty(t, fs)
+	assert.Empty(t, Judgements(snap, w.ro, fs))
+	assert.Contains(t, a.Rows[RowsQuestion{"p1", KindWork}], "k2", "the coordinator who holds the seat now")
+	assert.NotContains(t, a.Rows[RowsQuestion{"p1", KindWork}], "k1", "the coordinator who left the seat")
+}
+
 // TestJudgementStorable: a failure's text is made storable before
 // PutJudgement: NUL and invalid UTF-8 replaced, at most 4096 bytes with a
 // marker; the store accepts both.

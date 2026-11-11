@@ -2,10 +2,14 @@ package verbs
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -57,6 +61,140 @@ func TestUpTakesOverFromACoordinatorWhoIsGone(t *testing.T) {
 	want(t, w.do("dave", "unhook", "alice"), 0, "UNHOOKED alice")
 }
 
+// realCoordinatorStep is up's walk faked except its coordinator step, which
+// is the real one (SetupPrerequisites) on the sprint's store and the
+// world's bus.
+type realCoordinatorStep struct {
+	*setupFake
+	real SetupPrerequisites
+}
+
+func (s realCoordinatorStep) Verify(ctx context.Context, n int, in SetupInput) (SetupCheck, error) {
+	if n == StepCoordinator {
+		return s.real.Coordinator(ctx, in.Actor)
+	}
+	return s.setupFake.Verify(ctx, n, in)
+}
+
+func (s realCoordinatorStep) Act(ctx context.Context, n int, in SetupInput) error {
+	if n == StepCoordinator {
+		r := s.real
+		r.Env.Choices.Actor = in.Actor
+		return r.SaveCoordinator(ctx, in.Actor)
+	}
+	return s.setupFake.Act(ctx, n, in)
+}
+
+// TestUpTakeOverMovesTheSavedCoordinator: after a take-over, up's own
+// coordinator step checks and records the new coordinator, not the one the
+// first up saved: with the old coordinator on the bus, and after it leaves.
+func TestUpTakeOverMovesTheSavedCoordinator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := sprint()
+	s.Seq = 0 // the saved answers are read from the whole log
+	w := worldFrom(t, s)
+	w.e.Lock = setupLeaseFake{}
+	who := func(context.Context, string, ...string) ([]byte, error) {
+		var names []string
+		for _, n := range []string{"carol", "dave"} {
+			if w.bus.present[n] {
+				names = append(names, n+"\t1m\n")
+			}
+		}
+		return []byte("WHO OK present=" + string(rune('0'+len(names))) + "\n" + strings.Join(names, "")), nil
+	}
+	steps := realCoordinatorStep{&setupFake{}, SetupPrerequisites{Env: ExecEnvironment{Getenv: func(string) string { return "" }, Command: who,
+		Choices: Choices{Store: w.f, Now: func() time.Time { return t0 }}}}}
+	w.e.Setup = steps
+	want(t, w.do("carol", "up"), 0, "UP 5/10 coordinator carol: VERIFIED")
+	r := w.do("dave", "up", "--take-over", "--reason", "the seat was handed to dave")
+	want(t, r, 0, "TOOK OVER from carol", "UP 5/10 coordinator dave: VERIFIED")
+	if strings.Contains(r.Output, "coordinator carol") {
+		t.Fatalf("up checked the old coordinator:\n%s", r.Output)
+	}
+	if saved, _, err := steps.real.Env.Choices.Get(ctx, "coordinator"); err != nil || saved != "dave" {
+		t.Fatalf("saved coordinator %q %v, want dave", saved, err)
+	}
+	w.bus.present["carol"] = false
+	want(t, w.do("dave", "up"), 0, "UP 5/10 coordinator dave: VERIFIED")
+}
+
+// inbox is the bus as the run's pusher sends on it: each recipient's
+// messages, one "<subject>: <body>" line each.
+type inbox map[string]string
+
+func (i inbox) Send(_ context.Context, to, subject, body string) (string, error) {
+	i[to] += subject + ": " + body + "\n"
+	return "m-" + to, nil
+}
+
+func (inbox) Who(context.Context) (map[string]bus.Presence, error) { return nil, nil }
+
+// TestUpTakesOverFromACoordinatorOnTheBus: the seat is handed over in
+// conversation, so up --take-over goes through with the old coordinator
+// still on the bus, as it does when that coordinator is gone, and the run's pusher
+// tells the old coordinator who took the seat and why.
+func TestUpTakesOverFromACoordinatorOnTheBus(t *testing.T) {
+	t.Parallel()
+	w := takeoverWorld(t)
+	w.bus.present["carol"] = true
+	want(t, w.do("dave", "up", "--take-over", "--reason", "the seat was handed to dave"), 0,
+		"TOOK OVER from carol: the seat was handed to dave", "HOOKED dave role=coordinator", "UP DONE")
+	s := w.snap(t)
+	if r := s.Rows["carol"]; r.Session != "" || r.Role != "" {
+		t.Fatalf("carol still hooked: %+v", r)
+	}
+	if r := s.Rows["dave"]; r.Session != "minted-1" || r.Role != "coordinator" {
+		t.Fatalf("dave %+v", r)
+	}
+	events, err := w.f.Events(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := run.NewPusher()
+	for _, ev := range events {
+		p.Observe(ev, s)
+	}
+	sent := inbox{}
+	if failed := p.Push(context.Background(), sent, w.f, s.Epoch, t0); len(failed) != 0 {
+		t.Fatalf("push failed: %+v", failed)
+	}
+	if !strings.Contains(sent["carol"], "TAKEN OVER by=dave: took over from carol: the seat was handed to dave") {
+		t.Fatalf("carol was not told the seat moved: %q", sent["carol"])
+	}
+}
+
+// A displaced coordinator that hooks back in (as a worker) before the pusher
+// reads the take-over is one recipient of it, told once.
+func TestTakeOverTellsARehookedCoordinatorOnce(t *testing.T) {
+	t.Parallel()
+	w := takeoverWorld(t)
+	w.bus.present["carol"] = true
+	want(t, w.do("dave", "up", "--take-over", "--reason", "the seat was handed to dave"), 0, "TOOK OVER from carol")
+	s := w.snap(t)
+	rows := maps.Clone(s.Rows)
+	carol := rows["carol"]
+	carol.Session, carol.Role = "minted-9", "worker"
+	rows["carol"] = carol
+	s.Rows = rows
+	events, err := w.f.Events(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := run.NewPusher()
+	for _, ev := range events {
+		p.Observe(ev, s)
+	}
+	sent := inbox{}
+	if failed := p.Push(context.Background(), sent, w.f, s.Epoch, t0); len(failed) != 0 {
+		t.Fatalf("push failed: %+v", failed)
+	}
+	if n := strings.Count(sent["carol"], "TAKEN OVER by=dave"); n != 1 {
+		t.Fatalf("carol told %d times: %q", n, sent["carol"])
+	}
+}
+
 func TestUpTakeOverRefusals(t *testing.T) {
 	t.Parallel()
 	hint := `nova-sprint up --as dave --take-over --reason "<why>"`
@@ -67,34 +205,19 @@ func TestUpTakeOverRefusals(t *testing.T) {
 		exit int
 		want []string
 	}{
-		{name: "the coordinator is on the bus", prep: func(_ *testing.T, w *world) { w.bus.present["carol"] = true },
-			args: []string{"up", "--take-over", "--reason", "carol is slow"}, exit: 1,
-			want: []string{"SPRINT REFUSED up: carol is on the bus: ask carol to run nova-sprint unhook --as carol"}},
 		{name: "no reason", args: []string{"up", "--take-over"}, exit: 1,
 			want: []string{"SPRINT REFUSED up: --take-over needs --reason: " + hint}},
+		{name: "an empty reason", args: []string{"up", "--take-over", "--reason", ""}, exit: 2,
+			want: []string{"SPRINT REFUSED up: --reason needs one non-empty value"}},
 		{name: "a reason without the flag", args: []string{"up", "--reason", "x"}, exit: 2,
 			want: []string{"--reason goes with --take-over"}},
 		{name: "without the flag, the old refusal names it", args: []string{"up"}, exit: 1,
-			want: []string{"SPRINT REFUSED up: the sprint's coordinator is carol: ask carol to run nova-sprint unhook --as carol first; if carol is gone: " + hint}},
+			want: []string{"SPRINT REFUSED up: the sprint's coordinator is carol: ask carol to run nova-sprint unhook --as carol first; only when the operator says so, take the seat: " + hint}},
 		{name: "hook names it too", args: []string{"hook", "--role", "coordinator"}, exit: 1,
-			want: []string{"the sprint's coordinator is carol", "if carol is gone: " + hint}},
+			want: []string{"the sprint's coordinator is carol", "only when the operator says so, take the seat: " + hint}},
 		{name: "the taker is hooked already", prep: func(t *testing.T, w *world) { w.ok(t, "dave", "hook", "--role", "worker") },
 			args: []string{"up", "--take-over", "--reason", "carol is gone"}, exit: 1,
 			want: []string{"dave is already hooked in as worker", "nova-sprint unhook --as dave"}},
-		{name: "the seat moved while the bus was asked", prep: func(t *testing.T, w *world) {
-			calls := 0
-			w.bus.during = func() { // on the take-over's own who (up's second: the first is dave's), carol comes back and hands the seat to erin
-				if calls++; calls != 2 {
-					return
-				}
-				w.bus.during = nil
-				w.bus.present["carol"], w.bus.present["erin"] = true, true
-				w.ok(t, "carol", "unhook")
-				w.ok(t, "erin", "hook", "--role", "coordinator")
-				w.bus.present["carol"] = false
-			}
-		}, args: []string{"up", "--take-over", "--reason", "carol is gone"}, exit: 1,
-			want: []string{"the sprint's coordinator changed to erin meanwhile", hint + " again"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

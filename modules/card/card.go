@@ -335,6 +335,20 @@ func Refuted(reason string) bool {
 	return word == "refuted" || word == "brief-defect"
 }
 
+// RateLimited says whether a fault reason is a provider's rate limit (an
+// HTTP 429, "Rate limit reached", "too many requests"): the bench's fault,
+// never the card's fail, and the model rests (steps' rest). Out of funds
+// (402) is not one.
+func RateLimited(reason string) bool {
+	low := strings.ToLower(reason)
+	for _, needle := range []string{"rate limit", "rate_limit", "ratelimit", "too many requests", "http 429", "status 429", "error 429"} {
+		if strings.Contains(low, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 // HeldPrefix starts the reason of a producer the coordinator holds with
 // `hold <card>` (defect 47), or policy holds at the bounce limit: a HoldCard
 // whose reason is "held: <why>". The board lists it with the waiting

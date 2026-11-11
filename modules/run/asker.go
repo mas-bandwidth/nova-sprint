@@ -126,7 +126,8 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 	}
 	a := steps.Answers{Version: p.Version, Order: map[string][]any{}, Rows: map[string][]string{},
 		Reads: maps.Clone(p.Reads), Verdict: maps.Clone(p.Verdict), Width: map[string]steps.WidthAnswer{},
-		Landing: map[string]steps.LandingAnswer{}, Failed: map[string]string{}, Models: maps.Clone(p.Catalog.Bench)}
+		Landing: map[string]steps.LandingAnswer{}, Failed: map[string]string{}, Models: maps.Clone(p.Catalog.Bench),
+		Concurrency: maps.Clone(p.Catalog.Concurrency)}
 	for id, t := range p.Order {
 		a.Order[id] = orderTuple(t)
 	}

@@ -11,7 +11,7 @@ import (
 // SetupInput is up's non-secret choices. A service key is read by the setup
 // adapter at a hidden terminal prompt and sent straight to nova-secrets.
 // TakeOver with Reason is --take-over --reason: the coordinator's seat moved
-// from a coordinator who is gone from the bus (takeOver).
+// to the caller, with nothing from the old coordinator (takeOver).
 type SetupInput struct {
 	Actor, Dash, Services, Key, RunOn, Version, Continuation, Reason string
 	TakeOver                                                         bool
@@ -279,7 +279,7 @@ func (e *Engine) prepareHandoff(ctx context.Context, lease SetupLease, s SetupIn
 }
 
 // upHook hooks the caller in as coordinator once the store exists, unless
-// it already is; with --take-over, from a coordinator who is gone.
+// it already is; with --take-over, from the recorded coordinator.
 func (e *Engine) upHook(ctx context.Context, lease SetupLease, s SetupInput, out *strings.Builder) error {
 	snap, err := e.snapshot(ctx)
 	if err != nil {

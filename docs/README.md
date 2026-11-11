@@ -257,7 +257,20 @@ runnable. The built-in policy names no bench model: a bench takes a tier's work
 only once the active policy's `catalog()` names that tier's model, as
 `{"bench": {"<tier>": "<provider>/<model>"}}` (`nova-sprint policy set`; `check`
 names each tier without one). Follow any missing-route or harness refusal
-before starting work.
+before starting work. An optional `"concurrency": {"<provider>": <n>}` caps how
+many consumers work on that provider's models across the fleet at once (none:
+unlimited). A job that ends on a provider's rate limit (429, "rate limit",
+"too many requests") is a fault, not the card's fail: the card is dealt again
+without spending an attempt, and its model is dealt to no row for the policy's
+`route_rest_for` (1800 s built in).
+
+A bench worker reaches four providers, each through its key proxy with its key
+opened from the bench's own seat: `deepseek` (`DEEPSEEK_API_KEY`), `inception`
+(`INCEPTION_API_KEY`), `opencode`, OpenCode Zen (`OPENCODE_API_KEY`), and
+`openrouter`, OpenRouter (`OPENROUTER_API_KEY`). The model's prefix picks the
+provider; point a tier at one in the policy's catalog, for example
+`{"bench": {"flash": "openrouter/z-ai/glm-5.3-flash", "pro":
+"opencode/deepseek-v4-pro"}}`.
 
 Use `--services none` to skip API-key setup. This does **not** disable the worker
 services installed on bench machines. For a sprint using only friend sessions,
@@ -707,7 +720,7 @@ Common situations and the next step:
 | This process has no sprint credential | Run it through `sprint_env`; confirm your seat has the sprint grant. Do not rerun setup just because your shell lacks a credential. |
 | Not on the bus | Start the harness's bus hook, then retry the sprint hook. |
 | Already hooked | Recover your own session with `unhook`, then hook again. Resolve another live owner first. |
-| The sprint's coordinator is another row | Ask that row to `unhook`. If it is gone from `nova-bus who` and cannot, take the seat with `up --as <you> --take-over --reason "<why>"`; it refuses while that row is on the bus, and it returns the row's cards to the queue. |
+| The sprint's coordinator is another row | Ask that row to `unhook`, or, only when the operator says so, take the seat with `up --as <you> --take-over --reason "<why>"`. The take-over needs nothing from that row, on the bus or gone: it unhooks the row, returns its cards to the queue, and the run tells it who took the seat and why. |
 | No commit identity | The coordinator sets it with `identity`; the worker then hooks or takes again. |
 | Not dealt at this generation, withdrawn or already reported | Run `next` as your row and use its current command. Do not invent a new generation. |
 | Head is absent at origin | Push the dealt branch and verify its full remote SHA before finishing. |
