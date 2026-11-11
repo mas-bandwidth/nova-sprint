@@ -17,6 +17,10 @@
 #                                      must pass            (TLC exit 0);
 #     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
 #     checks KinAliveNever{Down,Back}, beside it, must be violated
+#   VerbFence.tla with VerbFence.cfg (a verb on a store others write)
+#                                      must pass            (TLC exit 0);
+#     its witnesses VerbFence{OneTry,NoOwn} and reach checks
+#     VerbFenceNever{Retried,Dealt}, beside it, must be violated
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
 #     Setup.tla, SetupWalk.tla, SetupRun.tla, SetupChoices.tla (SetupChoices.cfg and
@@ -196,6 +200,7 @@ run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run KinAlive pass . KinAlive.cfg KinAlive.tla 2
+run VerbFence pass . VerbFence.cfg VerbFence.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
 run Run pass . Run.cfg Run.tla 2
@@ -233,6 +238,13 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupRunFreshRunning \
          KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
+done
+
+# VerbFence's reversed witnesses (one try: the old rule; a retry without the
+# own check) and reach checks (a refused op planned again commits; a dealt
+# card is replaced to), each violated on VerbFence.tla.
+for m in VerbFenceOneTry VerbFenceNoOwn VerbFenceNeverRetried VerbFenceNeverDealt; do
+    run "witness-$m" violate . "$m.cfg" VerbFence.tla 1
 done
 
 # KinAlive's reach checks (a kin row goes down, and comes back on a pong).

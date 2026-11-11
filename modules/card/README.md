@@ -187,7 +187,7 @@ sets a reason that holds. UnholdCard lifts it to plain waiting.
 | WaiveRed{Reason} | review | no live consumer; red is set (CardRed true); review at least 1; a done ok read of review p.Review-1 at p's head | state merging, reason; review is not raised |
 | Released{Reason} | working | the work consumer of this attempt is fail (withdrawn); StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held, else the event's, else the consumer's), head |
 | Cancel{Reason} | any non-final | no live consumer | state fail, reason |
-| Replace{By,Reason} | any non-final | By a producer or sentinel, not final, not p, passed in needs, fenced by CardGen; no live consumer | state fail, reason "replaced by X: ..." |
+| Replace{By,Reason} | any non-final | By a producer or sentinel, not final, not held (waiting on a held reason), not p, passed in needs, fenced by CardGen; no live consumer | state fail, reason "replaced by X: ..." |
 | NeedFailed{Need,InThisOp} | any non-final | CardState need fail (none with InThisOp); no live consumer | state fail, reason "need X failed" |
 | Waive{Need,Reason,InThisOp} | waiting | CardState need fail (none with InThisOp) | needs without it, reason |
 | Relink{Need,To,Reason,InThisOp} | waiting | CardState need fail (none with InThisOp); To a non-final producer or sentinel; the cycle walk follows needs and after; CardGen of every card it read, To first; no cycle | needs with it replaced, reason |
@@ -255,7 +255,7 @@ The rest, in order of the code:
 - `R wrote producer X's head and may not read it`
 - `producer X has no read of review N that said ok; ReadYes needs one`; `producer X has no read of review N that said fix; ReadFix needs one`; `producer X has no review yet`; `no red on review N`; `producer X has no done ok read of review N at head H; WaiveRed needs one`
 - `producer X is at head H, Landed names G` (and Red)
-- `Replace of producer X needs the card it is replaced by`; `producer X cannot be replaced by itself`; `card B does not exist (Replace takes the card it is replaced by among the cards passed)`; `card B is a work consumer; Replace needs a producer or a sentinel that is not final`; `producer B is landed; Replace needs a producer or a sentinel that is not final`
+- `Replace of producer X needs the card it is replaced by`; `producer X cannot be replaced by itself`; `card B does not exist (Replace takes the card it is replaced by among the cards passed)`; `card B is a work consumer; Replace needs a producer or a sentinel that is not final`; `producer B is landed; Replace needs a producer or a sentinel that is not final`; `producer B is held (held: ...); Replace needs a card the deal can take: unhold it first`
 - `N is not a need of producer X`; `need N of producer X does not exist`; `need N of producer X is landed, not fail`; `need N of producer X is landed; it cannot fail in this op`
 - `card T does not exist`; `card T is a work consumer; a need is relinked only to a producer or a sentinel that is not final`; `producer T is landed; a need is relinked only to a producer or a sentinel that is not final`; `producer X already needs T`; `card B, needed by R, was not passed; Relink needs every card reachable through needs and after`; a cycle, including one through after: `p3 needs p2 needs p3`
 - `sentinel X has no brief or prose to edit`; `producer X is held by R in consumer C; message R instead`; `Edit of producer X changes nothing`

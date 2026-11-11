@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -22,6 +23,55 @@ func (e *Engine) commit(ctx context.Context, op store.Op, fix string) (store.Rec
 		return r, refuse(r.Reason, fix)
 	}
 	return r, err
+}
+
+// fenceTries is how many times a verb applies its op on a store that others
+// write between its read and its commit: the first, and four plans again on
+// a fresh read. A verb's read-to-commit window is one plan (milliseconds);
+// live, one bench report or deal landed in it, never two (2026-11-10: replace
+// refused on a card the run dealt in it, hold on a bench report). Five
+// refusals in a row each by a change the verb did not read mean the store is
+// moving faster than the verb can plan; it stops and says so rather than
+// spin, and no sleep is taken between tries (each is a fresh read).
+const fenceTries = 5
+
+// fenced is the op plan makes from snap, committed; a refused op is planned
+// again on a fresh read and committed again, up to fenceTries in all, while
+// own(was, now) is "": what the verb itself read (its target, the epoch,
+// the caller's hook) is as it was on was, the verb's first read, so the
+// refusal was a write to a record the verb neither read nor wrote. own
+// naming a change is the refusal, with the store's reason; so is plan
+// refusing on the fresh read (its precondition no longer holds, named). It
+// returns the receipt and the op it committed.
+func (e *Engine) fenced(ctx context.Context, snap store.Snapshot, fix string, own func(was, now store.Snapshot) string, plan func(store.Snapshot) (store.Op, error)) (store.Receipt, store.Op, error) {
+	was := snap
+	for try := 1; ; try++ {
+		op, err := plan(snap)
+		if err != nil {
+			return store.Receipt{}, op, err
+		}
+		r, err := applyOnce(ctx, e.Store, op, e.Store.Apply)
+		if err != nil || r.Accepted {
+			return r, op, err
+		}
+		if try == fenceTries {
+			return r, op, refuse(fmt.Sprintf("%s (refused %d times, each by a write to records this verb did not read: the store moves faster than it can plan)", r.Reason, try), fix)
+		}
+		if snap, err = e.snapshot(ctx); err != nil {
+			return r, op, err
+		}
+		if what := cmp.Or(epochChange(was, snap), own(was, snap)); what != "" {
+			return r, op, refuse(r.Reason+"; "+what, fix)
+		}
+	}
+}
+
+// epochChange is the epoch moving under a verb (a clear): every verb's own.
+func epochChange(was, now store.Snapshot) string {
+	if was.Epoch == now.Epoch {
+		return ""
+	}
+	return fmt.Sprintf("the sprint moved from epoch %d to %d since this verb read it", was.Epoch, now.Epoch)
 }
 
 // applyOnce is op through write (st.Apply, or st.Clear) exactly once: on an

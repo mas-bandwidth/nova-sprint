@@ -92,7 +92,7 @@ func (e *Engine) handLand(ctx context.Context, in *input, snap store.Snapshot, i
 	if judgement != "" {
 		r.Answer = "land"
 	}
-	line, err := e.move(ctx, in, snap, r, id)
+	line, err := e.move(ctx, in, snap, fixed(r), id)
 	if err != nil {
 		return "", RefusalOr(err, broken("merged at "+merge+" but not recorded: "+errText(err), "nova-sprint land "+id+" --reason \"<why>\" again (the head is on base, so it records at once)"))
 	}

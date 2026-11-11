@@ -448,7 +448,7 @@ with a design change, never a special case):
   names the hold ("held: <the stream's reason>").
 - `Add` caps a card id at 104 bytes so every consumer suffix fits in 128.
 - A sentinel may be a need (a phase mark is what later phases need).
-- `Replace{by}`: `by` is a producer or sentinel, non-final, fenced.
+- `Replace{by}`: `by` is a producer or sentinel, non-final, not held, fenced.
 - `Withdraw` of a working producer's live consumer always releases the
   producer in the same plan (a withdraw that leaves it working is refused);
   `Withdraw{head}` equal to `base_sha` is refused (nothing was pushed).

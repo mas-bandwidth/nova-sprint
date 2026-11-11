@@ -64,7 +64,7 @@ func TestReplaceStillRefuses(t *testing.T) {
 		between []store.Write
 		why     string
 	}{
-		{"a held new card", setCard("p9", func(c *store.Card) { c.State, c.Reason = "waiting", card.HeldPrefix + "wrong base" }), nil,
+		{"a held new card", setCard("p9", func(c *store.Card) { c.State, c.Reason = "waiting", card.HeldPrefix+"wrong base" }), nil,
 			"producer p9 is held (held: wrong base)"},
 		{"the new card landed between", nil, []store.Write{store.SetCardState{Card: "p9", State: "landed"}},
 			"producer p9 is landed"},
