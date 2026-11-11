@@ -117,8 +117,18 @@ has run, and step 2 replaces the old hook in place. Nothing you held is lost: yo
 your hand, and step 3 names the step each one is at. `unhook` is not part of this: it returns
 your whole hand to the queue. The same holds when a hook that runs as a service is restarted
 beside a session that goes on: the next verb says `hook in first`, step 2 answers it, and the
-work continues. If step 2 says `<you> is already hooked in as worker`, your bus hook is the one
-you hooked in on: you are hooked in, go on with step 3.
+work continues. If step 2 says `<you> is already hooked in as worker: nova-sprint next --as
+<you>`, your bus hook is the one you hooked in on: you are hooked in, go on with step 3.
+
+The gate binds your name to its live bus hook, so every restart of the bus hook costs one
+`hook in first`: a watch that expired and was re-armed (Claude Code's Monitor lasts at most 30
+minutes) is a restart, and step 2 follows it each time. A hook never changes your role: asking
+for another role than your row has is refused (`<you> is hooked in as <role>; unhook first to
+change role`), and the refusal names the hook that keeps the role first. Known limit: a bus
+hook that runs as a service (`nova-bus hook ... --service`) is not started again by a new
+session (run again with the same flags it changes nothing, so its id stays), so a new Codex,
+Grok or Antigravity session on a service hook is not refused; it still runs step 2 for its
+playbook line.
 
 ## What arrives on the bus, and what to run
 

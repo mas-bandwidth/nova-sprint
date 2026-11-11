@@ -484,6 +484,16 @@ Your cards stay in your hand (`unhook` would return them to the queue), and
 findings remain in the store. Recover pushed work from the dealt
 branch, and follow the current generation rather than a remembered command.
 
+The gate binds a name to its live bus hook. Every restart of the bus hook
+costs one `hook in first`, answered by the same `hook`: a new session, a
+restarted service, and a harness watch that expired and was re-armed (Claude
+Code's Monitor lasts at most 30 minutes) each count, for a worker and for the
+coordinator, who keeps the seat. A hook never changes a role: that takes
+`unhook` first. Known limit: a bus hook that runs as a service
+(`nova-bus hook ... --service`) is not started again by a new AI session (run
+again with the same flags it changes nothing, so its id stays), so a new Codex,
+Grok or Antigravity session on a service hook is not refused.
+
 ## Run a sprint as coordinator
 
 The coordinator writes work, answers judgements and manages configuration.
@@ -724,7 +734,8 @@ Common situations and the next step:
 | This process has no sprint credential | Run it through `sprint_env`; confirm your seat has the sprint grant. Do not rerun setup just because your shell lacks a credential. |
 | Not on the bus | Start the harness's bus hook, then retry the sprint hook. |
 | Hook in first | Run the `hook` the refusal names. You never hooked in, or your bus hook was started again since (a new session, a restarted service); the hook replaces the old one in place and keeps your seat and hand. |
-| Already hooked | You are hooked in on the bus hook you have now: go on. `unhook`, then hook again, only to give up your hand or change role. |
+| Already hooked in | You are hooked in on the bus hook you have now: go on with the `next` it names. Never `unhook` for this. |
+| Hooked in as another role; unhook first to change role | To keep your role, run the first command the refusal names. Only to change role: `unhook` (it returns your hand, and frees the seat if you hold it), then hook in the new role. |
 | The sprint's coordinator is another row | Ask that row to `unhook`, or, only when the operator says so, take the seat with `up --as <you> --take-over --reason "<why>"`. The take-over needs nothing from that row, on the bus or gone: it unhooks the row, returns its cards to the queue, and the run tells it who took the seat and why. |
 | No commit identity | The coordinator sets it with `identity`; the worker then hooks or takes again. |
 | Not dealt at this generation, withdrawn or already reported | Run `next` as your row and use its current command. Do not invent a new generation. |

@@ -109,10 +109,16 @@ shows now is not hooked in: `SPRINT REFUSED <verb>: hook in first: nova-sprint
 hook --as <name> --role <the row's role>`. So a new session that starts only
 the bus hook is told to hook in on its first verb, and the hook hands it its
 playbook line; it never acts on an earlier session's hook. That hook replaces
-the old one in place: the row keeps its hand, and a coordinator its seat.
+the old one in place, in the role the row has: the row keeps its hand, and a
+coordinator its seat. A hook never changes a role (`<name> is hooked in as
+<role>; unhook first to change role`), and a name already hooked in on its
+live bus hook is told `nova-sprint next --as <name>`, never to unhook.
 The id compared is who's for the name, nothing about the process that asks,
 so a bus hook that runs as a service, or as a worker's child, is treated the
-same (`tla/Hook.tla`; `modules/verbs/hooked.go`).
+same (`tla/Hook.tla`; `modules/verbs/hooked.go`). Every restart of the bus
+hook costs one `hook in first`, a re-armed harness watch included. Known
+limit: a service-form bus hook is not started again by a new AI session, so
+a new session on one is not refused.
 
 ## The deal message is the walkthrough
 

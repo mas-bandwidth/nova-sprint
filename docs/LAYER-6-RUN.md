@@ -176,8 +176,11 @@ session id `nova-bus who` shows for the name's bus hook (the row's `Session`; be
 an id the sprint minted, compared with nothing), and the hooked check compares it with who's on
 every verb: after the bus hook is started again the refusal is the same `hook in first`, naming
 the role the row has, and the hook replaces the old one in place (`PutRow` with `Replaces`:
-seat, hold and hand kept) instead of refusing `already hooked in`. Model: `tla/Hook.tla`
-(`NoStaleVerb`, `HandKept`; witnesses `HookAnySession`, `HookReplaceUnhooks`), bound to the
+seat, hold and hand kept) instead of refusing `already hooked in`; a name hooked in on its
+live bus hook is told `next`, and a hook in another role than the row has is refused (the role
+changes only through `unhook`, where the run tells of a freed seat). Model: `tla/Hook.tla`
+(`NoStaleVerb`, `HandKept`, `RoleKept`; witnesses `HookAnySession`, `HookReplaceUnhooks`,
+`HookReplaceChangesRole`), bound to the
 verbs by the walk in `modules/verbs/hook_trace_test.go` (`tla/make-traces.sh check hook`).
 `TestPlaybookCommandsParse`
 holds every `nova-sprint` command in the playbooks, CORRECT-USE, SETUP and CARD-CONTRACT to a
