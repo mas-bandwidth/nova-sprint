@@ -88,12 +88,34 @@ func (x *e2e) dealt(row, kind string) (string, int) {
 	return id, gen
 }
 
+// answersChallenge waits for the run's CHALLENGE in row's inbox and runs the
+// pong it prints, as a friend's session does: a friend row comes up only on
+// an answer, never on presence.
+func (x *e2e) answersChallenge(row string) {
+	var cmd string
+	eventually(x.t, 60*time.Second, "a CHALLENGE to "+row, func() bool {
+		b, err := os.ReadFile(x.inbox(row))
+		if err != nil {
+			return false
+		}
+		_, after, ok := strings.Cut(string(b), "nova-sprint pong ")
+		if !ok {
+			return false
+		}
+		cmd = strings.Fields(after)[1] // --nonce <n> --as <row>
+		return true
+	})
+	x.tr.note("the run challenged %s; it answers with pong", row)
+	x.c.must([]string{"pong", "--nonce", cmd, "--as", row}, "PONG "+row)
+}
+
 // workerTakes hooks kim (on the bus first), waits for the deal, and takes
 // it; the receipt carries model, deadline and forge.
 func (x *e2e) workerTakes() (string, int, int) {
 	x.tr.note("a worker row hooks in: kim, a friend in nova-config")
 	busHook(x.t, x.tr, x.busEnv, "kim", x.inbox("kim"))
 	x.c.must([]string{"hook", "--as", "kim", "--role", "worker"}, "HOOKED kim role=worker")
+	x.answersChallenge("kim")
 	id, gen := x.dealt("kim", "work")
 	out := x.c.must([]string{"take", fmt.Sprintf("%s@%d", id, gen), "--as", "kim", "--json"})
 	var r struct {
