@@ -105,3 +105,47 @@ func TestLandKeepsTheGroupWhileItsCIRuns(t *testing.T) {
 		t.Fatalf("results %+v, want ci_red on the gate built on the first base tip", got)
 	}
 }
+
+// switchGit is a stream's origin with two still bases, main at tip 1 and
+// sprint-s1 at tip 0x100, and moveGit's group branch.
+type switchGit struct{ moveGit }
+
+func (g *switchGit) LsRemote(ctx context.Context, dir, ref string) (string, bool, error) {
+	switch ref {
+	case "refs/heads/main":
+		return fmt.Sprintf("%040x", 1), true, nil
+	case "refs/heads/sprint-s1":
+		return fmt.Sprintf("%040x", 0x100), true, nil
+	}
+	return g.moveGit.LsRemote(ctx, dir, ref)
+}
+
+// stream set --base while a group is in flight: the landing reads the
+// stream's base before each pass, lets go of the gate built on the old base
+// and builds the group on the new one; nothing built on the old base lands
+// or is judged.
+func TestLandLetsGoOfTheGateWhenTheStreamsBaseChanges(t *testing.T) {
+	t.Parallel()
+	g := &switchGit{}
+	f := &slowForge{g: &g.moveGit, passes: 4}
+	reads := 0
+	e := &Edges{Git: g, Forge: f, ReposDir: t.TempDir(), Pause: func(context.Context, time.Duration) error { return nil },
+		Streams: func() map[string]store.Stream {
+			base := "main"
+			if reads++; reads > 2 {
+				base = "sprint-s1"
+			}
+			return map[string]store.Stream{"s1": {Name: "s1", Repo: "o/r", Base: base, Forge: "github"}}
+		}}
+	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1",
+		Heads: []string{strings.Repeat("a", 40), strings.Repeat("d", 40)}, Branches: []string{"sprint/s1/x", "sprint/s1/y"}},
+		store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
+	got := e.Results()
+	onNew := "c" + fmt.Sprintf("%040x", 0x100)[1:]
+	if len(g.pushes) != 2 || g.pushes[1] != onNew {
+		t.Fatalf("pushes %v, want the group built on main, then once on sprint-s1 after the switch", g.pushes)
+	}
+	if len(got) != 1 || got[0].Outcome != "ci_red" || !strings.Contains(got[0].Reason, "base tip "+fmt.Sprintf("%040x", 0x100)) {
+		t.Fatalf("results %+v, want the verdict on the gate built on sprint-s1", got)
+	}
+}
