@@ -86,8 +86,9 @@ func serve(ctx context.Context, cfg Config, h Health) error {
 	}
 	// No tick before the first heads read is done: a tick before it passes
 	// no heads and opens a no-head judgement for every stream with a deal.
-	// The read is bounded by the git edge's own timeouts; a repository it
-	// cannot read is said as a heads fault and its streams tick headless.
+	// It reads HeadsAtOnce repositories at once, each bounded by the git
+	// edge's own timeouts; a repository it cannot read is said as a heads
+	// fault and its streams tick headless.
 	select {
 	case <-ctx.Done():
 		return nil

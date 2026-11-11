@@ -322,8 +322,8 @@ func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[stri
 	e.mu.Unlock()
 	beat := c.Every(HeadsEvery)
 	defer beat.Stop()
-	for {
-		e.readHeads(ctx, streams())
+	for width := HeadsAtOnce; ; width = 1 {
+		e.readHeads(ctx, streams(), width)
 		if read != nil {
 			close(read)
 			read = nil
@@ -343,9 +343,10 @@ func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[stri
 // its head for the pass while the others kept theirs). A read that fails
 // keeps the head as last read (SEAMS: Inputs.Heads is the tip "as the edge
 // last read it"), and the failure is said per stream; a base not on origin
-// is a definite answer, and the head goes.
-func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) {
-	heads, failed, read := map[string]string{}, map[string]error{}, map[string]headRead{}
+// is a definite answer, and the head goes. width repositories are read at
+// once.
+func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream, width int) {
+	heads, failed, keys, todo := map[string]string{}, map[string]error{}, map[string]string{}, map[string]store.Stream{}
 	e.mu.Lock()
 	last := e.heads
 	e.mu.Unlock()
@@ -355,12 +356,12 @@ func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) 
 			failed[name] = fmt.Errorf("clone: %w", err)
 			continue
 		}
-		key := url + "\x00" + s.Base
-		r, ok := read[key]
-		if !ok {
-			r = e.readHead(ctx, s)
-			read[key] = r
-		}
+		keys[name] = url + "\x00" + s.Base
+		todo[keys[name]] = s
+	}
+	read := e.readEach(ctx, todo, width)
+	for name, key := range keys {
+		r := read[key]
 		switch {
 		case r.err != nil && r.gone:
 			failed[name] = r.err
@@ -390,6 +391,27 @@ func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) 
 	for _, name := range tell {
 		e.fault("heads stream "+name, failed[name])
 	}
+}
+
+// readEach reads the base tip of each repository and base in todo, width
+// of them at once.
+func (e *Edges) readEach(ctx context.Context, todo map[string]store.Stream, width int) map[string]headRead {
+	read := make(map[string]headRead, len(todo))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, max(1, width))
+	for key, s := range todo {
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			r := e.readHead(ctx, s)
+			mu.Lock()
+			defer mu.Unlock()
+			read[key] = r
+		})
+	}
+	wg.Wait()
+	return read
 }
 
 // headRead is one base tip as read at origin: the sha, or why the read
