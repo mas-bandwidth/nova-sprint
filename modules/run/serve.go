@@ -184,7 +184,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	} else {
 		var reqs []steps.EdgeRequest
 		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Unread: werr != nil, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version,
-			Unadmitted: l.admit.Unadmitted(), Bases: l.bases.Read()})
+			Unadmitted: l.admit.Unadmitted(), Bases: l.bases.Read(), Moves: l.bases.Moves()})
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
 	cancel()

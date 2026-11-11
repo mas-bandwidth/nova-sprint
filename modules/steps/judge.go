@@ -24,7 +24,7 @@ var choices = map[string]string{
 	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
 	"no-model": "retry", "no-policy": "retry", "undealt": "retry", "admission": "retry", "down": "retry",
-	"base-red": "retry",
+	"base-red": "retry", "base-moved": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once); an
@@ -226,12 +226,13 @@ func (t *tick) put(j judgement) store.Write {
 func (t *tick) judgements() {
 	t.alarms()
 	t.baseRed()
+	t.baseMoved()
 	for _, q := range t.o.missed() {
 		t.judge("policy", q, fmt.Sprintf("policy v%d failed question %s: %s; the default answered this tick: run nova-sprint policy check", t.o.a.Version, q, t.o.why(q)))
 	}
 	for _, id := range sortedKeys(t.v.Judgements) {
 		j := t.v.Judgements[id]
-		if _, replaced := t.expires[id]; replaced || j.State != "open" { // replaced: baseRed opened its next episode
+		if _, replaced := t.expires[id]; replaced || j.State != "open" { // replaced: baseRed or baseMoved opened its next episode
 			continue
 		}
 		if why := t.cleared(j); why != "" {
@@ -347,6 +348,8 @@ func (t *tick) clearedDeal(j store.Judgement) string {
 		}
 	case "base-red":
 		return t.clearedBase(j.About)
+	case "base-moved":
+		return t.clearedMoved(j.About)
 	}
 	return ""
 }

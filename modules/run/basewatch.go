@@ -57,6 +57,16 @@ type baseWatch struct {
 	faulted bool          // the last read failed, and was said
 	green   bool          // a green read was taken since the watch began
 	fact    *steps.BaseCI // the last completed read; nil: none yet
+
+	seen  string          // the tip the heads last showed
+	cands []moveSeen      // moves seen and not yet judged own or foreign
+	moved *steps.BaseMove // the last foreign move, for one CIWait
+}
+
+// moveSeen is a move of a base tip, to to, seen at at.
+type moveSeen struct {
+	to string
+	at time.Time
 }
 
 // liveStates are the producer states a red base holds back.
@@ -96,6 +106,7 @@ func (w *BaseWatch) Watch(ctx context.Context, snap store.Snapshot, heads map[st
 			delete(w.bases, about)
 		}
 	}
+	owns := ownLandings(snap, groups)
 	for _, about := range slices.Sorted(maps.Keys(groups)) {
 		b := w.bases[about]
 		if b == nil {
@@ -104,6 +115,7 @@ func (w *BaseWatch) Watch(ctx context.Context, snap store.Snapshot, heads map[st
 		}
 		b.streams = groups[about]
 		tip := tips[about]
+		b.moves(about, tip, owns[about], now)
 		if tip == "" || b.reading {
 			continue
 		}
@@ -120,6 +132,85 @@ func (w *BaseWatch) Watch(ctx context.Context, snap store.Snapshot, heads map[st
 		repo, base, _ := strings.Cut(about, "@")
 		w.wg.Go(func() { w.read(ctx, about, repo, base, tip, now) })
 	}
+}
+
+// moves follows b's tip as the heads show it (no forge read): a move from a
+// tip seen before is judged one LandPoll after it was seen, so a landing's
+// result has folded into the store first; one to a commit that is none of
+// own (the sprint's landings on b's streams) is a foreign move, kept for one
+// CIWait after the last one.
+func (b *baseWatch) moves(about, tip string, own map[string]bool, now time.Time) {
+	if tip != "" && tip != b.seen {
+		if b.seen != "" {
+			b.cands = append(b.cands, moveSeen{to: tip, at: now})
+		}
+		b.seen = tip
+	}
+	kept := b.cands[:0]
+	for _, c := range b.cands {
+		switch {
+		case now.Before(c.at.Add(LandPoll)):
+			kept = append(kept, c)
+		case !own[c.to]:
+			repo, base, _ := strings.Cut(about, "@")
+			b.moved = &steps.BaseMove{Repo: repo, Base: base, To: c.to, At: c.at}
+		}
+	}
+	b.cands = kept
+	if b.moved != nil && !now.Before(b.moved.At.Add(CIWait)) {
+		b.moved = nil
+	}
+}
+
+// ownLandings is, for each watched base, the commits the sprint's own
+// landings put there: each producer's recorded merge (landed on main, or
+// merged onto its stream's base) and the head of each landed or merging
+// producer, on the streams that land on it.
+func ownLandings(snap store.Snapshot, groups map[string][]string) map[string]map[string]bool {
+	baseOf := map[string]string{}
+	for about, streams := range groups {
+		for _, s := range streams {
+			baseOf[s] = about
+		}
+	}
+	out := map[string]map[string]bool{}
+	for _, c := range snap.Cards {
+		about, ok := baseOf[c.Stream]
+		if !ok || c.Kind != "producer" || (c.State != "landed" && c.State != "merging") {
+			continue
+		}
+		if out[about] == nil {
+			out[about] = map[string]bool{}
+		}
+		out[about][c.Head] = true
+		if merge, ok := store.BaseMerge(c.Reason); ok && merge != "" {
+			out[about][merge] = true
+		}
+		if rest, ok := strings.CutPrefix(c.Reason, store.LandedReason+" at "); ok {
+			merge, _, _ := strings.Cut(rest, ":")
+			out[about][merge] = true
+		}
+	}
+	return out
+}
+
+// Moves is each watched base a foreigner moved within the last CIWait, by
+// steps.BaseAbout (Inputs.Moves).
+func (w *BaseWatch) Moves() map[string]steps.BaseMove {
+	if w == nil {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := map[string]steps.BaseMove{}
+	for about, b := range w.bases {
+		if b.moved != nil {
+			m := *b.moved
+			m.Streams = slices.Clone(b.streams)
+			out[about] = m
+		}
+	}
+	return out
 }
 
 // every is how long after it was last asked b's tip is asked again:

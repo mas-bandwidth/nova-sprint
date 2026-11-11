@@ -30,6 +30,10 @@ type Inputs struct {
 	// BaseAbout: red or green at a tip. One with no completed read has no
 	// entry, and neither opens nor clears a base-red judgement (basered.go).
 	Bases map[string]BaseCI
+	// Moves is each watched repository and base, by BaseAbout, whose tip a
+	// foreigner moved (to a commit that is no landing of the sprint) within
+	// the last CIWait; one not moved so has no entry (basemoved.go).
+	Moves map[string]BaseMove
 	// Broken is the answered watch judgements, by id, whose cause a tick
 	// has seen not holding since the answer: the last tick's Plan.Broken
 	// (layer 6 keeps it; none after a restart, when an answer from before
