@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"os"
@@ -148,6 +149,7 @@ func want(t *testing.T, r Result, exit int, parts ...string) {
 
 type fakeBus struct {
 	present map[string]bool
+	session map[string]string // a name's bus session id; "s-<name>", the fixtures' hooks, when not named
 	err     error
 	during  func() // runs inside Who: writes that land while the bus is asked
 }
@@ -159,7 +161,7 @@ func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
 	out := map[string]bus.Presence{}
 	for n, ok := range b.present {
 		if ok {
-			out[n] = bus.Presence{Name: n}
+			out[n] = bus.Presence{Name: n, Session: cmp.Or(b.session[n], "s-"+n)}
 		}
 	}
 	return out, b.err
