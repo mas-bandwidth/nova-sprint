@@ -61,7 +61,7 @@ func (p PGSetupRun) Ready(ctx context.Context, host, service string) (bool, erro
 	case status.Operation != "run" || !run.SameMachine(status.Host, host):
 		return false, &RunNotReady{Why: fmt.Sprintf("lock held by %s for %s, wanted %s run", orWord(status.Host, "(unknown host)"), orWord(status.Operation, "(unknown operation)"), host),
 			Fix: "stop the other holder (nova-sprint show run names it), then nova-sprint up again"}
-	case roster.Behind(status.Version, p.Release):
+	case status.Version != run.VersionUnknown && roster.Behind(status.Version, p.Release): // a name cut at run.NameMax holds no readable build: never restarted on it, so never in a loop
 		return false, &RunNotReady{Why: "run on " + host + " is build " + orWord(status.Version, "(not named in its lock: older than this check)") + ", below this build's " + p.Release, Fix: "nova-sprint up restarts it through nova-fleet services; still behind after that, the nova-sprint on " + host + " is older than this one: nova-fleet install this release there, then nova-sprint up again", Behind: true}
 	}
 	hooked, _, err := p.Env.Hooked(ctx, "sprint")

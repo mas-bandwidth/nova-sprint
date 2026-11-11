@@ -40,6 +40,22 @@ func InspectChooser(ctx context.Context, dsn, password string) (ChooserStatus, e
 		return ChooserStatus{}, fmt.Errorf("run: inspect chooser: %w", err)
 	}
 	status.Held = true
+	status.parseName()
+	return status, nil
+}
+
+// NameMax is the longest application name PostgreSQL keeps (NAMEDATALEN
+// less one); a longer one is cut there.
+const NameMax = 63
+
+// VersionUnknown is a holder's build when its name was cut at NameMax: the
+// fifth word, or the words before it, may be partial, so the build is never
+// read from it (up's run step never restarts on it, or it would loop).
+const VersionUnknown = "unknown"
+
+// parseName reads the operation, host, pid and build from the holder's
+// application name.
+func (status *ChooserStatus) parseName() {
 	parts := strings.Fields(status.ApplicationName)
 	if (len(parts) == 4 || len(parts) == 5) && parts[0] == "nova-sprint" && (parts[1] == "run" || parts[1] == "restore") {
 		status.Operation = parts[1]
@@ -49,5 +65,7 @@ func InspectChooser(ctx context.Context, dsn, password string) (ChooserStatus, e
 			status.Version = parts[4]
 		}
 	}
-	return status, nil
+	if len(status.ApplicationName) >= NameMax {
+		status.Version = VersionUnknown
+	}
 }
