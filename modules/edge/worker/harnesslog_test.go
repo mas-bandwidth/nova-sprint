@@ -77,6 +77,7 @@ func TestNoVerdictReasonCarriesTheHarnessLog(t *testing.T) {
 	t.Parallel()
 	wall := &OSReserveWall{Exec: &wallExec{res: edge.Result{ExitCode: 1, Stdout: "tool output\n", PID: 4242}}}
 	r := crRunner_internal(t, &crSprint{}, wall)
+	r.Harnesses = map[string]Harness{"opencode": &OpenCodeHarness{}}
 	dir := t.TempDir()
 	writeHarnessLog_internal(t, dir, harnessLogFixture)
 	job := Job{Consumer: "p1.r1", Kind: "read", Row: "vision.ds", JobDir: dir, WorktreeDir: dir, HarnessName: "opencode"}
@@ -99,7 +100,7 @@ func TestNoVerdictReasonCarriesTheHarnessLog(t *testing.T) {
 func TestCleanKeepsTheLogsOfAJobThatDidNotEndOK(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Wall: &fakeWall{}, Now: testClock_internal(), Sleep: noSleep_internal})
+	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Wall: &fakeWall{}, Now: testClock_internal(), Sleep: noSleep_internal, Harnesses: map[string]Harness{"opencode": &OpenCodeHarness{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
