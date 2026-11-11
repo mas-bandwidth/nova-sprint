@@ -138,8 +138,8 @@ func TestARedDoneWhenStopsBeforeTheStreamGates(t *testing.T) {
 	t.Parallel()
 	wall := &streamGateWall_internal{red: map[string]bool{"head make test": true}}
 	rec := streamGateStep_internal(t, streamGateRunner_internal(t, wall), "p1.w1", []string{"make test"}, []string{genGate})
-	if rec.Outcome.Result != "fail" || !strings.HasPrefix(rec.Outcome.Reason, "tests red (make test)") {
-		t.Fatalf("outcome %+v, want the DONE-WHEN's fail", rec.Outcome)
+	if rec.Outcome.Result != "fail" || !strings.HasPrefix(rec.Outcome.Reason, "tests red (make test)") || !strings.HasSuffix(rec.Outcome.Reason, "\nstream gates not run after it: "+genGate) {
+		t.Fatalf("outcome %+v, want the DONE-WHEN's fail naming the stream gates not run", rec.Outcome)
 	}
 	if want := []string{"head make test"}; !slices.Equal(wall.ran(), want) {
 		t.Fatalf("ran %q, want %q", wall.ran(), want)

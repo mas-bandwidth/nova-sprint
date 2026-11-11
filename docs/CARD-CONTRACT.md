@@ -49,8 +49,9 @@ LESSONS 2.15).
 Admission parses each done-when as one command and runs nothing (below);
 a bench's worker runs every done-when at the head after the work, and a
 red one fails the attempt. A gate has what is left of the card's deadline
-(its tier's, less what the work took) and no shorter bound; one still
-running then fails the attempt, saying how long it ran. A gate that would
+(its tier's, less what the work took and a minute kept for the push and
+the report) and no shorter bound; one still running then fails the
+attempt, saying how long it ran and which gates were not run. A gate that would
 stay red after a correct fix is a brief defect (LESSONS C.7) that no
 machine catches before the deal: the author writes it red at base and green at head. Every gate's negative
 control plants its fault in the real artifact the gate covers; a gate that
