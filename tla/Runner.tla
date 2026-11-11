@@ -104,7 +104,12 @@ PriorKinds == {"none", "unfinished", "finished"}
 \* the card machine makes (a finding stays on a card after its fix attempt
 \* pushed and died: unfinished and fix; a card held in review and unheld is
 \* dealt again with no finding: finished and no fix).
-Deals == {d \in [Consumers -> [prior : PriorKinds, fix : BOOLEAN]] : \A c \in Consumers : d[c].prior = "none" => ~d[c].fix}
+\* One consumer carries a deal (c1; c2 is a first attempt): the prior-head
+\* steps are a job's own, and the two jobs meet only at the slot and the
+\* pass, so both carrying one checks nothing more, at five times the states.
+Deals == {d \in [Consumers -> [prior : PriorKinds, fix : BOOLEAN]] :
+            /\ d["c2"] = [prior |-> "none", fix |-> FALSE]
+            /\ d["c1"].prior = "none" => ~d["c1"].fix}
 
 Init ==
   /\ storeState = [c \in Consumers |-> "working"]

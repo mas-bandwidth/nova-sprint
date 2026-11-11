@@ -679,15 +679,16 @@ func (h *runnerWalkHarness_internal) atPriorStep_internal(t *testing.T, c string
 	return act
 }
 
-// walkPriorHead_internal is one scripted walk of the two prior-head paths
-// the seeds reach rarely. c1's prior head is one an attempt finished at and
-// its deal is no fix (a card held in review and unheld): its ok, verified,
-// is refused and reported as the fail. c2's was pushed by an attempt that
-// died: it finishes ok there.
-func walkPriorHead_internal(t *testing.T) []runnerTraceStep_internal {
+// walkPriorHead_internal is a scripted walk of one of the two prior-head
+// paths the seeds reach rarely; c1's deal is no fix. finished: its prior
+// head is one an attempt finished at (a card held in review and unheld), so
+// its ok, verified, is refused and reported as the fail. unfinished: an
+// attempt pushed it and died, and c1 finishes ok there. c2 is a first
+// attempt.
+func walkPriorHead_internal(t *testing.T, prior string) []runnerTraceStep_internal {
 	t.Helper()
 	h := newRunnerWalkHarness_internal(t)
-	h.prior["c1"], h.prior["c2"], h.atPriorAlways = "finished", "unfinished", true
+	h.prior["c1"], h.atPriorAlways = prior, true
 	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
 	do := func(act, c string) {
 		if act == "AtPrior" {
@@ -698,15 +699,17 @@ func walkPriorHead_internal(t *testing.T) []runnerTraceStep_internal {
 		steps = append(steps, refinementRunnerState_internal(t, h, act, c))
 	}
 	do("PassStart", "none")
-	for _, c := range []string{"c1", "c2"} {
-		for _, act := range []string{"Take", "Stage", "Run", "Harvest", "AtPrior", "Push"} {
-			do(act, c)
-		}
-		if c == "c1" {
-			do("ReportRefused", c)
-		}
-		do("Report", c)
-		do("Clean", c)
+	for _, act := range []string{"Take", "Stage", "Run", "Harvest", "AtPrior", "Push"} {
+		do(act, "c1")
+	}
+	if prior == "finished" {
+		do("ReportRefused", "c1")
+	}
+	for _, act := range []string{"Report", "Clean"} {
+		do(act, "c1")
+	}
+	for _, act := range []string{"Take", "Stage", "Run", "Harvest", "Rebase", "Push", "Report", "Clean"} { // c2, a first attempt
+		do(act, "c2")
 	}
 	return append(steps, refinementRunnerState_internal(t, h, "Done", "none"))
 }
@@ -716,10 +719,9 @@ func walkRunnerTrace_internal(t *testing.T, seed int64) []runnerTraceStep_intern
 	rng := rand.New(rand.NewSource(seed))
 	h := newRunnerWalkHarness_internal(t)
 	h.rng = rng
-	for _, c := range []string{"c1", "c2"} { // the deals (Runner.tla Deals)
-		h.prior[c] = []string{"none", "unfinished", "finished"}[rng.Intn(3)]
-		h.fix[c] = h.prior[c] != "none" && rng.Intn(2) == 0
-	}
+	// The deal (Runner.tla Deals): c1 carries one, c2 is a first attempt.
+	h.prior["c1"] = []string{"none", "unfinished", "finished"}[rng.Intn(3)]
+	h.fix["c1"] = h.prior["c1"] != "none" && rng.Intn(2) == 0
 	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
 	for i := 0; i < 160; i++ {
 		st := steps[len(steps)-1]
@@ -949,18 +951,20 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	// The two prior-head paths few seeds reach, walked once by script.
-	scripted := walkPriorHead_internal(t)
-	for _, s := range scripted {
-		seen[s.action]++
-	}
-	if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
-		sub := filepath.Join(traceDir, "runner-walk-prior")
-		if err := os.MkdirAll(sub, 0o755); err != nil {
-			t.Fatal(err)
+	// The two prior-head paths few seeds reach, each walked once by script.
+	for _, prior := range []string{"finished", "unfinished"} {
+		scripted := walkPriorHead_internal(t, prior)
+		for _, s := range scripted {
+			seen[s.action]++
 		}
-		if err := os.WriteFile(filepath.Join(sub, "RunnerTraceLog.tla"), []byte(formatRunnerTraceTLA_internal(scripted)), 0o644); err != nil {
-			t.Fatal(err)
+		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
+			sub := filepath.Join(traceDir, "runner-walk-prior-"+prior)
+			if err := os.MkdirAll(sub, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(sub, "RunnerTraceLog.tla"), []byte(formatRunnerTraceTLA_internal(scripted)), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	// The seeds, together, walk every path the model checks the code on,
