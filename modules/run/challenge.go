@@ -2,7 +2,6 @@ package run
 
 import (
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"maps"
 	"slices"
@@ -105,7 +104,5 @@ func (k *kinLife) fresh() string {
 	if k.nonce != nil {
 		return k.nonce()
 	}
-	var b [8]byte
-	_, _ = rand.Read(b[:]) // crypto/rand.Read never returns an error (Go 1.24)
-	return hex.EncodeToString(b[:])
+	return rand.Text() // 26 base32 characters from crypto/rand; it has no error to handle (it crashes the program rather than return weak bytes)
 }
