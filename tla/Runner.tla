@@ -112,6 +112,16 @@ AliveSlots == (IF harnessAlive["c1"] > 0 THEN harnessAlive["c1"] ELSE 0) +
 ResIDFor(c) == IF c = "c1" THEN 1 ELSE 2
 PidFor(c) == IF c = "c1" THEN 101 ELSE 102
 
+\* tree: a process the job's harness or a gate started is still running
+\* (a tool's shell, a build, a build server that left the group). Ended(c)
+\* is what is left of it once the worker has ended the job's tree: nothing.
+\* The worker ends it (OSKillJob: every process whose environment names the
+\* job directory) at the end of every wall command and before it lets a job
+\* go (endJobTree_internal: clean, retire, quarantine). The reversed witness
+\* RunnerTreeOutlivesItsHarness is the worker before 2026-11-11, whose
+\* KillGroup reached only nova-reserve's own group, never its command's.
+Ended(c) == FALSE
+
 PriorKinds == {"none", "unfinished", "finished"}
 
 \* The deals: the prior head of each consumer's deal. One consumer carries
@@ -127,7 +137,7 @@ Init ==
   /\ width = Width
   /\ \E d \in Deals :
        jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE, keepsPrior |-> TRUE,
-                                      prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE]]
+                                      prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE, tree |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, returned |-> {}, restarted |-> FALSE]
@@ -187,6 +197,15 @@ Run(c) ==
   /\ jobState' = [jobState EXCEPT ![c] = "running"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
+\* The harness (or a gate) starts a process that may outlive it: a shell
+\* a tool started, a build, a build server that leaves its group.
+Spawn(c) ==
+  /\ ~env.crashed
+  /\ harnessAlive[c] = 1
+  /\ ~jobDir[c].tree
+  /\ jobDir' = [jobDir EXCEPT ![c].tree = TRUE]
+  /\ UNCHANGED <<storeState, jobState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
+
 Die(c) ==
   /\ ~env.crashed
   /\ storeState[c] = "working"   \* a returned job's harness is never harvested: it moves only to Retire
@@ -194,7 +213,7 @@ Die(c) ==
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - 1
-  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].sealed = TRUE, ![c].outcome = "fault", ![c].bounced = FALSE]   \* Die is a fault, never a fail that bounces; sealed after it
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].sealed = TRUE, ![c].outcome = "fault", ![c].bounced = FALSE, ![c].tree = Ended(c)]   \* Die is a fault, never a fail that bounces; sealed after it
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
@@ -207,7 +226,7 @@ Harvest(c) ==
   /\ slotsInUse' = slotsInUse - 1   \* slot freed only when harness ends
   /\ \E np \in BOOLEAN :   \* np: the seal found no commits past the prior head, and nothing is pushed
        /\ np => jobDir[c].prior # "none"
-       /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "ok", ![c].sealed = TRUE, ![c].atPrior = np]   \* the seal step, in the wall
+       /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "ok", ![c].sealed = TRUE, ![c].atPrior = np, ![c].tree = Ended(c)]   \* the seal step, in the wall
        /\ branch' = IF np THEN branch ELSE JobPushes(c)   \* the harvest pushes the sealed head; the store learns it only from a report
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass>>
@@ -297,7 +316,7 @@ Clean(c) ==
   /\ jobState[c] = "recorded"   \* clean only after report is recorded and head pushed
   /\ storeState[c] \in {"done", "fail"}
   /\ jobDir[c].pushed
-  /\ jobDir' = [jobDir EXCEPT ![c].exists = FALSE]
+  /\ jobDir' = [jobDir EXCEPT ![c].exists = FALSE, ![c].tree = Ended(c)]
   /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
 
@@ -323,7 +342,7 @@ Retire(c) ==
   /\ jobState[c] # "cleaned"
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - harnessAlive[c]
-  /\ jobDir' = [jobDir EXCEPT ![c].exists = FALSE]
+  /\ jobDir' = [jobDir EXCEPT ![c].exists = FALSE, ![c].tree = Ended(c)]
   /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
   /\ UNCHANGED <<storeState, width, appliedOps, env, pass, branch>>
 
@@ -364,7 +383,7 @@ Stop ==
   /\ harnessAlive' = [c \in Consumers |-> 0]
   /\ slotsInUse' = 0
   /\ jobState' = [c \in Consumers |-> IF jobState[c] = "running" THEN "staged" ELSE jobState[c]]
-  /\ jobDir' = [c \in Consumers |-> IF jobState[c] = "running" THEN [jobDir[c] EXCEPT !.pid = 0, !.stopped = TRUE] ELSE jobDir[c]]
+  /\ jobDir' = [c \in Consumers |-> IF jobState[c] = "running" THEN [jobDir[c] EXCEPT !.pid = 0, !.stopped = TRUE, !.tree = Ended(c)] ELSE jobDir[c]]
   /\ UNCHANGED <<storeState, width, appliedOps, branch>>
 
 \* A pass: a wake (the hook's or the periodic one) starts it when none runs;
@@ -420,6 +439,7 @@ Next ==
        \/ Stage(c)
        \/ StageFail(c)
        \/ Run(c)
+       \/ Spawn(c)
        \/ Die(c)
        \/ Harvest(c)
        \/ Rebase(c)
@@ -472,6 +492,13 @@ TypeOK ==
        /\ jobDir[c].prior \in PriorKinds
        /\ jobDir[c].atPrior \in BOOLEAN /\ jobDir[c].nothingNew \in BOOLEAN
        /\ jobDir[c].atPrior => jobDir[c].prior # "none"
+
+\* No process of a job runs once its harness has ended: not after a wall
+\* command, not after the row lets the job go (a retire of a returned or
+\* withdrawn card, the clean). A crashed worker's harness is still alive,
+\* and its tree with it, until the first pass retires the job.
+NoProcessOutlivesItsJob ==
+  \A c \in Consumers : jobDir[c].tree => harnessAlive[c] = 1
 
 OneLiveHarnessPerJobDir ==
   \A c \in Consumers : harnessAlive[c] <= 1 /\ (harnessAlive[c] > 0 => jobDir[c].exists)

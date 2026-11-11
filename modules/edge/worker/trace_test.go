@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,9 @@ type runnerJobDirState_internal struct {
 	prior      string
 	atPrior    bool
 	nothingNew bool
+	// tree: a process the job started is still running; read back from
+	// the walk's job process table, which only the worker's KillJob empties.
+	tree bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -111,7 +115,8 @@ type runnerWalkHarness_internal struct {
 	prior      map[string]string // the deal: each consumer's prior head by kind, chosen by the walk's seed
 	atPrior    map[string]bool   // the harvest found no new head
 	nothingNew map[string]bool
-	rng        *rand.Rand // the walk's: a harvest at the prior head, red done-whens there
+	trees      *walkJobTrees_internal // the processes each job left running
+	rng        *rand.Rand             // the walk's: a harvest at the prior head, red done-whens there
 	// atPriorAlways: every harvest of a job with a prior head finds no new
 	// head (the scripted walk's).
 	atPriorAlways bool
@@ -145,7 +150,9 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 	root, git := t.TempDir(), newFakeGit_internal()
 	wall := &stepWall_internal{fakeWall: &fakeWall{}, steps: &[][]string{}}
 	procs := &fakeProcTable{alive: map[string]bool{}}
+	trees := &walkJobTrees_internal{running: map[string]bool{}}
 	return &runnerWalkHarness_internal{
+		trees:    trees,
 		procs:    procs,
 		st:       st,
 		rootDir:  root,
@@ -160,7 +167,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		stopped:  map[string]bool{"c1": false, "c2": false},
 		gone:     map[string]*JobRecord{},
 		takes:    map[string]int{"c1": 0, "c2": 0},
-		runner:   runnerForWalk_internal(t, root, git, wall, procs),
+		runner:   runnerForWalk_internal(t, root, git, wall, procs, trees),
 		wall:     wall,
 		git:      git,
 		finalAt:  map[string]int{},
@@ -175,14 +182,50 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 	}
 }
 
-func runnerForWalk_internal(t *testing.T, root string, git *fakeGit, wall ReserveWall, procs *fakeProcTable) *Runner {
+func runnerForWalk_internal(t *testing.T, root string, git *fakeGit, wall ReserveWall, procs *fakeProcTable, trees *walkJobTrees_internal) *Runner {
 	t.Helper()
-	r, err := NewRunner(Runner{Host: "vision", RootDir: root, Git: git, Wall: wall, Procs: procs,
+	r, err := NewRunner(Runner{Host: "vision", RootDir: root, Git: git, Wall: wall, Procs: procs, KillJob: trees.kill_internal,
 		Now: func() time.Time { return time.Unix(1000, 0) }, Sleep: func(time.Duration) {}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// walkJobTrees_internal is the walk's processes a job left running (a
+// Spawn step starts one), by job directory; kill_internal, the worker's
+// KillJob, is the only thing that ends them.
+type walkJobTrees_internal struct {
+	mu      sync.Mutex
+	running map[string]bool
+}
+
+func (w *walkJobTrees_internal) kill_internal(jobDir string) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.running[jobDir] {
+		return 0, nil
+	}
+	delete(w.running, jobDir)
+	return 1, nil
+}
+
+func (w *walkJobTrees_internal) has_internal(jobDir string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.running[jobDir]
+}
+
+// harnessEnds_internal is the end of c's harness command as the worker's
+// wall runs it (OSReserveWall.RunHarness on a fake exec, its KillJob the
+// walk's): what the job left running ends there or not at all.
+func (h *runnerWalkHarness_internal) harnessEnds_internal(t *testing.T, c string) {
+	t.Helper()
+	dir := h.jobDirPath_internal(c)
+	w := &OSReserveWall{Exec: cr2OKExec_internal(), Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox"}, KillJob: h.trees.kill_internal}
+	if _, err := w.RunHarness(context.Background(), Job{Consumer: c, JobDir: dir, WorktreeDir: filepath.Join(dir, "repo")}, []string{"harness"}, nil, time.Minute); err != nil {
+		t.Fatalf("the harness of %s ends: %v", c, err)
+	}
 }
 
 func runnerResID_internal(c string) int {
@@ -316,6 +359,7 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 
 		keepsPrior: !h.dropped[c],
 		prior:      h.prior[c], atPrior: h.atPrior[c], nothingNew: h.nothingNew[c],
+		tree: h.trees.has_internal(dir),
 	}
 }
 
@@ -389,6 +433,10 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.setLive_internal(rec, true)
 		h.stopped[c], h.sealedAt[c] = false, h.seals_internal(c)
 		h.jobState[c] = JobRunning
+	case "Spawn": // the harness starts a process that leaves its group
+		h.trees.mu.Lock()
+		h.trees.running[dir] = true
+		h.trees.mu.Unlock()
 	case "Harvest", "Die":
 		h.finishRun_internal(t, c, act, dir)
 	case "Rebase", "Conflict", "Push", "Report", "Clean":
@@ -479,6 +527,7 @@ func (h *runnerWalkHarness_internal) stop_internal(t *testing.T) {
 			t.Fatal(err)
 		}
 		h.setLive_internal(rec, false) // the stop kills the harness
+		h.harnessEnds_internal(t, c)   // its wall command returns on the stop
 		if err := h.runner.stopped_internal(&prepared_internal{job: Job{JobDir: dir, Row: "vision.ds", Consumer: c}, rec: rec}); err != nil {
 			t.Fatal(err)
 		}
@@ -566,6 +615,7 @@ func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, di
 		t.Fatal(err)
 	}
 	h.setLive_internal(rec, false) // the harness ended
+	h.harnessEnds_internal(t, c)
 	rec.PID = 0
 	rec.State = JobHarvested
 	if act == "Die" {
@@ -804,6 +854,9 @@ func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_
 		}
 	case JobRunning:
 		moves = append(moves, runnerMove_internal{"Harvest", c}, runnerMove_internal{"Die", c})
+		if !st.jobDir[c].tree && !st.env.crashed {
+			moves = append(moves, runnerMove_internal{"Spawn", c})
+		}
 	case JobHarvested:
 		if st.jobDir[c].outcome == "ok" && st.jobDir[c].atPrior {
 			moves = append(moves, runnerMove_internal{"AtPrior", c}) // rebaseAndTestStep_internal decides: Rebase, NothingNew or Conflict
@@ -883,9 +936,9 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s, prior |-> %q, atPrior |-> %s, nothingNew |-> %s]",
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s, prior |-> %q, atPrior |-> %s, nothingNew |-> %s, tree |-> %s]",
 		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed), tlaBool_internal(d.keepsPrior),
-		d.prior, tlaBool_internal(d.atPrior), tlaBool_internal(d.nothingNew))
+		d.prior, tlaBool_internal(d.atPrior), tlaBool_internal(d.nothingNew), tlaBool_internal(d.tree))
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {
