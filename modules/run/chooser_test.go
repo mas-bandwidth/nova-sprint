@@ -92,6 +92,9 @@ func TestDescribeHolder(t *testing.T) {
 	if got := describeHolder("nova-sprint run studio 4121", start); got != "studio (pid 4121, since 14:02)" {
 		t.Fatal(got)
 	}
+	if got := describeHolder("nova-sprint run studio 4121 v2.0.38", start); got != "studio (pid 4121, since 14:02)" {
+		t.Fatal(got)
+	}
 	if got := describeHolder("unknown", start); got != "unknown" {
 		t.Fatal(got)
 	}

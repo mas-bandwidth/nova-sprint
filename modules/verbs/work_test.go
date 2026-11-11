@@ -484,6 +484,19 @@ func TestBeat(t *testing.T) {
 	}
 }
 
+// A beat a worker process runs records that process's build
+// (worker.BuildEnv), not the beat binary's: nova-fleet install replaces the
+// file on disk under a running worker, and the row must say what runs.
+func TestBeatRecordsTheWorkerProcessBuild(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.e.WorkerBuild = "v1.9.9"
+	want(t, w.do("alice", "beat", "--load1", "1", "--cores", "8", "--slots-used", "0", "--slots-total", "8"), 0, "BEAT alice applied at seq")
+	if r := w.snap(t).Rows["alice"]; r.Version != "v1.9.9" {
+		t.Fatalf("the row's build is the worker process's: %q", r.Version)
+	}
+}
+
 func TestBeatRefusals(t *testing.T) {
 	t.Parallel()
 	good := []string{"--load1", "1", "--cores", "4", "--slots-used", "1", "--slots-total", "4"}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -229,5 +230,53 @@ func TestWorkerBenchesIncludeTheRunMachineWhenItIsABench(t *testing.T) {
 	got := WorkerBenches([]FleetMachine{{Name: "studio", Roles: []string{"services", "bench"}}, {Name: "edge", Roles: []string{"services"}}, {Name: "amd-1", Roles: []string{"bench"}}})
 	if strings.Join(got, ",") != "studio,amd-1" {
 		t.Fatal(got)
+	}
+}
+
+// behindRun is a run whose lock names an older build until the services
+// play restarts it.
+type behindRun struct{ behind bool }
+
+func (r *behindRun) Ready(context.Context, string, string) (bool, error) {
+	if r.behind {
+		return false, &RunNotReady{Why: "run on bench-a is build v2.0.36, below this build's v2.0.37", Behind: true}
+	}
+	return true, nil
+}
+
+// The run step restarts a run whose process is an older build than this
+// one (its lock names the build; the binary on disk is not read), through
+// the same services play naming its record; a current run is applied,
+// never restarted.
+func TestRuntimeSetupRestartsARunOfAnOlderBuild(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	run := &behindRun{behind: true}
+	service := FleetService{Name: "sprint-run", Machine: "bench-a", Seat: "swarm-bench-a", Keys: []string{sprintPasswordName}, Argv: []string{"/bin/nova-sprint", "run"}}
+	var plays [][]string
+	cmd := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "nova-fleet":
+			plays = append(plays, args)
+			if slices.Contains(args, "nova_service_restart=sprint-run") {
+				run.behind = false
+			}
+			return nil, nil
+		case "nova-config":
+			item := map[string]any{"kind": "service", "fields": map[string]any{"name": service.Name, "machine": service.Machine, "argv": service.Argv, "seat": "swarm-bench-a", "keys": sprintPasswordName, "every": 0, "keepalive": true, "enabled": true, "env": map[string]string{}, "log": ""}}
+			b, _ := json.Marshal(map[string]any{"result": map[string]any{"verb": "service list", "status": "ok", "exit": 0}, "facts": map[string]any{"kind": "service", "rows": 1}, "items": []any{item}})
+			return b, nil
+		}
+		return nil, nil
+	}
+	c := Choices{Store: store.NewFake(), Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c, Command: cmd}}, Run: run, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, RunService: service, DefaultRunHost: "bench-a"}
+	in := SetupInput{Actor: "alice"}
+	restart := []string{"services", "--", "-l", "bench-a", "-e", "nova_service_only=sprint-run", "-e", "nova_service_restart=sprint-run"}
+	if err := r.Act(ctx, StepRun, in); err != nil || len(plays) != 1 || !slices.Equal(plays[0], restart) || run.behind {
+		t.Fatal(err, plays)
+	}
+	if err := r.Act(ctx, StepRun, in); err != nil || len(plays) != 2 || !slices.Equal(plays[1], restart[:len(restart)-2]) {
+		t.Fatal(err, plays)
 	}
 }
