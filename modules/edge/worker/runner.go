@@ -300,6 +300,9 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id string, rec JobRecord, reason string) error {
 	rec.PushedHead = cmp.Or(r.harvestPartialPush_internal(ctx, jobDir, rec), rec.PushedHead)
 	rec.ResultID = cmp.Or(rec.ResultID, resultID_internal(rec.Epoch, id, rec.Gen))
+	if h, err := r.harnessFor_internal(rec.Harness); err == nil {
+		reason = withHarnessLog_internal(reason, harnessLogErrors_internal(jobDir, h.Needs().LogDir))
+	}
 	rec.Outcome, rec.State = Outcome{Result: "fault", Head: rec.PushedHead, Reason: reason}, JobReporting
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return err
@@ -502,7 +505,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen), StreamGates: cloneStrings_internal(info.StreamGates),
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
-		PriorFinished: info.PriorFinished,
+		PriorFinished: info.PriorFinished, Harness: rowInfo.Harness,
 	}
 	return job, rec
 }
@@ -632,6 +635,9 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	out := ClassifyJob(h, job, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
 	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" && (runErr != nil || (out.Result != "ok" && out.Result != "yes" && out.Result != "fix")) {
 		out = Outcome{Result: "fault", Reason: why}
+	}
+	if out.Result != "ok" && out.Result != "yes" && out.Result != "fix" {
+		out.Reason = withHarnessLog_internal(out.Reason, harnessLogErrors_internal(job.JobDir, h.Needs().LogDir))
 	}
 	if cost, ok := h.Usage(job); ok {
 		rec.Cost = cost
@@ -1239,6 +1245,9 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 			r.logStep_internal(rec.Row, rec.Consumer, "clean", why, 0)
 			return nil
 		}
+	}
+	if res := rec.Outcome.Result; res != "ok" && res != "yes" && res != "fix" {
+		r.keepJobLogs_internal(jobDir, rec)
 	}
 	if r.Git != nil {
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
