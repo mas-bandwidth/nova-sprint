@@ -172,7 +172,7 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		ws = append(ws, store.SetStreamGates{Stream: name, Gates: gates})
 	}
 	if len(ws) == 0 {
-		return done(waitNext, append([]string{fmt.Sprintf("STREAM %s base=%s mode=%s forge=%s unchanged", name, base, mode, orWord(forge, "none"))}, gateLines(gates)...)...), nil
+		return done(waitNext, append([]string{fmt.Sprintf("STREAM %s mode=%s forge=%s unchanged", name, mode, orWord(forge, "none"))}, gateLines(gates)...)...), nil
 	}
 	// the stream it makes is admitted as stream add admits one
 	s.Mode, s.Forge, s.Base = mode, forge, base
