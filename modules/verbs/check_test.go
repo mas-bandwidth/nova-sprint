@@ -44,20 +44,14 @@ func undealtSprint(s *store.Snapshot) {
 	s.Cards["p1"] = c
 }
 
-// judgement is an open judgement of kind with the default deadline, an
-// hour after it opened, as the steps put every kind but held, land and
-// no-policy (steps/judge.go put).
 func judgement(id, kind, about string, at time.Time) store.Judgement {
-	return store.Judgement{ID: id, Kind: kind, About: about, Question: "q " + id, State: "open", OpenedAt: at, Deadline: at.Add(time.Hour),
+	return store.Judgement{ID: id, Kind: kind, About: about, Question: "q " + id, State: "open", OpenedAt: at,
 		Command: "nova-sprint judge " + id + " <choice> --reason <why>   choices: retry"}
 }
 
-// heldJudgement is a held card's judgement: no deadline; it sits until
-// answered.
+// heldJudgement is a held card's judgement: it sits until answered.
 func heldJudgement(id, about string, at time.Time) store.Judgement {
-	j := judgement(id, "held", about, at)
-	j.Deadline = time.Time{}
-	return j
+	return judgement(id, "held", about, at)
 }
 
 // TestCheckAllGreen is every line of a healthy sprint, in order, exit 0.
