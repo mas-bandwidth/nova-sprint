@@ -182,7 +182,9 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 			status = "down"
 		}
 		f := &fleetRow{Status: status, Width: width}
-		f.Load, f.Slots = loadCells(r)
+		if kind != roster.KindKin { // load is only for fleet machines (the human, 2026-11-10)
+			f.Load, f.Slots = loadCells(r)
+		}
 		tableOf(kind, fleet, friends)[n] = f
 	}
 }
