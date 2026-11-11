@@ -390,7 +390,7 @@ func (f *Fake) mergeTwoLocked_internal(ours, theirs FakeCommit) (FakeCommit, Mer
 	}
 	if len(conflicts) > 0 {
 		slices.Sort(conflicts)
-		return FakeCommit{}, MergeResult{Kind: MergeConflict, Conflicts: conflicts, Reason: fmt.Sprintf("merge conflict on %s: %s", theirs.SHA, strings.Join(conflicts, ", "))}, true
+		return FakeCommit{}, MergeResult{Kind: MergeConflict, Conflicts: conflicts, Reason: fmt.Sprintf("merge conflict on %s: %s", theirs.SHA, strings.Join(conflicts, ", ")), Head: theirs.SHA}, true
 	}
 	tree := computeTreeHash_internal(mergedFiles)
 	sum := sha256.Sum256([]byte("merge\x00" + ours.SHA + "\x00" + theirs.SHA + "\x00" + tree))

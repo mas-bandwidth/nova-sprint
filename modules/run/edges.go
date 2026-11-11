@@ -143,9 +143,10 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault", Reason: "the clone of " + s.Repo + " failed: " + err.Error()})
 		return
 	}
-	reran := false // the stopped jobs were run again once (OutcomeRerun)
+	reran := false    // the stopped jobs were run again once (OutcomeRerun)
+	var gate git.Gate // the gate the last pass kept: read to its verdict, never rebuilt meanwhile
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Reran: reran})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Reran: reran, Gate: gate})
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
@@ -159,6 +160,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	absent, rested := time.Duration(0), false
 	for {
 		res, err := e.pass(ctx, dir, pass)
+		gate = res.Kept()
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			if res.Outcome != git.OutcomeRested {
 				rested = false
@@ -209,9 +211,11 @@ func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration
 
 // landItem is LandResult as layer 3 reads it (SEAMS 6): landed with the
 // heads and the merge sha, or the outcome and its facts for the
-// coordinator's judgement (an error is the outcome fault).
+// coordinator's judgement (an error is the outcome fault). A conflict of
+// the group's merge names, as Head, the head whose merge failed: that card
+// alone is the coordinator's.
 func landItem(id string, res git.LandResult, err error, wait time.Duration) steps.InboxItem {
-	it := steps.InboxItem{Kind: "land", Request: id, Outcome: string(res.Outcome)}
+	it := steps.InboxItem{Kind: "land", Request: id, Outcome: string(res.Outcome), Head: res.ConflictHead}
 	switch {
 	case err != nil:
 		it.Outcome, it.Reason = "fault", err.Error()

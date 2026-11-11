@@ -42,11 +42,23 @@ const (
 // LandRequest is one landing: the stream's heads (in landing order) and the
 // card branches they are the tips of. One head is rung 1, more is rung 2.
 // Reran says the stopped jobs of this landing were already run again once
-// (OutcomeRerun): a second no-verdict is the coordinator's.
+// (OutcomeRerun): a second no-verdict is the coordinator's. Gate is the
+// gate the last pass of this request kept (LandResult.Kept; zero: none).
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base string
 	Heads, Branches             []string
 	Reran                       bool
+	Gate                        Gate
+}
+
+// Gate is what a landing's CI gates: the PR's head branch, the sha, the
+// base tip it was built on and its rung. The run keeps a pass's gate for
+// the next pass of the same request, so a gate whose CI has no verdict
+// yet is read to its verdict and never rebuilt or pushed again because
+// the base moved (LANDING.md, "A group in flight").
+type Gate struct {
+	Branch, SHA, Base string
+	Rung              int
 }
 
 // LandResult is one pass's outcome with the facts a judgement shows. A red
@@ -55,12 +67,28 @@ type LandRequest struct {
 // coordinator's whole-picture judgement, never classified here (LANDING.md
 // "A red base"). Stopped names the failing checks GitHub says were stopped
 // (killed, cancelled, timed out), apart from FailingCI, the ones that failed
-// on their own; Pending is how many checks were still running.
+// on their own; Pending is how many checks were still running. Gate is
+// the gate the pass read; ConflictHead the head whose merge into the group
+// failed, when the group's merge conflicted.
 type LandResult struct {
 	Outcome                                                               LandOutcome
 	Rung, Pending                                                         int
 	BaseTip, GroupTip, GatedSHA, MergeSHA, PR, CIURL, Reason              string
 	LandedHeads, Conflicts, FailingCI, FailingLines, BaseFailing, Stopped []string
+	ConflictHead                                                          string
+	Gate                                                                  Gate
+}
+
+// Kept is the gate the next pass of the same request reads: this pass's
+// while its CI has no verdict yet (pending, unfinished, absent, stopped
+// jobs run again, a rested forge), else none: a verdict ends the request,
+// and a green gate whose base moved is built again on the new tip.
+func (r LandResult) Kept() Gate {
+	switch r.Outcome {
+	case OutcomePending, OutcomeUnfinished, OutcomeAbsent, OutcomeRerun, OutcomeRested:
+		return r.Gate
+	}
+	return Gate{}
 }
 
 // LandPass is one pass of the landing (LANDING.md, "The ladder"). Heads all
@@ -71,8 +99,12 @@ type LandResult struct {
 // contains the base it merges onto). The PR is found or opened against
 // base, its checks read at the exact gated sha, and only a green one is
 // merged, by the repository's allowed method, while base is still the tip
-// it was gated on. Every failure is an outcome naming its facts, never a
-// retry here; an error is a fault of git or the forge themselves.
+// it was gated on. A gate the request kept (req.Gate) is read as it is,
+// on the base it was built on, while its branch is still at it; GitHub
+// saying it conflicts with a base that moved lets it go, and the pass
+// builds again on the new tip. Every failure is an outcome naming its
+// facts, never a retry here; an error is a fault of git or the forge
+// themselves.
 func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (LandResult, error) {
 	if err := checkRequest_internal(req, fg); err != nil {
 		return LandResult{}, err
@@ -95,12 +127,65 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 		}
 		return res, err
 	}
-	prHead, gated, done, err := gatedHead_internal(ctx, g, req, baseTip, tips, &res)
+	if moved_internal(req, tips, &res) {
+		return res, nil
+	}
+	kept, err := keeps_internal(ctx, g, req)
+	if err != nil {
+		return res, err
+	}
+	if kept {
+		out, err := gateAndMerge_internal(ctx, g, fg, req, req.Gate.Branch, keptResult_internal(req.Gate, res))
+		if err != nil || out.Outcome != OutcomeConflict || req.Gate.Base == baseTip {
+			return out, err
+		}
+	}
+	prHead, gated, done, err := gatedHead_internal(ctx, g, req, baseTip, &res)
 	if err != nil || done {
 		return res, err
 	}
 	res.GatedSHA = gated
+	res.Gate = Gate{Branch: prHead, SHA: gated, Base: baseTip, Rung: res.Rung}
 	return gateAndMerge_internal(ctx, g, fg, req, prHead, res)
+}
+
+// moved_internal is whether a card branch is not at the head the read
+// passed, on either rung: a moved branch is the coordinator's judgement,
+// never landed at a sha its branch has left (the deployed line's check,
+// 2026-11-07).
+func moved_internal(req LandRequest, tips []string, res *LandResult) bool {
+	for i, tip := range tips {
+		if tip != req.Heads[i] {
+			res.Outcome = OutcomeMoved
+			res.Reason = fmt.Sprintf("branch %s is at %s, not at the head %s the read passed", req.Branches[i], tip, req.Heads[i])
+			return true
+		}
+	}
+	return false
+}
+
+// keeps_internal is whether the request's kept gate is still the one to
+// read: its branch is still at it (the card's branch at its one head; the
+// group branch, read on origin).
+func keeps_internal(ctx context.Context, g Git, req LandRequest) (bool, error) {
+	switch {
+	case req.Gate.SHA == "":
+		return false, nil
+	case req.Gate.Branch != GroupBranch(req.Stream):
+		return len(req.Heads) == 1 && req.Gate.SHA == req.Heads[0] && req.Gate.Branch == req.Branches[0], nil
+	}
+	tip, _, err := g.LsRemote(ctx, req.RepoDir, GroupRef(req.Stream))
+	return err == nil && tip == req.Gate.SHA, err
+}
+
+// keptResult_internal is res for a pass that reads the kept gate: its
+// rung, the base it was built on, its sha.
+func keptResult_internal(gate Gate, res LandResult) LandResult {
+	res.Rung, res.BaseTip, res.GatedSHA, res.Gate = gate.Rung, gate.Base, gate.SHA, gate
+	if gate.Rung == 2 {
+		res.GroupTip = gate.SHA
+	}
+	return res
 }
 
 // PromoteRequest is one promotion of a stream's base to main (LANDING.md,
@@ -231,17 +316,7 @@ func fetchHeads_internal(ctx context.Context, g Git, req LandRequest) (string, [
 // card's own branch at its head (rung 1, a head containing the base tip),
 // else the group branch, rebuilt and pushed (done with its outcome when the
 // merge or the push failed).
-func gatedHead_internal(ctx context.Context, g Git, req LandRequest, baseTip string, tips []string, res *LandResult) (string, string, bool, error) {
-	// Every card branch must be at the head the read passed, on either
-	// rung: a moved branch is the coordinator's judgement, never landed at
-	// a sha its branch has left (the deployed line's check, 2026-11-07).
-	for i, tip := range tips {
-		if tip != req.Heads[i] {
-			res.Outcome = OutcomeMoved
-			res.Reason = fmt.Sprintf("branch %s is at %s, not at the head %s the read passed", req.Branches[i], tip, req.Heads[i])
-			return "", "", true, nil
-		}
-	}
+func gatedHead_internal(ctx context.Context, g Git, req LandRequest, baseTip string, res *LandResult) (string, string, bool, error) {
 	if len(req.Heads) == 1 {
 		up, err := g.IsAncestor(ctx, req.RepoDir, baseTip, req.Heads[0])
 		if err != nil {
@@ -267,7 +342,7 @@ func buildGroup_internal(ctx context.Context, g Git, req LandRequest, baseTip st
 		return "", true, err
 	}
 	if merged.Kind != MergeOK {
-		res.Outcome, res.Conflicts = OutcomeConflict, merged.Conflicts
+		res.Outcome, res.Conflicts, res.ConflictHead = OutcomeConflict, merged.Conflicts, merged.Head
 		res.Reason = cmp.Or(merged.Reason, "the heads do not merge onto "+baseTip)
 		return "", true, nil
 	}

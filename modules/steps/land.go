@@ -84,15 +84,25 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 
 // landJudge opens a land judgement for each card of the request still
 // merging at its head: what kept it from landing, the facts the edge read,
-// and the cards that were in the landing with it.
+// and the cards that were in the landing with it. A conflict that names
+// the head whose merge into the group failed (it.Head) is that card's
+// alone: the group's other cards are not judged, so the next tick asks
+// them again without it (LANDING.md, "One card's conflict").
 func (t *tick) landJudge(it InboxItem, req EdgeRequest) {
+	odd := -1
+	if it.Outcome == "conflict" && it.Head != "" {
+		odd = slices.Index(req.Heads, it.Head)
+	}
 	for i, p := range req.Cards {
 		c, ok := t.v.Cards[p]
-		if !ok || c.State != "merging" || c.Head != req.Heads[i] {
+		if !ok || c.State != "merging" || c.Head != req.Heads[i] || odd >= 0 && i != odd {
 			continue
 		}
 		with := ""
-		if len(req.Cards) > 1 {
+		switch {
+		case odd >= 0 && len(req.Cards) > 1:
+			with = "; its head is the one in the group that does not merge (onto the base tip, after the group's cards before it); landing again without it: " + strings.Join(slices.Delete(slices.Clone(req.Cards), i, i+1), ", ")
+		case len(req.Cards) > 1:
 			with = "; landing together: " + strings.Join(req.Cards, ", ")
 		}
 		onto := t.v.Streams[req.Stream].Base
