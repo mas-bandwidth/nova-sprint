@@ -190,7 +190,11 @@ func TestFirstHeadsPassReadsRepositoriesAtOnce(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		read := make(chan struct{})
-		go e.WatchHeads(ctx, &beats{now: t0}, func() map[string]store.Stream { return streams }, read)
+		stopped := make(chan struct{})
+		go func() {
+			e.WatchHeads(ctx, &beats{now: t0}, func() map[string]store.Stream { return streams }, read)
+			close(stopped)
+		}()
 		most := func() int {
 			g.mu.Lock()
 			defer g.mu.Unlock()
@@ -216,5 +220,6 @@ func TestFirstHeadsPassReadsRepositoriesAtOnce(t *testing.T) {
 		}
 		close(later)
 		cancel()
+		<-stopped // the watch's lock files are in the test's directory
 	})
 }
