@@ -582,6 +582,20 @@ type WallConfig struct {
 	SDKEnv string
 }
 
+// stepReserveWait_internal is how long a step after the harness (the seal,
+// the apply of the rebased head, a done-when or stream gate) waits for a
+// nova-reserve slot: its own bound less a tenth of it (at most 30 s), so
+// nova-reserve's refusal, a fault dealt again, comes before the step's own
+// timeout, a fail; never less than the configured wait (conf, 5 s when
+// unset). The configured 5 s stays the harness's: a job whose harness finds
+// no slot is staged and run on a later pass, holding nothing, while a step
+// after it that found none threw the attempt's work away (8 attempts on
+// 2026-11-10, all in the apply step). The tenth is a margin, not measured.
+func stepReserveWait_internal(conf, bound time.Duration) time.Duration {
+	conf = cmp.Or(conf, 5*time.Second)
+	return max(conf, bound-min(bound/10, 30*time.Second))
+}
+
 // wallKeeps are the names nova-sandbox passes into the wall without --env;
 // every other name the harness's environment holds is named with --env, or
 // the wall drops it (nova-sandbox help).

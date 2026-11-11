@@ -267,7 +267,10 @@ Deal to report:
 4. **Run** under `nova-reserve run --slots <weight> --wait <d> --why
    <consumer> -- nova-sandbox ... -- <harness>`: the slot lives exactly as
    long as the harness (LESSONS 4.17); no slot within the wait is no start
-   yet, never a failure. The wall: `--write` the job directory (worktree,
+   yet, never a failure. A step after the harness (the seal, the apply of
+   the rebased head, a done-when or stream gate) waits for a slot within its
+   own bound, less a tenth of it (at most 30 s), never the harness's short
+   wait: it holds work that a refusal would throw away. The wall: `--write` the job directory (worktree,
    `HOME`, `TMPDIR`, data home), `--read` toolchains and siblings,
    `--net-deny --net-allow localhost:<proxy>` where the host's wall can deny,
    stdin closed. The model is nova-config's for (row, tier), chosen by code

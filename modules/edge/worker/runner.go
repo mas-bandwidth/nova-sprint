@@ -1899,7 +1899,9 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if kv := cargoLinkerEnv_internal(runtime.GOOS, runtime.GOARCH, lookPath); kv != "" {
 		env = append(env, kv)
 	}
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, env, timeout)
+	cfg := w.effectiveConfig_internal(j)
+	cfg.ReserveWait = stepReserveWait_internal(cfg.ReserveWait, timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, fields, env, timeout)
 }
 
 // cargoLinkerEnv_internal is CARGO_TARGET_<host>_LINKER=<absolute cc> on
@@ -1976,7 +1978,9 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 }
 
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	cfg := w.effectiveConfig_internal(j)
+	cfg.ReserveWait = stepReserveWait_internal(cfg.ReserveWait, timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
