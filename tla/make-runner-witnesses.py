@@ -58,7 +58,7 @@ WITNESSES = [
      [("[jobDir[c] EXCEPT !.pid = 0, !.stopped = TRUE] ELSE", "[jobDir[c] EXCEPT !.pid = 0, !.stopped = TRUE, !.outcome = \"fault\"] ELSE")]),
     ("RunnerPushUnsealed", "PushOnlySealed", "A job's commits are pushed from a tree the seal step never ran on.",
      [("  /\\ jobDir[c].sealed   \\* pushed from the worker's clone of the sealed tree\n", ""),
-      ("![c].outcome = \"ok\", ![c].sealed = TRUE]", "![c].outcome = \"ok\"]")]),
+      ("![c].outcome = \"ok\", ![c].sealed = TRUE, ![c].atPrior = np]", "![c].outcome = \"ok\", ![c].atPrior = np]")]),
     ("RunnerNoSlotReleases", "NoSlotNeverReleases", "A staged job that finds every slot held gives its card back.",
      [("  /\\ env.restarted   \\* only after a restart\n",
        "  /\\ (env.restarted \\/ (jobState[c] = \"staged\" /\\ slotsInUse = MaxSlots))\n")]),
@@ -75,6 +75,10 @@ WITNESSES = [
      "The next holder's take reads only the store's prior head, which a withdraw after a pushed harvest never learned.",
      [("TakePrior(c) == IF branch[c].tip # \"none\" THEN branch[c].tip ELSE branch[c].known",
        "TakePrior(c) == branch[c].known")]),
+    ("RunnerPriorHeadOnlyFails", "NothingNewOnlyFixOrFinished",
+     "An ok at the prior head is failed whatever the deal (the rule before 2026-11-11): an attempt that found its work pushed by one that died can only fail.",
+     [("  /\\ ~(jobDir[c].atPrior /\\ jobDir[c].fix)   \\* a fix that added nothing is NothingNew\n", "  /\\ ~jobDir[c].atPrior\n"),
+      ("  /\\ jobDir[c].atPrior /\\ jobDir[c].fix   \\* only a fix\n", "  /\\ jobDir[c].atPrior\n")]),
 ]
 
 

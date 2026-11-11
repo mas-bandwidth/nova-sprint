@@ -64,6 +64,11 @@ type (
 		// and its commits add no gitlink. The head, checked out in s.Clone;
 		// s.Base when the seal found no commits.
 		Collect(ctx context.Context, s Sealed) (head string, err error)
+		// CheckOut checks sha out, detached, in clone, the worker's own
+		// clone of a job: after a Collect whose seal found no commits
+		// nothing is checked out there, and the stream merges into the head
+		// the job started from (rebaseAndTestStep_internal).
+		CheckOut(ctx context.Context, clone, sha string) error
 		// Export writes clone's commits since base to out, a bundle the wall
 		// applies to the job's tree before its done-when tests.
 		Export(ctx context.Context, clone, base, out string) error
@@ -492,6 +497,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen),
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
+		Fix: info.Finding != "",
 	}
 	return job, rec
 }
@@ -773,12 +779,28 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	if rec.Kind != "work" || rec.Outcome.Result != "ok" {
 		return nil
 	}
-	if rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead { // the store refuses the prior head as a report's head
-		rec.Outcome = Outcome{Result: "fail", Reason: "harness reported ok but committed nothing over the prior head"}
+	// The harness said ok and committed nothing over the prior head
+	// (tla/Runner.tla atPrior). The card machine refuses that head as a
+	// finish only when an attempt already finished at it (card.finished,
+	// tla/CardMachine.tla FinishedHeads): a fix's prior head, sent back with
+	// a finding that neither it nor a merge of the stream into it answers,
+	// so a fix is failed here (NothingNew). Any other prior head is work an
+	// attempt pushed before it faulted, failed or was withdrawn, and this
+	// attempt found nothing left to do: it is verified like any head, the
+	// stream merged into it and the done-whens run there (Rebase), where
+	// failing it left every later attempt nothing but a fail (2026-11-11).
+	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
+	if atPrior := rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead; atPrior && rec.Fix {
+		rec.Outcome = nothingNew_internal("")
 		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 		return nil
+	} else if atPrior && r.Git != nil { // the seal found no commits: nothing is checked out in the worker's clone
+		if err := r.Git.CheckOut(ctx, clone, rec.PriorHead); err != nil {
+			rec.Outcome = Outcome{Result: "fault", Reason: "the prior head could not be checked out to verify it: " + err.Error()}
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
+			return nil
+		}
 	}
-	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
 	if r.Git != nil && rec.StreamRef != "" {
 		remote, err := r.jobRemote_internal(*rec)
 		newSHA := ""
@@ -834,6 +856,18 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	rec.State = JobRebased
 	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 	return nil
+}
+
+// nothingNew_internal is the fail of a job whose harness said ok and
+// committed nothing over its prior head, where that head cannot be its
+// finish (a fix's; one the sprint refused, in refusal's words). No head:
+// nothing new was pushed.
+func nothingNew_internal(refusal string) Outcome {
+	out := Outcome{Result: "fail", Reason: "harness reported ok but committed nothing over the prior head"}
+	if refusal != "" {
+		out.Reason += ", and the sprint refused that head as its finish: " + refusal
+	}
+	return out
 }
 
 // doneWhenBound_internal is how long a done-when gate of rec may run from
@@ -895,6 +929,9 @@ func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord
 	if r.Git == nil || r.Wall == nil || rec.StreamRef == "" || !slices.ContainsFunc(rec.DoneWhen, func(c string) bool { return strings.TrimSpace(c) != "" }) {
 		return false, nil
 	}
+	if rec.Outcome.Head == cmp.Or(rec.PriorHead, rec.BaseSHA) { // verified at the head it started from, the stream not moved: the tree is at it, and there is nothing to export
+		return false, nil
+	}
 	bundle := filepath.Join(j.JobDir, RebasedBundle)
 	if err := r.Git.Export(ctx, r.clonePath_internal(rec.Consumer), cmp.Or(rec.PriorHead, rec.BaseSHA), bundle); err != nil {
 		return true, err
@@ -914,7 +951,39 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return err
 	}
+	err := r.sendReport_internal(ctx, rec)
+	// Only the card machine knows whether an attempt finished at the prior
+	// head (card.finished: a card held in review and unheld is dealt again
+	// with no finding). An ok there that the sprint refuses is the fail it
+	// was before this head could be a finish, sent once under the same
+	// result id (tla/Runner.tla ReportRefused), never resent as ok until
+	// the record is set aside.
+	if errors.Is(err, ErrRefused) && rec.Kind == "work" && rec.Outcome.Result == "ok" && rec.PriorHead != "" && rec.Outcome.Head == rec.PriorHead {
+		r.logStep_internal(rec.Row, rec.Consumer, "report", "ok at the prior head refused; reported as a fail", 0)
+		rec.Outcome = nothingNew_internal(edge.RedactN(err.Error(), edge.FailureMax))
+		if werr := WriteJobRecord(jobDir, rec); werr != nil {
+			return werr
+		}
+		err = r.sendReport_internal(ctx, rec)
+	}
+	if err != nil {
+		return err
+	}
+	r.logStep_internal(rec.Row, rec.Consumer, "report", "accepted=true", 0)
+	rec.State = JobRecorded
+	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, rec))
+	return r.cleanJobDir_internal(ctx, jobDir, rec)
+}
+
+// sendReport_internal sends rec's report under its result id, waiting out
+// a down store three times; a report the sprint did not accept is ErrRefused.
+// A fail or a fault never names the prior head: nothing new was pushed, and
+// the card machine refuses one that does.
+func (r *Runner) sendReport_internal(ctx context.Context, rec JobRecord) error {
 	out := reportOutcome_internal(rec) // a read's is ok, fix or fault, a stale record's too
+	if out.Result != "ok" && rec.Kind == "work" && rec.PriorHead != "" && out.Head == rec.PriorHead {
+		out.Head = ""
+	}
 	req := ReportRequest{
 		Epoch: rec.Epoch, Row: rec.Row, Consumer: rec.Consumer, Gen: rec.Gen,
 		ResultID: rec.ResultID, Result: out.Result, Head: out.Head,
@@ -936,10 +1005,7 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 		return fmt.Errorf("%w: report %s was not accepted (accepted=%v op=%q reason=%q): keeping job directory",
 			ErrRefused, req.ResultID, receipt.Accepted, receipt.Op, receipt.Reason)
 	}
-	r.logStep_internal(rec.Row, rec.Consumer, "report", fmt.Sprintf("accepted=%v", receipt.Accepted), 0)
-	rec.State = JobRecorded
-	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, rec))
-	return r.cleanJobDir_internal(ctx, jobDir, rec)
+	return nil
 }
 func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	wt, clone := filepath.Join(jobDir, "repo"), r.clonePath_internal(rec.Consumer)
@@ -1285,6 +1351,15 @@ func (g *OSGitOps) Collect(ctx context.Context, s Sealed) (string, error) {
 		return "", err
 	}
 	return head, nil
+}
+
+// CheckOut: see GitOps. The commit is the work clone's, which the worker's
+// clone borrows its objects from (sharedClone_internal).
+func (g *OSGitOps) CheckOut(ctx context.Context, clone, sha string) error {
+	if _, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), clone, "checkout", "--quiet", "--detach", sha); err != nil {
+		return fmt.Errorf("check out %s in the worker's clone: %w", sha, err)
+	}
+	return nil
 }
 
 // copySealed_internal copies the seal step's bundle from jobDir into

@@ -293,7 +293,16 @@ Deal to report:
 Results, classified by the adapter. `ok`: the result file says ok and a head
 past `base_sha` and `prior_head` is pushed (a harness that said ok and left
 its changes uncommitted has its changes inside the card's PATHS committed by
-the worker; anything outside PATHS is logged, never committed). `fail`: the
+the worker; anything outside PATHS is logged, never committed). A harness
+that says ok and commits nothing over its prior head found the work already
+pushed by an attempt that then faulted, failed or was withdrawn: the prior
+head is verified like any head (checked out in the worker's clone, the
+stream merged in, the done-whens run) and is the job's `ok` head when they
+pass. Only a fix (the deal carries a finding) that adds nothing is a `fail`,
+"committed nothing over the prior head": that head was finished and sent
+back, which the card machine alone knows for certain, so an `ok` at the
+prior head that the sprint refuses is reported as that `fail`
+(`tla/Runner.tla` NothingNew, ReportRefused). `fail`: the
 result file says broken, no result file ("fail: no verdict" with the
 harness's last output), a merge conflict with the stream, the card's tests red
 (the reason keeps the lines that say what failed, make's `***`, `FAIL`,
