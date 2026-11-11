@@ -113,6 +113,12 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		return nil, err
 	}
 	wall.ReserveBin, wall.SandboxBin, wall.ReserveWait, wall.NetDeny, wall.WorkRoot, wall.MirrorRoot = "nova-reserve", "nova-sandbox", timeouts.ReserveWait, true, workRoot, mirrorRoot
+	if envSh := filepath.Join(home, "sdk", "env.sh"); slices.Contains(c.WallReads, filepath.Join(home, "sdk")) {
+		if st, err := os.Stat(envSh); err == nil && st.Mode().IsRegular() {
+			wall.SDKEnv = envSh
+			out("worker: every job gets what " + envSh + " exports")
+		}
+	}
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,
@@ -185,7 +191,8 @@ func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout 
 // ~/sdk/bin exists on the bench: prepending ~/sdk/bin and ~/go/bin to PATH so
 // DetectGo and the wall's commands find go, elixir, luau, sbcl, dart, javac,
 // rustc and dotnet under systemd's minimal PATH, and granting ~/sdk and ~/go
-// read-only to the wall when CheckWallReads admits them.
+// read-only to the wall when CheckWallReads admits them. What ~/sdk/env.sh
+// exports reaches each job through WallConfig.SDKEnv.
 func withBenchSDK_internal(c Config, home string, own [][2]string, out func(string)) Config {
 	sdkBin := filepath.Join(home, "sdk", "bin")
 	if checkWallReadForm_internal(sdkBin) != nil {

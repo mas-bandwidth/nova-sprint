@@ -1676,10 +1676,44 @@ func noSlot_internal(res edge.Result) bool {
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
 	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") || strings.HasPrefix(first, "nova-reserve: no exclusive hold within "))
 }
+
+// sdkWallKeeps_internal are the names the wall sets itself, which the
+// bench's SDK environment never changes, and the shell's own.
+var sdkWallKeeps_internal = []string{"HOME", "TMPDIR", "XDG_DATA_HOME", "DOTNET_CLI_HOME", "PWD", "OLDPWD", "SHLVL", "_"}
+
+// sdkWallEnv_internal is env with what the bench's SDK environment
+// (w.Config.SDKEnv, the sdk-toolchain role's env.sh) exports when sourced
+// outside the wall in env alone, with the job's HOME: its PATH, the make
+// variables and the toolchains' homes, as a make run on the bench gets them.
+// The wall's own names keep the wall's values. env as it is on a bench
+// without one; a failing env.sh refuses the command, naming the file.
+func (w *OSReserveWall) sdkWallEnv_internal(ctx context.Context, env []string, timeout time.Duration) ([]string, error) {
+	if w.Config.SDKEnv == "" {
+		return env, nil
+	}
+	argv := []string{"/bin/sh", "-c", `. "$1" >&2 && exec /usr/bin/env -0`, "sh", w.Config.SDKEnv}
+	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: argv, Env: env, CleanEnv: true, Timeout: min(timeout, 30*time.Second)})
+	if err != nil || res.ExitCode != 0 {
+		return nil, fmt.Errorf("worker: the bench's SDK environment %s failed: %w", w.Config.SDKEnv, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
+	}
+	for _, kv := range strings.Split(res.Stdout, "\x00") {
+		name, _, ok := strings.Cut(kv, "=")
+		if !ok || name == "" || slices.Contains(sdkWallKeeps_internal, strings.ToUpper(name)) || strings.HasPrefix(name, "NOVA_WORKER_") || slices.Contains(env, kv) {
+			continue
+		}
+		env = append(slices.DeleteFunc(env, func(e string) bool { return strings.HasPrefix(e, name+"=") }), kv)
+	}
+	return env, nil
+}
+
 func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg WallConfig, cmdArgv, env []string, timeout time.Duration) (WallRunResult, error) {
 	fallbackPID := nextWallPID_internal()
 	nonce := fmt.Sprintf("n-%d", fallbackPID)
-	env, err := CargoWallEnv(GoWallEnv(slices.Clone(env), w.Config), w.Config, j.JobDir)
+	env, err := w.sdkWallEnv_internal(ctx, slices.Clone(env), timeout)
+	if err != nil {
+		return WallRunResult{}, err
+	}
+	env, err = CargoWallEnv(GoWallEnv(env, w.Config), w.Config, j.JobDir)
 	if err != nil {
 		return WallRunResult{}, err
 	}
