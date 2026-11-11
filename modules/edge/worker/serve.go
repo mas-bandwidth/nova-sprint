@@ -129,7 +129,7 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		Host: c.Host, RootDir: root,
 		StateDir: stateDir,
 		Sprint:   sprint, Beater: sprint,
-		Git: &OSGitOps{WorkRoot: workRoot, MirrorRoot: mirrorRoot, Exec: ex, Timeouts: timeouts,
+		Git: &OSGitOps{WorkRoot: workRoot, MirrorRoot: mirrorRoot, SiblingsRoot: filepath.Join(filepath.Dir(mirrorRoot), "siblings"), Exec: ex, Timeouts: timeouts,
 			Token: c.lookupEnv_internal(forge.TokenEnv), GitHubCredential: "gh"},
 		Now: time.Now, Sleep: time.Sleep, After: time.After, WakeEvery: WakeEvery,
 		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,

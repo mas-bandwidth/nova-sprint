@@ -1341,6 +1341,9 @@ type OSGitOps struct {
 	Token, GitHubCredential string
 	mu                      sync.Mutex
 	clones                  map[string]*sync.RWMutex // per clone URL (cloneLock_internal)
+
+	// SiblingsRoot holds the staged sibling trees, <name>/<sha> (siblings.go).
+	SiblingsRoot string
 }
 
 // repoName_internal is the clone's directory name: the URL's last element
@@ -1455,7 +1458,8 @@ func (g *OSGitOps) Fetch(ctx context.Context, js ...Job) error {
 }
 
 // StageWorktree makes j's worktree, a shared clone of the work clone as the
-// pass's Fetch left it, whose origin is the repo.
+// pass's Fetch left it, whose origin is the repo, and stages beside it the
+// siblings the repo's SIBLINGS file names at j's base (siblings.go).
 func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 	url, name, err := cloneURL_internal(j)
 	if err != nil {
@@ -1481,7 +1485,11 @@ func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 	if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", url); err != nil {
 		return "", err
 	}
-	return g.checkoutJob_internal(ctx, to, j)
+	head, err := g.checkoutJob_internal(ctx, to, j)
+	if err != nil {
+		return "", err
+	}
+	return head, g.stageSiblings_internal(ctx, j, url, name, work, lock)
 }
 
 // checkoutJob_internal checks out j's base (a read: detached at its head,
@@ -2065,6 +2073,7 @@ func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 			cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), filepath.Join(cfg.MirrorRoot, name+".git"))
 		}
 	}
+	cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), siblingGrants_internal(j.JobDir)...)
 	return cfg
 }
 func resolveToolBin_internal(name string) string {
