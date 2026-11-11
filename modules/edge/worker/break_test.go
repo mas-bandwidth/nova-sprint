@@ -8,8 +8,11 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,27 +20,29 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// TestBreakRestartDuringHarnessReportsFaultAndRemovesLiveJobDir
+// TestRestartGivesUpTheHandAndKillsTheLeftoverHarness
 //
-// Sequence: runner 1 takes p1.w1 and starts its harness (pid 4242). While the
-// harness runs, runner 1 is killed; runner 2 starts on the same root with a
-// process table in which pid 4242 is alive, and runs RecoverRow.
+// Sequence: runner 1 hooks in, takes p1.w1 and starts its harness. While
+// the harness runs, runner 1 is killed; runner 2 starts on the same root the
+// way the binary does (the bus hook, the self-unhook, the hook) with a
+// process table in which runner 1's harness is alive, and runs one pass.
 //
-// Broken: Guarantee 7 ("One live harness per job directory") and the
-// design's restart rule ("A working consumer whose harness is alive is
-// adopted by pid and nonce"). runStep_internal writes rec.PID only after
-// Wall.RunHarness returns, so while the harness runs job.json has pid 0;
-// runner 2 cannot find it alive, reports the consumer fault ("restart:
-// harness exited while runner was down") and removes the job directory
-// under the running harness, and the producer is dealt again while the old
-// harness still works. (cmd/nova-worker also wires no ProcessTable at all,
-// so Procs is nil and nothing is ever adopted in the shipped binary.)
-func TestBreakRestartDuringHarnessReportsFaultAndRemovesLiveJobDir(t *testing.T) {
+// The rule (2026-11-10): a bench that restarts gives up its cards, and the
+// dealer deals them again. The self-unhook returns p1.w1 to the queue
+// (released, no blame), so the pass finds it final: the harness runner 1
+// left is killed (Guarantee 7: never a second one beside it), its directory
+// retired, nothing reported and nothing run again; p1 is back in the queue
+// with no bounce. tla/Runner.tla Restart, RestartReturnsHand.
+func TestRestartGivesUpTheHandAndKillsTheLeftoverHarness(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
 	sc := &StoreSprintClient{Store: st, Origin: git, Now: clock}
+	if err := sc.Hook(ctx, row); err != nil {
+		t.Fatal(err)
+	}
 	root := t.TempDir()
 	inRun, release := make(chan Job, 1), make(chan struct{})
 	wall := &fakeWall{runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
@@ -47,22 +52,34 @@ func TestBreakRestartDuringHarnessReportsFaultAndRemovesLiveJobDir(t *testing.T)
 	}}
 	r1, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: wall, Now: clock})
 	done := make(chan error, 1)
-	go func() { done <- r1.StepRow(context.Background(), row) }()
+	go func() { done <- r1.StepRow(ctx, row) }()
 	j := <-inRun
 	t.Cleanup(func() { close(release); <-done })
 
 	rec, _ := ReadJobRecord(j.JobDir)
-	procs := &fakeProcTable{alive: map[string]bool{"4242:n4242": true}}
-	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
-	if err := r2.RecoverRow(context.Background(), row); err != nil {
-		t.Fatalf("RecoverRow: %v", err)
+	procs := &fakeProcTable{alive: map[string]bool{fmt.Sprintf("%d:%s", rec.PID, rec.Nonce): true}}
+	wall2 := &fakeWall{}
+	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: wall2, Procs: procs, Now: clock,
+		BusHook: func(context.Context, string) (WakeHook, error) { return newFakeWakeHook(), nil }})
+	if err := r2.RunOnce(ctx, row); err != nil {
+		t.Fatalf("RunOnce: %v", err)
 	}
-	snap, _ := st.Snapshot(context.Background())
-	_, statErr := os.Stat(j.JobDir)
-	if rec.PID == 0 || snap.Cards[j.Consumer].State != card.Working || statErr != nil {
-		t.Fatalf("harness pid 4242 is running in %s; job.json had pid=%d state=%s; after restart consumer %s is %s (result %q, reason %q), producer %s, job dir exists=%v",
-			j.JobDir, rec.PID, rec.State, j.Consumer, snap.Cards[j.Consumer].State, snap.Cards[j.Consumer].Result,
-			snap.Cards[j.Consumer].Reason, snap.Cards["p1"].State, statErr == nil)
+	snap, _ := st.Snapshot(ctx)
+	w, p := snap.Cards[j.Consumer], snap.Cards["p1"]
+	if rec.PID <= 0 || !slices.Equal(procs.killed, []int{rec.PID}) {
+		t.Errorf("runner 1's harness (pid %d) must be killed by runner 2's first pass, killed %v", rec.PID, procs.killed)
+	}
+	if _, err := os.Stat(j.JobDir); !os.IsNotExist(err) {
+		t.Errorf("the old job's directory must be retired: %v", err)
+	}
+	if w.State != card.Fail || w.Result != "" || !strings.HasPrefix(w.Reason, card.ReturnedPrefix+row) || p.State != card.Ready || p.Bounces != 0 {
+		t.Errorf("the restart must give p1.w1 back with no result and no blame: consumer %+v producer %+v", w, p)
+	}
+	wall2.mu.Lock()
+	ran := wall2.calls
+	wall2.mu.Unlock()
+	if ran != 0 {
+		t.Errorf("runner 2 ran %d harnesses: nothing of the old session is resumed", ran)
 	}
 }
 
@@ -243,7 +260,9 @@ func TestFunctionalBreakHarnessOutputUnbounded(t *testing.T) {
 func TestFunctionalBreakHarnessTimeoutHangsOnBackgroundChild(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	w := &OSReserveWall{Config: WallConfig{ReserveDir: t.TempDir()}} // its own slots, never the host's
+	// Its own slots, never the host's; a short slot wait, which bounds the
+	// run with the timeout (the wait and the run are timed apart).
+	w := &OSReserveWall{Config: WallConfig{ReserveDir: t.TempDir(), ReserveWait: 200 * time.Millisecond}}
 	done := make(chan time.Duration, 1)
 	go func() {
 		start := time.Now()

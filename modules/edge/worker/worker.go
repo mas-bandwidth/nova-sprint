@@ -116,6 +116,9 @@ type (
 		// StreamGates are the stream's gates from the take receipt, run after
 		// DoneWhen at the same head (streamGates_internal).
 		StreamGates []string `json:",omitempty"`
+		// Harness is the harness the job ran (Job.HarnessName), so the
+		// clean step knows where its own log is (keepJobLogs_internal).
+		Harness string `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex

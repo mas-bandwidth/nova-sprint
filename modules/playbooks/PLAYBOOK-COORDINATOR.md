@@ -21,9 +21,11 @@ to a log file, and nothing landed). A harness's watch can expire (Claude Code's 
 at most 30 minutes): re-arm it the moment it ends, then run `nova-sprint hook --as <you> --role
 coordinator` again; it replaces the hook in place and keeps the seat. The sprint hook is bound
 to the bus hook it was made on, so every restart of the bus hook, a re-armed watch included,
-costs one `hook in first` until you have hooked again. When an open judgement has waited longer
-than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every verb you run
-print `UNSEEN <n> judgements open, oldest <age>` first: fix the hook, then answer them.
+costs one `hook in first` until you have hooked again. When an open judgement has waited
+longer than the policy's `judgement_unseen` (300 s by default), `next`, `check` and every
+verb you run print `UNSEEN <n> judgements open, oldest <age>` first, counting those: fix the
+hook, then answer them. A held card's judgement waits for you by design and never raises
+UNSEEN; `judge`, `next` and `check` still list it, and `check` reds it on its own line.
 
 Every 5 minutes the run sends each friend's session, yours included, a `CHALLENGE` line: run
 the `nova-sprint pong` command it prints. A friend that answers none for 10 minutes is down:
@@ -341,7 +343,10 @@ for the top card, and `check` says the same.
 To correct a brief, add the corrected brief under a new id and replace the old card with it:
 `nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants
 follow the new one. A card a row holds is replaced too: its live consumer is released with the
-replace's reason (the branch kept), so tell the holder on the bus first.
+replace's reason (the branch kept), so tell the holder on the bus first. Run it right after
+`add`: the new card may already be dealt or taken, and that is fine, replace follows it. A new
+card that is landed or failed is refused, and so is the old card changing while replace runs: the
+refusal names what changed; read `show <old>` and decide again.
 
 ## 5. Priorities, landing and reds
 
@@ -446,6 +451,13 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    it is never dropped; the board lists it under its stream with that reason.
    `nova-sprint unhold <card> --reason "<why>"` sends it back to `waiting`, and it is dealt again
    when its needs have landed. A consumer id is refused with its producer's id.
+   A busy sprint writes while a verb runs (deals, reports, hooks). `hold`, `unhold`, `replace`,
+   `drop`, `judge`, `priority`, `relink`, `land`, `stream add`, `stream set`, `stop`, `start`,
+   `stats reset`, `identity`, `policy set` and `policy activate` read again by themselves when
+   the write was not to their own row, stream, card, judgement, policy or your hook, up to 5
+   tries; each is refused only when its own record changed, and the refusal names what changed.
+   "refused 5 times ... the store moves faster than it can plan" means five writes landed in a
+   row: run it again.
 6. Coach for first-pass acceptance. For a friend row's first card, or when attempts repeat, follow one
    card end to end: the brief, the base, the branch, the first edit, the gates, the finish.
    Classify a failure as tool or version, access or route, brief or scope, gate or bench, report,
@@ -479,8 +491,24 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
 ## 9. Releases, backups and clears
 
 1. A new nova-sprint build is adopted with `nova-sprint up --version <v>`: it checks that the
-   nova-sprint on PATH is that release and that its `check` passes; when it is not, it names the
-   `nova-fleet install` command that installs it. Never copy a binary by hand.
+   nova-sprint on PATH is that release and is the one running up, so up's own steps are
+   `check`'s build lines for it (the fleet, nova-tools against its pin, the store at its schema,
+   the bus). The sprint's health (open judgements, landings) stays `check`'s. When the release
+   is not on PATH, it names the `nova-fleet install` command that installs it. Never copy a
+   binary by hand. `nova-fleet install` replaces binaries only: a running worker or run keeps
+   the old build until its service is restarted. Any `up`, not only `up --version`, restarts
+   what is behind: its run step restarts a run whose process is an older build, and its workers
+   step restarts, once, each worker whose process beats an older build (a worker not yet beaten
+   is waited for, never restarted), through the `services` play's `nova_service_restart`. A
+   worker whose bench's binary on disk is itself older is not restarted: up names it with the
+   `nova-fleet install` that fixes it. Every worker restart gives up the row's whole hand
+   (section 7, item 4): every running bench job stops, is never reported, and its card is dealt
+   again, from its branch with the pushed head kept; work a harness had not pushed is lost. So
+   run `up` at a quiet moment when a build is behind.
+   The first adoption of v2.0.40 does not restart old workers by itself: a worker process from
+   before it beats the build of the binary on disk, so `up --version` sees it as current. After
+   installing v2.0.40, restart each sprint worker once through the services play:
+   `nova-fleet services -- -e nova_service_restart=sprint-worker-<bench>,...`, every worker bench named.
 2. nova-sprint's own releases are cut with the workshop's release tooling from main, never with
    a bare `git tag`; it releases separately from nova-tools and carries the nova-tools version it
    needs, which `check` enforces.

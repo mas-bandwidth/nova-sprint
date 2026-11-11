@@ -17,6 +17,10 @@
 #                                      must pass            (TLC exit 0);
 #     its witnesses KinAlive{NoGone,BusIsLife,RaiseOnPresence} and reach
 #     checks KinAliveNever{Down,Back}, beside it, must be violated
+#   VerbFence.tla with VerbFence.cfg and VerbFenceCoarse.cfg (a verb on a store others write)
+#                                      must pass            (TLC exit 0);
+#     its witnesses VerbFence{OneTry,OneTryCoarse,NoOwn} and reach checks
+#     VerbFenceNever{Retried,Dealt}, beside it, must be violated
 #   Hook.tla with Hook.cfg (the sprint hook bound to the bus hook)
 #                                      must pass            (TLC exit 0);
 #     its witnesses Hook{AnySession,ReplaceUnhooks,ReplaceChangesRole} and reach checks
@@ -200,6 +204,8 @@ run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run KinAlive pass . KinAlive.cfg KinAlive.tla 2
+run VerbFence pass . VerbFence.cfg VerbFence.tla 2
+run VerbFenceCoarse pass . VerbFenceCoarse.cfg VerbFence.tla 2
 run Hook pass . Hook.cfg Hook.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
@@ -241,6 +247,14 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
+# VerbFence's reversed witnesses (one try: the old rule, fenced on the gens
+# and on every card; a retry without the own check) and reach checks (a
+# refused op planned again commits; a dealt card is replaced to), each
+# violated on VerbFence.tla.
+for m in VerbFenceOneTry VerbFenceOneTryCoarse VerbFenceNoOwn VerbFenceNeverRetried VerbFenceNeverDealt; do
+    run "witness-$m" violate . "$m.cfg" VerbFence.tla 1
+done
+
 # KinAlive's reach checks (a kin row goes down, and comes back on a pong).
 for m in NeverDown NeverBack; do
     run "reach-KinAlive$m" violate . "KinAlive$m.cfg" KinAlive.tla 1
@@ -265,7 +279,7 @@ for f in "$GEN"/reach/*.cfg; do
         Steps*) mod=Steps.tla ;;        # the steps' reach checks
         Policy*) mod=Policy.tla ;;      # the policy model's
         LandEdge*) mod=LandEdge.tla ;;  # the landing model's
-        Runner*) mod=Runner.tla ;;      # the runner model's (passes, stop, release)
+        Runner*) mod=Runner.tla ;;      # the runner model's (passes, stop, restart)
         *) mod=Store.tla ;;
     esac
     run "reach-$m" violate . "reach/$m.cfg" "$mod" 1

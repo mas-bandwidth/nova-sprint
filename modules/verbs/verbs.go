@@ -50,7 +50,10 @@ type Engine struct {
 	Stdin   io.Reader // wake's bus line
 	Actor   string    // NOVA_SPRINT_AS
 	Version string    // this build
-	ToolPin string    // the lowest nova-tools it runs on
+	// WorkerBuild is the build of the worker process that ran this verb
+	// (worker.BuildEnv), "" when no worker did: beat records it as the row's.
+	WorkerBuild string
+	ToolPin     string // the lowest nova-tools it runs on
 }
 
 // Presence is who is on the bus (edge/bus's Who).

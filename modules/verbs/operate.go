@@ -26,14 +26,26 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if snap.Stopped == stop {
 		return alreadyStopped(snap, in.actor), nil
 	}
-	op := e.newOp(in.verb, in.actor, snap, reason)
-	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Stop: true, Hooks: true}} // no other stop or start, and the caller still the coordinator it was read as
-	op.Writes, op.Note = []store.Write{store.SetStopped{Stopped: stop, Reason: reason}}, reason
-	r, err := e.commit(ctx, op, "nova-sprint show run")
+	plan := func(cur store.Snapshot) (store.Op, error) {
+		op := e.newOp(in.verb, in.actor, cur, reason)
+		op.Expect = []store.Expect{store.UnchangedSince{Seq: cur.Seq, Stop: true, Hooks: true}} // no other stop or start, and the caller still the coordinator it was read as
+		op.Writes, op.Note = []store.Write{store.SetStopped{Stopped: stop, Reason: reason}}, reason
+		return op, nil
+	}
+	// another row's hook written between is not its own: it reads again (fenced)
+	r, _, err := e.fenced(ctx, snap, "nova-sprint show run", owns(hookChange(in.actor), stopChange), plan)
 	if err != nil {
 		return "", err
 	}
 	return done(next, fmt.Sprintf("%s applied at seq %d", label, r.Seq)), nil
+}
+
+// stopChange is the stop stop and start read changed: another stop or start.
+func stopChange(was, now store.Snapshot) string {
+	if was.Stopped == now.Stopped && was.StopReason == now.StopReason {
+		return ""
+	}
+	return fmt.Sprintf("the sprint's stop changed since this verb read it (stopped=%t %q, now stopped=%t %q)", was.Stopped, was.StopReason, now.Stopped, now.StopReason)
 }
 
 // runStatsReset is `stats reset`: the dashboard's stats mark (the cursor
@@ -44,10 +56,14 @@ func runStatsReset(e *Engine, ctx context.Context, in *input, snap store.Snapsho
 	if reason == "" {
 		return "", refuse("a stats reset needs its reason", "add --reason \"<why>\"")
 	}
-	op := e.newOp("stats-reset", in.actor, snap, reason)
-	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Hooks: true}} // the caller still the coordinator it was read as
-	op.Writes, op.Note = []store.Write{store.SetCursor{Name: store.StatsCursor, Seq: snap.Seq}}, reason
-	r, err := e.commit(ctx, op, "nova-sprint stats reset --as "+in.actor+" --reason \"<why>\" again")
+	plan := func(cur store.Snapshot) (store.Op, error) {
+		op := e.newOp("stats-reset", in.actor, cur, reason)
+		op.Expect = []store.Expect{store.UnchangedSince{Seq: cur.Seq, Hooks: true}} // the caller still the coordinator it was read as
+		op.Writes, op.Note = []store.Write{store.SetCursor{Name: store.StatsCursor, Seq: cur.Seq}}, reason
+		return op, nil
+	}
+	// another row's hook written between is not its own: it reads again (fenced)
+	r, _, err := e.fenced(ctx, snap, "nova-sprint stats reset --as "+in.actor+" --reason \"<why>\" again", hookChange(in.actor), plan)
 	if err != nil {
 		return "", err
 	}

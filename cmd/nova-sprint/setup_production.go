@@ -73,16 +73,12 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 	grants := verbs.FleetGrants{Store: secret.Store, KeyFile: secret.KeyFile, Pins: secret.Pins, ControlSeat: secret.Seat, Command: command}
 	role := verbs.SprintRoleBootstrap{Sink: secret, Grants: grants, Secrets: secret, Binary: cfg.Binary}
 	schema := verbs.PGSetupStore{Role: role, ControlMachine: cfg.Host, Secrets: secret, Binary: cfg.Binary}
-	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
-	if cfg.BusUser != "" {
-		keys = append(keys, "NOVA_BUS_PASSWORD")
-	}
 	runDSN, err := setupRoleDSN(cfg.DSN, "nova_sprint")
 	if err != nil && cfg.DSN != "" { // unset, the store step says so; set and malformed, nothing can run
 		bad := verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN cannot be used (" + err.Error() + ")", Fix: "export NOVA_PG_DSN=postgres://<host>:<port>/<database> with no password in it, then nova-sprint up again", Exit: 1})
 		return failedProductionSetup{bad}, productionSetupLock{err: bad}
 	}
-	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Plays: verbs.FleetPlays{Command: command}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
+	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env, Release: cfg.BinaryVersion}, Plays: verbs.FleetPlays{Command: command}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Running: cfg.BinaryVersion}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 
@@ -427,7 +423,7 @@ func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, diges
 	if err != nil {
 		return handoffRefusal("snapshot: " + edge.Redact(err.Error()))
 	}
-	record, found, err := findSetupContinuation(ctx, st, snap, id)
+	record, found, err := findSetupContinuation(ctx, st, id)
 	switch {
 	case err != nil:
 		return handoffRefusal(edge.Redact(err.Error()))
@@ -480,7 +476,7 @@ func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader
 		if err != nil {
 			return "", edge.Cause("continuation unavailable: snapshot", err)
 		}
-		existing, found, err := findSetupContinuation(ctx, st, snap, request.ID)
+		existing, found, err := findSetupContinuation(ctx, st, request.ID)
 		if err != nil {
 			return "", edge.Cause("continuation unavailable", err)
 		}
@@ -551,55 +547,30 @@ func applyHandoff(ctx context.Context, st store.Store, op store.Op) error {
 	}
 	return fmt.Errorf("continuation unavailable: apply outcome unknown after 3 tries and no replay found")
 }
-func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snapshot, id string) (handoffRecord, bool, error) {
-	cursor := int64(0)
-	count := 0
+
+// findSetupContinuation is the continuation recorded under id: its policy
+// versions by name (two at most, so a duplicate is seen), never the log.
+func findSetupContinuation(ctx context.Context, st store.Store, id string) (handoffRecord, bool, error) {
 	var result handoffRecord
-	for cursor < snap.Seq {
-		events, err := st.Events(ctx, cursor, store.MaxEvents)
-		if err != nil {
-			return result, false, edge.Cause("continuation history unavailable", err)
+	versions, err := st.PoliciesNamed(ctx, "data", "setup:continuation:"+id, 2)
+	if err != nil {
+		return result, false, edge.Cause("continuation unavailable", err)
+	}
+	if len(versions) > 1 {
+		return result, false, fmt.Errorf("continuation duplicated: versions %d and %d", versions[1].Version, versions[0].Version)
+	}
+	for _, policy := range versions {
+		if policy.Active {
+			return result, false, fmt.Errorf("continuation invalid: policy version %d is active, want inactive", policy.Version)
 		}
-		if len(events) == 0 {
-			return result, false, fmt.Errorf("continuation history unavailable: no events after seq %d, snapshot at %d", cursor, snap.Seq)
+		if err := json.Unmarshal([]byte(policy.Body), &result); err != nil {
+			return result, false, fmt.Errorf("continuation invalid: policy version %d: %s", policy.Version, edge.ParseFailure(err, []byte(policy.Body)))
 		}
-		advanced := false
-		for _, event := range events {
-			if event.Seq > snap.Seq {
-				break
-			}
-			if event.Seq != cursor+1 {
-				return result, false, fmt.Errorf("continuation history invalid: seq %d follows %d", event.Seq, cursor)
-			}
-			cursor = event.Seq
-			advanced = true
-			if !event.Accepted || event.After == nil {
-				continue
-			}
-			for _, policy := range event.After.Policies {
-				if policy.Name != "setup:continuation:"+id {
-					continue
-				}
-				if policy.Kind != "data" || policy.Active {
-					return result, false, fmt.Errorf("continuation invalid: seq %d policy kind %q active %t, want data and inactive", event.Seq, policy.Kind, policy.Active)
-				}
-				if err := json.Unmarshal([]byte(policy.Body), &result); err != nil {
-					return result, false, fmt.Errorf("continuation invalid: seq %d: %s", event.Seq, edge.ParseFailure(err, []byte(policy.Body)))
-				}
-				if policy.Actor != result.Actor {
-					return result, false, fmt.Errorf("continuation invalid: seq %d written by %q, records actor %q", event.Seq, edge.Redact(policy.Actor), edge.Redact(result.Actor))
-				}
-				count++
-			}
-		}
-		if !advanced {
-			return result, false, fmt.Errorf("continuation history incomplete: stopped at seq %d, snapshot at %d", cursor, snap.Seq)
+		if policy.Actor != result.Actor {
+			return result, false, fmt.Errorf("continuation invalid: policy version %d written by %q, records actor %q", policy.Version, edge.Redact(policy.Actor), edge.Redact(result.Actor))
 		}
 	}
-	if count > 1 {
-		return result, false, fmt.Errorf("continuation duplicated: %d records", count)
-	}
-	return result, count == 1, nil
+	return result, len(versions) == 1, nil
 }
 
 // setupServiceRow is the public nova-config service-list JSON subset.
@@ -715,7 +686,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	r.RunService = run
 	r.DefaultRunHost = host
 	r.Services = verbs.FleetServices{Command: p.command}
-	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 9/10 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion}
+	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 9/10 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion, release: p.cfg.BinaryVersion}
 	if !needDashboard {
 		return r, nil
 	}

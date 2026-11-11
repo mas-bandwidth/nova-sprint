@@ -79,7 +79,7 @@ func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 		return err
 	}
 	w.Host, _ = os.Hostname()
-	w.SprintBin = self
+	w.SprintBin, w.Version = self, versionString()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("worker: home directory (a relative --work-root, --mirror-root, --root or --state-dir is under it): %w", err)

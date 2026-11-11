@@ -28,7 +28,7 @@ func TestFunctionalRestoreSameSessionAndRollback(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lock.Close(ctx) })
 	err = lock.Restore(ctx, testDigest, func(w RestoreWriter) error {
-		other, e := OpenChooser(ctx, dsn, "", "other", 21, &fakeHook{lease: &fakeLease{}})
+		other, e := OpenChooser(ctx, dsn, "", "other", 21, "v2.0.0", &fakeHook{lease: &fakeLease{}})
 		if other != nil {
 			_ = other.Close(ctx)
 		}

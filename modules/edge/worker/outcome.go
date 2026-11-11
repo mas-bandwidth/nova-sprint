@@ -3,6 +3,8 @@ package worker
 import (
 	"cmp"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 )
 
 // ReadOutcome is a read's report: ok, fix or fault, and nothing else. The
@@ -63,7 +65,7 @@ func reportOutcome_internal(rec JobRecord) Outcome {
 // maps it to a fault (ReadOutcomeOf).
 func noVerdict_internal(why, tail string) Outcome {
 	reason := "no verdict: " + why
-	if tail = strings.TrimSpace(tail); tail != "" {
+	if tail = strings.TrimSpace(edge.RedactKeys(tail)); tail != "" {
 		reason += "; the harness's last output: " + tail
 	}
 	return Outcome{Result: "fail", Reason: reason, NoVerdict: true}

@@ -308,15 +308,6 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 	}
 	return out, nil
 }
-func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id string, rec JobRecord, reason string) error {
-	rec.PushedHead = cmp.Or(r.harvestPartialPush_internal(ctx, jobDir, rec), rec.PushedHead)
-	rec.ResultID = cmp.Or(rec.ResultID, resultID_internal(rec.Epoch, id, rec.Gen))
-	rec.Outcome, rec.State = Outcome{Result: "fault", Head: rec.PushedHead, Reason: reason}, JobReporting
-	if err := WriteJobRecord(jobDir, rec); err != nil {
-		return err
-	}
-	return r.sendReportAndClean_internal(ctx, jobDir, rec)
-}
 
 // withdrawRunningJob_internal stops the harness of a job whose consumer is
 // final (withdrawn): it pushes nothing, since the branch is the next
@@ -331,9 +322,8 @@ func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
 }
 
 // harvestPartialPush_internal pushes the commits a work job's tree holds,
-// once, while its job still holds the consumer (a fault past the deadline,
-// a restart's release); the head pushed, or "" when nothing was (a failed
-// push is said).
+// once, while its job still holds the consumer (a release with no blame);
+// the head pushed, or "" when nothing was (a failed push is said).
 func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string, rec JobRecord) string {
 	if rec.Kind != "work" || r.Git == nil {
 		return ""
@@ -372,7 +362,10 @@ func (r *Runner) cancelRunning_internal(id string) {
 }
 
 // busHook_internal is the start's first half: the bus hook, which claims
-// the row's name, then the self-unhook of a dead worker's sprint hook.
+// the row's name; then every harness a dead worker of this row left
+// running is killed, from the job records on disk; then the row's hand is
+// given up (giveUpHand_internal). A restart resumes nothing: the dealer
+// deals those cards again (tla/Runner.tla KillLeftover, Restart).
 func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, error) {
 	if r.BusHook == nil {
 		return nil, errors.New("worker refused: no bus hook configured: start the worker through nova-sprint worker")
@@ -381,11 +374,67 @@ func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, er
 	if err != nil {
 		return nil, err
 	}
-	if err := r.Sprint.Unhook(ctx, row); err != nil && !errors.Is(err, ErrRefused) {
+	r.killLeftovers_internal(row)
+	if err := r.giveUpHand_internal(ctx, row); err != nil {
 		hook.Stop()
 		return nil, err
 	}
 	return hook, nil
+}
+
+// StartUnhookTries is how many times a start unhooks its row before it
+// ends the worker; StartUnhookWait is the wait between tries (a guess).
+const (
+	StartUnhookTries = 3
+	StartUnhookWait  = 2 * time.Second
+)
+
+// giveUpHand_internal is the start's self-unhook (2026-11-10: a bench that
+// restarts gives up its cards): the unhook returns the row's whole hand to
+// the queue in its op (released, no blame, branches and pushed heads
+// kept). A refused unhook (the CLI's every exit but 0 and the store's
+// down: a commit whose card moved between the unhook's read and its
+// commit, among them) is tried again, read afresh, StartUnhookTries times
+// in all; then the worker ends with the refusal's words, and the service
+// starts it again. It never hooks in after a refused unhook. The store
+// down ends the start at once.
+func (r *Runner) giveUpHand_internal(ctx context.Context, row string) error {
+	var err error
+	for try := 1; try <= StartUnhookTries; try++ {
+		if try > 1 && r.Sleep != nil {
+			r.Sleep(StartUnhookWait)
+		}
+		if err = r.Sprint.Unhook(ctx, row); err == nil || !errors.Is(err, ErrRefused) {
+			return err
+		}
+		r.report(fmt.Sprintf("giving up %s's hand at the start, try %d of %d", row, try, StartUnhookTries), err)
+	}
+	return fmt.Errorf("worker refused: the start could not give up %s's hand in %d tries, and a restart never runs with a kept hand; the service starts the worker again: %w", row, StartUnhookTries, err)
+}
+
+// killLeftovers_internal ends, before the unhook and the probe, whatever a
+// dead worker of row left running for its jobs: the harness by the pid and
+// nonce its record holds (OSProcessTable.Alive reads the nonce from /proc,
+// so not on macOS), then every process of the job directory
+// (endJobTree_internal: by the job's environment marks, on Linux and
+// macOS). Nothing of this worker runs yet. The directory is retired by the
+// first pass, which finds its card final.
+func (r *Runner) killLeftovers_internal(row string) {
+	entries, err := os.ReadDir(filepath.Join(r.RootDir, "jobs"))
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		jobDir := filepath.Join(r.RootDir, "jobs", e.Name())
+		rec, err := ReadJobRecord(jobDir)
+		if err != nil || !e.IsDir() || rec.Row != row || rec.State == JobCleaned {
+			continue
+		}
+		if rec.State == JobRunning && rec.PID > 0 {
+			r.killTracked_internal("stopping the harness a dead worker left for "+rec.Consumer, rec.PID, rec.Nonce)
+		}
+		r.endJobTree_internal(jobDir, rec, "start")
+	}
 }
 
 // sprintHook_internal is the start's second half: nova-sprint hook.
@@ -468,7 +517,7 @@ func (r *Runner) refuseReceipt_internal(ctx context.Context, jobDir string, rowI
 }
 
 // initJob_internal makes the job directory of a card just taken, with its
-// receipt (to resume it after a stop) and its record at taken.
+// receipt (for a later pass to go on with it) and its record at taken.
 func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir string) (Job, JobRecord, error) {
 	for _, sub := range []string{"home", "tmp", "data"} {
 		if err := os.MkdirAll(filepath.Join(jobDir, sub), 0o755); err != nil && sub == "home" {
@@ -513,7 +562,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen), StreamGates: cloneStrings_internal(info.StreamGates),
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
-		PriorFinished: info.PriorFinished,
+		PriorFinished: info.PriorFinished, Harness: rowInfo.Harness,
 	}
 	return job, rec
 }
@@ -643,6 +692,9 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	out := ClassifyJob(h, job, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
 	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" && (runErr != nil || (out.Result != "ok" && out.Result != "yes" && out.Result != "fix")) {
 		out = Outcome{Result: "fault", Reason: why}
+	}
+	if out.Result != "ok" && out.Result != "yes" && out.Result != "fix" {
+		out.Reason = withHarnessLog_internal(out.Reason, harnessLogErrors_internal(job.JobDir, h.Needs().LogDir))
 	}
 	if cost, ok := h.Usage(job); ok {
 		rec.Cost = cost
@@ -1252,6 +1304,9 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 		}
 	}
 	r.endJobTree_internal(jobDir, rec, "clean")
+	if res := rec.Outcome.Result; res != "ok" && res != "yes" && res != "fix" {
+		r.keepJobLogs_internal(jobDir, rec)
+	}
 	if r.Git != nil {
 		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
 	}
@@ -1915,7 +1970,9 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if kv := cargoLinkerEnv_internal(runtime.GOOS, runtime.GOARCH, lookPath); kv != "" {
 		env = append(env, kv)
 	}
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, env, timeout)
+	cfg := w.effectiveConfig_internal(j)
+	cfg.ReserveWait = stepReserveWait_internal(cfg.ReserveWait, timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, fields, env, timeout)
 }
 
 // cargoLinkerEnv_internal is CARGO_TARGET_<host>_LINKER=<absolute cc> on
@@ -1992,7 +2049,9 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 }
 
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
-	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	cfg := w.effectiveConfig_internal(j)
+	cfg.ReserveWait = stepReserveWait_internal(cfg.ReserveWait, timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
@@ -2029,6 +2088,12 @@ func fileExists_internal(p string) bool { _, err := os.Stat(p); return err == ni
 // stderr line "nova-reserve: no slot within <d>" or "nova-reserve: no
 // exclusive hold within <d>", printed before any HELD, so before the
 // command ran.
+// slotHeld_internal: nova-reserve printed its HELD line (stderr, before
+// the command starts), so the command ran.
+func slotHeld_internal(res edge.Result) bool {
+	return strings.Contains(res.Stderr, "nova-reserve: HELD ")
+}
+
 func noSlot_internal(res edge.Result) bool {
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
 	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") || strings.HasPrefix(first, "nova-reserve: no exclusive hold within "))
@@ -2076,8 +2141,14 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	}
 	env = append(env, "NOVA_WORKER_NONCE="+nonce)
 	argv := BuildWallArgv(cfg, j, env, cmdArgv)
+	// The wait for a slot and the command's run are timed apart: the
+	// whole of nova-reserve run is bounded by the wait plus timeout, so a
+	// command held at the last moment of its wait still has all of timeout
+	// (11-11: a gate held late was killed seconds in and failed "timed
+	// out", the card blamed for the bench's queue).
+	wait := cmp.Or(cfg.ReserveWait, 5*time.Second)
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
-		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: timeout,
+		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: wait + timeout,
 		OnStart: func(pid int) {
 			if pid <= 0 || pid == os.Getpid() {
 				pid = fallbackPID
@@ -2109,7 +2180,7 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	out := WallRunResult{Leftovers: leftovers, LeftoverErr: leftoverErr, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if noSlot_internal(res) {
-		return out, fmt.Errorf("%w: %w", ErrNoSlot, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
+		return out, fmt.Errorf("%w: waited %s: %w", ErrNoSlot, wait, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
 	}
 	if err != nil {
 		// The run never completed (a timeout, a missing binary): the
@@ -2117,6 +2188,9 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 		fail := error(edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
 		var xe *edge.ExecError
 		if errors.As(err, &xe) && xe.Kind == edge.ErrTimeout {
+			if !slotHeld_internal(res) { // killed while it waited: no command ran
+				return out, fmt.Errorf("%w: waited %s, killed before a slot was held: %w", ErrNoSlot, res.Duration.Round(time.Second), fail)
+			}
 			fail = &WallTimeoutError{Err: fail}
 		}
 		return out, fail

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -328,6 +329,29 @@ func TestRound30Hash(t *testing.T) {
 	assert.NotContains(t, string(old), "gates")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS gates")
 	assert.True(t, knownOlder(round30Hash))
+}
+
+// PoliciesNamed is the newest versions of one kind under one name, newest
+// first and at most max; another name or kind is never among them.
+func TestPoliciesNamedNewestFirst(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := NewFake()
+	for i, w := range []PutPolicy{{"data", "setup:dashboard", "tailnet"}, {"data", "setup:services", "none"}, {"script", "setup:dashboard", "x"}, {"data", "setup:dashboard", "public=web"}} {
+		r, err := f.Apply(ctx, Op{ID: fmt.Sprintf("p%d", i), Epoch: 1, Actor: "alice", Kind: "setup answer", At: time.Unix(1000, 0), Writes: []Write{w}})
+		require.NoError(t, err)
+		require.True(t, r.Accepted, r.Reason)
+	}
+	got, err := f.PoliciesNamed(ctx, "data", "setup:dashboard", 5)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, []string{"public=web", "tailnet"}, []string{got[0].Body, got[1].Body})
+	got, err = f.PoliciesNamed(ctx, "data", "setup:dashboard", 1)
+	require.NoError(t, err)
+	assert.Equal(t, "public=web", got[0].Body)
+	got, err = f.PoliciesNamed(ctx, "data", "setup:coordinator", 1)
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
 
 // round21Hash is the hash of round 17's schema.sql, which every round to 21

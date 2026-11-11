@@ -15,7 +15,7 @@ import (
 // Passes and jobs are separate (defect 66, tla/Runner.tla): a pass reads the
 // row, sends what is owed, and starts what it can; the jobs it starts run on
 // their own, and the next pass never waits for them. A job is one consumer
-// from take to report (or to a resume of one the runner stopped).
+// from take to report, across the passes it waits for a slot.
 
 // WakeEvery is how often the wake loop runs a pass without a wake, beside
 // the bus hook's wakes, so a missed push never leaves a dealt card sitting
@@ -24,7 +24,7 @@ const WakeEvery = 10 * time.Second
 
 type (
 	// launch_internal is one job a pass starts: a dealt card to take, or a
-	// working card of this row's to resume from its job record. done ends
+	// working card of this row's to go on with from its job record. done ends
 	// the consumer's in-flight mark; ctx is the job's, cancelled on a
 	// withdraw or when the worker stops.
 	launch_internal struct {
@@ -34,14 +34,14 @@ type (
 		done   func()
 	}
 	// prepared_internal is a launch with its job built: stage says it needs
-	// a staged worktree (one fetch of its repo first), harvestOnly that its
-	// harness already ran and wrote its verdict, end that it is finished.
+	// a staged worktree (one fetch of its repo first), end that it is
+	// finished.
 	prepared_internal struct {
 		launch_internal
-		job                     Job
-		rec                     JobRecord
-		stage, harvestOnly, end bool
-		err                     error
+		job        Job
+		rec        JobRecord
+		stage, end bool
+		err        error
 	}
 )
 
@@ -51,7 +51,8 @@ type (
 // coalesce into one more pass. It returns nil when ctx ends, the hook's
 // error when the bus hook dies, and a refused receipt (ErrReceipt) from a
 // pass or a job; each way it stops the jobs and waits for them, and each
-// stopped job keeps its record to be resumed (defect 73).
+// stopped job keeps its record, unreported (defect 73), until the next
+// start gives its card back and a pass retires it.
 func (r *Runner) wakeLoop_internal(ctx context.Context, row string, hook WakeHook) error {
 	loopCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -195,8 +196,8 @@ func (r *Runner) stepRow_internal(ctx context.Context, row string, detach bool) 
 	return nil
 }
 
-// planPass_internal recovers the row's jobs (what is owed is sent, what was
-// stopped is resumed), then reads the row and claims its dealt cards up to
+// planPass_internal recovers the row's jobs (what is owed is sent, a job
+// waiting for a slot goes on), then reads the row and claims its dealt cards up to
 // width. Each launch is claimed (in flight) before the pass returns, so the
 // next pass never starts it twice. unsent is the owed reports not sent.
 func (r *Runner) planPass_internal(ctx context.Context, row string) (next NextResponse, launches []launch_internal, unsent, err error) {
@@ -321,8 +322,8 @@ func (r *Runner) fetchRepos_internal(ctx context.Context, ps []prepared_internal
 	return out
 }
 
-// prepare_internal takes a dealt card (or reads back a resumed one's
-// receipt) and builds its job; a receipt the worker cannot use is reported
+// prepare_internal takes a dealt card (or reads back the receipt of one a
+// pass left) and builds its job; a receipt the worker cannot use is reported
 // a fault and ends the worker (ErrReceipt).
 func (r *Runner) prepare_internal(next NextResponse, l launch_internal) prepared_internal {
 	p := prepared_internal{launch_internal: l}
@@ -369,7 +370,7 @@ func (r *Runner) modelFor_internal(p *prepared_internal, info TakeInfo) {
 
 // finishJob_internal is a prepared job from where it stands to its report:
 // stage (from the fetched clone), run, harvest, rebase and test, report. A
-// job the worker's stop cut short keeps its record to be resumed.
+// job the worker's stop cut short keeps its record, unreported.
 func (r *Runner) finishJob_internal(p *prepared_internal, fetchErr error) error {
 	ctx, jobDir := p.ctx, p.job.JobDir
 	if p.stage {
@@ -407,31 +408,26 @@ func (r *Runner) send_internal(ctx context.Context, jobDir string, rec JobRecord
 	return err
 }
 
-// runAndHarvest_internal runs the harness (unless it already ran and wrote
-// its verdict) and harvests it. done: the job ends here (withdrawn, stopped,
+// runAndHarvest_internal runs the harness and harvests it. done: the job ends here (withdrawn, stopped,
 // no slot yet, or a harvest that could not be written). A job with no slot
 // stays staged and the next pass runs it again: it holds the card until a
 // slot is free, and the card's deadline (the sprint's withdraw) bounds the
 // wait, so a busy bench never gives back a card only to be dealt it again.
 func (r *Runner) runAndHarvest_internal(p *prepared_internal) (bool, error) {
 	ctx := p.ctx
-	var res WallRunResult
-	var err error
-	if !p.harvestOnly {
-		res, err = r.runStep_internal(ctx, p.job, &p.rec)
-		r.mu.Lock()
-		withdrawn := r.withdrawn[p.c.ID]
-		r.mu.Unlock()
-		switch {
-		case withdrawn:
-			r.withdrawRunningJob_internal(p.rec)
-			r.retireJob_internal(p.job.JobDir, p.rec, "consumer withdrawn while its harness ran")
-			return true, nil
-		case ctx.Err() != nil:
-			return true, r.stopped_internal(p)
-		case errors.Is(err, ErrNoSlot):
-			return true, err
-		}
+	res, err := r.runStep_internal(ctx, p.job, &p.rec)
+	r.mu.Lock()
+	withdrawn := r.withdrawn[p.c.ID]
+	r.mu.Unlock()
+	switch {
+	case withdrawn:
+		r.withdrawRunningJob_internal(p.rec)
+		r.retireJob_internal(p.job.JobDir, p.rec, "consumer withdrawn while its harness ran")
+		return true, nil
+	case ctx.Err() != nil:
+		return true, r.stopped_internal(p)
+	case errors.Is(err, ErrNoSlot):
+		return true, err
 	}
 	if herr := r.harvestStep_internal(ctx, p.job, &p.rec, res, err); herr != nil {
 		return true, herr
@@ -440,13 +436,14 @@ func (r *Runner) runAndHarvest_internal(p *prepared_internal) (bool, error) {
 }
 
 // stopped_internal keeps a job the worker's stop cut short where it stood,
-// with no harness, to be resumed by the next start (defect 73): never a
-// report, never a fault, never the wall's timeout.
+// with no harness (defect 73): never a report, never a fault, never the
+// wall's timeout. Nothing resumes it: the next start's self-unhook gives
+// its card back to the dealer, and the first pass retires the directory.
 func (r *Runner) stopped_internal(p *prepared_internal) error {
 	if p.rec.State == JobReporting && p.rec.Outcome.Result != "" {
 		p.rec.State, p.rec.Outcome = JobTaken, Outcome{}
 	}
 	p.rec.PID, p.rec.Nonce = 0, ""
-	r.logStep_internal(p.job.Row, p.job.Consumer, "stop", "runner stopped; kept at "+p.rec.State+" to resume", 0)
+	r.logStep_internal(p.job.Row, p.job.Consumer, "stop", "runner stopped; kept at "+p.rec.State+", unreported; the next start gives the card back", 0)
 	return WriteJobRecord(p.job.JobDir, p.rec)
 }

@@ -27,7 +27,8 @@ send`; nobody polls (CORRECT-USE, "There is ONE WAY").
 **Start.** `run` is a service on one host, installed by `up` (step 6). It runs its
 prerequisite table (section 3), then takes the chooser lock, `pg_try_advisory_lock` on a
 connection held for the process's life. Held, it refuses, naming the holder from
-`pg_stat_activity` (`application_name` is `nova-sprint run <host> <pid>`): `SPRINT REFUSED
+`pg_stat_activity` (`application_name` is `nova-sprint run <host> <pid> <version>`; up's run step
+restarts a run whose version is older than its own): `SPRINT REFUSED
 run: run already chooses on studio (pid 4121, since 14:02): stop it there, or nova-sprint
 show run`. Then it hooks in as `sprint`, which nova-bus requires before `sprint` can send
 ("name already hooked" releases the lock and refuses the same way). The hook is only a

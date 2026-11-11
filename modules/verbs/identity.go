@@ -45,15 +45,33 @@ func runIdentity(e *Engine, ctx context.Context, in *input, snap store.Snapshot)
 	if snap.Identity == (store.Identity{Name: name, Email: email}) {
 		return done("nova-sprint next --as "+in.actor, "IDENTITY already "+commitIdentity(snap)+"; nothing changed"), nil
 	}
-	op := e.newOp("identity", in.actor, snap, name, email)
-	op.Expect = []store.Expect{store.UnchangedSince{Seq: snap.Seq, Identity: true, Hooks: true}} // no other identity set, and the caller still the coordinator it was read as
-	op.Writes, op.Note = []store.Write{store.SetIdentity{Name: name, Email: email}}, reason
-	r, err := e.commit(ctx, op, "nova-sprint identity --as "+in.actor)
+	plan := func(cur store.Snapshot) (store.Op, error) {
+		op := e.newOp("identity", in.actor, cur, name, email)
+		op.Expect = []store.Expect{store.UnchangedSince{Seq: cur.Seq, Identity: true, Hooks: true}} // no other identity set, and the caller still the coordinator it was read as
+		op.Writes, op.Note = []store.Write{store.SetIdentity{Name: name, Email: email}}, reason
+		return op, nil
+	}
+	// another row's hook written between is not its own: it reads again (fenced)
+	r, _, err := e.fenced(ctx, snap, "nova-sprint identity --as "+in.actor, owns(hookChange(in.actor), identityChange), plan)
 	if err != nil {
 		return "", err
 	}
 	return done("nova-sprint check", fmt.Sprintf("IDENTITY %s <%s> applied at seq %d; every take from now carries it", name, email, r.Seq),
 		worker.CommitRules(name, email)), nil
+}
+
+// identityChange is the identity identity read changed: another set.
+func identityChange(was, now store.Snapshot) string {
+	if was.Identity == now.Identity {
+		return ""
+	}
+	who := func(s store.Snapshot) string {
+		if !s.Identity.Set() {
+			return "none"
+		}
+		return commitIdentity(s)
+	}
+	return "the identity changed since this verb read it (" + who(was) + ", now " + who(now) + ")"
 }
 
 // noIdentity is the refusal of a worker's hook or take on a sprint with no

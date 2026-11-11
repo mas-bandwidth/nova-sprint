@@ -63,7 +63,7 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: "up: the built-in default",
 		Expect: []store.Expect{store.UnchangedSince{Seq: snap.Seq, Policies: true}},
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default.star", Body: defaultBody}, store.SetActivePolicy{Version: v}}}
-	_, err = apply(ctx, st, op, "up")
+	_, err = apply(ctx, st, op, snap.Seq, "up")
 	return Result{Version: v, Next: "nova-sprint policy show"}, err
 }
 
@@ -103,7 +103,7 @@ func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Cal
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: reason,
 		Expect: []store.Expect{fenced(snap, snap.Policy == 0)}, Writes: writes}
-	after, err := apply(ctx, st, op, "set")
+	after, err := apply(ctx, st, op, snap.Seq, "set")
 	for v := range after.Policies { // the one version the op stored
 		if snap.Policy == 0 {
 			return Result{Version: v, Activated: true, Next: "nova-sprint next"}, nil
@@ -213,7 +213,7 @@ func Activate(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, 
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-activate", At: c.At, Note: reason,
 		Expect: []store.Expect{fenced(snap, true)}, Writes: writes}
-	_, err = apply(ctx, st, op, "activate")
+	_, err = apply(ctx, st, op, snap.Seq, "activate")
 	return Result{Version: v, Changes: len(rep.Changes), Next: "nova-sprint next"}, err
 }
 
@@ -271,17 +271,38 @@ func readFile(verb, path string) (string, string, *Refusal) {
 	return filepath.Base(path), string(b), nil
 }
 
-// apply applies a verb's op: the touched rows after it, or the store's
-// refusal as the verb's.
-func apply(ctx context.Context, st store.Store, op store.Op, verb string) (*store.State, error) {
+// apply applies a verb's op planned on the read at seq read: the touched
+// rows after it, or the store's refusal as the verb's (Refused).
+func apply(ctx context.Context, st store.Store, op store.Op, read int64, verb string) (*store.State, error) {
 	r, err := st.Apply(ctx, op)
 	switch {
 	case err != nil:
 		return &store.State{}, err
 	case !r.Accepted:
-		return &store.State{}, &Refusal{verb, r.Reason, "nova-sprint policy show --list"}
+		return &store.State{}, &Refused{&Refusal{verb, r.Reason, "nova-sprint policy show --list"}, read, r.Seq}
 	}
 	return r.After, nil
+}
+
+// Refused is a verb's op the store refused: Read is the seq of the read it
+// was planned on, Seq the refused op's own event. Between reports another
+// write landing between the two (a fence on what the verb read may be all
+// that refused it); without one the op itself was refused.
+type Refused struct {
+	*Refusal
+	Read, Seq int64
+}
+
+func (r *Refused) Unwrap() error { return r.Refusal }
+
+// Between is a write by another landing between the op's read and its
+// commit.
+func (r *Refused) Between() bool { return r.Seq > r.Read+1 }
+
+// Stored is how many versions the store holds.
+func Stored(ctx context.Context, st store.Store) (int, error) {
+	all, err := versions(ctx, st)
+	return len(all), err
 }
 
 // version is stored version v, or the refusal naming the list.

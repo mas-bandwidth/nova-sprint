@@ -415,7 +415,7 @@ func buildPrompt_internal(j Job) string {
 	return b.String()
 }
 func classifyExitAndTail_internal(exit int, tail []byte) Outcome {
-	text := TailBytes(tail, MaxReasonBytes)
+	text := edge.RedactKeys(TailBytes(tail, MaxReasonBytes)) // the harness's own words, into a stored reason
 	if exit == 134 || exit == 137 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
 	}
@@ -452,7 +452,7 @@ func ClassifyJob(h Harness, j Job, exit int, elapsed, launchGrace time.Duration,
 }
 
 func classifyJob_internal(h Harness, j Job, exit int, elapsed, launchGrace time.Duration, tail []byte) Outcome {
-	text := TailBytes(tail, MaxReasonBytes)
+	text := edge.RedactKeys(TailBytes(tail, MaxReasonBytes)) // the harness's own words, into a stored reason
 	if exit == 134 || exit == 137 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
 	}
@@ -580,6 +580,20 @@ type WallConfig struct {
 	// SDKEnv is the bench's ~/sdk/env.sh, found at start: every wall
 	// command gets what it exports (sdkWallEnv_internal).
 	SDKEnv string
+}
+
+// stepReserveWait_internal is how long a step after the harness (the seal,
+// the apply of the rebased head, a done-when or stream gate) waits for a
+// nova-reserve slot: as long as its own bound, never less than the
+// configured wait (conf, 5 s when unset). The wait is timed apart from the
+// run (runWallCmd_internal: the command has its whole bound once held), and
+// no slot within it is a fault, dealt again with no blame. The configured
+// 5 s stays the harness's: a job whose harness finds no slot is staged and
+// run on a later pass, holding nothing, while a step after it that found
+// none threw the attempt's work away (8 attempts on 2026-11-10, all in the
+// apply step).
+func stepReserveWait_internal(conf, bound time.Duration) time.Duration {
+	return max(cmp.Or(conf, 5*time.Second), bound)
 }
 
 // wallKeeps are the names nova-sandbox passes into the wall without --env;

@@ -18,8 +18,10 @@ const chooserObject int32 = 0x52554e
 type pgChooser struct{ conn *pgx.Conn }
 
 // OpenChooser opens its own session; it must never return the connection to a pool.
-func OpenChooser(ctx context.Context, dsn, password, host string, pid int, bus Hook) (*Chooser, error) {
-	session, err := connectLockSession(ctx, dsn, password, fmt.Sprintf("nova-sprint run %s %d", host, pid))
+// Its application name carries the holder's host, pid and build version
+// (InspectChooser reads it back: up's run step compares the version).
+func OpenChooser(ctx context.Context, dsn, password, host string, pid int, version string, bus Hook) (*Chooser, error) {
+	session, err := connectLockSession(ctx, dsn, password, strings.TrimSpace(fmt.Sprintf("nova-sprint run %s %d %s", host, pid, version)))
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +72,7 @@ func (s *pgChooser) Holder(ctx context.Context) (string, error) {
 
 func describeHolder(name string, started time.Time) string {
 	parts := strings.Fields(name)
-	if len(parts) == 4 && parts[0] == "nova-sprint" && parts[1] == "run" {
+	if (len(parts) == 4 || len(parts) == 5) && parts[0] == "nova-sprint" && parts[1] == "run" {
 		return fmt.Sprintf("%s (pid %s, since %s)", parts[2], parts[3], started.Local().Format("15:04"))
 	}
 	return name

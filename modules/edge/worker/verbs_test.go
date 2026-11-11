@@ -22,27 +22,53 @@ type OriginChecker interface {
 	HasHead(ctx context.Context, repo, branch, sha string) (bool, error)
 }
 type StoreSprintClient struct {
-	Store        store.Store
-	Origin       OriginChecker
-	RequireHook  bool
-	BusPresent   map[string]bool
-	BusRedisAddr string
-	Hooked       map[string]string
-	HookCalls    int
-	UnhookCalls  int
-	Now          func() time.Time
+	Store          store.Store
+	Origin         OriginChecker
+	RequireHook    bool
+	BusPresent     map[string]bool
+	BusRedisAddr   string
+	Hooked         map[string]string
+	HookCalls      int
+	UnhookCalls    int
+	UnhookRefusals int    // the unhooks refused before one goes through
+	OnUnhook       func() // called as each unhook starts (the runner trace walk's records)
+	Now            func() time.Time
 }
 
 func (s *StoreSprintClient) Hook(ctx context.Context, row string) error {
 	return s.HookRole(ctx, row, "worker")
 }
 
-func (s *StoreSprintClient) Unhook(_ context.Context, row string) error {
+// Unhook is the unhook verb: the row's hook cleared and its whole hand
+// returned to the queue, each live card released with the reason
+// card.Returned names (modules/verbs handBack).
+// A row with no hook is the verb's "nothing to unhook" (exit 0, nothing
+// returned); UnhookRefusals refusals come first, as a commit refused when a
+// card moved between the unhook's read and its commit.
+func (s *StoreSprintClient) Unhook(ctx context.Context, row string) error {
+	if s.OnUnhook != nil {
+		s.OnUnhook()
+	}
+	s.UnhookCalls++
+	if s.UnhookRefusals > 0 {
+		s.UnhookRefusals--
+		return fmt.Errorf("%w: nova-sprint unhook --as %s: exit 1: SPRINT REFUSED unhook: the commit was refused: a card moved", ErrRefused, row)
+	}
 	if _, ok := s.Hooked[row]; !ok {
-		return fmt.Errorf("%w: %s is not hooked", ErrRefused, row)
+		return nil
 	}
 	delete(s.Hooked, row)
-	s.UnhookCalls++
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	for _, c := range snap.Cards {
+		if c.Holder == row && (c.Kind == "work" || c.Kind == "read") && (c.State == card.Ready || c.State == card.Working) {
+			if err := s.Release(ctx, row, c.ID, c.Gen, c.Head, card.Returned(row, "unhooked")); err != nil { // the head kept, as handBack keeps it
+				return err
+			}
+		}
+	}
 	return nil
 }
 

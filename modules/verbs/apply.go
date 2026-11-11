@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -22,6 +23,87 @@ func (e *Engine) commit(ctx context.Context, op store.Op, fix string) (store.Rec
 		return r, refuse(r.Reason, fix)
 	}
 	return r, err
+}
+
+// fenceTries is how many times a verb applies its op on a store that others
+// write between its read and its commit: the first, and four plans again on
+// a fresh read. A verb's read-to-commit window is one plan (milliseconds);
+// live, one bench report or deal landed in it, never two (2026-11-10: replace
+// refused on a card the run dealt in it, hold on a bench report). Five
+// refusals in a row each by a change the verb did not read mean the store is
+// moving faster than the verb can plan; it stops and says so rather than
+// spin, and no sleep is taken between tries (each is a fresh read).
+const fenceTries = 5
+
+// fenced is the op plan makes from snap, committed. An op refused with a
+// write by another between its read and its commit (the refused op's own
+// event is not the next after the read) is planned again on a fresh read
+// and committed again, up to fenceTries in all, while own(was, now) is "":
+// what the verb itself read (its target, the epoch, the caller's hook) is
+// as it was on was, the verb's first read, so the refusal was a write to a
+// record the verb neither read nor wrote. own naming a change is the
+// refusal, with the store's reason, the last try's included; so is plan
+// refusing on the fresh read (its precondition no longer holds, named),
+// and so is an op refused with nothing written between: no fence was
+// tripped, the op itself was refused. It returns the receipt and the op it
+// committed.
+func (e *Engine) fenced(ctx context.Context, snap store.Snapshot, fix string, own func(was, now store.Snapshot) string, plan func(store.Snapshot) (store.Op, error)) (store.Receipt, store.Op, error) {
+	was := snap
+	for try := 1; ; try++ {
+		op, err := plan(snap)
+		if err != nil {
+			return store.Receipt{}, op, err
+		}
+		r, err := applyOnce(ctx, e.Store, op, e.Store.Apply)
+		if err != nil || r.Accepted {
+			return r, op, err
+		}
+		if r.Seq <= snap.Seq+1 {
+			return r, op, refuse(r.Reason, fix)
+		}
+		if snap, err = e.snapshot(ctx); err != nil {
+			return r, op, err
+		}
+		if what := cmp.Or(epochChange(was, snap), own(was, snap)); what != "" {
+			return r, op, refuse(r.Reason+"; "+what, fix)
+		}
+		if try == fenceTries {
+			return r, op, refuse(fmt.Sprintf("%s (refused %d times, each by a write to records this verb did not read: the store moves faster than it can plan)", r.Reason, try), fix)
+		}
+	}
+}
+
+// epochChange is the epoch moving under a verb (a clear): every verb's own.
+func epochChange(was, now store.Snapshot) string {
+	if was.Epoch == now.Epoch {
+		return ""
+	}
+	return fmt.Sprintf("the sprint moved from epoch %d to %d since this verb read it", was.Epoch, now.Epoch)
+}
+
+// owns is the first change any of checks names, or "".
+func owns(checks ...func(was, now store.Snapshot) string) func(was, now store.Snapshot) string {
+	return func(was, now store.Snapshot) string {
+		for _, c := range checks {
+			if what := c(was, now); what != "" {
+				return what
+			}
+		}
+		return ""
+	}
+}
+
+// hookChange is the caller's own hook changed: a verb fenced on the hooks
+// (UnchangedSince Hooks) so that its caller is still the coordinator it was
+// read as is refused by any row's hook; only the caller's is its own.
+func hookChange(actor string) func(was, now store.Snapshot) string {
+	return func(was, now store.Snapshot) string {
+		a, b := was.Rows[actor], now.Rows[actor]
+		if a.Session == b.Session && a.Role == b.Role {
+			return ""
+		}
+		return fmt.Sprintf("row %s's hook changed since this verb read it (session %s role %s, now session %s role %s)", actor, orWord(a.Session, "none"), orWord(a.Role, "none"), orWord(b.Session, "none"), orWord(b.Role, "none"))
+	}
 }
 
 // applyOnce is op through write (st.Apply, or st.Clear) exactly once: on an

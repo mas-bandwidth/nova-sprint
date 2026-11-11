@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
@@ -57,7 +58,7 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 	pol := policy.NewEngine(policy.RealClock{})
 	git, fg := gitEdge(), forgeEdge()
 	e := &verbs.Engine{Store: st, Bus: busEdge(), Roster: ro, Answers: pol, Policy: pol, Origin: &origin{git: git, dir: reposDir()}, Forge: hostForge{exec: edge.NewOSExec(), land: fg},
-		Doctor: doctor{creds: creds}, Archive: newArchive(creds), Now: time.Now, Stdin: os.Stdin, Actor: actor, Version: versionString(), ToolPin: toolPin}
+		Doctor: doctor{creds: creds}, Archive: newArchive(creds), Now: time.Now, Stdin: os.Stdin, Actor: actor, Version: versionString(), WorkerBuild: os.Getenv(worker.BuildEnv), ToolPin: toolPin}
 	e.Lander = &lander{clones: &origin{git: git, dir: filepath.Join(stateDir(), "land")}, forge: fg}
 	e.Services = services{creds: creds, store: st, roster: ro, policy: pol, git: git, forge: fg, admit: e.ReproveStream}
 	env := verbs.ExecEnvironment{DSN: creds.dsn, Password: creds.password, Choices: verbs.Choices{Store: st, Actor: actor, Now: time.Now}, Command: toolCommand}
@@ -188,6 +189,10 @@ func (s *lazyStore) Events(ctx context.Context, seq int64, max int) ([]store.Eve
 
 func (s *lazyStore) Policy(ctx context.Context, v int) (store.PolicyVersion, error) {
 	return with(s, ctx, func(p *store.PG) (store.PolicyVersion, error) { return p.Policy(ctx, v) })
+}
+
+func (s *lazyStore) PoliciesNamed(ctx context.Context, kind, name string, max int) ([]store.PolicyVersion, error) {
+	return with(s, ctx, func(p *store.PG) ([]store.PolicyVersion, error) { return p.PoliciesNamed(ctx, kind, name, max) })
 }
 
 func (s *lazyStore) Replay(ctx context.Context, id string) (store.Receipt, bool, error) {

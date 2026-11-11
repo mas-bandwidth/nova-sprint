@@ -459,8 +459,20 @@ func (r RuntimeSetup) runAct(ctx context.Context, in SetupInput) error {
 	if _, err = services.Ensure(ctx, r.RunService); err != nil {
 		return err
 	}
+	// A run holding the lock from an older build is restarted onto the
+	// binary on disk; a run that is down or new is only applied.
+	if _, err = r.Run.Ready(ctx, host, r.RunService.Name); runBehind(err) {
+		return services.Restart(ctx, r.RunService)
+	}
 	return services.Apply(ctx, r.RunService)
 }
+
+// runBehind is err a run holding the lock from an older build.
+func runBehind(err error) bool {
+	notReady := (*RunNotReady)(nil)
+	return errors.As(err, &notReady) && notReady.Behind
+}
+
 func (r RuntimeSetup) dashboardAct(ctx context.Context, in SetupInput) error {
 	if r.Snapshot == nil {
 		return fmt.Errorf("store unavailable")

@@ -20,6 +20,14 @@ STALE_PUSH = ("StalePush(c) ==\n  /\\ ~env.crashed\n  /\\ pass = \"planning\"\n 
               "  /\\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass>>\n\n")
 
 
+# The 2026-11-09 fault: a staged job that finds every slot held gives its card back.
+NO_SLOT_GIVE_BACK = ("NoSlotGiveBack(c) ==\n  /\\ ~env.crashed\n  /\\ ~env.storeDown\n  /\\ storeState[c] = \"working\"\n"
+                     "  /\\ jobState[c] = \"staged\"\n  /\\ harnessAlive[c] = 0\n  /\\ slotsInUse = MaxSlots\n"
+                     "  /\\ storeState' = [storeState EXCEPT ![c] = \"fail\"]\n"
+                     "  /\\ env' = [env EXCEPT !.returned = @ \\cup {c}]\n"
+                     "  /\\ UNCHANGED <<jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, pass, branch>>\n\n")
+
+
 def stale_push(lease, extra=""):
     body = STALE_PUSH % ("  /\\ branch[c].tip # \"holder\"\n" if lease else "")
     return [(HOLDER_PUSH, extra + body + HOLDER_PUSH), (NEXT_RETIRE, NEXT_RETIRE + "       \\/ StalePush(c)\n")]
@@ -35,6 +43,9 @@ DROPPED = {
 # and it moves the tip after the next holder's take: neither is HolderStartsFromTip.
 for _name in DROPPED:
     DROPPED[_name] = DROPPED[_name] + ["PushOnlySealed", "HolderStartsFromTip"]
+# The kept hand is the fault: the restart's state already breaks RestartReturnsHand and
+# KeptHandNeverRuns, before any report.
+DROPPED["RunnerRestartResumes"] = ["RestartReturnsHand", "KeptHandNeverRuns"]
 
 # name, target invariant, fault, exact replacement pairs
 WITNESSES = [
@@ -50,8 +61,8 @@ WITNESSES = [
      [("/\\ jobState[c] = \"recorded\"   \\* clean only after report is recorded and head pushed\n  /\\ storeState[c] \\in {\"done\", \"fail\"}\n",
        "/\\ jobState[c] = \"reporting\"   \\* FAULT: clean before the report is recorded\n")]),
     ("RunnerRestartSpawnsSecondHarness", "OneLiveHarnessPerJobDir", "Restart starts a second harness for a working consumer.",
-     [("/\\ harnessAlive' = harnessAlive   \\* adopt",
-       "/\\ harnessAlive' = [c \\in Consumers |-> IF storeState[c] = \"working\" /\\ jobDir[c].exists THEN 2 ELSE harnessAlive[c]]   \\* adopt")]),
+     [("/\\ harnessAlive' = harnessAlive   \\* a harness left running",
+       "/\\ harnessAlive' = [c \\in Consumers |-> IF storeState[c] = \"working\" /\\ jobDir[c].exists THEN 2 ELSE harnessAlive[c]]   \\* a harness left running")]),
     ("RunnerPassWaitsOnJobs", "PassNeverWaitsOnJobs", "A pass ends only when its jobs have (the wake loop that waited).",
      [("PassEnd ==\n  /\\ ~env.crashed\n", "PassEnd ==\n  /\\ \\A c \\in Consumers : harnessAlive[c] = 0\n  /\\ ~env.crashed\n")]),
     ("RunnerStopIsAFault", "StopIsNeverAFault", "The worker's stop is reported as a fault.",
@@ -60,8 +71,15 @@ WITNESSES = [
      [("  /\\ jobDir[c].sealed   \\* pushed from the worker's clone of the sealed tree\n", ""),
       ("![c].outcome = \"ok\", ![c].sealed = TRUE, ![c].atPrior = np]", "![c].outcome = \"ok\", ![c].atPrior = np]")]),
     ("RunnerNoSlotReleases", "NoSlotNeverReleases", "A staged job that finds every slot held gives its card back.",
-     [("  /\\ env.restarted   \\* only after a restart\n",
-       "  /\\ (env.restarted \\/ (jobState[c] = \"staged\" /\\ slotsInUse = MaxSlots))\n")]),
+     [(HOLDER_PUSH, NO_SLOT_GIVE_BACK + HOLDER_PUSH), (NEXT_RETIRE, NEXT_RETIRE + "       \\/ NoSlotGiveBack(c)\n")]),
+    ("RunnerRestartResumes", "ReturnedNeverReports",
+     "A restart keeps the row's hand and resumes its jobs (the rule before 2026-11-10): a job reports for a card its row was to give up.",
+     [("        /\\ storeState' = [c \\in Consumers |-> IF c \\in hand THEN \"fail\" ELSE storeState[c]]   \\* the hand, returned\n",
+       "        /\\ storeState' = storeState   \\* the hand kept, its jobs resumed\n")]),
+    ("RunnerRefusedUnhookKeepsHand", "KeptHandNeverRuns",
+     "A refused unhook at the start is ignored (the code before 2026-11-11): the sprint hook goes in over the kept hand.",
+     [("  /\\ env' = [env EXCEPT !.tries = @ + 1, !.refusals = @ + 1]   \\* tried again, the hand untouched\n",
+       "  /\\ env' = [env EXCEPT !.crashed = FALSE, !.storeDown = FALSE, !.restarted = TRUE, !.refusals = @ + 1]   \\* FAULT: the refusal ignored\n")]),
     ("RunnerRebaseDropsPrior", "PushKeepsPrior", "The stream step rebases the job's head, dropping the history it started from.",
      [("/\\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass, branch>>   \\* the stream merged in: keepsPrior",
        "/\\ jobDir' = [jobDir EXCEPT ![c].keepsPrior = FALSE]\n  /\\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>")]),

@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -102,7 +103,7 @@ func (e *Engine) answer(ctx context.Context, in *input, snap store.Snapshot, j s
 	if j.Kind == "land" && r.Answer == "land" {
 		return e.handLand(ctx, in, snap, j.About, "", reason, j.ID)
 	}
-	return e.move(ctx, in, snap, r, j.About)
+	return e.move(ctx, in, snap, fixed(r), j.About)
 }
 
 // answerRequest is the answer as a request: unhold and drop move the card
@@ -193,10 +194,16 @@ func runDrop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		if err := dropTarget(in.verb, id, snap); err != nil {
 			return "", partial(err, lines)
 		}
-		if r, ok := ev.(card.Replace); ok {
-			follow(snap, id, r, chosen)
+		// the dependants that follow a replacement are read on each read the
+		// op is planned on: one added since the first still follows
+		req := func(s store.Snapshot) steps.Request {
+			drop := maps.Clone(chosen)
+			if r, ok := ev.(card.Replace); ok {
+				follow(s, id, r, drop)
+			}
+			return steps.Request{Card: id, Event: ev, Drop: drop}
 		}
-		line, err := e.move(ctx, in, snap, steps.Request{Card: id, Event: ev, Drop: chosen}, id)
+		line, err := e.move(ctx, in, snap, req, id)
 		if err != nil {
 			return "", partial(err, lines)
 		}

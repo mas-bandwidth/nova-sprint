@@ -127,6 +127,122 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 	}
 }
 
+// A worker process older than this build (the build it beats is its own,
+// worker.BuildEnv, never the binary on disk) is restarted once, through the
+// same play naming its record; the act waits until its row leaves the old
+// process's session, and the walk then waits for the new process's beat,
+// never restarting it again. A current process is not restarted.
+func TestWorkersBehindThisBuildAreRestartedOnce(t *testing.T) {
+	t.Parallel()
+	f := &fleetFake{machines: workloadMachines, rows: 3}
+	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Session: "s1", Version: "v2.0.37"}, "amd-2": {Name: "amd-2", State: "up", Session: "s2", Version: "v2.0.36"}}
+	w := testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
+	w.release = "v2.0.37"
+	pauses := 0
+	w.pause = func(context.Context, time.Duration) error { // the restarted process hooks, then beats its build
+		pauses++
+		switch pauses {
+		case 1:
+			rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Session: "s3"}
+		case 2:
+			rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Session: "s3", Version: "v2.0.37"}
+		}
+		return nil
+	}
+	ok, err := w.WorkersReady(context.Background())
+	var nr *verbs.WorkloadNotReady
+	if ok || !errors.As(err, &nr) || nr.Why != "amd-2's worker process is build v2.0.36, below this build's v2.0.37" || !strings.Contains(nr.Fix, "restarts each worker named once") || pauses != 0 {
+		t.Fatal(ok, err, pauses)
+	}
+	if err = w.InstallWorkers(context.Background()); err != nil || pauses != 1 {
+		t.Fatal(err, pauses)
+	}
+	play := []string{"nova-fleet", "services", "--", "-l", "amd-1,amd-2", "-e", "nova_service_only=sprint-worker-amd-1,sprint-worker-amd-2", "-e", "nova_service_restart=sprint-worker-amd-2"}
+	if last := f.calls[len(f.calls)-1]; !slices.Equal(last, play) {
+		t.Fatalf("play %q, want %q", last, play)
+	}
+	if ok, err = w.WorkersReady(context.Background()); !ok || err != nil || pauses != 2 {
+		t.Fatal(ok, err, pauses)
+	}
+	if err = w.InstallWorkers(context.Background()); err != nil || slices.ContainsFunc(f.calls[len(f.calls)-1], func(a string) bool { return strings.HasPrefix(a, "nova_service_restart=") }) {
+		t.Fatal(err, f.calls[len(f.calls)-1])
+	}
+}
+
+// A worker behind this build whose bench's binary on disk is old too (its
+// install failed, or up runs from a newer binary than the fleet's) is never
+// restarted: it would give back its hand and come back on the same old
+// binary, on every up. It is named with the install that fixes it; a bench
+// whose disk binary is this build is restarted as before.
+func TestABehindWorkerOnAnOldDiskBinaryIsNamedNotRestarted(t *testing.T) {
+	t.Parallel()
+	f := &fleetFake{machines: workloadMachines, rows: 3}
+	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Session: "s1", Version: "v2.0.36"}, "amd-2": {Name: "amd-2", State: "up", Session: "s2", Version: "v2.0.36"}}
+	w := testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
+	w.release = "v2.0.37"
+	w.version = func(_ context.Context, bench string) error {
+		if bench == "amd-1" {
+			return &verbs.OperationError{Problem: "amd-1's nova-sprint is v2.0.36, not v2.0.37", Fix: "nova-fleet install --repo mas-bandwidth/nova-sprint --tag v2.0.37 amd-1", Exit: 1}
+		}
+		return nil
+	}
+	w.pause = func(context.Context, time.Duration) error { // amd-2's restarted process hooks a new session
+		rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Session: "s3"}
+		return nil
+	}
+	err := w.InstallWorkers(context.Background())
+	var nr *verbs.WorkloadNotReady
+	if !errors.As(err, &nr) || !strings.Contains(nr.Why, "amd-1") || !strings.Contains(nr.Fix, "nova-fleet install") || strings.Contains(nr.Why, "amd-2") {
+		t.Fatalf("err %v, want a refusal naming amd-1 only, with the install", err)
+	}
+	play := []string{"nova-fleet", "services", "--", "-l", "amd-1,amd-2", "-e", "nova_service_only=sprint-worker-amd-1,sprint-worker-amd-2", "-e", "nova_service_restart=sprint-worker-amd-2"}
+	if last := f.calls[len(f.calls)-1]; !slices.Equal(last, play) {
+		t.Fatalf("play %q, want %q: amd-1 is not restarted, amd-2 is", last, play)
+	}
+}
+
+// A worker hooked but not yet beaten (a new session clears the row's
+// build) is waited for, beatWait at most, then named; it is never restarted.
+func TestWorkerNotYetBeatenIsWaitedForNeverRestarted(t *testing.T) {
+	t.Parallel()
+	f := &fleetFake{machines: workloadMachines, rows: 3}
+	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Session: "s1", Version: "v2.0.37"}, "amd-2": {Name: "amd-2", State: "up", Session: "s2"}}
+	w := testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
+	w.release = "v2.0.37"
+	var waited time.Duration
+	w.pause = func(_ context.Context, d time.Duration) error { waited += d; return nil }
+	ok, err := w.WorkersReady(context.Background())
+	var nr *verbs.WorkloadNotReady
+	if ok || !errors.As(err, &nr) || !strings.Contains(nr.Why, "the worker on amd-2 hooked but has not beaten its build in 1m30s") || !strings.Contains(nr.Why, "it is not restarted") || waited != beatWait {
+		t.Fatal(ok, err, waited)
+	}
+	if err = w.InstallWorkers(context.Background()); err != nil || slices.ContainsFunc(f.calls[len(f.calls)-1], func(a string) bool { return strings.HasPrefix(a, "nova_service_restart=") }) {
+		t.Fatal(err, f.calls[len(f.calls)-1])
+	}
+	if ok, err = w.SmokeReady(context.Background()); ok || !errors.As(err, &nr) || !strings.Contains(nr.Why, "amd-2's worker process is not this build (not beaten yet)") {
+		t.Fatal(ok, err)
+	}
+}
+
+// A restarted worker whose row keeps the old process's session past
+// beatWait is named by the act, not restarted again within it.
+func TestRestartedWorkerStillOnItsOldSessionIsNamed(t *testing.T) {
+	t.Parallel()
+	f := &fleetFake{machines: workloadMachines, rows: 3}
+	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Session: "s1", Version: "v2.0.37"}, "amd-2": {Name: "amd-2", State: "up", Session: "s2", Version: "v2.0.36"}}
+	w := testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
+	w.release = "v2.0.37"
+	w.pause = func(context.Context, time.Duration) error { return nil }
+	err := w.InstallWorkers(context.Background())
+	var op *verbs.OperationError
+	if !errors.As(err, &op) || !strings.Contains(op.Problem, "restarted the worker on amd-2, but after 1m30s its row still holds the session of the process it replaced") {
+		t.Fatal(err)
+	}
+	if n := slices.IndexFunc(f.calls, func(c []string) bool { return c[0] == "nova-fleet" }); n != len(f.calls)-1 {
+		t.Fatal("plays", f.calls)
+	}
+}
+
 // A failed play is a refusal naming the benches and nova-fleet's cause; a
 // record that differs is the record's own refusal, before any play.
 func TestInstallWorkersRefusals(t *testing.T) {

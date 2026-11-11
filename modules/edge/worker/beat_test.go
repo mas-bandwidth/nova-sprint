@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -164,6 +165,22 @@ func TestCLISprintClientBeatArgv(t *testing.T) {
 	}
 	if err := cli.Beat(t.Context(), "b1", Heartbeat{Load1: 1, Cores: 1}); !errors.Is(err, ErrRefused) {
 		t.Fatalf("a refused beat: %v", err)
+	}
+}
+
+// A worker process hands its own build to each verb it runs (BuildEnv), so
+// the beat reports the process, not the nova-sprint on disk.
+func TestCLISprintClientHandsItsBuildToTheBeat(t *testing.T) {
+	t.Parallel()
+	fx := edge.NewFakeExec()
+	fx.On("*", func(edge.FakeCall) edge.FakeOutcome { return edge.FakeOutcome{Stdout: "BEAT b1 applied"} })
+	cli := &CLISprintClient{Exec: fx, Version: "v2.0.36"}
+	if err := cli.Beat(t.Context(), "b1", Heartbeat{Load1: 1, Cores: 8}); err != nil {
+		t.Fatal(err)
+	}
+	calls := fx.Calls()
+	if len(calls) != 1 || !slices.Equal(calls[0].Cmd.Env, []string{BuildEnv + "=v2.0.36"}) || calls[0].Cmd.CleanEnv {
+		t.Fatalf("calls %+v", calls)
 	}
 }
 

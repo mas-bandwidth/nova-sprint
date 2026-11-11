@@ -49,6 +49,11 @@ func judgement(id, kind, about string, at time.Time) store.Judgement {
 		Command: "nova-sprint judge " + id + " <choice> --reason <why>   choices: retry"}
 }
 
+// heldJudgement is a held card's judgement: it sits until answered.
+func heldJudgement(id, about string, at time.Time) store.Judgement {
+	return judgement(id, "held", about, at)
+}
+
 // TestCheckAllGreen is every line of a healthy sprint, in order, exit 0.
 func TestCheckAllGreen(t *testing.T) {
 	t.Parallel()
