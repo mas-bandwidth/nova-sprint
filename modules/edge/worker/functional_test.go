@@ -3,30 +3,19 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func freePort_internal(t *testing.T) string {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
-	require.NoError(t, l.Close())
-	return port
-}
 
 func pgBin_internal(t *testing.T) string {
 	if p, err := exec.LookPath("initdb"); err == nil {
@@ -43,37 +32,7 @@ func pgBin_internal(t *testing.T) string {
 
 func startFunctionalPG_internal(t *testing.T) *store.PG {
 	t.Helper()
-	bin, dir := pgBin_internal(t), t.TempDir()
-	initCmd := exec.Command(filepath.Join(bin, "initdb"), "-D", filepath.Join(dir, "data"), "-U", "nova", "--auth=trust", "-E", "UTF8", "--no-locale")
-	initCmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := initCmd.CombinedOutput()
-	require.NoError(t, err, "%s", out)
-	port := freePort_internal(t)
-	// pg_ctl starts it and stops it (-m fast: a clean shutdown; the postmaster stops its
-	// children and frees its SysV shared memory before it exits).
-	ctl := filepath.Join(bin, "pg_ctl")
-	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
-	start.Env = append(os.Environ(), "LC_ALL=C")
-	// Stop is registered before start: a start that fails or times out can
-	// leave a postmaster running, and t.Fatalf must not orphan it.
-	t.Cleanup(func() {
-		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "fast", "-w", "stop")
-		stop.Env = append(os.Environ(), "LC_ALL=C")
-		if out, err := stop.CombinedOutput(); err != nil {
-			t.Logf("pg_ctl stop: %v\n%s", err, out)
-		}
-	})
-	if out, err := start.CombinedOutput(); err != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", err, out)
-	}
-	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
-	require.Eventually(t, func() bool {
-		c, err := pgx.Connect(context.Background(), dsn)
-		if err == nil {
-			_ = c.Close(context.Background())
-		}
-		return err == nil
-	}, 30*time.Second, 50*time.Millisecond)
+	dsn := pgbin.Start(t, pgbin.Options{Bin: pgBin_internal(t)}).DSN
 	p, err := store.Open(context.Background(), dsn, "")
 	require.NoError(t, err)
 	t.Cleanup(p.Close)

@@ -3,14 +3,12 @@ package run
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,31 +18,7 @@ func chooserTestPG(t *testing.T) string {
 	if err != nil {
 		t.Skip("initdb required")
 	}
-	dir := filepath.Join(t.TempDir(), "data")
-	// With no LC_ALL and no LANG, Homebrew PostgreSQL on macOS dies at start
-	// ("postmaster became multithreaded during startup"): give the children C.
-	env := os.Environ()
-	if os.Getenv("LC_ALL") == "" && os.Getenv("LANG") == "" {
-		env = append(env, "LC_ALL=C")
-	}
-	pg := func(name string, args ...string) *exec.Cmd {
-		cmd := exec.Command(name, args...)
-		cmd.Env = env
-		return cmd
-	}
-	out, err := pg(initdb, "-D", dir, "-U", "nova", "--auth=trust", "--no-locale").CombinedOutput()
-	require.NoError(t, err, "%s", out)
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	port := l.Addr().(*net.TCPAddr).Port
-	require.NoError(t, l.Close())
-	ctl := filepath.Join(filepath.Dir(initdb), "pg_ctl")
-	opts := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port)
-	// Stop is registered before start, so a failed start orphans no postmaster.
-	t.Cleanup(func() { _ = pg(ctl, "-D", dir, "-m", "fast", "-w", "stop").Run() })
-	out, err = pg(ctl, "-D", dir, "-l", filepath.Join(dir, "server.log"), "-o", opts, "-w", "start").CombinedOutput()
-	require.NoError(t, err, "%s", out)
-	return fmt.Sprintf("postgres://nova@127.0.0.1:%d/postgres?sslmode=disable", port)
+	return pgbin.Start(t, pgbin.Options{Bin: filepath.Dir(initdb)}).DSN
 }
 func TestFunctionalChooserExclusionAndLoss(t *testing.T) {
 	t.Parallel()
