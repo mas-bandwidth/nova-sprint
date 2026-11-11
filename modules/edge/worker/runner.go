@@ -2088,6 +2088,12 @@ func fileExists_internal(p string) bool { _, err := os.Stat(p); return err == ni
 // stderr line "nova-reserve: no slot within <d>" or "nova-reserve: no
 // exclusive hold within <d>", printed before any HELD, so before the
 // command ran.
+// slotHeld_internal: nova-reserve printed its HELD line (stderr, before
+// the command starts), so the command ran.
+func slotHeld_internal(res edge.Result) bool {
+	return strings.Contains(res.Stderr, "nova-reserve: HELD ")
+}
+
 func noSlot_internal(res edge.Result) bool {
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
 	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") || strings.HasPrefix(first, "nova-reserve: no exclusive hold within "))
@@ -2135,8 +2141,14 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	}
 	env = append(env, "NOVA_WORKER_NONCE="+nonce)
 	argv := BuildWallArgv(cfg, j, env, cmdArgv)
+	// The wait for a slot and the command's run are timed apart: the
+	// whole of nova-reserve run is bounded by the wait plus timeout, so a
+	// command held at the last moment of its wait still has all of timeout
+	// (11-11: a gate held late was killed seconds in and failed "timed
+	// out", the card blamed for the bench's queue).
+	wait := cmp.Or(cfg.ReserveWait, 5*time.Second)
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
-		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: timeout,
+		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: wait + timeout,
 		OnStart: func(pid int) {
 			if pid <= 0 || pid == os.Getpid() {
 				pid = fallbackPID
@@ -2168,7 +2180,7 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	out := WallRunResult{Leftovers: leftovers, LeftoverErr: leftoverErr, ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if noSlot_internal(res) {
-		return out, fmt.Errorf("%w: %w", ErrNoSlot, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
+		return out, fmt.Errorf("%w: waited %s: %w", ErrNoSlot, wait, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
 	}
 	if err != nil {
 		// The run never completed (a timeout, a missing binary): the
@@ -2176,6 +2188,9 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 		fail := error(edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
 		var xe *edge.ExecError
 		if errors.As(err, &xe) && xe.Kind == edge.ErrTimeout {
+			if !slotHeld_internal(res) { // killed while it waited: no command ran
+				return out, fmt.Errorf("%w: waited %s, killed before a slot was held: %w", ErrNoSlot, res.Duration.Round(time.Second), fail)
+			}
 			fail = &WallTimeoutError{Err: fail}
 		}
 		return out, fail
