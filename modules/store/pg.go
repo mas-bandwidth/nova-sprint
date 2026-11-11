@@ -731,3 +731,22 @@ func (p *PG) Policy(ctx context.Context, version int) (PolicyVersion, error) {
 	}
 	return v, nil
 }
+
+// policiesNamedSQL is PoliciesNamed's one read: sprint.policy grows with
+// operator acts (setup answers, continuations, policy sets), never with
+// benches or events, so a scan of it reads no log.
+const policiesNamedSQL = "SELECT " + policyCols + " FROM sprint.policy WHERE name = $1 AND kind = $2 ORDER BY version DESC LIMIT $3"
+
+// PoliciesNamed reads the newest max versions of kind under name, newest
+// first.
+func (p *PG) PoliciesNamed(ctx context.Context, kind, name string, max int) ([]PolicyVersion, error) {
+	rows, err := p.pool.Query(ctx, policiesNamedSQL, name, kind, max)
+	if err != nil {
+		return nil, fmt.Errorf("store: policies named: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (PolicyVersion, error) { return scanPolicy(r) })
+	if err != nil {
+		return nil, fmt.Errorf("store: policies named: %w", err)
+	}
+	return out, nil
+}

@@ -80,21 +80,3 @@ func TestChoicesExplicitFlagAnswersAgain(t *testing.T) {
 		t.Fatal("the same answer wrote a new version", before.Seq, after.Seq)
 	}
 }
-
-type brokenChoiceHistory struct {
-	store.Store
-	events []store.Event
-}
-
-func (b brokenChoiceHistory) Events(context.Context, int64, int) ([]store.Event, error) {
-	return b.events, nil
-}
-func TestChoicesRefusesGappedOrNonProgressingHistory(t *testing.T) {
-	t.Parallel()
-	for _, events := range [][]store.Event{{{Seq: 2}}, {{Seq: 3}}} {
-		c := Choices{Store: brokenChoiceHistory{Store: store.NewFake(), events: events}}
-		if _, _, err := c.getAt(context.Background(), "setup:services", store.Snapshot{Seq: 2}); err == nil {
-			t.Fatal("accepted incomplete history", events)
-		}
-	}
-}

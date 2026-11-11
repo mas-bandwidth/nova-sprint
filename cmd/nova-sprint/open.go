@@ -190,6 +190,10 @@ func (s *lazyStore) Policy(ctx context.Context, v int) (store.PolicyVersion, err
 	return with(s, ctx, func(p *store.PG) (store.PolicyVersion, error) { return p.Policy(ctx, v) })
 }
 
+func (s *lazyStore) PoliciesNamed(ctx context.Context, kind, name string, max int) ([]store.PolicyVersion, error) {
+	return with(s, ctx, func(p *store.PG) ([]store.PolicyVersion, error) { return p.PoliciesNamed(ctx, kind, name, max) })
+}
+
 func (s *lazyStore) Replay(ctx context.Context, id string) (store.Receipt, bool, error) {
 	p, err := s.get(ctx)
 	if err != nil {

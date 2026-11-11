@@ -26,17 +26,23 @@ func choiceName(question string) (string, error) {
 	return "setup:" + question, nil
 }
 
-// Get returns the newest durable global answer from policy after-images.
+// Get returns the newest durable global answer.
 func (c Choices) Get(ctx context.Context, question string) (string, bool, error) {
 	name, err := choiceName(question)
 	if err != nil {
 		return "", false, err
 	}
-	snap, err := c.Store.Snapshot(ctx)
-	if err != nil {
+	return c.newest(ctx, name)
+}
+
+// newest is the body of name's newest data version, read by its name
+// (store.PoliciesNamed), never from the log.
+func (c Choices) newest(ctx context.Context, name string) (string, bool, error) {
+	versions, err := c.Store.PoliciesNamed(ctx, "data", name, 1)
+	if err != nil || len(versions) == 0 {
 		return "", false, err
 	}
-	return c.getAt(ctx, name, snap)
+	return versions[0].Body, true, nil
 }
 
 // Effective is the answer in force for a question: the explicit flag when
@@ -51,43 +57,6 @@ func (c Choices) Effective(ctx context.Context, question, flag string) (string, 
 		return flag, found && saved == flag, nil
 	}
 	return saved, found, nil
-}
-
-func (c Choices) getAt(ctx context.Context, name string, snap store.Snapshot) (string, bool, error) {
-	cursor := int64(0)
-	value := ""
-	found := false
-	for cursor < snap.Seq {
-		events, err := c.Store.Events(ctx, cursor, store.MaxEvents)
-		if err != nil {
-			return "", false, err
-		}
-		if len(events) == 0 {
-			return "", false, fmt.Errorf("event history ended before snapshot")
-		}
-		before := cursor
-		for _, event := range events {
-			if event.Seq > snap.Seq {
-				break
-			}
-			if event.Seq != cursor+1 {
-				return "", false, fmt.Errorf("event history is not contiguous")
-			}
-			cursor = event.Seq
-			if !event.Accepted || event.After == nil {
-				continue
-			}
-			for _, p := range event.After.Policies {
-				if p.Kind == "data" && p.Name == name {
-					value, found = p.Body, true
-				}
-			}
-		}
-		if cursor == before {
-			return "", false, fmt.Errorf("event history made no progress")
-		}
-	}
-	return value, found, nil
 }
 
 // Save writes one immutable inactive data version unless the newest already
@@ -105,7 +74,7 @@ func (c Choices) Save(ctx context.Context, question, value string) error {
 	if err != nil {
 		return err
 	}
-	existing, found, err := c.getAt(ctx, name, snap)
+	existing, found, err := c.newest(ctx, name)
 	if err != nil {
 		return err
 	}
