@@ -297,6 +297,7 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 	}
 	return out, nil
 }
+
 // withdrawRunningJob_internal stops the harness of a job whose consumer is
 // final (withdrawn): it pushes nothing, since the branch is the next
 // holder's (defect 78); the caller retires the directory.

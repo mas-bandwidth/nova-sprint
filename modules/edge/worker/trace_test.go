@@ -97,9 +97,9 @@ type runnerWalkHarness_internal struct {
 	stopped    map[string]bool       // kept by the worker's stop, unreported
 	gone       map[string]*JobRecord // the record a retire left, its directory gone
 	takes      map[string]int
-	runner     *Runner  // its stopped_internal, pushBranch_internal and finalJob_internal are the walk's
+	runner     *Runner        // its stopped_internal, pushBranch_internal and finalJob_internal are the walk's
 	procs      *fakeProcTable // the runner's process table: a live harness, and the kills
-	git        *fakeGit // origin: the card branches, and every push the runner made
+	git        *fakeGit       // origin: the card branches, and every push the runner made
 	finalAt    map[string]int
 	holder     map[string]bool
 	wall       *stepWall_internal // the runner's wall: every seal step it ran
@@ -764,6 +764,12 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 		moves = append(moves, runnerMove_internal{"Crash", "none"}, runnerMove_internal{"Stop", "none"})
 	}
 	m := moves[rng.Intn(len(moves))]
+	// A restart ends the walk's jobs, so it comes late, and less late while a
+	// harness runs: a crash there leaves the harness the next start's first
+	// pass kills.
+	if odds := 16 - 12*st.slotsInUse; (m.act == "Crash" || m.act == "Stop") && rng.Intn(odds) != 0 {
+		m = moves[rng.Intn(len(moves)-2)]
+	}
 	if m.act == "Withdraw" && rng.Intn(2) != 0 { // a withdraw is rarer than a job's own step
 		m = moves[0]
 	}
@@ -919,14 +925,13 @@ func tlaBool_internal(v bool) string {
 func TestRunnerTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
 	driveRunnerEntrypoints_internal(t)
-	seen, killedLeftover := map[string]int{}, false
+	seen := map[string]int{}
 	for seed := int64(1); seed <= 32; seed++ {
 		steps := walkRunnerTrace_internal(t, seed)
 		fresh := false // a walk of an action no earlier seed walked
-		for i, s := range steps {
+		for _, s := range steps {
 			fresh = fresh || seen[s.action] == 0
 			seen[s.action]++
-			killedLeftover = killedLeftover || (s.action == "Retire" && steps[i-1].harnessAlive[s.arg] == 1 && s.harnessAlive[s.arg] == 0)
 		}
 		last := steps[len(steps)-1]
 		if last.action != "Done" {
@@ -980,31 +985,35 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 	}
 	// The seeds, together, walk every path the model checks the code on,
 	// defect 78's withdraw, retire and holder's push, and the restart's
-	// return of the hand, among them.
+	// return of the hand, among them (the restart that leaves a harness
+	// running is TestRunnerTraceRefusesAResume's, walked every time).
 	for _, a := range []string{"Rebase", "NothingNew", "Conflict", "Push", "Report", "Clean", "Stop", "Crash", "Restart", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
 		if seen[a] == 0 {
 			t.Errorf("no seed walks %s: the trace binding does not cover it (walked: %v)", a, seen)
 		}
 	}
-	if !killedLeftover {
-		t.Errorf("no seed walks a restart whose first pass kills the harness the old session left")
-	}
 }
 
-// TestRunnerTraceRefusesAResume holds the restart rule's breaker: a walk
+// TestRunnerTraceRefusesAResume holds the restart rule both ways: a walk
 // that takes c1, runs its harness, crashes and restarts, recorded once as
-// the code does it (the self-unhook gives c1 and c2 back) and once as the
-// old restart did (the hand kept, to be resumed). The second is the
-// fixture runner-breaker, which TLC must refuse at its Restart record
+// the code does it (the self-unhook gives c1 and c2 back; the first pass
+// kills the harness the old session left and retires both jobs) and once
+// as the old restart did (the hand kept, to be resumed). The first is the
+// fixture runner-restart, which TLC must accept; the second is
+// runner-breaker, which TLC must refuse at its Restart record
 // (make-traces.sh check edge).
 func TestRunnerTraceRefusesAResume(t *testing.T) {
 	t.Parallel()
 	h := newRunnerWalkHarness_internal(t)
 	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
-	for _, m := range []runnerMove_internal{{"PassStart", "none"}, {"Take", "c1"}, {"Stage", "c1"}, {"Run", "c1"}, {"Crash", "none"}, {"Restart", "none"}} {
-		h.applyStep_internal(t, m.act, m.arg)
-		steps = append(steps, refinementRunnerState_internal(t, h, m.act, m.arg))
+	walk := func(moves ...runnerMove_internal) {
+		for _, m := range moves {
+			h.applyStep_internal(t, m.act, m.arg)
+			steps = append(steps, refinementRunnerState_internal(t, h, m.act, m.arg))
+		}
 	}
+	walk(runnerMove_internal{"PassStart", "none"}, runnerMove_internal{"Take", "c1"}, runnerMove_internal{"Stage", "c1"},
+		runnerMove_internal{"Run", "c1"}, runnerMove_internal{"Crash", "none"}, runnerMove_internal{"Restart", "none"})
 	last := steps[len(steps)-1]
 	if last.storeState["c1"] != "fail" || last.storeState["c2"] != "fail" || last.env.returned != [2]bool{true, true} || last.harnessAlive["c1"] != 1 {
 		t.Fatalf("the restart must give the whole hand back and leave the old harness to the first pass: %+v", last)
@@ -1012,8 +1021,21 @@ func TestRunnerTraceRefusesAResume(t *testing.T) {
 	broken := slices.Clone(steps)
 	kept := last
 	kept.storeState = map[string]string{"c1": "working", "c2": "working"}
+	kept.env.returned = [2]bool{}
 	broken[len(broken)-1] = kept
+	walk(runnerMove_internal{"PassStart", "none"}, runnerMove_internal{"Retire", "c1"}, runnerMove_internal{"Retire", "c2"})
+	if end := steps[len(steps)-1]; end.harnessAlive["c1"] != 0 || end.slotsInUse != 0 || end.jobState["c1"] != JobCleaned || end.jobState["c2"] != JobCleaned {
+		t.Fatalf("the first pass after the restart must kill the old harness and retire both jobs: %+v", end)
+	}
+	steps = append(steps, refinementRunnerState_internal(t, h, "Done", "none"))
 	if out := os.Getenv("NOVA_TRACE_DIR"); out != "" {
+		good := filepath.Join(out, "runner-restart")
+		if err := os.MkdirAll(good, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(good, "RunnerTraceLog.tla"), []byte(formatRunnerTraceTLA_internal(steps)), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		dir := filepath.Join(out, "runner-breaker")
 		cfg, err := os.ReadFile(filepath.Join("..", "..", "..", "tla", "RunnerTrace.cfg"))
 		if err != nil {
