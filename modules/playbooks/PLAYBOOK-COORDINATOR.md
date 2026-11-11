@@ -481,8 +481,10 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
 1. A new nova-sprint build is adopted with `nova-sprint up --version <v>`: it checks that the
    nova-sprint on PATH is that release and is the one running up, so up's own steps are
    `check`'s build lines for it (the fleet, nova-tools against its pin, the store at its schema,
-   the bus), and its workers step restarts each worker still beating an older release; the
-   sprint's health (open judgements, landings) stays `check`'s. When the release is not on
+   the bus). `nova-fleet install` replaces binaries only; `up --version` restarts what is behind:
+   its run step restarts a run whose process is an older build, and its workers step restarts,
+   once, each worker whose process beats an older build (a worker not yet beaten is waited for).
+   The sprint's health (open judgements, landings) stays `check`'s. When the release is not on
    PATH, it names the `nova-fleet install` command that installs it. Never copy a binary by hand.
 2. nova-sprint's own releases are cut with the workshop's release tooling from main, never with
    a bare `git tag`; it releases separately from nova-tools and carries the nova-tools version it

@@ -25,6 +25,10 @@ type Config struct {
 	// (default ~/nova-bench/mirror). Both are made on first use.
 	WorkRoot, MirrorRoot string
 	SprintBin            string
+	// Version is this worker process's own build, handed to every sprint
+	// verb it runs (BuildEnv): nova-fleet install replaces SprintBin on disk
+	// under a running worker, so its beat reports the process, not the file.
+	Version string
 	// Providers is --providers: the key proxy's routes (ParseProviders).
 	Providers string
 	// WallReads is --wall-read, repeatable: directories every job and probe
@@ -119,7 +123,7 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 			out("worker: every job gets what " + envSh + " exports")
 		}
 	}
-	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
+	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint"), Version: c.Version}
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,
 		StateDir: stateDir,

@@ -78,7 +78,7 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 		bad := verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN cannot be used (" + err.Error() + ")", Fix: "export NOVA_PG_DSN=postgres://<host>:<port>/<database> with no password in it, then nova-sprint up again", Exit: 1})
 		return failedProductionSetup{bad}, productionSetupLock{err: bad}
 	}
-	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Plays: verbs.FleetPlays{Command: command}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Running: cfg.BinaryVersion}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
+	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env, Release: cfg.BinaryVersion}, Plays: verbs.FleetPlays{Command: command}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Running: cfg.BinaryVersion}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 

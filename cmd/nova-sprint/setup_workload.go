@@ -5,15 +5,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
@@ -115,7 +118,28 @@ type productionWorkload struct {
 	present  func(context.Context) (map[string]bool, error)
 	lastLine func(ctx context.Context, machine, service string) string
 	version  func(ctx context.Context, machine string) error // nil: this bench runs this binary's version
-	release  string                                          // this build's release: a worker beating an older one is restarted
+	release  string                                          // this build's release: a worker process older than it is restarted
+	pause    func(context.Context, time.Duration) error      // nil: a real wait, ended by ctx
+}
+
+// beatWait bounds how long the workers step waits for a worker it saw hook
+// to beat its build (worker.BeatEvery apart), and for a worker it restarted
+// to hook again; beatPoll is how often it reads the rows meanwhile.
+const beatWait, beatPoll = 3 * worker.BeatEvery, 5 * time.Second
+
+// wait is d passed, or ctx's end.
+func (w productionWorkload) wait(ctx context.Context, d time.Duration) error {
+	if w.pause != nil {
+		return w.pause(ctx, d)
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // ServicesReady is true: the services step's keys are proven by their model probe
@@ -154,15 +178,15 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	if err != nil {
 		return edge.Cause("cannot read the store", err)
 	}
-	names, restart := make([]string, 0, len(benches)), []string{}
+	names, restart, sessions := make([]string, 0, len(benches)), []string{}, map[string]string{}
 	for _, bench := range benches {
 		s := workerService(bench, w.run, runAddress)
 		if _, err = w.services.Ensure(ctx, s); err != nil {
 			return err
 		}
 		names = append(names, s.Name)
-		if w.behind(snap.Rows[bench]) {
-			restart = append(restart, s.Name)
+		if r := snap.Rows[bench]; w.behind(r) {
+			restart, sessions[bench] = append(restart, s.Name), r.Session
 		}
 	}
 	args := []string{"services", "--", "-l", strings.Join(benches, ","), "-e", "nova_service_only=" + strings.Join(names, ",")}
@@ -173,6 +197,34 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	if err != nil {
 		return verbs.RefusalOr(err, &verbs.OperationError{Problem: edge.RedactN("nova-fleet services for the workers on "+strings.Join(benches, ",")+" failed: "+err.Error(), edge.FailureMax+400), Fix: "fix what it says for each machine it names (nova-fleet check), or take the bench role off a machine that is gone, then nova-sprint up again", Exit: 1})
 	}
+	return w.rehooked(ctx, sessions)
+}
+
+// rehooked waits, bounded, until each restarted worker's row has left the
+// session its old process hooked with: a new session clears the row's
+// build, so the next read sees a worker not yet beaten, waited for and never
+// restarted again. One still on its old session is named.
+func (w productionWorkload) rehooked(ctx context.Context, sessions map[string]string) error {
+	for waited := time.Duration(0); len(sessions) > 0; waited += beatPoll {
+		snap, err := w.store.Snapshot(ctx)
+		if err != nil {
+			return edge.Cause("cannot read the store", err)
+		}
+		for bench, session := range sessions {
+			if r := snap.Rows[bench]; r.State != "up" || r.Session != session {
+				delete(sessions, bench)
+			}
+		}
+		if len(sessions) == 0 {
+			break
+		}
+		if waited >= beatWait {
+			return &verbs.OperationError{Problem: "restarted the worker on " + strings.Join(slices.Sorted(maps.Keys(sessions)), ", ") + ", but after " + beatWait.String() + " its row still holds the session of the process it replaced", Fix: "read the unit's log on each bench named (~/" + serviceLogPath("sprint-worker-<bench>") + "), then nova-sprint up again", Exit: 1}
+		}
+		if err = w.wait(ctx, beatPoll); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -181,17 +233,25 @@ type benchState struct {
 	name, row string // row: the store row's state, "no row" when absent
 	hooked    bool   // its name is on the bus
 	cores     *int
-	beat      string // the release its row's beat reports
-	behind    bool   // up and beating a release older than this build's
+	beat      string // the build its worker process last beat
+	behind    bool   // up, its process an older build than this one
+	unbeaten  bool   // up, its process not yet beaten since it hooked
 }
 
 func (b benchState) up() bool { return b.hooked && b.row == "up" }
 
-// behind is a worker row up and beating a release older than this build's
-// (roster.Behind, as the run and check compare it): its process predates
-// the binary on disk, and only a restart puts it on this build.
+// behind is a worker row up whose process beat a release older than this
+// build's (roster.Behind, as the run and check compare it): the worker
+// reports its own process's build (worker.BuildEnv), so only a restart
+// puts it on the binary on disk.
 func (w productionWorkload) behind(r store.Row) bool {
-	return r.State == "up" && roster.Behind(r.Version, w.release)
+	return r.State == "up" && r.Version != "" && roster.Behind(r.Version, w.release)
+}
+
+// unbeaten is a worker row up with no build yet: a new session clears it
+// until the process beats, so it is waited for, never restarted.
+func (w productionWorkload) unbeaten(r store.Row) bool {
+	return r.State == "up" && r.Version == "" && roster.Behind("", w.release)
 }
 
 // benchStates reads every worker bench's bus presence, store row and cores
@@ -220,20 +280,26 @@ func (w productionWorkload) benchStates(ctx context.Context) ([]benchState, erro
 		if ok {
 			row = r.State
 		}
-		states = append(states, benchState{name: bench, row: row, hooked: present[bench], cores: cores[bench], beat: r.Version, behind: w.behind(r)})
+		states = append(states, benchState{name: bench, row: row, hooked: present[bench], cores: cores[bench], beat: r.Version, behind: w.behind(r), unbeaten: w.unbeaten(r)})
 	}
 	return states, nil
 }
 
 // WorkersReady is every worker bench hooked on the bus and up in the
-// store, its nova-sprint on disk this binary's version and its beat at
-// this build's release; else the benches that are not, each with its
-// unit's last log line or the release it beats. A worker probes its harness with the
+// store, its nova-sprint on disk this binary's version and its process
+// this build; else the benches that are not, each with its unit's last log
+// line or its process's build. A worker up but not yet beaten is waited for,
+// beatWait at most. A worker probes its harness with the
 // policy's models, its seat's provider keys in hand, before it hooks
 // (worker.Runner.ServeRow), so hooked and up is probed (admission, intent
 // rule 34).
 func (w productionWorkload) WorkersReady(ctx context.Context) (bool, error) {
 	states, err := w.benchStates(ctx)
+	for waited := time.Duration(0); err == nil && waited < beatWait && waiting(states); waited += beatPoll {
+		if err = w.wait(ctx, beatPoll); err == nil {
+			states, err = w.benchStates(ctx)
+		}
+	}
 	if err != nil {
 		return false, err
 	}
@@ -249,16 +315,35 @@ func (w productionWorkload) WorkersReady(ctx context.Context) (bool, error) {
 	if ok, err := w.versionsReady(ctx, states); !ok {
 		return ok, err
 	}
-	var behind []string
+	var behind, unbeaten []string
 	for _, b := range states {
-		if b.behind {
-			behind = append(behind, b.name+" runs "+cmp.Or(b.beat, "no release")+" (its beat), below this build's "+w.release)
+		switch {
+		case b.behind:
+			behind = append(behind, b.name+"'s worker process is build "+b.beat+", below this build's "+w.release)
+		case b.unbeaten:
+			unbeaten = append(unbeaten, b.name)
 		}
 	}
 	if len(behind) > 0 {
-		return false, &verbs.WorkloadNotReady{Why: strings.Join(behind, "; "), Fix: "nova-sprint up again: its workers step restarts each worker named through nova-fleet services, and each beats its release once it hooks again"}
+		return false, &verbs.WorkloadNotReady{Why: strings.Join(behind, "; "), Fix: "nova-sprint up restarts each worker named once, through nova-fleet services; one still named after that, read its unit's log (~/" + serviceLogPath("sprint-worker-<bench>") + ")"}
+	}
+	if len(unbeaten) > 0 {
+		return false, &verbs.WorkloadNotReady{Why: "the worker on " + strings.Join(unbeaten, ", ") + " hooked but has not beaten its build in " + beatWait.String() + " (a worker beats every " + worker.BeatEvery.String() + " once its bench has cores); it is not restarted", Fix: "read the unit's log on each bench named (~/" + serviceLogPath("sprint-worker-<bench>") + ") and fix what it says, then nova-sprint up again"}
 	}
 	return true, nil
+}
+
+// waiting is every bench up and one not yet beaten: worth a wait, where a
+// bench down is refused at once.
+func waiting(states []benchState) bool {
+	some := false
+	for _, b := range states {
+		if !b.up() {
+			return false
+		}
+		some = some || b.unbeaten
+	}
+	return some
 }
 
 // versionsReady is every bench's nova-sprint at this binary's version, the
@@ -315,8 +400,8 @@ func (w productionWorkload) downWhy(ctx context.Context, down []benchState) stri
 	return fmt.Sprintf("%d of the worker benches are not hooked and up: %s", len(down), strings.Join(parts, "; "))
 }
 
-// SmokeReady is the first deal made ready: every worker row hooked, up and
-// dealable, a width from its cores (a bench with none is held at width 0,
+// SmokeReady is the first deal made ready: every worker row hooked, up,
+// its process this build (WorkersReady) and dealable, a width from its cores (a bench with none is held at width 0,
 // roster.NoCores). A fresh sprint is stopped until start and moves
 // nothing, so up deals no card itself; the run deals once started.
 func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
@@ -330,6 +415,8 @@ func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 		switch {
 		case !b.up():
 			why = append(why, fmt.Sprintf("%s is not hooked and up (store row %s)", b.name, b.row))
+		case b.behind || b.unbeaten:
+			why = append(why, b.name+"'s worker process is not this build ("+cmp.Or(b.beat, "not beaten yet")+")")
 		case b.cores == nil || *b.cores < 1:
 			why = append(why, b.name+" is held at width 0: "+roster.NoCores)
 			fix = "nova-config machine set " + b.name + " --cores <n> --actor <you> --reason <why> (each bench named), then nova-sprint up again"

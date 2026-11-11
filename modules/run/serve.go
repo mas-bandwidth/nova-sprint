@@ -51,7 +51,7 @@ type Config struct {
 // Serve is the `run` verb: the chooser lock and the sprint hook, the cold
 // start, then a tick every TickEvery until ctx ends or the lock is lost.
 func Serve(ctx context.Context, cfg Config) error {
-	ch, err := OpenChooser(ctx, cfg.DSN, cfg.Password, cfg.Host, cfg.PID, cfg.Hook)
+	ch, err := OpenChooser(ctx, cfg.DSN, cfg.Password, cfg.Host, cfg.PID, cfg.Version, cfg.Hook)
 	if err != nil {
 		return err
 	}

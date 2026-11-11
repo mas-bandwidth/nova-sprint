@@ -222,7 +222,14 @@ func (f FleetServices) Ensure(ctx context.Context, s FleetService) (bool, error)
 }
 
 // Apply limits the play to this machine and service, avoiding unrelated units.
-func (f FleetServices) Apply(ctx context.Context, s FleetService) error {
+func (f FleetServices) Apply(ctx context.Context, s FleetService) error { return f.play(ctx, s, false) }
+
+// Restart is Apply that also restarts the service's unit: its unit file is
+// unchanged by a new binary on disk, so only naming it restarts the process
+// onto that binary.
+func (f FleetServices) Restart(ctx context.Context, s FleetService) error { return f.play(ctx, s, true) }
+
+func (f FleetServices) play(ctx context.Context, s FleetService, restart bool) error {
 	if !s.valid() {
 		return fmt.Errorf("invalid fleet service")
 	}
@@ -233,7 +240,11 @@ func (f FleetServices) Apply(ctx context.Context, s FleetService) error {
 	if !found {
 		return fmt.Errorf("fleet service %s is absent from nova-config service list", s.Name)
 	}
-	_, err = f.command(ctx, "nova-fleet", "services", "--", "-l", s.Machine, "-e", "nova_service_only="+s.Name)
+	args := []string{"services", "--", "-l", s.Machine, "-e", "nova_service_only=" + s.Name}
+	if restart {
+		args = append(args, "-e", "nova_service_restart="+s.Name)
+	}
+	_, err = f.command(ctx, "nova-fleet", args...)
 	if err != nil {
 		return cause("nova-fleet services "+s.Name+" on "+s.Machine+" failed", err)
 	}

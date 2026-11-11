@@ -12,11 +12,13 @@ import (
 
 // ChooserStatus is the observed holder, if any. PID is the process ID in its
 // application name; BackendPID is the PostgreSQL session's process ID.
+// Version is the holder's build version, the fifth word of the name (""
+// when a build that wrote none holds it).
 type ChooserStatus struct {
-	Held                             bool
-	Operation, Host, ApplicationName string
-	PID, BackendPID                  int
-	Since                            time.Time
+	Held                                      bool
+	Operation, Host, ApplicationName, Version string
+	PID, BackendPID                           int
+	Since                                     time.Time
 }
 
 // InspectChooser reads the catalog; it never acquires the chooser lock.
@@ -39,10 +41,13 @@ func InspectChooser(ctx context.Context, dsn, password string) (ChooserStatus, e
 	}
 	status.Held = true
 	parts := strings.Fields(status.ApplicationName)
-	if len(parts) == 4 && parts[0] == "nova-sprint" && (parts[1] == "run" || parts[1] == "restore") {
+	if (len(parts) == 4 || len(parts) == 5) && parts[0] == "nova-sprint" && (parts[1] == "run" || parts[1] == "restore") {
 		status.Operation = parts[1]
 		status.Host = parts[2]
 		status.PID, _ = strconv.Atoi(parts[3])
+		if len(parts) == 5 {
+			status.Version = parts[4]
+		}
 	}
 	return status, nil
 }

@@ -29,14 +29,20 @@ EXTENDS Naturals, Sequences, FiniteSets
  The workload steps, bound to cmd/nova-sprint/setup_workload.go by
  TestWorkloadStepsMatchTheSetupModel (every state of a two-bench fleet):
  world[StepWorkers] is every worker bench on the bus, up in the store and
- beating this build's release (WorkersReady; Do restarts a worker beating
- an older one); world[StepSmoke] is world[StepWorkers] and every worker
- bench with cores, so dealable once the sprint starts (SmokeReady; a fresh
- sprint is stopped until start, so up deals no card itself). Do at
+ its worker process this build, by the build the process itself beats
+ (WorkersReady; Do restarts, once, a process of an older build, and a
+ process not yet beaten is waited for, never restarted); world[StepSmoke]
+ is world[StepWorkers] and every worker bench with cores, so dealable
+ once the sprint starts (SmokeReady; a fresh sprint is stopped until
+ start, so up deals no card itself). Do at
  StepWorkers writes the worker service records and applies them;
  world[StepWorkers] becomes true only when the units come up, so an Act
  that returns before that maps to repair again, never to Do
  (SetupTrace-MAPPING.md).
+
+ world[StepRun] likewise holds only while the run holding the chooser lock
+ is this build (its lock names it, verbs.PGSetupRun); Do at StepRun restarts
+ a run of an older build through the same services play.
 
  The play steps (PlaySteps), bound to modules/verbs/setup_runtime_plays.go
  by TestFleetPlayStepsMatchTheSetupModel (every state of a two-bench

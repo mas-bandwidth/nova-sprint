@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math"
@@ -25,7 +26,7 @@ func runBeat(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if f != nil {
 		return "", f
 	}
-	w.Version = e.Version // the build that takes this row's cards: the tick deals a row behind the run's release nothing (defect D3)
+	w.Version = cmp.Or(e.WorkerBuild, e.Version) // the build that takes this row's cards: the tick deals a row behind the run's release nothing (defect D3)
 	if r := snap.Rows[in.actor]; r.Load1Centi == w.Load1Centi && r.Cores == w.Cores && r.SlotsUsed == w.SlotsUsed && r.SlotsTotal == w.SlotsTotal && r.CPUPeakDeci == w.CPUPeakDeci && r.Tiers == w.Tiers && r.Version == w.Version {
 		return done(waitNext, "BEAT "+in.actor+" unchanged"), nil
 	}
