@@ -62,6 +62,12 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role
    while another row holds the seat, naming that row. Both refusals are the tool enforcing the
    order. Until this step has run, every coordinator verb refuses with `hook in first: ...`.
+   The sprint hook is bound to the bus hook of step 1 (`nova-bus who` shows its session id, new
+   each time the hook is started): once a new session has started the bus hook, the old sprint
+   hook is no longer yours, your verbs refuse with `hook in first: nova-sprint hook --as <you>
+   --role coordinator`, and this step replaces the old hook in place. You keep the seat and your
+   hand; never `unhook` first, which frees the seat and returns your hand. If it says `<you> is
+   already hooked in as coordinator`, your bus hook is the one you hooked in on: go on.
    Take the seat only when the operator says so (its holder is gone, or the seat was handed to
    you): `nova-sprint up --as <you> --take-over --reason "<why>"` (section 7, item 8).
 3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per

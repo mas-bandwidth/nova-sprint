@@ -62,7 +62,11 @@ tier on a row that exists.
 The hook: `PutRow(r, session, role)` is the sprint hook's one write, and
 `PutRow(r, None, None)` unhooks. A hook by another session while one holds
 the row is refused (unhook first); the same session may hook again with a
-new role. Like every row write it raises the row's gen.
+new role. Like every row write it raises the row's gen. `ReplaceRow(r,
+session, role, was)` is the hook that names the session it replaces: it
+takes a row `was` holds, in place, and is refused as a plain hook is when
+another session holds the row (the verbs name the recorded session when the
+bus has started the name's hook again; `Hook.tla` models that side).
 
 The sprint's stop (`stopped`) is one value for the store, as the epoch is.
 `SetStopped` sets it, refused when unchanged, and a clear keeps it. The
@@ -135,7 +139,10 @@ caller goes first, covering each deterministic rule once:
   red write; s17 sets p2 red again: refused as changing nothing;
 - s18 hooks r2 by session y while x holds it: refused (unhook first);
 - s19 unhooks r2; s20 hooks it by y as coordinator;
-- s21 stops the sprint; s22 stops it again: refused as changing nothing.
+- s21 stops the sprint; s22 stops it again: refused as changing nothing;
+- s23, fenced on Running, is refused: the sprint is stopped;
+- s24 hooks r2 by x naming x as the session it replaces: refused, y holds
+  it; s25 hooks r2 by x naming y: replaced in place.
 
 Then the callers of one scenario run concurrently. The constant `Scenario`
 picks it. The two scenarios touch disjoint tables, so splitting them keeps
@@ -262,7 +269,8 @@ TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run,
   down and not held, leaves no card or judgement, and keeps every cursor,
   the policies and the stop.
 - **HookKept**: no accepted op moves a row from one session straight to
-  another; it is unhooked between.
+  another; it is unhooked between, or the op's hook names the session it
+  replaces.
 - **JudgementClosedOnce**: within an epoch, at most one accepted op answers
   or expires a given judgement: no second answer, and never both answered
   and expired.
@@ -291,6 +299,7 @@ TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run,
 | `StoreRedOnConsumer` | set red accepts a consumer | RedOnlyOnProducers violated |
 | `StoreWidthInStore` | the store caps a row at one working consumer | NoSpuriousRefusal violated |
 | `StoreHookStolen` | put row lets another session hook a hooked row | HookKept violated |
+| `StoreHookReplacedUnnamed` | put row lets a hook naming any session take the row | HookKept violated |
 | `StoreHoldCarried` | a clear carries a row's hold | ClearCarriesRows violated |
 | `StoreStopDropped` | a clear resets the stop | ClearCarriesRows violated |
 | `StoreJudgementTwice` (records) | answer and expire refuse only an absent judgement | JudgementClosedOnce violated |
@@ -316,6 +325,8 @@ TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run,
 | reach `NeverSameRedRefused` | none | s17 is refused as changing nothing |
 | reach `NeverHookRefused` | none | s18 is refused: x holds r2 |
 | reach `NeverRehooked` | none | s20 hooks r2 by y as coordinator |
+| reach `NeverReplaceRefused` | none | s24 is refused: it names x, and y holds r2 |
+| reach `NeverHookReplaced` | none | s25 replaces y's hook of r2 by x's, in place |
 | reach `NeverDealtStopped` | none | a1 lands while the sprint is stopped |
 | reach `NeverSameStopRefused` | none | s22 is refused as changing nothing |
 | reach `NeverAnswered` (records) | none | j1 is answered |
@@ -342,6 +353,12 @@ StoreEpochUnfenced row has only its result line.
 The StoreHoldCarried and NeverHoldReleased rows are from 2026-11-08, when
 a clear began releasing holds; every store run was repeated then (48 ok, 0
 FAIL), Store passing at 120730 / 70841 states, depth 36.
+The StoreHookReplacedUnnamed, NeverReplaceRefused and NeverHookReplaced
+rows are from 2026-11-11 (hulk, one worker a run), when a hook began naming
+the session it replaces (s24, s25); every store run was repeated then (51
+ok, 0 FAIL): Store 120732 / 70843 states, depth 38; StoreRecords 74692 /
+39170, depth 36. The two setup ops add two states and two levels to every
+run that passes them; the other rows keep their 2026-11-06 numbers.
 
 | Module | Result | States generated / distinct | Depth | Time |
 |---|---|---|---|---|
@@ -364,6 +381,8 @@ FAIL), Store passing at 120730 / 70841 states, depth 36.
 | reach `NeverRed` | violated | 15 / 15 | 15 | 05s |
 | reach `NeverRedKindRefused` | violated | 17 / 17 | 17 | 05s |
 | reach `NeverRehooked` | violated | 21 / 21 | 21 | 05s |
+| reach `NeverReplaceRefused` | violated | 27 / 27 | 27 | 02s |
+| reach `NeverHookReplaced` | violated | 28 / 28 | 28 | 08s |
 | reach `NeverRowDown` | violated | 28 / 28 | 24 | 06s |
 | reach `NeverRowFenced` | violated | 76 / 71 | 25 | 07s |
 | reach `NeverSameRedRefused` | violated | 18 / 18 | 18 | 05s |
@@ -377,6 +396,7 @@ FAIL), Store passing at 120730 / 70841 states, depth 36.
 | `StoreCursorPastLog` | Invariant CursorWithinLog is violated | 32 / 32 | 24 | 07s |
 | `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated (run 3; see below) | | | |
 | `StoreHookStolen` | Invariant HookKept is violated | 19 / 19 | 19 | 05s |
+| `StoreHookReplacedUnnamed` | Invariant HookKept is violated | 27 / 27 | 27 | 02s |
 | `StoreJudgementTwice` | Invariant JudgementClosedOnce is violated | 57 / 54 | 25 | 06s |
 | `StoreLogTampered` | Invariant LogAppendOnly is violated | 4 / 4 | 3 | 03s |
 | `StoreNoEvent` | Invariant LogMatchesState is violated | 2 / 2 | 2 | 02s |
@@ -401,6 +421,8 @@ s15..s18 and s22 refused as designed), then:
   and s4 (sentinel t1 held by r1) are accepted.
 - **StoreRedOnConsumer:** s15 sets the consumer u3 red (in setup).
 - **StoreHookStolen:** s18 hooks r2 by y while x holds it (in setup).
+- **StoreHookReplacedUnnamed:** s24 hooks r2 by x, naming x, while y holds
+  it (in setup).
 - **StoreReplayApplies:** a1 is accepted, its reply is lost, and the retried
   Apply runs a1 again (refused, u1 exists) and logs it a second time.
 - **StoreStaleCheck:** a1 begins with r1 up, e1 sets r1 down, a1 lands.

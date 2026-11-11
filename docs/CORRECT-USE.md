@@ -102,6 +102,18 @@ verb that acts as a name refuse until that name is hooked in on the bus, and
 print the hook-in recipe for the harness they detect. A row that cannot be
 reached cannot hold work. Every verb refuses until you are hooked in: an unknown verb is refused first, then, before the verb reads or writes anything, it checks that --as (or NOVA_SPRINT_AS) is on the bus and exits 1 with `SPRINT REFUSED <verb>: <name> is not on the bus: hook in to the bus first: ... nova-bus hook --as <name> ...` (exit 2 when the bus itself cannot be asked); only help, version and the run, dash and worker services are exempt, and wake, check and next, which ask the bus themselves and answer its absence in their own documented shape.
 
+The sprint hook is bound to the bus hook it was made on. `nova-bus who` shows
+each bus hook's session id, new each time the hook is started; `nova-sprint
+hook` records it on the row, and a name whose recorded id is not the one who
+shows now is not hooked in: `SPRINT REFUSED <verb>: hook in first: nova-sprint
+hook --as <name> --role <the row's role>`. So a new session that starts only
+the bus hook is told to hook in on its first verb, and the hook hands it its
+playbook line; it never acts on an earlier session's hook. That hook replaces
+the old one in place: the row keeps its hand, and a coordinator its seat.
+The id compared is who's for the name, nothing about the process that asks,
+so a bus hook that runs as a service, or as a worker's child, is treated the
+same (`tla/Hook.tla`; `modules/verbs/hooked.go`).
+
 ## The deal message is the walkthrough
 
 The one bus message a deal sends is the whole instruction. Its body:
