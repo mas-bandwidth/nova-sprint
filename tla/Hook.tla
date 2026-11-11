@@ -19,6 +19,10 @@
 (* row keeps its hand, and a coordinator its seat, where unhook then hook  *)
 (* would return the hand to the queue and free the seat. One coordinator:  *)
 (* a hook as coordinator while another name holds the seat is refused.     *)
+(* A hooked row changes role only through unhook: a hook in another role   *)
+(* than the row has is refused, on the live id or a stale one, so no hook  *)
+(* empties the seat (the run tells of a seat freed only at an unhook) or   *)
+(* takes it with a worker's hand.                                          *)
 (* Unhook is the name's own, on the bus; it returns the hand.              *)
 (*                                                                         *)
 (* The id compared is who's word for the name, nothing about the process   *)
@@ -32,8 +36,9 @@
 (* and the store's side of the replacement (Store.tla, HookKept).          *)
 (*                                                                         *)
 (* Reversed witnesses beside it (run by ci-tlc.sh): HookAnySession, the    *)
-(* gate before 2026-11-11 (any recorded hook passes: the incident), and    *)
-(* HookReplaceUnhooks (the replacement returns the hand). Trace            *)
+(* gate before 2026-11-11 (any recorded hook passes: the incident),        *)
+(* HookReplaceUnhooks (the replacement returns the hand) and               *)
+(* HookReplaceChangesRole (the replacement takes the role asked). Trace    *)
 (* validation: HookTrace.tla on the walk in modules/verbs/hook_trace_test.go. *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
@@ -52,9 +57,10 @@ VARIABLES
   role,    \* name -> its sprint hook's role; None not hooked
   hand,    \* name -> its row holds live cards
   act,     \* the last accepted acting verb: who, and the two ids then (ghost)
-  repl     \* the names whose stale hook was replaced with a hand held, until they unhook (ghost)
+  repl,    \* the names whose stale hook was replaced with a hand held, until they unhook (ghost)
+  turned   \* a hook has changed a hooked row's role (ghost)
 
-vars == <<live, starts, rec, role, hand, act, repl>>
+vars == <<live, starts, rec, role, hand, act, repl, turned>>
 
 NoAct == [name |-> None, rec |-> 0, live |-> 0]
 
@@ -66,29 +72,32 @@ Init ==
   /\ hand \in [Names -> BOOLEAN]
   /\ act = NoAct
   /\ repl = {}
+  /\ turned = FALSE
 
 \* The bus hook is started (again): who shows a new id for the name.
 BusStart(n) ==
   /\ starts[n] < MaxStarts
   /\ starts' = [starts EXCEPT ![n] = @ + 1]
   /\ live' = [live EXCEPT ![n] = starts[n] + 1]
-  /\ UNCHANGED <<rec, role, hand, act, repl>>
+  /\ UNCHANGED <<rec, role, hand, act, repl, turned>>
 
 \* The bus hook ends: the session is gone, or its service stopped.
 BusStop(n) ==
   /\ live[n] # 0
   /\ live' = [live EXCEPT ![n] = 0]
-  /\ UNCHANGED <<starts, rec, role, hand, act, repl>>
+  /\ UNCHANGED <<starts, rec, role, hand, act, repl, turned>>
 
 Seat == {m \in Names : role[m] = "coordinator"}
 
 \* nova-sprint hook --as n --role r is accepted: n is on the bus, its
-\* recorded id is not the live one (never hooked, or stale), and the seat,
-\* when asked for, is free or n's own. A stale hook is replaced in place.
+\* recorded id is not the live one (never hooked, or stale), the seat, when
+\* asked for, is free or n's own, and a hooked row asks for the role it
+\* has. A stale hook is replaced in place.
 CanHook(n, r) ==
   /\ live[n] # 0
   /\ rec[n] # live[n]
   /\ r = "coordinator" => Seat \subseteq {n}
+  /\ rec[n] # 0 => role[n] = r
 
 Hook(n, r, ok) ==
   /\ ok = CanHook(n, r)
@@ -96,7 +105,8 @@ Hook(n, r, ok) ==
      THEN /\ rec' = [rec EXCEPT ![n] = live[n]]
           /\ role' = [role EXCEPT ![n] = r]
           /\ repl' = IF rec[n] # 0 /\ hand[n] THEN repl \cup {n} ELSE repl
-     ELSE UNCHANGED <<rec, role, repl>>
+          /\ turned' = (turned \/ (rec[n] # 0 /\ role[n] # r))
+     ELSE UNCHANGED <<rec, role, repl, turned>>
   /\ hand' = hand
   /\ UNCHANGED <<live, starts, act>>
 
@@ -111,7 +121,7 @@ Unhook(n, ok) ==
           /\ hand' = [hand EXCEPT ![n] = FALSE]
           /\ repl' = repl \ {n}
      ELSE UNCHANGED <<rec, role, hand, repl>>
-  /\ UNCHANGED <<live, starts, act>>
+  /\ UNCHANGED <<live, starts, act, turned>>
 
 \* The hooked check: on the bus, the recorded id the live one, and the
 \* role the verb needs.
@@ -124,7 +134,7 @@ Hooked(n, need) ==
 Verb(n, need, ok) ==
   /\ ok = Hooked(n, need)
   /\ act' = IF ok THEN [name |-> n, rec |-> rec[n], live |-> live[n]] ELSE act
-  /\ UNCHANGED <<live, starts, rec, role, hand, repl>>
+  /\ UNCHANGED <<live, starts, rec, role, hand, repl, turned>>
 
 Next ==
   \E n \in Names :
@@ -143,6 +153,7 @@ TypeOK ==
   /\ hand \in [Names -> BOOLEAN]
   /\ act \in [name : Names \cup {None}, rec : 0..MaxStarts, live : 0..MaxStarts]
   /\ repl \subseteq Names
+  /\ turned \in BOOLEAN
 
 \* No acting verb is accepted from a name whose recorded bus session is not
 \* the live one (the incident of 2026-11-11: a new session started only the
@@ -158,6 +169,10 @@ OneCoordinator == Cardinality(Seat) <= 1
 \* The replacement of a stale hook is in place: a name that held cards
 \* when its hook was replaced holds them still, hooked, until it unhooks.
 HandKept == \A n \in repl : hand[n] /\ rec[n] # 0
+
+\* No hook changes a hooked row's role: the seat is emptied, and taken by a
+\* row that was a worker, only through an unhook.
+RoleKept == ~turned
 
 \* Reach (expected violated in HookNever*.cfg): a stale hook is replaced
 \* with a hand held, and a name acts again after its bus hook was started

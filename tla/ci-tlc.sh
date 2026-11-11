@@ -19,7 +19,7 @@
 #     checks KinAliveNever{Down,Back}, beside it, must be violated
 #   Hook.tla with Hook.cfg (the sprint hook bound to the bus hook)
 #                                      must pass            (TLC exit 0);
-#     its witnesses Hook{AnySession,ReplaceUnhooks} and reach checks
+#     its witnesses Hook{AnySession,ReplaceUnhooks,ReplaceChangesRole} and reach checks
 #     HookNever{Replaced,ActsAgain}, beside it, must be violated
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
@@ -237,7 +237,7 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
          KinAliveNoGone KinAliveBusIsLife KinAliveRaiseOnPresence \
-         HookAnySession HookReplaceUnhooks; do
+         HookAnySession HookReplaceUnhooks HookReplaceChangesRole; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 

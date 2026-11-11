@@ -197,7 +197,12 @@ func TestHookTraceWalk(t *testing.T) {
 					h.busStop(n)
 				}
 			case k < 6:
-				if ok := h.hook(n, role); ok && stale && before.hand[n] {
+				ok := h.hook(n, role)
+				if ok && before.rec[n] != 0 && before.role[n] != role {
+					t.Fatalf("seed %d: a hook changed %s's role from %s to %s in place", seed, n, before.role[n], role)
+				}
+				seen["a stale hook in another role refused"] = seen["a stale hook in another role refused"] || !ok && stale && before.role[n] != role
+				if ok && stale && before.hand[n] {
 					seen["a stale hook replaced with a hand held"] = true
 					if after := h.steps[len(h.steps)-1]; !after.hand[n] {
 						t.Fatalf("seed %d: the hook that replaced %s's stale one returned its hand", seed, n)
@@ -218,7 +223,7 @@ func TestHookTraceWalk(t *testing.T) {
 		}
 		h.write(fmt.Sprintf("hook-walk-%d", seed), "")
 	}
-	for _, s := range []string{"a verb refused on a new bus session", "a stale hook replaced with a hand held", "a verb accepted on a later bus session", "a hand returned by an unhook"} {
+	for _, s := range []string{"a verb refused on a new bus session", "a stale hook replaced with a hand held", "a stale hook in another role refused", "a verb accepted on a later bus session", "a hand returned by an unhook"} {
 		if !seen[s] {
 			t.Fatalf("no walk had %s", s)
 		}
@@ -239,6 +244,7 @@ INVARIANTS
   HookWellFormed
   OneCoordinator
   HandKept
+  RoleKept
 
 PROPERTY TraceMatched
 `
