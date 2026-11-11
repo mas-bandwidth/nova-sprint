@@ -179,14 +179,28 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 		return edge.Cause("cannot read the store", err)
 	}
 	names, restart, sessions := make([]string, 0, len(benches)), []string{}, map[string]string{}
+	var behind []string
 	for _, bench := range benches {
 		s := workerService(bench, w.run, runAddress)
 		if _, err = w.services.Ensure(ctx, s); err != nil {
 			return err
 		}
 		names = append(names, s.Name)
-		if r := snap.Rows[bench]; w.behind(r) {
-			restart, sessions[bench] = append(restart, s.Name), r.Session
+		if w.behind(snap.Rows[bench]) {
+			behind = append(behind, bench)
+		}
+	}
+	// A behind worker is restarted only onto this build: one whose bench's
+	// binary on disk is old (its install failed, or up runs from a newer
+	// binary than the fleet's) would give back its hand and come back
+	// behind, on every up. It is named with the install, never restarted.
+	old, stale, err := w.diskBehind(ctx, behind)
+	if err != nil {
+		return err
+	}
+	for _, bench := range behind {
+		if !old[bench] {
+			restart, sessions[bench] = append(restart, "sprint-worker-"+bench), snap.Rows[bench].Session
 		}
 	}
 	args := []string{"services", "--", "-l", strings.Join(benches, ","), "-e", "nova_service_only=" + strings.Join(names, ",")}
@@ -197,7 +211,43 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	if err != nil {
 		return verbs.RefusalOr(err, &verbs.OperationError{Problem: edge.RedactN("nova-fleet services for the workers on "+strings.Join(benches, ",")+" failed: "+err.Error(), edge.FailureMax+400), Fix: "fix what it says for each machine it names (nova-fleet check), or take the bench role off a machine that is gone, then nova-sprint up again", Exit: 1})
 	}
-	return w.rehooked(ctx, sessions)
+	if err = w.rehooked(ctx, sessions); err != nil || stale == nil {
+		return err
+	}
+	return stale
+}
+
+// diskBehind is which of benches has a nova-sprint on disk that is not
+// this build (w.version, read at once), and the refusal naming them with
+// the install that fixes it; nil when none has.
+func (w productionWorkload) diskBehind(ctx context.Context, benches []string) (map[string]bool, *verbs.WorkloadNotReady, error) {
+	if len(benches) == 0 {
+		return nil, nil, nil
+	}
+	if w.version == nil {
+		return nil, nil, fmt.Errorf("worker setup unavailable: no version check is wired")
+	}
+	errs := make([]error, len(benches))
+	var wg sync.WaitGroup
+	for i, b := range benches {
+		wg.Go(func() { errs[i] = w.version(ctx, b) })
+	}
+	wg.Wait()
+	old, why := map[string]bool{}, []string{}
+	fix := "nova-fleet install --repo <org/repo> --tag <this version> <bench> for each bench named, then nova-sprint up again"
+	for i, err := range errs {
+		if err == nil {
+			continue
+		}
+		old[benches[i]], why = true, append(why, err.Error())
+		if op := (*verbs.OperationError)(nil); errors.As(err, &op) && len(why) == 1 {
+			fix = op.Fix
+		}
+	}
+	if len(why) == 0 {
+		return old, nil, nil
+	}
+	return old, &verbs.WorkloadNotReady{Why: "not restarted, its binary on disk is not this build: " + strings.Join(why, "; "), Fix: fix}, nil
 }
 
 // rehooked waits, bounded, until each restarted worker's row has left the
