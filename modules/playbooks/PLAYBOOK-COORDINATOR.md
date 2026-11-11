@@ -272,7 +272,10 @@ The card id is the file's name without `.md`: 1 to 104 of a-z A-Z 0-9 _ -, not s
    - `DONE-WHEN: <command>`: required, one per line; each is one checkable command (a program and
      its arguments, run with no shell: wrap a pipe, `&&`, `;` or a redirection in `sh -c '...'`).
      `add` parses each and runs none; a bench's worker runs every one at the head after the
-     work, and a red one fails the attempt. A gate that would stay red after a correct fix is a
+     work, and a red one fails the attempt. A gate has what is left of the card's deadline (its
+     tier's, less what the work took and a minute kept for the push and the report) and no
+     shorter bound; one still running then fails the attempt, saying how long it ran and which
+     gates were not run. A gate that would stay red after a correct fix is a
      brief defect no machine catches before the deal: write it red at base, green at head. Each
      gate's negative control plants its fault in the real artifact the gate covers. A gate names
      the facts it needs (an OS, a tool), never a host.
