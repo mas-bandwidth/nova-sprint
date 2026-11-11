@@ -28,6 +28,16 @@
 (* the merge. Answer is the coordinator's (rung 3): land merges by hand  *)
 (* (no gate: the coordinator looked), fix sends the card to fix, retry   *)
 (* asks a new landing.                                                    *)
+(*                                                                         *)
+(* CI takes time (CIStep): a gate's checks run, may fail or be stopped   *)
+(* while others still run (partial), and complete green, red or stopped  *)
+(* (every failing check killed, cancelled or timed out: no verdict about *)
+(* the code, and any tree can be stopped). A verdict is taken only from  *)
+(* completed checks: a partial gate is asked again until the request's  *)
+(* wait passes (Late), then it is no verdict, never red; a stopped gate  *)
+(* is run again once (reran), then no verdict. A gate is the tree pushed *)
+(* for the request on base's tip as it was (gbase); a pass on a base     *)
+(* that moved since rebuilds it and its CI starts again.                 *)
 (***************************************************************************)
 EXTENDS Naturals, Sequences, FiniteSets
 
@@ -45,7 +55,13 @@ Red(cs)      == {"c1", "c3"} \subseteq cs
 Conflict(cs) == {"c2", "c3"} \subseteq cs
 
 NoTree == [cards |-> {}, ext |-> 0]
-NoReq  == [cards |-> {}, st |-> "none", out |-> "none", rung |-> 0]
+\* A request: its cards, state and outcome, the rung, and its gate: the
+\* tree pushed (gate), the length of base when it was (gbase), its CI
+\* (ci: none, running, partial, done; res: the completed result), whether
+\* its stopped jobs were run again (reran) and whether the wait passed on a
+\* partial CI (late).
+NoReq  == [cards |-> {}, st |-> "none", out |-> "none", rung |-> 0,
+           gate |-> NoTree, gbase |-> 0, ci |-> "none", res |-> "none", reran |-> FALSE, late |-> FALSE]
 
 VARIABLES
   base,    \* Seq of [tree, how ("init", "auto", "hand", "ext"), gated]
@@ -101,12 +117,23 @@ Tick ==
 \* rung 2 gates the heads merged onto the tip. Both are Tip plus the cards.
 Gated(s) == [cards |-> Tip.cards \cup req[s].cards, ext |-> Tip.ext]
 RungOf(s) == IF Cardinality(req[s].cards) = 1 /\ Tip = Init0 THEN 1 ELSE 2
-CIOf(t) == IF Red(t.cards) THEN {"red", "absent"} ELSE {"green", "absent"}
+\* What a gate's checks can complete as: truthful CI (red only on a red
+\* tree), and any tree can have every failing check stopped.
+CIOf(t) == IF Red(t.cards) THEN {"red", "stopped"} ELSE {"green", "stopped"}
 
-Finish(s, out) == req' = [req EXCEPT ![s].st = "done", ![s].out = out, ![s].rung = RungOf(s)]
+\* r finished with out, at the rung the pass found.
+Done(s, r, out) == req' = [req EXCEPT ![s] = [r EXCEPT !.st = "done", !.out = out, !.rung = RungOf(s)]]
+Finish(s, out) == Done(s, req[s], out)
 \* Every head already on base: landed at once, rung by the heads' count.
 OnBase(s) == req' = [req EXCEPT ![s].st = "done", ![s].out = "landed",
                                 ![s].rung = IF Cardinality(req[s].cards) = 1 THEN 1 ELSE 2]
+
+\* The gate a pass reads: the one pushed while base is still the tip it was
+\* built on; else rebuilt on base's tip and pushed, its CI started again.
+Current(s) == req[s].gbase = Len(base) /\ req[s].ci # "none"
+Gate1(s) == IF Current(s) THEN req[s]
+            ELSE [req[s] EXCEPT !.gate = Gated(s), !.gbase = Len(base), !.ci = "running",
+                                !.res = "none", !.late = FALSE]
 
 Pass(s) ==
   /\ req[s].st = "sent"
@@ -121,17 +148,56 @@ Pass(s) ==
         /\ UNCHANGED base
      \/ /\ ~(req[s].cards \subseteq Tip.cards)
         /\ ~Conflict(Gated(s).cards)
-        /\ \E ci \in CIOf(Gated(s)) :
-             IF ci # "green" THEN Finish(s, ci) /\ UNCHANGED base
-             ELSE \/ /\ base' = Append(base, [tree |-> Gated(s), how |-> "auto", gated |-> Gated(s)])
-                     /\ Finish(s, "landed")
-                  \/ /\ Finish(s, "merge_refused")
-                     /\ UNCHANGED base
-                  \/ /\ Tip.ext < K                    \* base moved under the gate: asked again
-                     /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> "ext", gated |-> NoTree])
-                     /\ UNCHANGED req
+        /\ LET r == Gate1(s) IN
+           \/ /\ Done(s, r, "absent")                  \* no CI in time, a fault, a PR not opened
+              /\ UNCHANGED base
+           \/ /\ r.ci = "running" \/ (r.ci = "partial" /\ ~r.late)   \* no verdict yet: asked again
+              /\ req' = [req EXCEPT ![s] = r]
+              /\ UNCHANGED base
+           \/ /\ r.ci = "partial" /\ r.late            \* the wait passed: no verdict
+              /\ Done(s, r, "noverdict")
+              /\ UNCHANGED base
+           \/ /\ r.ci = "done" /\ r.res = "red"
+              /\ Done(s, r, "red")
+              /\ UNCHANGED base
+           \/ /\ r.ci = "done" /\ r.res = "stopped" /\ ~r.reran   \* run again once: asked again
+              /\ req' = [req EXCEPT ![s] = [r EXCEPT !.ci = "running", !.res = "none", !.reran = TRUE, !.late = FALSE]]
+              /\ UNCHANGED base
+           \/ /\ r.ci = "done" /\ r.res = "stopped" /\ r.reran
+              /\ Done(s, r, "noverdict")
+              /\ UNCHANGED base
+           \/ /\ r.ci = "done" /\ r.res = "green"
+              /\ \/ /\ base' = Append(base, [tree |-> r.gate, how |-> "auto", gated |-> r.gate])
+                    /\ Done(s, r, "landed")
+                 \/ /\ Done(s, r, "merge_refused")
+                    /\ UNCHANGED base
+                 \/ /\ Tip.ext < K                    \* base moved under the gate: asked again
+                    /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> "ext", gated |-> NoTree])
+                    /\ req' = [req EXCEPT ![s] = r]
   /\ ticked' = FALSE
   /\ UNCHANGED <<cs, js, held>>
+
+\* The gate's checks move on: a check fails or is stopped while others
+\* still run (partial), or they all complete (CIOf; never green once one
+\* failed or was stopped).
+CIStep(s) ==
+  /\ req[s].st = "sent"
+  /\ \/ /\ req[s].ci = "running"
+        /\ \/ req' = [req EXCEPT ![s].ci = "partial"]
+           \/ \E v \in CIOf(req[s].gate) : req' = [req EXCEPT ![s].ci = "done", ![s].res = v]
+     \/ /\ req[s].ci = "partial"
+        /\ \E v \in CIOf(req[s].gate) \ {"green"} : req' = [req EXCEPT ![s].ci = "done", ![s].res = v]
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<base, cs, js, held, passes>>
+
+\* The request's wait passes on a partial CI.
+Late(s) ==
+  /\ req[s].st = "sent"
+  /\ req[s].ci = "partial"
+  /\ ~req[s].late
+  /\ req' = [req EXCEPT ![s].late = TRUE]
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<base, cs, js, held, passes>>
 
 \* An outside commit to base.
 BaseMoves ==
@@ -158,7 +224,7 @@ Answer(c, choice) ==
 
 Next ==
   \/ Tick
-  \/ \E s \in Streams : Pass(s)
+  \/ \E s \in Streams : Pass(s) \/ CIStep(s) \/ Late(s)
   \/ BaseMoves
   \/ \E c \in Cards, choice \in {"land", "fix", "retry"} : Answer(c, choice)
 
@@ -173,6 +239,9 @@ TypeOK ==
   /\ held \subseteq Streams
   /\ ticked \in BOOLEAN
   /\ \A s \in Streams : req[s].st \in {"none", "sent", "done"}
+  /\ \A s \in Streams : req[s].ci \in {"none", "running", "partial", "done"}
+  /\ \A s \in Streams : req[s].res \in {"none", "green", "red", "stopped"}
+  /\ \A s \in Streams : req[s].reran \in BOOLEAN /\ req[s].late \in BOOLEAN
 
 \* Base is never red from a landing: every tree the landing put on base
 \* is one CI passed green.
@@ -196,6 +265,20 @@ MergingCovered ==
   ticked => \A c \in Cards :
     cs[c] = "merging" => c \in js \/ req[S(c)].st # "none" \/ S(c) \in held
 
+\* A verdict only from completed checks: red is taken only once the gate's
+\* checks all completed, never while some still run.
+VerdictOnlyCompleted ==
+  \A s \in Streams : req[s].out = "red" => req[s].ci = "done"
+
+\* Red says something about the code: a red judgement only on a tree CI is
+\* truthfully red on, never on checks that were all stopped.
+RedIsReal ==
+  \A s \in Streams : req[s].out = "red" => Red(req[s].gate.cards)
+
+\* Stopped checks are run again once before they are the coordinator's.
+StoppedRunAgainOnce ==
+  \A s \in Streams : req[s].out = "noverdict" /\ req[s].ci = "done" => req[s].reran
+
 -----------------------------------------------------------------------------
 (* Reachability: each expected VIOLATED (a run that shows the path).       *)
 
@@ -203,4 +286,7 @@ NeverRungTwo   == \A s \in Streams : req[s].rung # 2
 NeverJudged    == js = {}
 NeverHandLand  == \A i \in 1..Len(base) : base[i].how # "hand"
 NeverRedGated  == \A s \in Streams : req[s].out # "red"
+NeverNoVerdict == \A s \in Streams : req[s].out # "noverdict"
+NeverRerun     == \A s \in Streams : ~req[s].reran
+NeverLate      == \A s \in Streams : ~(req[s].out = "noverdict" /\ req[s].ci = "partial")
 =============================================================================

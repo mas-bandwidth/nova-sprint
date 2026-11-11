@@ -22,6 +22,9 @@
 #                       model's own fixtures (make-steps-traces.py), checked too
 #   store-breaker, card-breaker, policy-breaker   the divergence breakers (committed fixtures,
 #                       rewritten here; each must be refused at its last record)
+#   landedge-breaker-<old behaviour>   modules/edge/git/trace_test.go
+#                       TestLandEdgeTraceRefusesOldBehaviours: the v2.0.36 landing's
+#                       judgements (committed fixtures, refused at their last record)
 # Run it on a bench host (hetzner2 for the TLC half), never on the working machine.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -50,7 +53,7 @@ if on store; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergen
 if on card; then go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ & pids+=($!); fi
 if on policy; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ & pids+=($!); fi
 if on steps; then go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ & pids+=($!); fi
-if on edge; then go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./modules/edge/git & pids+=($!); fi
+if on edge; then go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$|TestLandEdgeTraceRefusesOldBehaviours$' ./modules/edge/git & pids+=($!); fi
 if on edge; then go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./modules/edge/worker & pids+=($!); fi
 if ! on store; then
     :
