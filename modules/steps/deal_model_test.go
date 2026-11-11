@@ -160,38 +160,45 @@ func (listRows) Ask(q Questions) Answers {
 }
 
 // TestTickBurstSpreadsAcrossAnsweredRows: five cards ready at once over a
-// width-2 and a width-4 row policy both allows are dealt in one tick with
-// no row taking a second card while another has none; the in-tick tally
-// counts, so the burst does not land on the first answered row until it is
-// full.
+// narrow and a wide row policy both allows are dealt in one tick with no row
+// taking a second card while another has none, then most room first; the
+// in-tick tally counts, so the burst does not land on the first answered row
+// until it is full. The 2-and-16 case is the live fleet's shape (2026-11-10:
+// 16-wide benches beside 3-wide ones): a weighted score let the wide row's
+// room outweigh the narrow row's idle lane (Steps.tla LevelledOrder).
 func TestTickBurstSpreadsAcrossAnsweredRows(t *testing.T) {
 	t.Parallel()
-	s := newSim(t)
-	s.ask = listRows{}
-	s.stream("s1")
-	s.row("r1", 2, "pro")
-	s.row("r2", 4, "pro")
-	for i := 1; i <= 5; i++ {
-		id := fmt.Sprintf("p%d", i)
-		s.producer(id, "s1", "pro", "a/"+id)
-		s.move(s.plan(id, card.Resolve{}))
-	}
-	s.tick()
-	require.Empty(t, s.rejected)
-	held := map[string]int{"r1": 0, "r2": 0}
-	var order []string
-	for _, op := range s.last.Ops {
-		for _, w := range op.Writes {
-			if p, ok := w.(store.PutCard); ok && p.Kind == "work" {
-				for r, n := range held {
-					assert.False(t, r != p.Holder && n == 0 && held[p.Holder] > 0, "%s takes a second card while %s has none (deals so far %v)", p.Holder, r, order)
-				}
-				held[p.Holder]++
-				order = append(order, p.Holder)
+	for _, tc := range []struct{ r2, got1, got2 int }{{4, 2, 3}, {16, 1, 4}} {
+		t.Run(fmt.Sprintf("2-and-%d", tc.r2), func(t *testing.T) {
+			t.Parallel()
+			s := newSim(t)
+			s.ask = listRows{}
+			s.stream("s1")
+			s.row("r1", 2, "pro")
+			s.row("r2", tc.r2, "pro")
+			for i := 1; i <= 5; i++ {
+				id := fmt.Sprintf("p%d", i)
+				s.producer(id, "s1", "pro", "a/"+id)
+				s.move(s.plan(id, card.Resolve{}))
 			}
-		}
+			s.tick()
+			require.Empty(t, s.rejected)
+			held := map[string]int{"r1": 0, "r2": 0}
+			var order []string
+			for _, op := range s.last.Ops {
+				for _, w := range op.Writes {
+					if p, ok := w.(store.PutCard); ok && p.Kind == "work" {
+						for r, n := range held {
+							assert.False(t, r != p.Holder && n == 0 && held[p.Holder] > 0, "%s takes a second card while %s has none (deals so far %v)", p.Holder, r, order)
+						}
+						held[p.Holder]++
+						order = append(order, p.Holder)
+					}
+				}
+			}
+			assert.Equal(t, map[string]int{"r1": tc.got1, "r2": tc.got2}, held, "five cards in one tick, every one dealt")
+		})
 	}
-	assert.Equal(t, map[string]int{"r1": 2, "r2": 3}, held, "five cards in one tick, every one dealt")
 }
 
 // TestTickRowsMissNamesNoRoom: a rows answer naming only full rows is a miss

@@ -79,6 +79,43 @@ func TestTickPreemptionRefusedByRace(t *testing.T) {
 	assert.Empty(t, s.inflight, "no stop went out")
 }
 
+// TestTickPreemptionNeverEvictsEqual: the live churn of 2026-11-10 (29 blocker
+// cards; "preempted by blocker sm-g-cs-absent-clean-controls" on
+// sm-g-cpp-list-elemkind and back, every tick, on stella and vision): a ready
+// blocker on a full row evicts the youngest card of lower priority there,
+// never a blocker's, and a row full of blockers is preempted by no one, so
+// the blockers in hand keep working tick after tick (Steps.tla
+// PreemptsOnlyLower, witness StepsBlockerEvictsBlocker).
+func TestTickPreemptionNeverEvictsEqual(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.kin("stella", "codex", 2, "pro")
+	blocker := func(id string) {
+		s.producer(id, "s1", "pro", "a/"+id)
+		s.must("priority", store.SetCardPriority{Card: id, Priority: "blocker"})
+	}
+	s.producer("n1", "s1", "pro", "a/n1")
+	s.run(2)
+	s.take("n1.w1")
+	blocker("b1")
+	s.run(2)
+	s.take("b1.w1") // stella is full: n1 (normal, older), b1 (blocker, the youngest)
+	blocker("b2")
+	s.run(3)
+	require.Empty(t, s.rejected)
+	s.requireState("b1.w1", "working")
+	s.requireState("n1.w1", "fail")
+	assert.Contains(t, s.card("n1.w1").Reason, "preempted by blocker b2", "the normal card is the victim, not the younger blocker")
+	s.requireState("b2.w1", "working")
+	s.take("b2.w1")
+	blocker("b3") // stella holds only blockers now
+	s.run(5)
+	s.requireState("b3", "ready")
+	s.requireState("b1.w1", "working")
+	s.requireState("b2.w1", "working")
+}
+
 // TestTickDropTakesDependants: a failed need fails the closure of its
 // dependants in one group, their live consumers withdrawn first (LESSONS
 // 2.4), and a sentinel with it.
