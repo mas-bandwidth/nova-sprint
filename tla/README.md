@@ -1598,8 +1598,8 @@ new), `NoOrphan` (the old card fails only in the step its dependant moves),
 `OwnKept` (the commit is of the old card as first read), `NeverStuck` (a
 refusal is the verb's own, while `Tries > MaxEnv`); liveness `Ends`.
 
-    VerbFence.cfg            Tries 4, MaxEnv 3, every writer        pass (329 states, depth 9)
-    VerbFenceCoarse.cfg      the same, fenced on every card         pass (471 states, depth 12)
+    VerbFence.cfg            Tries 4, MaxEnv 3, every writer        pass (409 states, depth 9)
+    VerbFenceCoarse.cfg      the same, fenced on every card         pass (598 states, depth 12)
     VerbFenceOneTry.cfg      Tries 1 (the old rule), a deal         NeverStuck violated
     VerbFenceOneTryCoarse    Tries 1, coarse, a write to x          NeverStuck violated
     VerbFenceNoOwn.cfg       a retry without the own check          OwnKept violated
