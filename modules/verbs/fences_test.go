@@ -57,7 +57,7 @@ func TestVerbsFencedOnRecordsNotTheSeq(t *testing.T) {
 		refused    string
 	}{
 		{"stream add", "stream-add", newWorld, "carol", []string{"stream", "add", "t", "--repo", "o/r", "--forge", "github"}, "STREAM t repo=o/r",
-			store.PutStream{Name: "u", Repo: "o/r", Base: "main", Pos: 9}, "wrote streams"},
+			store.PutStream{Name: "t", Repo: "o/r", Base: "main", Pos: 9}, "wrote streams"},
 		{"stream set", "stream-set", newWorld, "carol", []string{"stream", "set", "s", "--gate", "make check"}, "STREAM s mode=auto",
 			store.SetStreamMode{Stream: "s", Mode: "hand"}, "wrote streams"},
 		{"identity", "identity", newWorld, "carol", []string{"identity", "--name", "New Bot", "--email", "3+new-bot@users.noreply.example.test", "--reason", "r"}, "IDENTITY New Bot",
@@ -87,10 +87,11 @@ func TestVerbsFencedOnRecordsNotTheSeq(t *testing.T) {
 	}
 }
 
-// TestCoordinatorVerbsFencedOnTheirHook: stream add, stream set, identity and stop
-// read the caller as the coordinator on their snapshot; unhooked between
-// the read and the commit (a take-over), the op is refused, as the seq
-// fence refused it.
+// TestCoordinatorVerbsFencedOnTheirHook: stream add, stream set, identity,
+// stop and stats reset read the caller as the coordinator on their
+// snapshot; unhooked between the read and the commit (a take-over), the op
+// is refused, as the seq fence refused it: the caller's own hook, never
+// read again past (another row's is, TestCoordinatorVerbsCommitOverAnotherRowsHook).
 func TestCoordinatorVerbsFencedOnTheirHook(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
@@ -98,11 +99,12 @@ func TestCoordinatorVerbsFencedOnTheirHook(t *testing.T) {
 		{"stream", "set", "s", "--gate", "make check"},
 		{"identity", "--name", "New Bot", "--email", "3+new-bot@users.noreply.example.test", "--reason", "r"},
 		{"stop", "--reason", "deploy"},
+		{"stats", "reset", "--reason", "r"},
 	} {
 		t.Run(args[0]+" "+args[1], func(t *testing.T) {
 			t.Parallel()
 			w := newWorld(t)
-			kind := map[string]string{"stream add": "stream-add", "stream set": "stream-set"}[args[0]+" "+args[1]]
+			kind := map[string]string{"stream add": "stream-add", "stream set": "stream-set", "stats reset": "stats-reset"}[args[0]+" "+args[1]]
 			w.e.Store = between(w, cmp.Or(kind, args[0]), store.PutRow{Name: "carol"})
 			want(t, w.do("carol", args...), 1, "the store changed since seq", "wrote row carol's hook")
 		})
