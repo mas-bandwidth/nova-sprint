@@ -755,6 +755,15 @@ model and harness wherever they are named).
   project an op with SetStreamGates, as for SetStreamForge. Tests:
   `TestRound30Hash`, the conformance case `stream gates`,
   `TestFunctionalMigrateRound30`.
+- A policy version read by its name (round 32, 2026-11-11): the index
+  `policy_name` on `sprint.policy (name, version)`, and
+  `Store.PoliciesNamed(kind, name, max)`, the newest max versions of a kind
+  under a name, newest first. up's setup answers (`Choices`) and its
+  continuation read their own versions with it, never the event log, which
+  on a live sprint is long enough to time them out. A round-31 store is
+  upgraded in place (round31Hash, testdata/schema-round31.sql). Tests:
+  `TestRound31Hash`, `TestPoliciesNamedNewestFirst`,
+  `TestFunctionalPoliciesNamedReadsByIndex`.
 - A consumer's model (round 23, stitch w2D1): `Card` gains `Model`, the
   model its deal named (provider/model for a bench, the friend's own for a
   friend), a column of `sprint.cards` (`NOT NULL DEFAULT ''`) with a CHECK

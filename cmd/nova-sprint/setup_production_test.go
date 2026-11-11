@@ -147,19 +147,6 @@ func TestContinuationInputBoundsAndNoSecretEnvironment(t *testing.T) {
 	}
 }
 
-type gappedContinuationStore struct{ store.Store }
-
-func (g gappedContinuationStore) Events(context.Context, int64, int) ([]store.Event, error) {
-	return []store.Event{{Seq: 2}}, nil
-}
-
-func TestContinuationRejectsGappedHistory(t *testing.T) {
-	t.Parallel()
-	st := gappedContinuationStore{store.NewFake()}
-	if _, _, err := findSetupContinuation(context.Background(), st, store.Snapshot{Seq: 2}, strings.Repeat("a", 64)); err == nil {
-		t.Fatal("gapped history accepted")
-	}
-}
 func TestProductionSetupRejectsCombinedSecrets(t *testing.T) {
 	t.Parallel()
 	cfg := configForSetup()

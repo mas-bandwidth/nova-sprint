@@ -608,6 +608,59 @@ func TestFunctionalMigrateRound30(t *testing.T) {
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
 }
 
+// TestFunctionalPoliciesNamedReadsByIndex is a round 31 store upgraded in
+// place (it gains policy_name) holding 200,000 events and 200,000 policy
+// versions, each seeded by one generate_series: PoliciesNamed finds a
+// name's newest versions by the index, and the plan of its one read
+// touches a handful of rows, never the table or the log. The bound is in
+// rows (EXPLAIN ANALYZE), not time.
+func TestFunctionalPoliciesNamedReadsByIndex(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round31.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round31Hash + "' WHERE id = 1",
+		`INSERT INTO sprint.events (seq, op, actor, kind, accepted, receipt, at, epoch)
+			SELECT g, 'seed-' || g, 'seed', 'seed', true, '{}'::jsonb, timestamptz '2026-01-01 00:00:00+00', 1 FROM generate_series(1, 200000) g`,
+		`INSERT INTO sprint.policy (kind, name, body, actor, at)
+			SELECT 'data', CASE WHEN g % 100000 = 0 THEN 'setup:dashboard' ELSE 'seed:' || g END, 'v' || g, 'seed', timestamptz '2026-01-01 00:00:00+00' FROM generate_series(1, 200000) g`} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round31Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 31}, id)
+	p := openPG(t, dsn) // Migrate
+	_, err = c.Exec(ctx, "ANALYZE sprint.policy")
+	require.NoError(t, err)
+	got, err := p.PoliciesNamed(ctx, "data", "setup:dashboard", 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, []string{"v200000", "v100000"}, []string{got[0].Body, got[1].Body})
+	var plan []map[string]any
+	require.NoError(t, c.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+policiesNamedSQL, "setup:dashboard", "data", 2).Scan(&plan))
+	touched, relations := 0.0, []string{}
+	var walk func(n map[string]any)
+	walk = func(n map[string]any) {
+		rows, _ := n["Actual Rows"].(float64)
+		loops, _ := n["Actual Loops"].(float64)
+		removed, _ := n["Rows Removed by Filter"].(float64)
+		touched += rows*loops + removed
+		if r, ok := n["Relation Name"].(string); ok {
+			relations = append(relations, r+" by "+fmt.Sprint(n["Index Name"]))
+		}
+		kids, _ := n["Plans"].([]any)
+		for _, k := range kids {
+			walk(k.(map[string]any))
+		}
+	}
+	walk(plan[0]["Plan"].(map[string]any))
+	assert.Equal(t, []string{"policy by policy_name"}, relations, "the read is the policy table by its name index")
+	assert.LessOrEqual(t, touched, 10.0, "rows touched by the plan: %v", plan)
+}
+
 // columns is every sprint table's columns in their order, the order a
 // positional INSERT (pg_dump --inserts) fills them in.
 func columns(t *testing.T, c *pgx.Conn) map[string][]string {

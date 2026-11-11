@@ -194,6 +194,20 @@ func (f *Fake) Policy(_ context.Context, version int) (PolicyVersion, error) {
 	return p, nil
 }
 
+// PoliciesNamed returns the newest max versions of kind under name, newest
+// first.
+func (f *Fake) PoliciesNamed(_ context.Context, kind, name string, max int) ([]PolicyVersion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []PolicyVersion{}
+	for _, v := range slices.Backward(slices.Sorted(maps.Keys(f.policies))) {
+		if p := f.policies[v]; p.Kind == kind && p.Name == name && len(out) < max {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 func (f *Fake) clone() *Fake {
 	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors), stop: f.stop, identity: f.identity}
 }

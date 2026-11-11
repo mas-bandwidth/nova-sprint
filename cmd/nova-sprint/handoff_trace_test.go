@@ -113,7 +113,7 @@ func (f *handoffTraceFixture) PrepareHandoff(ctx context.Context, in verbs.Setup
 	if err != nil {
 		return "", false, err
 	}
-	record, found, err := findSetupContinuation(ctx, st, snap, id)
+	record, found, err := findSetupContinuation(ctx, st, id)
 	if err != nil || !found || record.Epoch != snap.Epoch || written != id {
 		return "", false, fmt.Errorf("record not persisted")
 	}
@@ -136,7 +136,7 @@ func (f *handoffTraceFixture) ValidateHandoff(ctx context.Context, id string, in
 	if err != nil {
 		return err
 	}
-	record, found, err := findSetupContinuation(ctx, st, snap, id)
+	record, found, err := findSetupContinuation(ctx, st, id)
 	if err != nil || !found || snap.Epoch != 1 || record.Epoch != snap.Epoch {
 		return fmt.Errorf("unexpected record state")
 	}
