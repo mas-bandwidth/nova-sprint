@@ -429,7 +429,8 @@ KillLeftover(c) ==
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - 1
-  /\ UNCHANGED <<storeState, jobState, width, jobDir, appliedOps, env, pass, branch>>
+  /\ jobDir' = [jobDir EXCEPT ![c].tree = Ended(c)]   \* killLeftovers_internal: endJobTree_internal
+  /\ UNCHANGED <<storeState, jobState, width, appliedOps, env, pass, branch>>
 
 UnhookRefused ==
   /\ env.crashed
