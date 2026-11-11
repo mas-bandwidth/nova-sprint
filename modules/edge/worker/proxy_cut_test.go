@@ -73,23 +73,33 @@ func refused_internal(code int) func() *http.Response {
 func cutProxy_internal(sent *http.Header, answers ...func() *http.Response) *KeyProxy {
 	var mu sync.Mutex
 	n := 0
-	return &KeyProxy{Routes: map[string]ProxyRoute{"deepseek": {Name: "deepseek", UpstreamURL: "https://api.deepseek.com", AllowedHosts: []string{"api.deepseek.com"}, Key: func() (string, error) { return "sk-x", nil }}},
-		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			if sent != nil {
-				*sent = r.Header.Clone()
-			}
-			answer := answers[min(n, len(answers)-1)]
-			n++
-			return answer(), nil
-		})}
+	return upstreamProxy_internal(func(r *http.Request) (*http.Response, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if sent != nil {
+			*sent = r.Header.Clone()
+		}
+		answer := answers[min(n, len(answers)-1)]
+		n++
+		return answer(), nil
+	})
+}
+
+// upstreamProxy_internal is a proxy with one route whose upstream is rt.
+func upstreamProxy_internal(rt roundTripFunc) *KeyProxy {
+	return &KeyProxy{Transport: rt, Routes: map[string]ProxyRoute{"deepseek": {Name: "deepseek", UpstreamURL: "https://api.deepseek.com", AllowedHosts: []string{"api.deepseek.com"}, Key: func() (string, error) { return "sk-x", nil }}}}
 }
 
 // serveCut_internal is one request of job through p, as a harness on Bun
 // sends it; aborted is what the handler panicked with (nil: it returned).
 func serveCut_internal(ctx context.Context, p *KeyProxy, w http.ResponseWriter, job string) (aborted any) {
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:56931/deepseek/v1/chat/completions", strings.NewReader(`{}`)).WithContext(ctx)
+	return serveNamed_internal(ctx, p, w, job, "")
+}
+
+// serveNamed_internal is serveCut_internal with the request named in its
+// query (?r=name), for an upstream that answers each request its own way.
+func serveNamed_internal(ctx context.Context, p *KeyProxy, w http.ResponseWriter, job, name string) (aborted any) {
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:56931/deepseek/v1/chat/completions?r="+name, strings.NewReader(`{}`)).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+ProxyKey(job))
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	defer func() { aborted = recover() }()
@@ -213,6 +223,130 @@ func TestKeyProxyFlushesAnEventBeforeWaitingForTheNext(t *testing.T) {
 	serveCut_internal(context.Background(), p, rec, "p1.a1")
 	if !flushedBeforeSecondRead {
 		t.Errorf("the proxy waited on the upstream for a second event with the first not flushed to the harness")
+	}
+}
+
+// A harness that hangs up before the provider answers is no provider
+// failure: one that ends its run with a good head, cancelling a request on
+// its way out, is not dealt again as "provider HTTP 502". An upstream that
+// cannot be reached, with the harness still waiting, is one.
+func TestKeyProxyAHarnessHangUpBeforeTheAnswerIsNoProviderFailure(t *testing.T) {
+	t.Parallel()
+	unanswered := func(err error) *KeyProxy {
+		return upstreamProxy_internal(func(*http.Request) (*http.Response, error) { return nil, err })
+	}
+	gone, hangUp := context.WithCancel(context.Background())
+	hangUp()
+	p := unanswered(context.Canceled)
+	serveCut_internal(gone, p, httptest.NewRecorder(), "p1.a1")
+	if got := p.ConsumeStatus("p1.a1"); got != 0 {
+		t.Errorf("a harness that hung up before the answer was recorded as provider status %d: that is no provider failure", got)
+	}
+	q, rec := unanswered(errors.New("dial tcp 203.0.113.7:443: connect: connection refused")), httptest.NewRecorder()
+	serveCut_internal(context.Background(), q, rec, "p1.a1")
+	if got := q.ConsumeStatus("p1.a1"); got != http.StatusBadGateway || rec.Code != http.StatusBadGateway {
+		t.Errorf("an upstream that could not be reached: status %d, the harness was sent %d: want 502 for both", got, rec.Code)
+	}
+}
+
+// Two requests of one job in flight at once. A request sent before another's
+// failure and answered after it is no sign the harness got past the failure:
+// only an answer to a request sent after the failure is. And a cut that
+// follows an answer to a later request is still the job's failure: the long
+// stream that is cut may be the one the harness dies of.
+func TestKeyProxyOnlyARequestSentAfterAFailureEndsIt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	whole := stream_internal(nil, "data: [DONE]\n\n")
+
+	// b is sent, a is cut, b is answered
+	bSent, aCut, bDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	p := upstreamProxy_internal(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Query().Get("r") == "b" {
+			close(bSent)
+			<-aCut
+			return whole(), nil
+		}
+		return stream_internal(errReset_internal, "data: one\n\n")(), nil
+	})
+	go func() {
+		defer close(bDone)
+		serveNamed_internal(ctx, p, httptest.NewRecorder(), "p1.a1", "b")
+	}()
+	<-bSent
+	serveNamed_internal(ctx, p, httptest.NewRecorder(), "p1.a1", "a")
+	close(aCut)
+	<-bDone
+	if got := p.ConsumeStatus("p1.a1"); got != http.StatusBadGateway {
+		t.Errorf("a cut, then an answer to a request sent before the cut: status %d, want the cut's 502: that answer hides the failure the harness died of", got)
+	}
+
+	// a is sent and streams, b is sent and answered whole, a is cut
+	aSent, bWhole, aDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	p = upstreamProxy_internal(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Query().Get("r") == "b" {
+			return whole(), nil
+		}
+		close(aSent)
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: &cutBody_internal{chunks: []string{"data: one\n\n"}, err: errReset_internal, onRead: func(before int) {
+			if before == 1 {
+				<-bWhole
+			}
+		}}}, nil
+	})
+	go func() {
+		defer close(aDone)
+		serveNamed_internal(ctx, p, httptest.NewRecorder(), "p1.a1", "a")
+	}()
+	<-aSent
+	serveNamed_internal(ctx, p, httptest.NewRecorder(), "p1.a1", "b")
+	close(bWhole)
+	<-aDone
+	if got := p.ConsumeStatus("p1.a1"); got != http.StatusBadGateway {
+		t.Errorf("an answer to a later request, then the first one's cut: status %d, want the cut's 502", got)
+	}
+
+	// a is cut, then b is sent and answered: the harness got past it
+	p = cutProxy_internal(nil, stream_internal(errReset_internal, "data: one\n\n"), whole)
+	serveNamed_internal(ctx, p, httptest.NewRecorder(), "p1.a1", "a")
+	serveNamed_internal(ctx, p, httptest.NewRecorder(), "p1.a1", "b")
+	if got := p.ConsumeStatus("p1.a1"); got != 0 {
+		t.Errorf("a cut, then a request sent after it and answered: status %d, want none", got)
+	}
+}
+
+// A body past the proxy's cap is cut and the response aborted: the harness
+// is not handed 16 MiB that end cleanly as if they were the whole of it. A
+// body of exactly the cap is whole.
+func TestKeyProxyABodyOverTheCapIsAbortedNeverEndedCleanly(t *testing.T) {
+	t.Parallel()
+	const limit = 16 << 20
+	body := func(n int) func() *http.Response {
+		return func() *http.Response {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", n)))}
+		}
+	}
+	rec := httptest.NewRecorder()
+	if aborted := serveCut_internal(context.Background(), cutProxy_internal(nil, body(limit+1)), rec, "p1.a1"); aborted != http.ErrAbortHandler || rec.Body.Len() != limit {
+		t.Errorf("a body one byte over the cap: the handler ended with %v after %d bytes: want http.ErrAbortHandler after %d", aborted, rec.Body.Len(), limit)
+	}
+	rec = httptest.NewRecorder()
+	if aborted := serveCut_internal(context.Background(), cutProxy_internal(nil, body(limit)), rec, "p1.a1"); aborted != nil || rec.Body.Len() != limit {
+		t.Errorf("a body of exactly the cap: the handler ended with %v after %d bytes: want it whole", aborted, rec.Body.Len())
+	}
+}
+
+// The proxy's own transport, as built: HTTP/1.1 only, and an idle
+// connection kept for each job of a full row and its side requests, so a
+// request does not pay a TLS handshake.
+func TestKeyProxyUpstreamTransportIsHTTP1AndKeepsARowsConnections(t *testing.T) {
+	t.Parallel()
+	tr := newUpstream_internal()
+	if tr.Protocols == nil || !tr.Protocols.HTTP1() || tr.Protocols.HTTP2() || tr.Protocols.UnencryptedHTTP2() {
+		t.Errorf("the upstream transport's protocols are %v: want HTTP/1.1 only", tr.Protocols)
+	}
+	if tr.MaxIdleConnsPerHost != 32 {
+		t.Errorf("the upstream transport keeps %d idle connections per provider (0: net/http's 2): want 32", tr.MaxIdleConnsPerHost)
 	}
 }
 
