@@ -97,8 +97,9 @@ in the shell that runs the hook; the `wake` child needs the sprint credential to
    it does not set them in the parent shell. `help` and `version` need no wrapper.
    Without it a verb refuses with `this process has no sprint credential: run under nova-secrets
    exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...`.
-   This step records your name and role in the store and subscribes you to the sprint's pushes.
-   Until it has run, every verb that acts as you refuses with
+   This step records your name, your role and your bus hook's session id in the store and
+   subscribes you to the sprint's pushes.
+   Until it has run on the bus hook you have now, every verb that acts as you refuses with
    `hook in first: nova-sprint hook --as <you> --role worker`.
    On a sprint with no commit identity it refuses with `the sprint has no commit identity: ...:
    ask the coordinator to run nova-sprint identity ...`: tell the coordinator, and hook again
@@ -107,11 +108,27 @@ in the shell that runs the hook; the `wake` child needs the sprint credential to
    one `next: <command>` line. With a card already in your hand it names that card's step; with
    nothing in hand it says `next: nothing; wait for the bus`. Then stop and wait for the bus.
 
-After a wrap-around, a crash or a lost session, hook in again: step 1, then
-`nova-sprint unhook --as <you>` (your old session's hook is still recorded, and a second hook
-is refused until it is cleared; with none it prints that there is nothing to unhook), then
-steps 2 and 3. Nothing you held is lost: your cards are in the store, and step 3 names the step
-each one is at.
+After a wrap-around, a crash or a lost session, hook in again: steps 1, 2 and 3, in that
+order, and no `unhook` between them. Your sprint hook is bound to the bus hook it was made on
+(`nova-bus who` shows each bus hook's session id, new each time the hook is started). Once
+step 1 has started your bus hook again, the old sprint hook is no longer yours: every verb that
+acts as you refuses with `hook in first: nova-sprint hook --as <you> --role worker` until step 2
+has run, and step 2 replaces the old hook in place. Nothing you held is lost: your cards stay in
+your hand, and step 3 names the step each one is at. `unhook` is not part of this: it returns
+your whole hand to the queue. The same holds when a hook that runs as a service is restarted
+beside a session that goes on: the next verb says `hook in first`, step 2 answers it, and the
+work continues. If step 2 says `<you> is already hooked in as worker: nova-sprint next --as
+<you>`, your bus hook is the one you hooked in on: you are hooked in, go on with step 3.
+
+The gate binds your name to its live bus hook, so every restart of the bus hook costs one
+`hook in first`: a watch that expired and was re-armed (Claude Code's Monitor lasts at most 30
+minutes) is a restart, and step 2 follows it each time. A hook never changes your role: asking
+for another role than your row has is refused (`<you> is hooked in as <role>; unhook first to
+change role`), and the refusal names the hook that keeps the role first. Known limit: a bus
+hook that runs as a service (`nova-bus hook ... --service`) is not started again by a new
+session (run again with the same flags it changes nothing, so its id stays), so a new Codex,
+Grok or Antigravity session on a service hook is not refused; it still runs step 2 for its
+playbook line.
 
 ## What arrives on the bus, and what to run
 
@@ -304,7 +321,8 @@ bus did not answer): run it again once, and if it repeats, tell the coordinator.
 answer, never a thing to route round.
 
 - `<you> is not on the bus: hook in to the bus first: ...`: do step 1 of "Hook in".
-- `hook in first: nova-sprint hook --as <you> --role worker`: do step 2 of "Hook in".
+- `hook in first: nova-sprint hook --as <you> --role worker`: do step 2 of "Hook in". You
+  never hooked in, or your bus hook was started again since you did; the hook keeps your hand.
 - `<id> is not dealt to this row at this generation: nova-sprint next --as <you>`: the card
   moved (withdrawn, re-dealt, or a newer gen exists). Run `next`, and wait for the bus.
 - `<id> was dealt before the deal became the take; the next tick withdraws it and deals it

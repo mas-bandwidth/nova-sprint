@@ -674,6 +674,16 @@ model and harness wherever they are named).
   holds the row is refused: "row w1 is hooked by session sess-a; unhook it
   first". The same session may hook again (a new role). Like every row write
   it raises the row's gen. `rows.role` has a CHECK.
+  One hook by another session is accepted (2026-11-11): the one that names
+  the session holding the row as the one it replaces, `PutRow{Name, Session,
+  Role, Replaces}`. The bus started the name's hook again, so the recorded
+  session is gone; the row keeps its state, its hold and its hand, where an
+  unhook then a hook would return the hand and free the seat. A hook naming
+  any other session is refused as a plain hook is. `HookKept` is restated: a
+  row moves from one session straight to another only by a hook that names
+  the first (witnesses `StoreHookStolen`, `StoreHookReplacedUnnamed`). The
+  verbs decide when (`modules/verbs/hooked.go`, `tla/Hook.tla`): the store
+  holds no bus.
 - The sprint's stop: `Snapshot.Stopped` and `StopReason`, one value for the
   store on `sprint.epoch`'s one row (columns `stopped`, `stop_reason`), kept
   by a clear, in the log as `State.Stop` so Rebuild has it. `SetStopped{Stopped,

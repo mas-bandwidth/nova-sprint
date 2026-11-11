@@ -3,6 +3,7 @@ package verbs
 import (
 	"cmp"
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +106,24 @@ func TestCoordinatorVerbsFencedOnTheirHook(t *testing.T) {
 			kind := map[string]string{"stream add": "stream-add", "stream set": "stream-set"}[args[0]+" "+args[1]]
 			w.e.Store = between(w, cmp.Or(kind, args[0]), store.PutRow{Name: "carol"})
 			want(t, w.do("carol", args...), 1, "the store changed since seq", "wrote row carol's hook")
+		})
+		// The caller's hook replaced in place between the read and the commit
+		// (its bus hook was started again and the new session hooked in; the
+		// write names the session it replaces): the row is hooked throughout,
+		// by another session than the op was read on, and the op in flight is
+		// refused the same way.
+		t.Run(args[0]+" "+args[1]+": its hook replaced between", func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			kind := map[string]string{"stream add": "stream-add", "stream set": "stream-set"}[args[0]+" "+args[1]]
+			before := w.snap(t)
+			w.e.Store = between(w, cmp.Or(kind, args[0]), store.PutRow{Name: "carol", Session: "bus-2", Role: "coordinator", Replaces: "s-carol"})
+			want(t, w.do("carol", args...), 1, "the store changed since seq", "wrote row carol's hook")
+			after := w.snap(t)
+			if after.Rows["carol"].Session != "bus-2" || len(after.Streams) != len(before.Streams) || !reflect.DeepEqual(after.Streams["s"], before.Streams["s"]) ||
+				after.Identity != before.Identity || after.Stopped != before.Stopped {
+				t.Fatalf("the hook did not land between, or the refused op wrote: %+v", after)
+			}
 		})
 	}
 }

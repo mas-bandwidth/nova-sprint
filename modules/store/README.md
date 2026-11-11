@@ -88,7 +88,8 @@ package does with it.
   nova-config's, read through package `roster`; the store neither caps
   working consumers nor checks tiers (the deal guards do, from the roster).
   `PutRow{Name, Session, Role}` is the hook's one write (both "" unhooks;
-  another session's hook is refused: unhook first). `SetStopped` sets the
+  another session's hook is refused: unhook first, unless it names the
+  session it replaces in `Replaces`, which takes the row in place). `SetStopped` sets the
   sprint's stop (`Snapshot.Stopped`, kept by a clear, refused when
   unchanged; the store refuses nothing for it). `EventIdentity(ctx, seq)`
   reads an event's op id and epoch without its images. Migrate takes a
