@@ -577,6 +577,9 @@ type WallConfig struct {
 	// CargoRegistry is the bench's ~/.cargo/registry, granted at start;
 	// CargoWallEnv links it into the job's own cargo home, offline.
 	CargoRegistry string
+	// SDKEnv is the bench's ~/sdk/env.sh, found at start: every wall
+	// command gets what it exports (sdkWallEnv_internal).
+	SDKEnv string
 }
 
 // wallKeeps are the names nova-sandbox passes into the wall without --env;
