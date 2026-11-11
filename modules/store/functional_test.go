@@ -51,12 +51,9 @@ func startPG(t *testing.T) string {
 	init.Env = append(os.Environ(), "LC_ALL=C")
 	out, err := init.CombinedOutput()
 	require.NoError(t, err, "%s", out)
-	port := freePort(t)
 	// pg_ctl starts it and stops it (-m fast: a clean shutdown; the postmaster stops its
 	// children and frees its SysV shared memory before it exits).
 	ctl := filepath.Join(bin, "pg_ctl")
-	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
-	start.Env = append(os.Environ(), "LC_ALL=C")
 	// Stop is registered before start: a start that fails or times out can
 	// leave a postmaster running, and t.Fatalf must not orphan it.
 	t.Cleanup(func() {
@@ -66,9 +63,7 @@ func startPG(t *testing.T) string {
 			t.Logf("pg_ctl stop: %v\n%s", err, out)
 		}
 	})
-	if out, err := start.CombinedOutput(); err != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", err, out)
-	}
+	port := startOnFreePort(t, ctl, dir)
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
@@ -78,6 +73,32 @@ func startPG(t *testing.T) string {
 		return err == nil
 	}, wait, 50*time.Millisecond)
 	return dsn
+}
+
+// startOnFreePort starts the server in dir on a free port and returns the
+// port. A port free when looked up can be taken before the postmaster binds
+// it (by another test's server, or a client connection's local port, on the
+// same host), and the postmaster then exits at start; a start whose log says
+// so is tried again on a new port. Any other failed start fails t, with the
+// server's log.
+func startOnFreePort(t *testing.T, ctl, dir string) string {
+	t.Helper()
+	for try := 1; ; try++ {
+		port := freePort(t)
+		logf := filepath.Join(dir, "postgres-"+strconv.Itoa(try)+".log")
+		start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", logf, "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
+		start.Env = append(os.Environ(), "LC_ALL=C")
+		out, err := start.CombinedOutput()
+		if err == nil {
+			return port
+		}
+		log, _ := os.ReadFile(logf) // ignored: an unreadable log is reported empty
+		if try < 5 && strings.Contains(string(log), "could not bind") {
+			t.Logf("pg_ctl start: port %s was taken; trying another\n%s", port, log)
+			continue
+		}
+		t.Fatalf("pg_ctl start: %v\n%s\npostgres log:\n%s", err, out, log)
+	}
 }
 
 // openPG opens the store at dsn and applies the schema.

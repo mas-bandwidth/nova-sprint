@@ -120,6 +120,7 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		}
 	}
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
+	killJob := func(jobDir string) (int, error) { return OSKillJob(jobDir, timeouts.TerminateGrace) }
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,
 		StateDir: stateDir,
@@ -128,7 +129,8 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 			Token: c.lookupEnv_internal(forge.TokenEnv), GitHubCredential: "gh"},
 		Now: time.Now, Sleep: time.Sleep, After: time.After, WakeEvery: WakeEvery,
 		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
-		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, Config: wall},
+		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, KillJob: killJob, Config: wall},
+		KillJob: killJob,
 		Procs:   OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
 		Warn: out, Meter: OSMeter{Exec: ex, ReserveBin: "nova-reserve", CPU: NewOSCPUSampler(ex)},
 	})
