@@ -440,7 +440,8 @@ that bench that was not pushed (a job pushes at harvest; a harness killed
 mid-run has pushed nothing of its own). `nova-fleet install` replaces the
 binary only; a worker runs the new one when its service restarts (the
 services play restarts a unit whose file changed or that
-`nova_service_restart` names), and every such restart gives up that
+`nova_service_restart` names; `up --version` names there each worker
+whose process beats an older build), and every such restart gives up that
 bench's hand. Within one session a pass
 goes on with a job an earlier pass left on a card the row holds: one
 staged with no slot is run when a slot is free (its deadline the

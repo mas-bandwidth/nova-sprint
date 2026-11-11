@@ -7,19 +7,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 )
 
 // VersionAdoption checks that the nova-sprint on PATH is the release up was
-// asked for (--version), then that its check passes. It installs
-// nothing: nova-fleet installs nova-sprint, and Apply names that command.
+// asked for (--version) and is the build running up, so up's own steps are
+// that build's check of the build: the fleet and nova-tools against its pin
+// (step 1), the store at its schema (step 4), the bus (step 5); its workers
+// step restarts a worker still beating an older release. The sprint's
+// health (open judgements, landings, stalls) is check's, never adoption's.
+// It installs nothing: nova-fleet installs nova-sprint, and Apply names
+// that command.
 type VersionAdoption struct {
 	Binary      string
+	Running     string // the build running up (versionString)
 	Command     CommandOutput
 	ResolvePath func() (string, error)
-	Secrets     NovaSecrets
-	Keys        []string
 }
 
 func (v VersionAdoption) command(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -59,8 +62,8 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 	if installed != version {
 		return false, nil
 	}
-	if err = v.secretCommand(ctx, "check"); err != nil {
-		return false, cause("updated sprint check failed", err)
+	if v.Running != version {
+		return false, &OperationError{Problem: "up is running nova-sprint " + orWord(v.Running, "(unknown)") + ", not " + version + ", the release on PATH, so its steps would check another build", Fix: binary + " up --as <coordinator> --version " + version, Exit: 1}
 	}
 	return true, nil
 }
@@ -75,36 +78,6 @@ func resolvedSprintPath() (string, error) {
 		return "", err
 	}
 	return filepath.Abs(path)
-}
-
-func (v VersionAdoption) secretCommand(ctx context.Context, args ...string) error {
-	if v.Secrets.Store == "" || v.Secrets.KeyFile == "" || v.Secrets.Seat == "" {
-		return fmt.Errorf("version check credentials unavailable: the secret store, key file or seat is not configured")
-	}
-	if !slices.Contains(v.Keys, sprintPasswordName) {
-		return fmt.Errorf("version check credentials unavailable: %s is not among the keys", sprintPasswordName)
-	}
-	keys := append([]string(nil), v.Keys...)
-	slices.Sort(keys)
-	for i, key := range keys {
-		if !fleetKey.MatchString(key) || (i > 0 && keys[i-1] == key) {
-			return fmt.Errorf("version check credentials unavailable: key name %q is invalid or repeated", key)
-		}
-	}
-	cmd := []string{"exec", "--only", strings.Join(keys, ","), "--store", v.Secrets.Store, "--key", v.Secrets.KeyFile, "--as", v.Secrets.Seat, "--", v.Binary}
-	cmd = append(cmd, args...)
-	if v.Command != nil {
-		_, err := v.Command(ctx, "nova-secrets", cmd...)
-		return err
-	}
-	process := exec.CommandContext(ctx, "nova-secrets", cmd...)
-	process.Env = safeProcessEnv(os.Environ())
-	for _, name := range []string{"NOVA_PG_DSN", "NOVA_BUS_REDIS", "NOVA_BUS_USER", "NOVA_SPRINT_BACKUP_DIR"} {
-		if value, ok := os.LookupEnv(name); ok {
-			process.Env = append(process.Env, name+"="+value)
-		}
-	}
-	return runTool(process, nil)
 }
 
 func validRelease(v string) bool {

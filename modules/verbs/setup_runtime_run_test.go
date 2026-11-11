@@ -180,3 +180,34 @@ func TestRuntimeTargetRefusalsNameTheirCause(t *testing.T) {
 		}
 	}
 }
+
+// A run holding the lock from an older build than this one, or from one
+// whose lock names no build, is behind; a current one, or a check with no
+// release to compare (a source build), is ready.
+func TestSetupRunOfAnOlderBuildIsBehind(t *testing.T) {
+	t.Parallel()
+	status := run.ChooserStatus{Held: true, Operation: "run", Host: "bench-a", Version: "v2.0.36"}
+	r := PGSetupRun{Release: "v2.0.37", Inspect: func(context.Context, string, string) (run.ChooserStatus, error) { return status, nil }, Env: ExecEnvironment{Command: func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("WHO OK present=1\nsprint\t1m\n"), nil
+	}}}
+	for _, version := range []string{"v2.0.36", ""} {
+		status.Version = version
+		ok, err := r.Ready(context.Background(), "bench-a", "sprint-run")
+		var nr *RunNotReady
+		if ok || !errors.As(err, &nr) || !nr.Behind || !strings.Contains(nr.Why, "below this build's v2.0.37") || !strings.Contains(nr.Fix, "restarts it through nova-fleet services") {
+			t.Fatal(version, ok, err)
+		}
+	}
+	status.Version = "v2.0.37"
+	if ok, err := r.Ready(context.Background(), "bench-a", "sprint-run"); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	status.Version = run.VersionUnknown // a lock name cut at run.NameMax: never behind, so up never restarts the run in a loop
+	if ok, err := r.Ready(context.Background(), "bench-a", "sprint-run"); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	status.Version, r.Release = "v2.0.36", "dev+0123456789ab"
+	if ok, err := r.Ready(context.Background(), "bench-a", "sprint-run"); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 )
 
@@ -23,11 +24,17 @@ type PGSetupRun struct {
 	Inspect       func(context.Context, string, string) (run.ChooserStatus, error)
 	GOOS, Home    string     // "": this machine's (runtime.GOOS, the home directory)
 	UID           func() int // nil: os.Getuid
+	// Release is this build's release: a run holding the lock from an
+	// older build (or one whose lock names none) is Behind.
+	Release string
 }
 
 // RunNotReady is run not (yet) serving this sprint on the chosen machine,
 // and why: each false condition by name.
-type RunNotReady struct{ Why, Fix string }
+type RunNotReady struct {
+	Why, Fix string
+	Behind   bool // its process is an older build: only a restart puts it on this one
+}
 
 func (r *RunNotReady) Error() string { return "run not ready: " + r.Why }
 
@@ -54,6 +61,8 @@ func (p PGSetupRun) Ready(ctx context.Context, host, service string) (bool, erro
 	case status.Operation != "run" || !run.SameMachine(status.Host, host):
 		return false, &RunNotReady{Why: fmt.Sprintf("lock held by %s for %s, wanted %s run", orWord(status.Host, "(unknown host)"), orWord(status.Operation, "(unknown operation)"), host),
 			Fix: "stop the other holder (nova-sprint show run names it), then nova-sprint up again"}
+	case status.Version != run.VersionUnknown && roster.Behind(status.Version, p.Release): // a name cut at run.NameMax holds no readable build: never restarted on it, so never in a loop
+		return false, &RunNotReady{Why: "run on " + host + " is build " + orWord(status.Version, "(not named in its lock: older than this check)") + ", below this build's " + p.Release, Fix: "nova-sprint up restarts it through nova-fleet services; still behind after that, the nova-sprint on " + host + " is older than this one: nova-fleet install this release there, then nova-sprint up again", Behind: true}
 	}
 	hooked, _, err := p.Env.Hooked(ctx, "sprint")
 	if err != nil {

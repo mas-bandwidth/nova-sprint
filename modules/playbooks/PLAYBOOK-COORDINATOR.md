@@ -479,14 +479,18 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
 ## 9. Releases, backups and clears
 
 1. A new nova-sprint build is adopted with `nova-sprint up --version <v>`: it checks that the
-   nova-sprint on PATH is that release and that its `check` passes; when it is not, it names the
-   `nova-fleet install` command that installs it. Never copy a binary by hand. `nova-fleet
-   install` replaces the binary only; a running worker keeps the old one until its service is
-   restarted, which the `services` play does for a unit whose file changed or that
-   `nova_service_restart` names. Every worker restart gives up the row's whole hand (section 7,
-   item 4): every running bench job stops, is never reported, and its card is dealt again, from
-   its branch with the pushed head kept; work a harness had not pushed is lost. Restart the
-   workers at a quiet moment.
+   nova-sprint on PATH is that release and is the one running up, so up's own steps are
+   `check`'s build lines for it (the fleet, nova-tools against its pin, the store at its schema,
+   the bus). The sprint's health (open judgements, landings) stays `check`'s. When the release
+   is not on PATH, it names the `nova-fleet install` command that installs it. Never copy a
+   binary by hand. `nova-fleet install` replaces binaries only: a running worker or run keeps
+   the old build until its service is restarted. `up --version` restarts what is behind: its
+   run step restarts a run whose process is an older build, and its workers step restarts, once,
+   each worker whose process beats an older build (a worker not yet beaten is waited for, never
+   restarted), through the `services` play's `nova_service_restart`. Every worker restart gives
+   up the row's whole hand (section 7, item 4): every running bench job stops, is never
+   reported, and its card is dealt again, from its branch with the pushed head kept; work a
+   harness had not pushed is lost. So run `up --version` at a quiet moment.
 2. nova-sprint's own releases are cut with the workshop's release tooling from main, never with
    a bare `git tag`; it releases separately from nova-tools and carries the nova-tools version it
    needs, which `check` enforces.

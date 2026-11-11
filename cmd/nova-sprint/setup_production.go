@@ -73,16 +73,12 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 	grants := verbs.FleetGrants{Store: secret.Store, KeyFile: secret.KeyFile, Pins: secret.Pins, ControlSeat: secret.Seat, Command: command}
 	role := verbs.SprintRoleBootstrap{Sink: secret, Grants: grants, Secrets: secret, Binary: cfg.Binary}
 	schema := verbs.PGSetupStore{Role: role, ControlMachine: cfg.Host, Secrets: secret, Binary: cfg.Binary}
-	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
-	if cfg.BusUser != "" {
-		keys = append(keys, "NOVA_BUS_PASSWORD")
-	}
 	runDSN, err := setupRoleDSN(cfg.DSN, "nova_sprint")
 	if err != nil && cfg.DSN != "" { // unset, the store step says so; set and malformed, nothing can run
 		bad := verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN cannot be used (" + err.Error() + ")", Fix: "export NOVA_PG_DSN=postgres://<host>:<port>/<database> with no password in it, then nova-sprint up again", Exit: 1})
 		return failedProductionSetup{bad}, productionSetupLock{err: bad}
 	}
-	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Plays: verbs.FleetPlays{Command: command}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
+	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env, Release: cfg.BinaryVersion}, Plays: verbs.FleetPlays{Command: command}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Running: cfg.BinaryVersion}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 
@@ -690,7 +686,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	r.RunService = run
 	r.DefaultRunHost = host
 	r.Services = verbs.FleetServices{Command: p.command}
-	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 9/10 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion}
+	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 9/10 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion, release: p.cfg.BinaryVersion}
 	if !needDashboard {
 		return r, nil
 	}

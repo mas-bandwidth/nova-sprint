@@ -92,6 +92,9 @@ func TestDescribeHolder(t *testing.T) {
 	if got := describeHolder("nova-sprint run studio 4121", start); got != "studio (pid 4121, since 14:02)" {
 		t.Fatal(got)
 	}
+	if got := describeHolder("nova-sprint run studio 4121 v2.0.38", start); got != "studio (pid 4121, since 14:02)" {
+		t.Fatal(got)
+	}
 	if got := describeHolder("unknown", start); got != "unknown" {
 		t.Fatal(got)
 	}
@@ -100,7 +103,7 @@ func TestDescribeHolder(t *testing.T) {
 func TestChooserConfigErrorHidesDSN(t *testing.T) {
 	t.Parallel()
 	const secret = "secret-token-for-test"
-	_, err := OpenChooser(context.Background(), "postgres://u:"+secret+"@%broken/db", "", "host", 1, &fakeHook{})
+	_, err := OpenChooser(context.Background(), "postgres://u:"+secret+"@%broken/db", "", "host", 1, "v2.0.0", &fakeHook{})
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("unsafe config error: %v", err)
 	}
@@ -125,5 +128,24 @@ func TestChooserCleanupSurvivesCancelledCaller(t *testing.T) {
 	cancel()
 	if err := c.Close(ctx); err != nil || !lease.closed || !s.closed {
 		t.Fatalf("err=%v hook=%v session=%v", err, lease.closed, s.closed)
+	}
+}
+
+// The holder's build is the fifth word of its name; PostgreSQL cuts a name
+// at NameMax bytes, so a name that long holds no readable build (a long host
+// could leave "v2.0.3" of v2.0.38, an older release) and is VersionUnknown.
+func TestChooserNameVersion(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]string{
+		"nova-sprint run studio 4121 v2.0.38":                                      "v2.0.38",
+		"nova-sprint run studio 4121":                                              "",
+		("nova-sprint run " + strings.Repeat("h", 39) + " 4121 v2.0.38")[:NameMax]: VersionUnknown,
+		("nova-sprint run " + strings.Repeat("h", 50) + " 4121 v2.0.38")[:NameMax]: VersionUnknown,
+	} {
+		s := ChooserStatus{ApplicationName: name}
+		s.parseName()
+		if s.Version != want {
+			t.Errorf("%q: version %q, want %q", name, s.Version, want)
+		}
 	}
 }

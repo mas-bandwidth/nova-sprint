@@ -86,8 +86,15 @@ type (
 		Run       func(ctx context.Context, argv []string) ([]byte, int, error)
 		SprintBin string
 		Epoch     int
+		// Version is the worker process's build (Config.Version), in each
+		// verb's environment as BuildEnv: the beat records it as the row's.
+		Version string
 	}
 )
+
+// BuildEnv names the build of the worker process that runs a sprint verb;
+// beat records it in place of the verb binary's own (verbs.Engine.WorkerBuild).
+const BuildEnv = "NOVA_SPRINT_WORKER_BUILD"
 
 // argv_internal is a sprint verb's command line. The worker runs under the
 // bench seat's nova-secrets exec, which put the sprint's credentials in its
@@ -117,7 +124,11 @@ func (c *CLISprintClient) run_internal(ctx context.Context, argv []string) ([]by
 		}
 		return out, code, nil
 	}
-	res, err := cmp.Or[edge.Exec](c.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: argv, Timeout: c.Timeout, MaxBytes: outputMaxBytes_internal})
+	cmd := edge.Cmd{Argv: argv, Timeout: c.Timeout, MaxBytes: outputMaxBytes_internal}
+	if c.Version != "" {
+		cmd.Env = []string{BuildEnv + "=" + c.Version}
+	}
+	res, err := cmp.Or[edge.Exec](c.Exec, edge.NewOSExec()).Run(ctx, cmd)
 	out := []byte(res.Stdout + res.Stderr)
 	if err != nil || res.ExitCode != 0 {
 		return out, res.ExitCode, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
