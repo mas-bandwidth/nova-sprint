@@ -868,6 +868,7 @@ invariant violated (60 runs).
 | `CardRedAdvances` | RedNeverAdvances violated | 408537 / 130809 | 11 | 1min 18s |
 | `CardRelinkAfterCycle` | OrderAcyclic violated | 7380 / 3256 | 4 | 27s |
 | `CardReplaceByFinal` | ReplaceByLive violated | 22 / 20 | 3 | 9s |
+| `CardReplaceByHeld` | ReplaceByLive violated | 66 / 54 | 3 | <1s (2026-11-11, amd-1) |
 | `CardStaleReport` | OldAttemptNeverMoves violated | 30764 / 10902 | 8 | 34s |
 | `CardTwoReadsOneRow` | OneLiveReadPerRow violated | 31941 / 11338 | 8 | 34s |
 | `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 439 / 229 | 4 | 19s |
@@ -923,6 +924,7 @@ round 4, each move the fault lets through is one card/ at 4a085774 refuses:
   relinked to a: p2 needs a, a after s, s needs p2.
 - **CardReadReportsFail:** a read of head 1 on r1 reports fail.
 - **CardReplaceByFinal:** s is cancelled; p1 is replaced by s.
+- **CardReplaceByHeld:** p1 is held (HoldCard); s is replaced by p1, a card the deal never takes.
 - **CardTwoReadsOneRow:** two live reads of head 1 cut to r1.
 - **CardPriorRepeated:** attempt 1 is withdrawn with head 1, attempt 2 is
   cut with prior 1 and reports ok with head 1.
