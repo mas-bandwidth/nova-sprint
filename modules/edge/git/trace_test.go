@@ -44,13 +44,17 @@ type walkEntry_internal struct{ sha, how, gated string }
 // walkReq_internal is a request as the model has it: its gate is the sha
 // LandPass gated (projected to its tree), gbase the length of base when it
 // was gated, ci and res its checks as the walk's CI has them, reran and
-// late what the run (played by the walk) holds for it.
+// late what the run (played by the walk) holds for it, as is pin, the gate
+// it keeps (not in the model's state: the model's gate while ci is not
+// none); odd the card a conflict names.
 type walkReq_internal struct {
 	cards         []string
 	st, out       string
 	rung, gbase   int
 	gate, ci, res string
 	reran, late   bool
+	odd           []string
+	pin           Gate
 }
 
 func newWalkReq_internal(cards []string, st string) walkReq_internal {
@@ -70,6 +74,9 @@ type landWalk_internal struct {
 	held   map[string]bool
 	ticked bool
 	passes int
+	// oldJudge is the v2.0.37 tick for a breaker: a conflict judges every
+	// card of the request, not the one it names.
+	oldJudge bool
 }
 
 // walkForge_internal is the fake forge with truthful CI that takes time:
@@ -230,8 +237,9 @@ func (w *landWalk_internal) handMerge_internal(c string) {
 }
 
 // tick_internal is the model's Tick: consume the finished requests (landed
-// moves the cards, anything else opens a land judgement for each card
-// still merging), then ask for each stream that had none in flight.
+// moves the cards, a conflict that names its card judges that card, and
+// anything else opens a land judgement for each card still merging), then
+// ask for each stream that had none in flight.
 func (w *landWalk_internal) tick_internal() {
 	busy := map[string]bool{}
 	for _, s := range walkStreams {
@@ -241,7 +249,7 @@ func (w *landWalk_internal) tick_internal() {
 			continue
 		}
 		for _, c := range r.cards {
-			if w.cs[c] != "merging" {
+			if w.cs[c] != "merging" || r.out == "conflict" && len(r.odd) > 0 && !slices.Contains(r.odd, c) && !w.oldJudge {
 				continue
 			}
 			if r.out == "landed" {
@@ -286,7 +294,7 @@ func (w *landWalk_internal) pass_internal(s string) {
 // CI, a base that moves under a green gate, a refused merge.
 func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse bool) {
 	r := w.req[s]
-	req := LandRequest{Repo: "o/r", Stream: s, Base: "main", Reran: r.reran}
+	req := LandRequest{Repo: "o/r", Stream: s, Base: "main", Reran: r.reran, Gate: r.pin}
 	for _, c := range r.cards {
 		req.Heads = append(req.Heads, w.heads[c])
 		req.Branches = append(req.Branches, "sprint/"+s+"/"+c)
@@ -306,12 +314,23 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse boo
 		w.t.Fatalf("LandPass %s: %v", s, err)
 	}
 	if res.GatedSHA != "" && (res.GatedSHA != r.gate || r.ci == "none") { // a gate new to the request: its CI starts
-		r.gate, r.gbase, r.ci, r.res, r.late = res.GatedSHA, w.baseIndex_internal(res.BaseTip), "running", "none", false
+		r.gate, r.gbase, r.rung, r.ci, r.res, r.late = res.GatedSHA, w.baseIndex_internal(res.BaseTip), res.Rung, "running", "none", false
 	}
+	r.pin = res.Kept() // the run keeps the gate while its CI has no verdict (edges.land)
 	switch res.Outcome {
-	case OutcomeBaseMoved, OutcomePending:
+	case OutcomePending:
 		w.req[s] = r // asked again: the request stays in flight
 		return
+	case OutcomeBaseMoved:
+		r.ci = "none" // let go: the next pass builds on the new tip
+		w.req[s] = r
+		return
+	case OutcomeConflict:
+		for _, c := range r.cards {
+			if w.heads[c] == res.ConflictHead {
+				r.odd = []string{c}
+			}
+		}
 	case OutcomeUnfinished:
 		if !r.late {
 			w.req[s] = r
@@ -454,43 +473,92 @@ func traceModule_internal(records []string) string {
 		"=============================================================================\n"
 }
 
-// landEdgeBreakers are the old behaviours the trace check must refuse: the
-// v2.0.36 forge (walkForge_internal.old) with the gate's CI at partial (a
-// failure while others still run, judged red at once) or done stopped
-// (every failing check killed, judged red).
-var landEdgeBreakers = map[string]struct{ ci, res string }{
-	"landedge-breaker-red-while-running": {"partial", "none"},
-	"landedge-breaker-stopped-is-red":    {"done", "stopped"},
+// landEdgeBreakers are the old behaviours the trace check must refuse, each
+// played after the first tick (stream s1 asks c1 and c2 together, s2 asks
+// c3; step records a move): the v2.0.36 forge (walkForge_internal.old) with
+// the gate's CI at partial (a failure while others still run, judged red
+// at once) or done stopped (every failing check killed, judged red); the
+// v2.0.36 run, which keeps no gate, so a pass on a base that moved
+// rebuilds and pushes the group while its CI runs; and the v2.0.37 tick,
+// which judges every card of a group whose merge conflicted on one.
+var landEdgeBreakers = map[string]func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)){
+	"landedge-breaker-red-while-running": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
+		breakerOldForge_internal(t, w, step, "partial", "none")
+	},
+	"landedge-breaker-stopped-is-red": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
+		breakerOldForge_internal(t, w, step, "done", "stopped")
+	},
+	"landedge-breaker-rebuilds-in-flight": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
+		w.passWith_internal("s1", false, false, false)
+		step(walkMove_internal{act: "Pass", arg: "s1"})
+		gate := w.req["s1"].gate
+		w.extCommit_internal()
+		step(walkMove_internal{act: "BaseMoves"})
+		r := w.req["s1"]
+		r.pin = Gate{} // the old run keeps no gate
+		w.req["s1"] = r
+		w.passWith_internal("s1", false, false, false)
+		step(walkMove_internal{act: "Pass", arg: "s1"})
+		if w.req["s1"].gate == gate {
+			t.Fatal("rebuilds-in-flight: the pass with no gate kept did not rebuild the group")
+		}
+	},
+	"landedge-breaker-conflict-judges-group": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
+		w.passWith_internal("s2", false, false, false)
+		step(walkMove_internal{act: "Pass", arg: "s2"})
+		r := w.req["s2"]
+		r.ci, r.res = "done", "green"
+		w.req["s2"] = r
+		step(walkMove_internal{act: "CIStep", arg: "s2"})
+		w.passWith_internal("s2", false, false, false)
+		step(walkMove_internal{act: "Pass", arg: "s2"})
+		w.passWith_internal("s1", false, false, false)
+		step(walkMove_internal{act: "Pass", arg: "s1"})
+		if w.req["s2"].out != "landed" || w.req["s1"].out != "conflict" || !slices.Equal(w.req["s1"].odd, []string{"c2"}) {
+			t.Fatalf("conflict-judges-group: s2 %+v, s1 %+v, want c3 landed and s1's group conflicting on c2", w.req["s2"], w.req["s1"])
+		}
+		w.oldJudge = true
+		w.tick_internal()
+		step(walkMove_internal{act: "Tick"})
+	},
 }
 
-// breakerLandEdge_internal is the breaker's trace: a request for c1, its
-// first pass (the gate's CI starts), CI moved to the breaker's state, and
-// one pass on the old forge, which judges red: the record the model refuses.
-func breakerLandEdge_internal(t *testing.T, name string) []string {
-	w := newLandWalk_internal(t, 1)
-	b := landEdgeBreakers[name]
-	records := []string{w.record_internal(1, walkMove_internal{act: "Init"})}
-	step := func(m walkMove_internal) { records = append(records, w.record_internal(len(records)+1, m)) }
-	w.tick_internal()
-	step(walkMove_internal{act: "Tick"})
-	w.ticked = false
+// breakerOldForge_internal is s1's first pass (the gate's CI starts), CI
+// moved to ci/res, and one pass on the old forge, which judges red.
+func breakerOldForge_internal(t *testing.T, w *landWalk_internal, step func(walkMove_internal), ci, res string) {
 	w.passWith_internal("s1", false, false, false)
 	step(walkMove_internal{act: "Pass", arg: "s1"})
 	r := w.req["s1"]
-	if b.ci == "done" {
+	if ci == "done" {
 		r.ci = "partial" // running -> done is one CIStep; partial first keeps both breakers one shape
 		w.req["s1"] = r
 		step(walkMove_internal{act: "CIStep", arg: "s1"})
 	}
-	r.ci, r.res = b.ci, b.res
+	r.ci, r.res = ci, res
 	w.req["s1"] = r
 	step(walkMove_internal{act: "CIStep", arg: "s1"})
 	w.ff.old = true
 	w.passWith_internal("s1", false, false, false)
 	step(walkMove_internal{act: "Pass", arg: "s1"})
 	if w.req["s1"].out != "red" {
-		t.Fatalf("%s: the old forge's pass is %q, want red", name, w.req["s1"].out)
+		t.Fatalf("the old forge's pass is %q, want red", w.req["s1"].out)
 	}
+}
+
+// breakerLandEdge_internal is the breaker's trace: the first tick, then
+// the breaker's moves, whose last record the model refuses.
+func breakerLandEdge_internal(t *testing.T, name string) []string {
+	w := newLandWalk_internal(t, 1)
+	records := []string{w.record_internal(1, walkMove_internal{act: "Init"})}
+	step := func(m walkMove_internal) {
+		if m.act != "Tick" {
+			w.ticked = false
+		}
+		records = append(records, w.record_internal(len(records)+1, m))
+	}
+	w.tick_internal()
+	step(walkMove_internal{act: "Tick"})
+	landEdgeBreakers[name](t, w, step)
 	return records
 }
 
@@ -568,8 +636,8 @@ func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
 	req := make([]string, len(walkStreams))
 	for i, s := range walkStreams {
 		r := w.req[s]
-		req[i] = fmt.Sprintf("%s |-> [cards |-> %s, st |-> %q, out |-> %q, rung |-> %d, gate |-> %s, gbase |-> %d, ci |-> %q, res |-> %q, reran |-> %s, late |-> %s]",
-			s, tlaSet_internal(r.cards), r.st, r.out, r.rung, w.tree_internal(r.gate), r.gbase, r.ci, r.res, strings.ToUpper(fmt.Sprint(r.reran)), strings.ToUpper(fmt.Sprint(r.late)))
+		req[i] = fmt.Sprintf("%s |-> [cards |-> %s, st |-> %q, out |-> %q, rung |-> %d, gate |-> %s, gbase |-> %d, ci |-> %q, res |-> %q, reran |-> %s, late |-> %s, odd |-> %s]",
+			s, tlaSet_internal(r.cards), r.st, r.out, r.rung, w.tree_internal(r.gate), r.gbase, r.ci, r.res, strings.ToUpper(fmt.Sprint(r.reran)), strings.ToUpper(fmt.Sprint(r.late)), tlaSet_internal(r.odd))
 	}
 	return fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, choice |-> %q, base |-> << %s >>, cs |-> [%s], req |-> [%s], js |-> %s, held |-> %s, ticked |-> %s, passes |-> %d]",
 		n, m.act, m.arg, m.choice, strings.Join(base, ", "), strings.Join(cs, ", "), strings.Join(req, ", "),
@@ -593,6 +661,7 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 		seen["noverdict"] = seen["noverdict"] || strings.Contains(text, `out |-> "noverdict"`)
 		seen["rerun"] = seen["rerun"] || strings.Contains(text, `reran |-> TRUE`)
 		seen["red"] = seen["red"] || strings.Contains(text, `out |-> "red"`)
+		seen["odd"] = seen["odd"] || strings.Contains(text, `cards |-> {"c1", "c2"}, st |-> "done", out |-> "conflict"`) && strings.Contains(text, `odd |-> {"c2"}`)
 		if dir := os.Getenv("NOVA_TRACE_DIR"); dir != "" {
 			sub := filepath.Join(dir, fmt.Sprintf("landedge-walk-%d", seed))
 			if err := os.MkdirAll(sub, 0o755); err != nil {
@@ -603,7 +672,7 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "rerun", "red"} {
+	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "rerun", "red", "odd"} {
 		if !seen[want] {
 			t.Errorf("the walks never reached %s", want)
 		}

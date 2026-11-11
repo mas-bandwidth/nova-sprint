@@ -24,8 +24,8 @@
 #   store-breaker, card-breaker, policy-breaker, hook-breaker   the divergence breakers (committed fixtures,
 #                       rewritten here; each must be refused at its last record)
 #   landedge-breaker-<old behaviour>   modules/edge/git/trace_test.go
-#                       TestLandEdgeTraceRefusesOldBehaviours: the v2.0.36 landing's
-#                       judgements (committed fixtures, refused at their last record)
+#                       TestLandEdgeTraceRefusesOldBehaviours: the old landing's judgements, its
+#                       gate rebuilt in flight, its whole-group conflict (committed fixtures, refused at their last record)
 # Run it on a bench host (hetzner2 for the TLC half), never on the working machine.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
