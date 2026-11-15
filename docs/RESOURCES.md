@@ -34,10 +34,21 @@ CPU is measured in CPU units, not cores. *Settled.*
 Glenn: "i like cpu units", "not cores."
 
 A CPU unit is an amount of compute. It is not a core, because cores differ in
-power from machine to machine. A machine has one CPU number, set by hand: how
-much compute it has, in CPU units. A stronger machine has a higher number than
-a weaker one with the same core count. Fitting work onto machines uses that
-number and nothing else: no core count, no per-core rating, no benchmark.
+power from machine to machine. A machine has one CPU number: how much compute
+it has, in CPU units. A stronger machine has a higher number than a weaker one
+with the same core count. Fitting work onto machines uses that number and
+nothing else.
+
+The number is approximate, and that is accepted. Glenn: "this will all be
+approximate, but better than what we have which is weirdly non-scientific
+around guessing the # of cards per-machine".
+
+Where the number comes from is likely a benchmark, run on each machine, that
+gives a CPU score per core. Glenn: "we might need to benchmark machines to work
+out their CPU score per-core, and also consider hyperthreading." Two
+hyperthreads on one core are not two cores, so the benchmark measures the whole
+machine with every thread busy and the machine's number is what it measured,
+not a thread count times a single-thread score.
 
 The unit is coarse. Work asks for a small whole number, and there is nothing
 smaller than one unit.
@@ -117,9 +128,12 @@ has.
 
 These are Glenn's to decide before this layer is built.
 
-0. **What one CPU unit is worth.** The numbers on machines and on cards need a
-   shared anchor, so that `cpu 4` means the same amount to everyone who writes
-   it. The anchor is not chosen.
+0. **What one CPU unit is worth, and how a machine is scored.** The numbers on
+   machines and on cards need a shared anchor, so that `cpu 4` means the same
+   amount to everyone who writes it. A benchmark would define it: one CPU unit
+   is a fixed score. Which benchmark, where it lives (nova-tools is the likely
+   home), and whether a machine's number can also be set by hand are not
+   chosen.
 1. **Where a machine's resources are declared.** nova-config holds machines and
    their core counts today, so it is the likely home. That is a change in
    nova-tools, under this layer.
