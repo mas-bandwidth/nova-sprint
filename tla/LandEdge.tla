@@ -440,10 +440,13 @@ ConflictNeverJudged == SharedRed => jc \cap js = {}
 \* One group in flight per stream, kept to its verdict: a gate whose CI
 \* still runs is never replaced (rebuilt, pushed again) while its request
 \* is in flight, whatever the base does; a base switch lets it go first.
+\* A gate whose CI is only queued is kept too while the base has not moved
+\* (MovedQueued lets it go once the base moved).
 GateKept ==
   [][\A s \in Streams :
-       req[s].st = "sent" /\ req[s].ci \in {"running", "partial"}
+       req[s].st = "sent" /\ (req[s].ci \in {"running", "partial"} \/ (req[s].ci = "queued" /\ req[s].gbase = Len(base)))
          => req'[s].gate = req[s].gate /\ req'[s].gbase = req[s].gbase]_vars
+
 
 \* A gate in flight reaches a verdict (its checks complete) or its request
 \* an outcome, the same gate (LiveSpec: CI that runs completes), unless the

@@ -273,24 +273,22 @@ func keeps_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest,
 	return err == nil && tip == req.Gate.SHA, err
 }
 
-// queuedOnly_internal is whether the kept gate's CI has not started: a run
-// is queued at its sha on its branch and none is in progress there.
+// queuedOnly_internal is whether the kept gate's CI has not started: its
+// sha on its branch has runs (forge.RunsAt: every run there, finished ones
+// included, in one read) and every one is queued. A run in progress or
+// finished (a check already read) keeps the gate; so do no runs yet (GitHub
+// creates them seconds after the push) and a read that fails.
 func queuedOnly_internal(ctx context.Context, fg forge.Forge, req LandRequest) bool {
-	runs, err := fg.Runs(ctx, req.Repo)
-	if err != nil {
+	runs, err := fg.RunsAt(ctx, req.Repo, req.Gate.Branch, req.Gate.SHA)
+	if err != nil || len(runs) == 0 {
 		return false
 	}
-	queued := false
 	for _, r := range runs {
-		if r.Branch != req.Gate.Branch || !strings.EqualFold(r.HeadSHA, req.Gate.SHA) {
-			continue
-		}
 		if r.Status != "queued" {
 			return false
 		}
-		queued = true
 	}
-	return queued
+	return true
 }
 
 // keptResult_internal is res for a pass that reads the kept gate: its

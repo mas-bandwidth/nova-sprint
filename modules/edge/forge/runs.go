@@ -63,7 +63,23 @@ func (c *Client) Runs(ctx context.Context, repo string) ([]Run, error) {
 
 }
 
+// RunsAt is every workflow run of branch at sha (any status, completed
+// included), the newest RunsPage: GitHub's head_sha and branch filters,
+// one read.
+func (c *Client) RunsAt(ctx context.Context, repo, branch, sha string) ([]Run, error) {
+	if repo == "" || branch == "" || sha == "" {
+		return nil, fmt.Errorf("forge refused: RunsAt requires a repo, a branch and a sha")
+	}
+	stdout, _, err := c.runGHBytes_internal(ctx, 4<<20, "api", "--method", "GET", "repos/"+repo+"/actions/runs",
+		"-f", "head_sha="+sha, "-f", "branch="+branch, "-f", "per_page="+strconv.Itoa(RunsPage))
+	if err != nil {
+		return nil, err
+	}
+	return parseRuns_internal(stdout)
+}
+
 // parseRuns_internal decodes one page of GET /repos/{repo}/actions/runs.
+
 func parseRuns_internal(stdout string) ([]Run, error) {
 	var v struct {
 		Runs []struct {

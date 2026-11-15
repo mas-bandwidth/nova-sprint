@@ -145,6 +145,9 @@ func (g *lockGit) Fetch(context.Context, string, ...string) error {
 type landForge struct{ forge.Forge }
 
 func (landForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+func (landForge) RunsAt(context.Context, string, string, string) ([]forge.Run, error) {
+	return nil, nil
+}
 
 // TestCloneAndFetchTakeTheClonesLock: run's clone and land take the clone's
 // lock (<clone>.lock beside it, the lock nova-sprint check takes in the
@@ -230,6 +233,9 @@ func (g *passGit) Push(_ context.Context, dir, _, _, _ string) error {
 type pendingForge struct{ forge.Forge }
 
 func (pendingForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+func (pendingForge) RunsAt(context.Context, string, string, string) ([]forge.Run, error) {
+	return nil, nil
+}
 
 func (pendingForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
 	return forge.PRInfo{Number: 1, HeadSHA: strings.Repeat("d", 40)}, true, nil

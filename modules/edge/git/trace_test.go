@@ -76,23 +76,24 @@ func newWalkReq_internal(cards []string, st string) walkReq_internal {
 }
 
 type landWalk_internal struct {
-	t      *testing.T
-	rng    *rand.Rand
-	rest   *rand.Rand // the forge's rate-limit draws, a stream of their own so the walk's other draws keep their seeds
-	bad    *rand.Rand // what an outside commit breaks, a stream of its own too
-	rested int        // passes the forge's rate limit rested
-	shared []string   // the proofs of the landings on the base's own reds
-	prs    map[string]walkPR_internal
-	g      *Fake
-	ff     *walkForge_internal
-	heads  map[string]string
-	base   []walkEntry_internal
-	cs     map[string]string
-	req    map[string]walkReq_internal
-	js     map[string]bool
-	held   map[string]bool
-	ticked bool
-	passes int
+	t        *testing.T
+	rng      *rand.Rand
+	rest     *rand.Rand // the forge's rate-limit draws, a stream of their own so the walk's other draws keep their seeds
+	bad      *rand.Rand // what an outside commit breaks, a stream of its own too
+	rested   int        // passes the forge's rate limit rested
+	requeued int        // passes that let a queued gate on a moved base go and rebuilt it
+	shared   []string   // the proofs of the landings on the base's own reds
+	prs      map[string]walkPR_internal
+	g        *Fake
+	ff       *walkForge_internal
+	heads    map[string]string
+	base     []walkEntry_internal
+	cs       map[string]string
+	req      map[string]walkReq_internal
+	js       map[string]bool
+	held     map[string]bool
+	ticked   bool
+	passes   int
 	// oldJudge is the v2.0.37 tick for a breaker: a conflict judges every
 	// card of the request, not the one it names.
 	oldJudge bool
@@ -128,6 +129,23 @@ func (f *walkForge_internal) Runs(context.Context, string) ([]forge.Run, error) 
 		return []forge.Run{{ID: 1, Branch: f.gateBranch, HeadSHA: f.gate, Status: "in_progress"}}, nil
 	}
 	return nil, nil
+}
+
+// RunsAt is the kept gate's run whatever its state: queued before
+// CIStarts, in progress while its checks run, completed once done.
+func (f *walkForge_internal) RunsAt(_ context.Context, _, branch, sha string) ([]forge.Run, error) {
+	f.call_internal("RunsAt")
+	if f.rested {
+		return nil, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, Reason: "HTTP 403: API rate limit exceeded"}
+	}
+	if branch != f.gateBranch || sha != f.gate {
+		return nil, nil
+	}
+	status := map[string]string{"queued": "queued", "running": "in_progress", "partial": "in_progress", "done": "completed"}[f.ci]
+	if status == "" {
+		return nil, nil
+	}
+	return []forge.Run{{ID: 1, Branch: branch, HeadSHA: sha, Status: status}}, nil
 }
 
 const walkJob = "https://example.invalid/actions/runs/1/job/2"
@@ -453,9 +471,13 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, re
 		return sha, nil
 	}
 	w.passes++
+	movedQueued := r.ci == "queued" && r.pin.SHA != "" && r.pin.Base != w.tip_internal() && !rested
 	res, err := LandPass(context.Background(), w.g, w.ff, req)
 	if err != nil {
 		w.t.Fatalf("LandPass %s: %v", s, err)
+	}
+	if movedQueued && res.GatedSHA != "" && res.GatedSHA != r.pin.SHA {
+		w.requeued++
 	}
 	if res.GatedSHA != "" && (res.GatedSHA != r.gate || r.ci == "none") { // a gate new to the request: its CI starts
 		r.gate, r.gbase, r.rung, r.ci, r.res, r.late = res.GatedSHA, w.baseIndex_internal(res.BaseTip), res.Rung, "queued", "none", false
@@ -629,6 +651,9 @@ func walkLandEdge_internal(t *testing.T, seed int64) (string, []string) {
 	}
 	if w.rested > 0 {
 		acts = append(acts, "rested") // not an action: a Pass the forge's rate limit rested
+	}
+	if w.requeued > 0 {
+		acts = append(acts, "movedqueued") // not an action: a queued gate on a moved base let go and rebuilt
 	}
 	for _, p := range w.shared {
 		acts = append(acts, "shared") // not an action: a landing on the base's own reds
@@ -853,7 +878,7 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"Tick", "Pass", "CIStarts", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd", "rested", "shared", "prproof", "fix"} {
+	for _, want := range []string{"Tick", "Pass", "CIStarts", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd", "rested", "shared", "prproof", "fix", "movedqueued"} {
 
 		if !seen[want] {
 			t.Errorf("the walks never reached %s", want)

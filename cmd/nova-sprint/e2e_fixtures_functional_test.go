@@ -301,7 +301,13 @@ func (f *fakeForge) Runs(_ context.Context, repo string) ([]forge.Run, error) {
 	return nil, nil
 }
 
+func (f *fakeForge) RunsAt(_ context.Context, _, branch, sha string) ([]forge.Run, error) {
+	f.log("RunsAt %s %s", branch, sha)
+	return nil, nil
+}
+
 func (f *fakeForge) CancelRun(_ context.Context, _ string, id int64) error {
+
 	f.log("CancelRun %d", id)
 	return nil
 }

@@ -1,0 +1,302 @@
+# nova-sprint end to end: the binary dev+c986adb58306 for the verbs, run.Serve in the test process with a fake forge
+# the stream's origin: a local bare repository, main at one commit
+$ git init -q --bare -b main /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git
+exit 0
+
+$ git clone -q /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/seed
+exit 0
+warning: You appear to have cloned an empty repository.
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/seed add README
+exit 0
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/seed commit -q -m base
+exit 0
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/seed push -q origin HEAD:main
+exit 0
+
+# up, on a fake fleet: the binary's own role and store steps; nova-config seeded; the default policy stored
+$ nova-sprint --internal-setup-role-fresh
+exit 0
+
+$ nova-sprint --internal-store-setup
+exit 0
+{"ready":true}
+
+# nova-config: schema applied; machine bench1 (bench, 1 core); friend kim (claude, model m-kim, width 1)
+# policy.Up: active version v1
+# policy v2: the default with a bench model per tier, active
+# run.Serve started in the test process; the board at http://127.0.0.1:58214
+# the coordinator hooks in: refused off the bus; on the bus first, then the sprint
+$ nova-sprint hook --as carol --role coordinator
+exit 1
+SPRINT REFUSED hook: carol is not on the bus: hook in to the bus first: NOVA_BUS_REDIS=<host:port> nova-bus hook --as carol under your session's Monitor tool
+
+$ nova-bus hook --as carol --exec <append to inbox> (background)
+exit 0
+on the bus
+
+$ nova-sprint hook --as carol --role coordinator
+exit 0
+HOOKED carol role=coordinator
+NO COMMIT IDENTITY: no worker can hook until one is set: nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason "<why>"
+playbook: nova-sprint help playbook coordinator (read it once; every output names its next command)
+next: nova-sprint next --as carol
+
+# a fresh store is stopped, never started; the coordinator starts it
+$ nova-sprint show --as carol
+exit 0
+{
+  "Seq": 3,
+  "Epoch": 1,
+  "Policy": 2,
+  "Streams": {},
+  "Rows": {
+    "carol": {
+      "name": "carol",
+      "state": "down",
+      "session": "68f43c1cead29f9b08a322bcceb4652b",
+      "role": "coordinator",
+      "flaps": 0,
+      "held": false,
+      "reason": "",
+      "gen": 0,
+      "load1_centi": 0,
+      "cores": 0,
+      "slots_used": 0,
+      "slots_total": 0,
+      "cpu_peak_deci": 0,
+      "tiers": "",
+      "version": ""
+    }
+  },
+  "Judgements": {},
+  "Cursors": {},
+  "Stopped": true,
+  "StopReason": "never started",
+  "Identity": {
+    "name": "",
+    "email": ""
+  },
+  "Cards": {}
+}
+next: nova-sprint next --as carol
+
+$ nova-sprint start --reason e2e --as carol
+exit 0
+STARTED applied at seq 4
+next: nothing; wait for the bus
+
+# the coordinator sets the commit identity every worker commits as (the e2e's git identity)
+$ nova-sprint identity --name e2e --email e2e@sprint.test --reason e2e --as carol
+exit 0
+IDENTITY e2e <e2e@sprint.test> applied at seq 5; every take from now carries it
+Every commit is authored and committed as e2e <e2e@sprint.test>. In each clone you commit from, before the first commit:
+  git config user.name "e2e"
+  git config user.email "e2e@sprint.test"
+Your own name goes only in the message: a "By: <your name>" line and a "Co-Authored-By: <your name> <your email>" trailer. finish refuses a head with a commit by any other author or committer email.
+next: nova-sprint check
+
+# the stream: the local origin, landed through the forge
+$ nova-sprint stream add s --repo /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git --forge github --as carol
+exit 0
+STREAM s repo=/var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git base=main mode=auto forge=github applied at seq 6
+WARN stream s: the checks of /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git's main at 5ff20c10c198 cannot be read (forge refused: invalid repository ".../origin.git": expected org/repo), so it is not known green: if it is red, no card of it lands until it is green (gh auth status on this host shows who reads them)
+WARN stream s: the checks /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git's main requires cannot be read (the protection of .../origin.git's main: gh api <redacted> --jq ".protection.required_status_checks.contexts ...// [] | .[]": exit 1; stderr "fake gh: api <redacted> is not faked"): if /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git asks contributors to sign an agreement, sign it for the identities nova-sprint check lists, and run check again
+next: nova-sprint add --stream s --brief-file <f>
+
+# one card, e2e1, from a brief that passes the lint
+$ nova-sprint add --stream s --brief-file /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/e2e1.md --as carol
+exit 0
+ADD e2e1 kind=producer stream=s tier=pro priority=normal needs=-
+CHAIN stream s: the longest NEEDS chain through these cards is 1 cards (chain_limit 3): e2e1
+WARN stream s: the checks of /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git's main at 5ff20c10c198 cannot be read (forge refused: invalid repository ".../origin.git": expected org/repo), so it is not known green: if it is red, no card of it lands until it is green (gh auth status on this host shows who reads them)
+ADDED 1 cards applied at seq 7
+next: nothing; wait for the bus
+
+# a worker row hooks in: kim, a friend in nova-config; on the bus, it is up and dealt with nothing more run (docs/README.md "Hard requirements" 1)
+$ nova-bus hook --as kim --exec <append to inbox> (background)
+exit 0
+on the bus
+
+$ nova-sprint hook --as kim --role worker
+exit 0
+HOOKED kim role=worker
+COMMIT AS e2e <e2e@sprint.test>
+Every commit is authored and committed as e2e <e2e@sprint.test>. In each clone you commit from, before the first commit:
+  git config user.name "e2e"
+  git config user.email "e2e@sprint.test"
+Your own name goes only in the message: a "By: <your name>" line and a "Co-Authored-By: <your name> <your email>" trailer. finish refuses a head with a commit by any other author or committer email.
+playbook: nova-sprint help playbook worker (read it once; every output names its next command)
+next: nova-sprint next --as kim
+
+# a tick dealt work e2e1.w1@0 to kim (next polled 19 times)
+$ nova-sprint next --as kim
+exit 0
+NEXT work e2e1.w1 is in hand with kim
+next: nova-sprint take e2e1.w1@0 --as kim --epoch 1
+
+# kim's session ends mid-card and a new one starts the bus hook only: its verbs are refused until it hooks in, and the hook keeps its hand
+$ nova-bus hook --as kim --exec <append to inbox> (background)
+exit 0
+on the bus
+
+$ nova-sprint take e2e1.w1@0 --as kim
+exit 1
+SPRINT REFUSED take: hook in first: nova-sprint hook --as kim --role worker
+
+$ nova-sprint hook --as kim --role worker
+exit 0
+HOOKED kim role=worker
+COMMIT AS e2e <e2e@sprint.test>
+Every commit is authored and committed as e2e <e2e@sprint.test>. In each clone you commit from, before the first commit:
+  git config user.name "e2e"
+  git config user.email "e2e@sprint.test"
+Your own name goes only in the message: a "By: <your name>" line and a "Co-Authored-By: <your name> <your email>" trailer. finish refuses a head with a commit by any other author or committer email.
+playbook: nova-sprint help playbook worker (read it once; every output names its next command)
+next: nova-sprint next --as kim
+
+$ nova-sprint take e2e1.w1@0 --as kim --json
+exit 0
+{"consumer":"e2e1.w1","producer":"e2e1","kind":"work","stream":"s","repo":"/var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git","base":"main","branch":"sprint/s/e2e1","head":"","tier":"pro","brief":"tier: pro\nPATHS: e2e.txt\nTEST: test -f e2e.txt\nDONE-WHEN: test -f e2e.txt\n\nWrite e2e.txt containing the word done.\n","prose":"Write e2e.txt containing the word done.","finding":"","stream_ref":"main","base_sha":"5ff20c10c19889427f3af14583e2253ebb93fed4","prior_head":"","prior_finished":false,"paths":["e2e.txt"],"done_when":["test -f e2e.txt"],"stream_gates":[],"epoch":1,"gen":0,"attempt":1,"review":0,"model":"m-kim","deadline":7200,"forge":"github","commit_name":"e2e","commit_email":"e2e@sprint.test"}
+
+# receipt: model=m-kim deadline=7200s forge=github branch=sprint/s/e2e1
+# kim does the work: a commit on sprint/s/e2e1 from the dealt base, pushed to origin
+$ git clone -q /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/kim
+exit 0
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/kim checkout -q -b sprint/s/e2e1 5ff20c10c19889427f3af14583e2253ebb93fed4
+exit 0
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/kim add e2e.txt
+exit 0
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/kim commit -q -m e2e1: write e2e.txt
+exit 0
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/kim push -q origin sprint/s/e2e1
+exit 0
+
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/kim rev-parse HEAD
+exit 0
+ea512ef32f3e2e4967566fb895190f1d6b0aed39
+
+$ nova-sprint finish e2e1.w1@0 --head ea512ef32f3e2e4967566fb895190f1d6b0aed39 --as kim --epoch 1
+exit 0
+FINISHED e2e1.w1 head=ea512ef32f3e2e4967566fb895190f1d6b0aed39 applied at seq 26
+next: nothing; wait for the bus
+
+# a second row hooks in: bench1, a bench in nova-config; the read is asked
+$ nova-bus hook --as bench1 --exec <append to inbox> (background)
+exit 0
+on the bus
+
+$ nova-sprint hook --as bench1 --role worker
+exit 0
+HOOKED bench1 role=worker
+COMMIT AS e2e <e2e@sprint.test>
+Every commit is authored and committed as e2e <e2e@sprint.test>. In each clone you commit from, before the first commit:
+  git config user.name "e2e"
+  git config user.email "e2e@sprint.test"
+Your own name goes only in the message: a "By: <your name>" line and a "Co-Authored-By: <your name> <your email>" trailer. finish refuses a head with a commit by any other author or committer email.
+playbook: nova-sprint help playbook worker (read it once; every output names its next command)
+next: nova-sprint next --as bench1
+
+# a tick dealt read e2e1.r1.1@0 to bench1 (next polled 2 times)
+$ nova-sprint next --as bench1
+exit 0
+NEXT read e2e1.r1.1 is in hand with bench1
+next: nova-sprint take e2e1.r1.1@0 --as bench1 --epoch 1
+
+$ nova-sprint take e2e1.r1.1@0 --as bench1 --json
+exit 0
+{"consumer":"e2e1.r1.1","producer":"e2e1","kind":"read","stream":"s","repo":"/var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git","base":"main","branch":"","head":"ea512ef32f3e2e4967566fb895190f1d6b0aed39","tier":"pro","brief":"tier: pro\nPATHS: e2e.txt\nTEST: test -f e2e.txt\nDONE-WHEN: test -f e2e.txt\n\nWrite e2e.txt containing the word done.\n","prose":"Write e2e.txt containing the word done.","finding":"","stream_ref":"main","base_sha":"","prior_head":"","prior_finished":false,"paths":["e2e.txt"],"done_when":["test -f e2e.txt"],"stream_gates":[],"epoch":1,"gen":0,"attempt":1,"review":1,"model":"deepseek/deepseek-flash","deadline":7200,"forge":"github","commit_name":"e2e","commit_email":"e2e@sprint.test"}
+
+$ nova-sprint read e2e1.r1.1@0 yes --as bench1 --epoch 1
+exit 0
+READ e2e1.r1.1 head=ea512ef32f3e2e4967566fb895190f1d6b0aed39 result=ok applied at seq 32
+next: nothing; wait for the bus
+
+# the landing request goes out to the git edge and the forge
+$ forge calls (fake forge, run side)
+exit 0
+Checks 5ff20c10c19889427f3af14583e2253ebb93fed4: green
+Runs /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd1091897360/001/origin.git
+PR sprint-group/s -> main
+OpenPR sprint-group/s -> main "s: land 1 card(s)"
+Checks ea512ef32f3e2e4967566fb895190f1d6b0aed39: green
+Merge #1 ea512ef32f3e2e4967566fb895190f1d6b0aed39 into main: <nil> 
+
+# the landing result came back landed
+$ nova-sprint show e2e1 --as carol
+exit 0
+{
+  "id": "e2e1",
+  "kind": "producer",
+  "stream": "s",
+  "state": "landed",
+  "gen": 5,
+  "attempt": 1,
+  "score": 0,
+  "branch": "",
+  "head": "ea512ef32f3e2e4967566fb895190f1d6b0aed39",
+  "pr": 0,
+  "brief": "tier: pro\nPATHS: e2e.txt\nTEST: test -f e2e.txt\nDONE-WHEN: test -f e2e.txt\n\nWrite e2e.txt containing the word done.\n",
+  "reason": "landed on main at ea512ef32f3e2e4967566fb895190f1d6b0aed39",
+  "author": "kim",
+  "base_sha": "",
+  "prior_head": "",
+  "result": "",
+  "bounces": 0,
+  "finding": "",
+  "review": 1,
+  "red": false,
+  "cost": 0,
+  "priced": false,
+  "priority": "normal",
+  "tier": "pro",
+  "paths": [
+    "e2e.txt"
+  ],
+  "done_when": [
+    "test -f e2e.txt"
+  ],
+  "model": ""
+}
+next: nova-sprint next --as carol
+
+$ git --git-dir origin.git merge-base --is-ancestor <head> refs/heads/main
+exit 0
+
+$ GET http://<board>/api/sprint
+exit 0
+landed=1 all=1 merge.s.merged=1 machine="machine: RUNNING"
+
+# stop: the tick stops
+$ nova-sprint stop --reason e2e done --as carol
+exit 0
+STOPPED applied at seq 36
+next: nova-sprint start --as carol --reason "<why>"
+
+$ store events after the stop's seq 36, other than push cursors
+exit 0
+
+$ GET http://<board>/api/sprint
+exit 0
+machine="machine: STOPPED e2e done"
+
+# end: the producer landed through the forge; stop held the tick
+# run.Serve ended: <nil>
+$ run's tick log, 9 of 21 lines (every tick that did something)
+exit 0
+TICK n=1 seq=12 took=27.355458ms folded=10 ops=4/0 edges=0 status=ok
+TICK n=2 seq=14 took=22.236ms folded=2 ops=1/0 edges=0 status=ok
+TICK n=3 seq=16 took=20.766875ms folded=2 ops=1/0 edges=0 status=ok
+TICK n=11 seq=19 took=103.236958ms folded=2 ops=2/0 edges=0 status=ok
+TICK n=12 seq=22 took=60.971333ms folded=3 ops=1/0 edges=0 status=ok
+TICK n=14 seq=29 took=40.379833ms folded=4 ops=2/0 edges=0 status=ok
+TICK n=15 seq=33 took=33.369958ms folded=4 ops=1/0 edges=0 status=ok
+TICK n=16 seq=33 took=12.0255ms folded=0 ops=0/0 edges=1 status=ok
+TICK n=17 seq=34 took=64.175791ms folded=1 ops=1/0 edges=0 status=ok
+

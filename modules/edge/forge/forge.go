@@ -128,6 +128,9 @@ type Forge interface {
 	// The landing cancels the runs that gate no landing, so its own CI is
 	// never queued behind them (LANDING.md, "The landing's CI comes first").
 	Runs(ctx context.Context, repo string) ([]Run, error)
+	// RunsAt is every run of branch at sha, finished or not, in one read:
+	// whether a kept gate's CI has started (git.queuedOnly_internal).
+	RunsAt(ctx context.Context, repo, branch, sha string) ([]Run, error)
 	CancelRun(ctx context.Context, repo string, id int64) error
 }
 

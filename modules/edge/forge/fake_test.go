@@ -188,7 +188,14 @@ func (f *Fake) Runs(context.Context, string) ([]Run, error) {
 	return nil, nil
 }
 
+// RunsAt is none.
+func (f *Fake) RunsAt(context.Context, string, string, string) ([]Run, error) {
+	f.call_internal("RunsAt")
+	return nil, nil
+}
+
 // CancelRun cancels nothing.
+
 func (f *Fake) CancelRun(context.Context, string, int64) error {
 	f.call_internal("CancelRun")
 	return nil

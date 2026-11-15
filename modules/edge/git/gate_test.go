@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -39,6 +40,22 @@ func TestLandKeptGateIsRebuiltWhenTheBaseMoves(t *testing.T) {
 	if res, err = LandPass(ctx, gf, ff, req); err != nil || res.Outcome != OutcomePending || res.GatedSHA != g1 || res.BaseTip != root || len(ff.Cancelled()) != 0 {
 		t.Fatalf("started = %+v err=%v, want the started gate %s read on %s, nothing cancelled", res, err, g1, root)
 	}
+	for name, set := range map[string]func(){
+		"no run yet": func() { ff.SetRuns() },
+		"a run finished": func() {
+			ff.SetRuns(forge.Run{ID: 8, Branch: GroupBranch("s1"), HeadSHA: g1, Status: "queued"}, forge.Run{ID: 6, Branch: GroupBranch("s1"), HeadSHA: g1, Status: "completed"})
+		},
+		"runs cannot be read": func() {
+			ff.SetRuns(forge.Run{ID: 9, Branch: GroupBranch("s1"), HeadSHA: g1, Status: "queued"})
+			ff.world.runsErr = errors.New("HTTP 502")
+		},
+	} {
+		set()
+		if res, err = LandPass(ctx, gf, ff, req); err != nil || res.GatedSHA != g1 || res.BaseTip != root {
+			t.Fatalf("%s = %+v err=%v, want the kept gate %s read on %s", name, res, err, g1, root)
+		}
+		ff.world.runsErr = nil
+	}
 	ff.SetRuns(forge.Run{ID: 9, Branch: GroupBranch("s1"), HeadSHA: g1, Status: "queued"})
 	res, err = LandPass(ctx, gf, ff, req)
 	if err != nil || res.GatedSHA == g1 || res.BaseTip != moved || gf.OriginRef(GroupRef("s1")) != res.GatedSHA || res.Kept().Base != moved {
@@ -62,14 +79,16 @@ func TestLandKeptRungOneGateLetGoWhenTheBaseMoves(t *testing.T) {
 	req := one_internal(c1)
 	res, _ := LandPass(ctx, gf, ff, req)
 	moved := gf.AddCommit(root, map[string]string{"m.go": "package m\n"}, "v2")
-	ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckRed, Failing: []string{"unit"}, URL: "https://github.com/o/r/actions/runs/1/job/2"})
 	req.Gate = res.Kept()
 	ff.SetRuns(forge.Run{ID: 7, Branch: "sprint/s1/c1", HeadSHA: c1, Status: "queued"})
 	res, err := LandPass(ctx, gf, ff, req)
 	if err != nil || res.Rung != 2 || res.GatedSHA == c1 || res.BaseTip != moved || gf.OriginRef(GroupRef("s1")) != res.GatedSHA {
-
 		t.Fatalf("pass = %+v err=%v, want the group gated on %s", res, err, moved)
 	}
+	if !slices.Equal(ff.Cancelled(), []int64{7}) {
+		t.Fatalf("cancelled %v, want the replaced rung-1 gate's run 7", ff.Cancelled())
+	}
+
 }
 
 // C: a kept gate is let go and rebuilt in the same pass when it can no

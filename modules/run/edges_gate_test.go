@@ -59,6 +59,9 @@ type slowForge struct {
 }
 
 func (f *slowForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+func (f *slowForge) RunsAt(context.Context, string, string, string) ([]forge.Run, error) {
+	return nil, nil
+}
 
 func (f *slowForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
 
