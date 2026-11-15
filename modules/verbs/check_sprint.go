@@ -39,6 +39,7 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 	checkWorking(r, snap, who)
 	e.checkWorkers(ctx, r, snap, who)
 	e.checkWorkerVersions(ctx, r, snap)
+	e.checkUnnamedRows(ctx, r, snap)
 	checkJudgements(r, snap)
 	running := e.checkRun(ctx, r, who)
 	ws := steps.Waits(snap.Cards)
@@ -361,3 +362,35 @@ func (e *Engine) unmet(ctx context.Context, snap store.Snapshot, coordinator boo
 
 // runFix is how run is brought back: its service's log, then up.
 const runFix = "read the run service's log (nova-sprint show run), then nova-sprint up --as <coordinator>"
+
+// checkUnnamedRows is one line per store row nova-config does not name: the
+// run retires such a row on its next tick (Glenn, 2026-11-15: the sprint
+// follows nova-config's set of machines), so after a tick there is none and
+// the line says so. A hooked coordinator is never retired and says what to
+// do instead. An unreadable or empty roster prints nothing here (the width
+// line names a failed read; nothing is judged absent from an empty one).
+func (e *Engine) checkUnnamedRows(ctx context.Context, r *checkReport, snap store.Snapshot) {
+	if e.Roster == nil {
+		return
+	}
+	ro, err := e.Roster.ReadRosterAt(ctx, 1)
+	if err != nil || ro.Empty() {
+		return
+	}
+	n := 0
+	for _, name := range slices.Sorted(maps.Keys(snap.Rows)) {
+		row := snap.Rows[name]
+		switch {
+		case ro.Names(name):
+			continue
+		case steps.Retirable(ro, row):
+			r.warn("row "+name+" is not in nova-config; the run retires it on its next tick", "wait one tick, or nova-sprint retire "+name+" --reason \"<why>\"")
+		default:
+			r.warn("row "+name+" is not in nova-config and is hooked as the coordinator, so it is never retired", "nova-config friend add "+name+" ..., or nova-sprint unhook "+name+" --as <you>")
+		}
+		n++
+	}
+	if n == 0 {
+		r.ok("rows: all %d in nova-config", len(snap.Rows))
+	}
+}

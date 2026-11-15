@@ -129,6 +129,12 @@ ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS version text NOT NULL DEFAULT '
 -- version (round 28): the release of the nova-sprint binary that beat, the one that
 -- takes the row's cards ('' when it did not say in this session; cleared with tiers);
 -- the tick deals a worker row behind the run's release nothing (defect D3). Appended last.
+ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS retired boolean NOT NULL DEFAULT false;
+-- retired (round 32, RetireRow): nova-config no longer names the row, so it is not in
+-- the fleet (Glenn, 2026-11-15). The record stays, since the epoch's consumers still
+-- name it as their holder (the foreign key above), but no read shows it and no write
+-- but a hook (PutRow, which brings it back) takes it; a clear does not carry it into
+-- the next epoch. Appended last.
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by

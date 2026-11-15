@@ -139,7 +139,7 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 		return fmt.Sprintf("row %s is hooked by session %s; unhook it first", v.Name, old.Session), nil
 	}
 	next := Row{Name: v.Name, Session: v.Session, Role: v.Role, State: "down"}
-	if ok {
+	if ok && !old.Retired { // a retired row comes back as a new one: down, not held, no flaps or heartbeat; its gen goes on
 		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
 		next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.CPUPeakDeci = old.Load1Centi, old.Cores, old.SlotsUsed, old.SlotsTotal, old.CPUPeakDeci
 		if old.Session == v.Session { // an advertisement holds for the session that made it
@@ -405,4 +405,27 @@ func (w *work) activate(v SetActivePolicy) (string, error) {
 	on := p
 	on.Active = true
 	return "", w.putPolicy(p, true, on)
+}
+
+// retireRow is RetireRow: the row unhooked, down, not held, its heartbeat
+// cleared, the reason kept, and retired. Refused when the row does not exist
+// or is retired already, and while it holds a live consumer (ready or
+// working): the op that retires a row returns its hand first (the steps'
+// handMoves), and one dealt between the plan and the commit refuses the
+// retire, so no card is ever left on a row no read shows (tla/RowAlive.tla
+// HandEmptyWhenRetired).
+func (w *work) retireRow(v RetireRow) (string, error) {
+	old, r, err := w.mustRow(v.Row)
+	if r != "" || err != nil {
+		return r, err
+	}
+	id, held, err := w.tx.inHand(v.Row)
+	if err != nil {
+		return "", err
+	}
+	if held {
+		return fmt.Sprintf("row %s holds card %s; return its hand before it is retired", v.Row, id), nil
+	}
+	next := Row{Name: old.Name, State: "down", Reason: v.Reason, Retired: true}
+	return "", w.putRow(old, true, next)
 }

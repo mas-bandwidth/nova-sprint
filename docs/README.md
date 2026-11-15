@@ -102,7 +102,7 @@ when their producers land, not when a worker finishes them.
 
 ### Hard requirements
 
-The sprint always does these three things, for friend rows and bench rows
+The sprint always does these four things, for friend rows and bench rows
 alike. Each is held by a TLA+ property in `tla/RowAlive.tla` (checked with a
 reversed witness that breaks it, `tla/ci-tlc.sh`) and by a test. The model is
 not yet trace-bound to the code (owed).
@@ -139,6 +139,32 @@ not yet trace-bound to the code (owed).
    `show` applies no bench check to any row and says the roster could not be
    read. Held by `TestShowFriendRowIsNeverABench` and
    `TestShowRowWithTheRosterUnreadable` (`modules/verbs/check_test.go`).
+4. **The sprint follows nova-config's set of machines and friends** (Glenn,
+   2026-11-15: "this way you can't forget"). A store row nova-config no
+   longer names is retired by the next tick with nothing done by anyone: its
+   whole hand goes back to the queue in the same operation (branches and
+   heads kept) and the row is then in no read (show, check, next, the deal,
+   the board) until nova-config names it and it hooks in again. A failed or
+   empty roster read retires nothing, and a row hooked as the coordinator is
+   never retired. A bench row nova-config names again comes back by itself:
+   its running worker sees `next --json` say `"unhooked": true` and hooks
+   again on its next pass, and at its start it waits out a refused hook
+   without probing again or exiting. A friend row comes back when the
+   friend next hooks in, prompted by next's hint (`nova-sprint hook`); the
+   model's `ReNamedComesBack` fairness is the bench worker's. The hook
+   refuses a worker nova-config does not name, and a failed or empty read
+   refuses no hook. `nova-sprint retire` is the
+   worst case by hand. Held by `RowAlive.HandEmptyWhenRetired`,
+   `RowAlive.NothingLost`, `RowAlive.NoRetireOnBadRead`,
+   `RowAlive.AutoRetire` and `RowAlive.ReNamedComesBack` (witnesses
+   `RowAliveRetireEmpty`, `RowAliveRetireKeeps`, `RowAliveNoRetireFence`,
+   `RowAliveNoRehook`)
+   and `TestTickRetiresARowTheRosterNoLongerNames`,
+   `TestTickRetiresNothingOnAnEmptyRoster`,
+   `TestServeRosterFailureRetiresNothing` (`modules/run/retire_test.go`),
+   `TestPassHooksAgainWhenNextSaysUnhooked`
+   (`modules/edge/worker/rehook_test.go`) and `TestHookWaitsForNovaConfig`
+   (`modules/verbs/retire_test.go`).
 
 Every dealt attempt has an id and generation, written `<card>@<gen>`, and a
 sprint epoch. Copy these from the latest receipt. They prevent an old session
@@ -684,7 +710,10 @@ sprint_env nova-sprint unhold '<row-or-stream-or-card>' --reason '<why-resolved>
 ```
 
 A card hold withdraws its live consumers and keeps pushed branches. A row hold
-stops new deals to that row. To change an admitted brief, add a new card and
+stops new deals to that row. A machine or friend removed from nova-config is retired by
+the run on its next tick, its hand returned to the queue, and shows nowhere
+until nova-config names it again; `nova-sprint retire <row> --reason '<why>'`
+does the same by hand. To change an admitted brief, add a new card and
 replace the old producer; there is no brief-edit verb:
 
 ```sh

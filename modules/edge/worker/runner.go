@@ -195,8 +195,9 @@ type Runner struct {
 	running                   map[string]context.CancelFunc
 	backoffSeq                uint64
 	lastBeatErr               string
-	advertised                string          // the tiers the heartbeat says this harness serves (advertise_internal)
-	baseGates                 map[string]bool // per repository, base sha and stream gate: green there (baseGateRed_internal)
+	hookRefused               map[string]string // per row: the last hook refusal the pass logged ("" when none; rehook_internal)
+	advertised                string            // the tiers the heartbeat says this harness serves (advertise_internal)
+	baseGates                 map[string]bool   // per repository, base sha and stream gate: green there (baseGateRed_internal)
 }
 
 // NewRunner is a runner on any machine nova-config gives the bench role;
@@ -225,6 +226,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
 	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
 	cfg.running, cfg.gone, cfg.baseGates = map[string]context.CancelFunc{}, map[string]int{}, map[string]bool{}
+	cfg.hookRefused = map[string]string{}
 	return &cfg, nil
 }
 func (r *Runner) harnessFor_internal(name string) (Harness, error) {
@@ -454,7 +456,9 @@ func (r *Runner) sprintHook_internal(ctx context.Context, row string) error {
 // lists the policy's models and its seat's provider keys reached it, which
 // is what up's workers step (9) proves by the row being hooked and up (admission,
 // intent rule 34). A failed probe leaves the row unhooked and held, and the
-// probe is retried (probeHeld_internal).
+// probe is retried (probeHeld_internal). A refused hook (a machine
+// nova-config does not name) is tried again after the same backoff, the
+// probe not run again and the process never exiting (hookHeld_internal).
 func (r *Runner) ServeRow(ctx context.Context, row, harness string) error {
 	hook, err := r.busHook_internal(ctx, row)
 	if err != nil {
@@ -464,8 +468,8 @@ func (r *Runner) ServeRow(ctx context.Context, row, harness string) error {
 	if !r.probeHeld_internal(ctx, row, harness) {
 		return nil // stopped while held: a clean stop
 	}
-	if err := r.sprintHook_internal(ctx, row); err != nil {
-		return err
+	if ok, err := r.hookHeld_internal(ctx, row); err != nil || !ok {
+		return err // nil when stopped while the hook waited: a clean stop
 	}
 	r.advertise_internal(ctx, row)
 	if r.Meter != nil && r.Beater != nil {

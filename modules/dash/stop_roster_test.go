@@ -22,8 +22,8 @@ func TestStoppedAndRosterProjection(t *testing.T) {
 	if fleet["worker"].Status != "up" || fleet["worker"].Width != 8 || friends["friend"].Status != "held" || friends["friend"].Width != 2 {
 		t.Fatalf("configured rows: fleet=%+v friends=%+v", fleet, friends)
 	}
-	if fleet["removed"].Status != "down" || fleet["removed"].Width != 0 {
-		t.Fatalf("removed roster row: %+v", fleet["removed"])
+	if fleet["removed"] != nil || friends["removed"] != nil { // Glenn, 2026-11-15: removed machines must not show in the fleet
+		t.Fatalf("removed roster row is on the board: %+v %+v", fleet["removed"], friends["removed"])
 	}
 	body, err := json.Marshal(d)
 	if err != nil {

@@ -21,7 +21,7 @@ separate outcomes. Report only what you observed.
 
 ## Hard requirements: never regress these
 
-Every change keeps all three, for friend rows and bench rows alike
+Every change keeps all four, for friend rows and bench rows alike
 ([the guide](docs/README.md#hard-requirements) has the detail):
 
 1. A row is up while its bus hook is on nova-bus and down after
@@ -39,6 +39,13 @@ Every change keeps all three, for friend rows and bench rows alike
 3. Bench-only checks never judge a friend row, and with the roster unreadable
    no row is judged as a bench: `TestShowFriendRowIsNeverABench`,
    `TestShowRowWithTheRosterUnreadable` (`modules/verbs/check_test.go`).
+4. A store row nova-config no longer names is retired by the next tick, its
+   hand returned in the same op, and shows nowhere until it hooks in again;
+   a failed or empty roster read retires nothing; a row nova-config names
+   again is hooked again by its running worker (Glenn, 2026-11-15):
+   `tla/RowAlive.tla` HandEmptyWhenRetired, NothingLost, NoRetireOnBadRead,
+   AutoRetire and ReNamedComesBack; `modules/run/retire_test.go`,
+   `modules/edge/worker/rehook_test.go`.
 
 `tla/RowAlive.tla` is not yet trace-bound to the code (owed).
 

@@ -247,6 +247,12 @@ type Row struct {
 	// (cleared with Tiers). The tick deals a worker row behind the run's
 	// release nothing (roster.Advertised; defect D3); no store rule reads it.
 	Version string `json:"version"`
+	// Retired is set by RetireRow (round 32): nova-config no longer names
+	// the row, so it is not in the fleet (Glenn, 2026-11-15). A retired row is
+	// in no read (Snapshot, Read, Rebuild and Fold leave it out), every write
+	// but PutRow refuses it as absent, PutRow brings it back, and a clear does
+	// not carry it. Only an after-image carries it, so a fold drops the row.
+	Retired bool `json:"retired,omitempty"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,
@@ -486,7 +492,13 @@ func Fold(s Snapshot, events []Event) Snapshot {
 			old, had := s.Cards[id]
 			s.Cards[id] = FoldCard(old, had, c)
 		}
-		overlay(s.Rows, e.After.Rows)
+		for n, r := range e.After.Rows {
+			if r.Retired {
+				delete(s.Rows, n)
+			} else {
+				s.Rows[n] = r
+			}
+		}
 		overlay(s.Judgements, e.After.Judgements)
 		overlay(s.Cursors, e.After.Cursors)
 		for v, p := range e.After.Policies {

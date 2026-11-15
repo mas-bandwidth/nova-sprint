@@ -239,6 +239,9 @@ type (
 	Gone   struct{}
 	Hold   struct{ Reason string }
 	Unhold struct{ Reason string }
+	// Retire: nova-config no longer names the row (Glenn, 2026-11-15); the
+	// steps return its hand in the same op (tla/RowAlive.tla Retire).
+	Retire struct{ Reason string }
 )
 
 func (Resolve) isEvent()     {}
@@ -273,6 +276,7 @@ func (Seen) isEvent()        {}
 func (Gone) isEvent()        {}
 func (Hold) isEvent()        {}
 func (Unhold) isEvent()      {}
+func (Retire) isEvent()      {}
 
 // The states. A producer is final in landed or fail, a consumer in done or
 // fail.

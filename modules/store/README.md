@@ -380,7 +380,7 @@ consumer, nil included), `PutRow`
 (kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
 state, flaps, held and the row's reason are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
-true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowFlaps`,
+true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowFlaps`, `RetireRow` (round 32: a row nova-config no longer names; refused while it holds a live consumer; the row is then in no read and refused by every write but `PutRow`, which brings it back),
 `SetRowTiers` (refused when it drops a tier a live consumer of the row needs), `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
 `PutJudgement`, `AnswerJudgement`, `ExpireJudgement`, `SetCursor`. `PutPolicy` takes no version: the store
 gives it the next one, and the caller learns it from the receipt,

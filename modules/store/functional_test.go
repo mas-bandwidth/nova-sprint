@@ -566,6 +566,35 @@ func TestFunctionalMigrateRound30(t *testing.T) {
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
 }
 
+// TestFunctionalMigrateRound31 is a round 31 store upgraded in place: its
+// rows gain retired, false on each, and a retire then holds.
+func TestFunctionalMigrateRound31(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round31.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round31Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.rows (name, state, epoch) VALUES ('r1', 'up', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round31Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 31}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, "up", h.snap().Rows["r1"].State, "a migrated row is not retired")
+	h.ok(h.op("retire", nil, RetireRow{"r1", "gone"}))
+	_, shown := h.snap().Rows["r1"]
+	assert.False(t, shown)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
 // columns is every sprint table's columns in their order, the order a
 // positional INSERT (pg_dump --inserts) fills them in.
 func columns(t *testing.T, c *pgx.Conn) map[string][]string {

@@ -31,6 +31,11 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	if err := e.onBus(ctx, in.actor); err != nil {
 		return "", err
 	}
+	if r == "worker" {
+		if err := e.namedForHook(ctx, in.actor); err != nil {
+			return "", err
+		}
+	}
 	snap, err := e.read(ctx, store.Scope{}) // the store credential finish and read need: without it, CredentialFix
 	if err != nil {
 		return "", err
@@ -42,6 +47,24 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 		return "", err
 	}
 	return e.hookAs(ctx, snap, in.actor, r)
+}
+
+// namedForHook refuses a worker's hook when nova-config does not name the
+// row, judged as the tick judges a retire (steps.Retirable): only on a
+// roster read that is ok and names someone. The run would retire the row
+// on its next tick, and a live worker hooks again on every pass (worker
+// pass.go rehook_internal), so the hook waits for nova-config instead; it
+// succeeds once nova-config names the row (tla/RowAlive.tla RehookDue). A
+// failed or empty read refuses nothing: a fault never keeps a row out.
+func (e *Engine) namedForHook(ctx context.Context, name string) error {
+	if e.Roster == nil {
+		return nil
+	}
+	ro, err := e.Roster.ReadRosterAt(ctx, 1) // the width cap moves no name in or out of the roster
+	if err != nil || ro.Empty() || ro.Names(name) {
+		return nil
+	}
+	return refuse(name+" is not in nova-config; the run retires a row nova-config does not name", "nova-config machine add "+name+" (a machine) or nova-config friend add "+name+" (a friend), then hook again")
 }
 
 // originsReadable is hook's admission (intent rule 34): the hooking

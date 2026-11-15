@@ -101,7 +101,31 @@ type Roster struct {
 	Workers map[string]Worker
 	Kin     map[string]Kin
 	Refused []Refused
+	// Listed is every name nova-config lists in this read, whatever its
+	// roles or enabled flag: a machine that is not a bench and a friend
+	// that is disabled are listed though neither is a row of the roster.
+	// Names reads it; nil (a roster built by hand) adds nothing.
+	Listed map[string]bool
 }
+
+// Names says whether nova-config names row name in this read: a worker, a
+// kin, a refused row, or any machine or friend it lists (Listed). A store
+// row it does not name is not in the fleet (Glenn, 2026-11-15: "the
+// nova-sprint system and dash follows the set of machines defined
+// automatically in nova-config"): the run retires it and the board leaves
+// it out.
+func (r Roster) Names(name string) bool {
+	_, w := r.Workers[name]
+	_, k := r.Kin[name]
+	_, x := r.RefusedNamed(name)
+	return w || k || x || r.Listed[name]
+}
+
+// Empty says whether the read has no worker and no kin: the roster of a
+// failed read, or a nova-config with nothing in it. Nothing is judged absent
+// from an empty roster: the run retires no row on it and the board shows
+// every store row (a fault must never wipe the fleet).
+func (r Roster) Empty() bool { return len(r.Workers) == 0 && len(r.Kin) == 0 }
 
 // Clone is a deep copy: a reader that keeps a roster keeps its own.
 func (r Roster) Clone() Roster {
@@ -116,6 +140,7 @@ func (r Roster) Clone() Roster {
 		r.Kin[n] = k
 	}
 	r.Refused = slices.Clone(r.Refused)
+	r.Listed = maps.Clone(r.Listed)
 	return r
 }
 
@@ -150,7 +175,14 @@ func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 	if err != nil {
 		return Roster{}, fmt.Errorf("roster: friends: %w", err)
 	}
-	r := Roster{Workers: map[string]Worker{}, Kin: map[string]Kin{}}
+	r := Roster{Workers: map[string]Worker{}, Kin: map[string]Kin{}, Listed: map[string]bool{}}
+	for _, m := range ms {
+		r.Listed[m.Name] = true
+	}
+	for _, f := range fs {
+		r.Listed[f.Name] = true
+	}
+	delete(r.Listed, "")
 	r.addWorkers(ms, cap)
 	r.addKin(fs)
 	return r, nil

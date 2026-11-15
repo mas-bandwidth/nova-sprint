@@ -32,7 +32,7 @@ type Request struct {
 
 // coordinatorEvents are the events only a coordinator may raise (an engine
 // fact: a wrong coordinator could corrupt).
-var coordinatorEvents = []string{"HoldCard", "UnholdCard", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream", "Landed", "OnBase", "Red"}
+var coordinatorEvents = []string{"HoldCard", "UnholdCard", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "Retire", "HoldStream", "UnholdStream", "Landed", "OnBase", "Red"}
 
 // runEvents are the run loop's own (presence).
 var runEvents = []string{"Seen", "Gone"}
@@ -117,7 +117,8 @@ func firstOr(ss []string, or string) string {
 }
 
 // requestMoves is the move (or moves) an event asks for. A row's Hold and
-// Gone return its whole hand in the same op (handMoves).
+// Gone return its whole hand in the same op (handMoves), and its Retire too
+// (retireMoves), refused when it cannot return the whole hand.
 func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 	switch e := r.Event.(type) {
 	case card.Add:
@@ -135,6 +136,16 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 			return nil, &card.Refusal{Reason: "card " + r.Card + " does not exist"}
 		}
 		return []move{t.consumerMove(r.Card, e)}, nil
+	case card.Retire:
+		if _, ok := t.v.Rows[r.Row]; !ok {
+			return nil, &card.Refusal{Reason: "row " + r.Row + " does not exist"}
+		}
+		moves, _, whole := t.retireMoves(r.Row)
+		if !whole {
+			return nil, &card.Refusal{Reason: "row " + r.Row + " holds a card this op cannot return to the queue; the next tick returns it, then retire again"}
+		}
+		moves[len(moves)-1] = t.rowMove(r.Row, e)
+		return moves, nil
 	case card.Seen, card.Gone, card.Hold, card.Unhold:
 		if _, ok := t.v.Rows[r.Row]; !ok {
 			return nil, &card.Refusal{Reason: "row " + r.Row + " does not exist"}

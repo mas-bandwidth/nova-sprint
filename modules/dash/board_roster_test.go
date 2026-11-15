@@ -9,27 +9,30 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// The roster has rows the store lacks and the store has a row the roster
+// The roster has rows the store lacks and the store has rows the roster
 // lacks (the human, 2026-11-07: "we definitely need all that stuff back"):
 // Fleet lists every roster worker and Friends every roster kin at the roster
-// width, down when the store has no row; the store's row the roster no longer
-// names stays, down; the
-// order is by name.
+// width, down when the store has no row; a store row nova-config does not
+// name is in neither table (Glenn, 2026-11-15: removed machines must not show
+// in the fleet), while one it names that is not a roster row (a machine that
+// is not a bench) shows, down; the order is by name.
 func TestBoardListsTheWholeRoster(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{
 		Workers: map[string]roster.Worker{"b-bench": {Name: "b-bench", Width: 8}, "a-bench": {Name: "a-bench", Width: 4}, "c-bench": {Name: "c-bench", Width: 2}},
 		Kin:     map[string]roster.Kin{"zed": {Name: "zed", Width: 3}, "amy": {Name: "amy", Width: 2}},
+		Listed:  map[string]bool{"studio": true},
 	}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
-		"a-bench": {Name: "a-bench", State: "up"}, "amy": {Name: "amy", State: "up", Held: true}, "gone": {Name: "gone", State: "up"},
+		"a-bench": {Name: "a-bench", State: "up"}, "amy": {Name: "amy", State: "up", Held: true},
+		"gone": {Name: "gone", State: "up"}, "gone-friend": {Name: "gone-friend", State: "down"}, "studio": {Name: "studio", State: "up"},
 	}}
 	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	fleet := d.Tables["fleet"].(map[string]*fleetRow)
 	friends := d.Tables["friends"].(map[string]*fleetRow)
 	want := map[string]fleetRow{
 		"a-bench": {Status: "up", Width: 4}, "b-bench": {Status: "down", Width: 8}, "c-bench": {Status: "down", Width: 2},
-		"gone": {Status: "down"},
+		"studio": {Status: "down"},
 	}
 	if len(fleet) != len(want) {
 		t.Fatalf("fleet = %d rows, want %d: %+v", len(fleet), len(want), fleet)
@@ -49,6 +52,54 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 	var again []byte
 	if again, err = json.Marshal(mapSnapshot(snap, ros, time.Time{}, nil).Tables["fleet"]); err != nil || string(again) != string(body) {
 		t.Fatalf("the order is not stable: %v\n%s\n%s", err, body, again)
+	}
+}
+
+// Machines removed from nova-config (Glenn, 2026-11-15: aws-schema-bench-1..4
+// stayed on the board as down) are in neither table, a bench's row and a
+// friend's alike, whatever the store says of them, but a hooked coordinator
+// (never retired) stays; a roster row with no store row is still there,
+// down, at its roster width.
+func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
+	t.Parallel()
+	ros := roster.Roster{
+		Workers: map[string]roster.Worker{"amd-1": {Name: "amd-1", Width: 8}, "new-bench": {Name: "new-bench", Width: 4}},
+		Kin:     map[string]roster.Kin{"stella": {Name: "stella", Width: 2}},
+	}
+	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
+		"amd-1": {Name: "amd-1", State: "up"}, "stella": {Name: "stella", State: "up"},
+		"aws-schema-bench-1": {Name: "aws-schema-bench-1", State: "up", Cores: 8, CPUPeakDeci: 500},
+		"aws-schema-bench-2": {Name: "aws-schema-bench-2", State: "down"},
+		"old-friend":         {Name: "old-friend", State: "up", Session: "x", Role: "worker"},
+		"rowan":              {Name: "rowan", State: "up", Session: "y", Role: "coordinator"},
+	}}
+	d := mapSnapshot(snap, ros, time.Time{}, nil)
+	fleet := d.Tables["fleet"].(map[string]*fleetRow)
+	friends := d.Tables["friends"].(map[string]*fleetRow)
+	for _, n := range []string{"aws-schema-bench-1", "aws-schema-bench-2", "old-friend"} {
+		if fleet[n] != nil || friends[n] != nil {
+			t.Errorf("%s is on the board: fleet %+v friends %+v", n, fleet[n], friends[n])
+		}
+	}
+	if g := fleet["new-bench"]; g == nil || *g != (fleetRow{Status: "down", Width: 4}) {
+		t.Errorf("new-bench = %+v, want down at width 4", g)
+	}
+	if g := fleet["rowan"]; g == nil {
+		t.Errorf("the hooked coordinator nova-config does not name is never retired (steps.Retirable), so it stays on the board")
+	}
+	if len(fleet) != 3 || len(friends) != 1 || fleet["amd-1"].Status != "up" || friends["stella"].Status != "up" {
+		t.Fatalf("fleet %+v friends %+v", fleet, friends)
+	}
+}
+
+// An empty roster (a failed read: run_cache passes none) judges nothing
+// absent: every store row shows, down, at width 0, as before.
+func TestBoardWithAnEmptyRosterShowsEveryRow(t *testing.T) {
+	t.Parallel()
+	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}, "gone": {Name: "gone", State: "up"}}}
+	fleet := mapSnapshot(snap, roster.Roster{}, time.Time{}, nil).Tables["fleet"].(map[string]*fleetRow)
+	if len(fleet) != 2 || *fleet["amd-1"] != (fleetRow{Status: "down"}) || *fleet["gone"] != (fleetRow{Status: "down"}) {
+		t.Fatalf("fleet = %+v", fleet)
 	}
 }
 

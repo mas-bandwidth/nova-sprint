@@ -66,7 +66,7 @@ func TestCheckAllGreen(t *testing.T) {
 		"CHECK identity: every commit is made as Sprint Bot <1+sprint-bot@users.noreply.example.test> (hook prints the two git config lines; finish refuses a commit by another email)",
 		"CHECK policy v1 active (answered by v0; 0 ready producers asked)", "CHECK cards: none waiting or ready",
 		"CHECK working: 2 cards, each on a hooked row that is up and on the bus (a job dead on its bench is not visible here: no per-job heartbeat reaches the store)",
-		"CHECK workers: no bench in nova-config's inventory", "CHECK judgements: none open", "CHECK run on studio (pid 41)",
+		"CHECK workers: no bench in nova-config's inventory", "CHECK rows: all 4 in nova-config", "CHECK judgements: none open", "CHECK run on studio (pid 41)",
 		"CHECK width: working 2 (2 dealt) of 4 open on 3 rows; 0 ready", "CHECK landings: none waiting", "next: nova-sprint next --as <you>"}
 	if r.Exit != 0 || r.Output != strings.Join(wantLines, "\n")+"\n" {
 		t.Fatalf("exit %d:\n%s", r.Exit, r.Output)

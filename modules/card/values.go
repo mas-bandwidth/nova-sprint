@@ -126,6 +126,9 @@ func (v *vals) write(w store.Write) {
 	case store.SetRowHeld:
 		v.key("row", x.Row)
 		v.text("reason", x.Reason)
+	case store.RetireRow:
+		v.key("row", x.Row)
+		v.text("reason", x.Reason)
 	default:
 		v.cardWrite(w)
 	}
@@ -328,6 +331,8 @@ func rowField(w store.Write) (row, col string, ok bool) {
 		return x.Row, "flaps", true
 	case store.SetRowHeld:
 		return x.Row, "held", true
+	case store.RetireRow:
+		return x.Row, "retired", true
 	}
 	return "", "", false
 }

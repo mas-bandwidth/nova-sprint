@@ -74,12 +74,81 @@ func (t *tick) rowRecord(r store.Row) card.Row {
 // nova-config: one per row, and the steps' alone (policy opens none).
 func RosterGroup(name string) string { return "roster:" + name }
 
-// unlisted opens the roster judgement for every store row the roster lacks;
-// such a row is dealt nothing.
+// RetiredReason is the reason a retired row keeps.
+const RetiredReason = "retired: nova-config no longer names it"
+
+// unlisted is every store row the roster lacks. One nova-config does not name
+// at all is retired, its hand returned to the queue in the same op, branches
+// and heads kept (Glenn, 2026-11-15: "the nova-sprint system and dash
+// follows the set of machines defined automatically in nova-config";
+// tla/RowAlive.tla Retire): it then shows nowhere until it hooks in again.
+// An empty roster retires nothing (Retirable): a read that failed plans no
+// tick at all (run RosterUnread), and one that returned nothing is a fault,
+// never a fleet with no rows. One nova-config names that is not a roster row
+// (a machine that is not a bench, a disabled friend, a refused row) is dealt
+// nothing and opens the roster judgement.
 func (t *tick) unlisted() {
 	for _, n := range t.rowNames {
-		if !t.listed(n) {
+		switch {
+		case t.listed(n):
+		case Retirable(t.in.Roster, t.v.Rows[n]):
+			t.retire(n)
+		default:
 			t.judge("roster", n, "row "+n+" is not in nova-config; nothing is dealt to it until nova-config lists it")
 		}
 	}
+}
+
+// Retirable says whether store row r is retired on roster ro: ro is not
+// empty, nova-config does not name the row, and it is not hooked as the
+// coordinator (tla/RowAlive.tla RetireDue). The coordinator is never
+// unhooked by a tick: a sprint never runs without one, so that row keeps the
+// roster judgement until it unhooks or nova-config names it. The steps, the
+// retire verb and the doctor read it, so all three judge a row the same way.
+func Retirable(ro roster.Roster, r store.Row) bool {
+	return !ro.Empty() && !ro.Names(r.Name) && r.Role != "coordinator"
+}
+
+// retire is the tick's retire of row n: its hand returned and the row
+// retired in one op (retireMoves). The store refuses a retire while the row
+// holds a live card, so when this tick cannot return the whole hand (a card
+// a step claimed, one whose producer is not free, one the card machine will
+// not withdraw) it returns what it can and retires the row on a later tick,
+// when the hand is empty (tla/RowAlive.tla Retire: RetireDue needs the hand
+// empty after the op's own withdraws).
+func (t *tick) retire(n string) {
+	if !t.unclaimed(n) {
+		return
+	}
+	moves, ids, whole := t.retireMoves(n)
+	if !whole {
+		for i, m := range moves[:len(ids)] {
+			t.group("withdraw", ids[i], m)
+		}
+		return
+	}
+	t.group("retire", "", moves...)
+}
+
+// retireMoves is the Withdraw of every live consumer of row n this op can
+// return, each released with its branch and pushed head kept (ids, in
+// order), then, when that is the whole hand (whole), the row's Retire.
+func (t *tick) retireMoves(n string) (moves []move, ids []string, whole bool) {
+	whole = true
+	for _, id := range t.v.Live(n) {
+		if !t.unclaimed(id) || !t.free(t.v.Cards[id].Of) {
+			whole = false
+			continue
+		}
+		m := t.withdraw(id, card.ReleasedPrefix+card.Returned(n, "retired"))
+		if _, r := m.plan(); r != nil {
+			whole = false
+			continue
+		}
+		moves, ids = append(moves, m), append(ids, id)
+	}
+	if whole {
+		moves = append(moves, t.rowMove(n, card.Retire{Reason: RetiredReason}))
+	}
+	return moves, ids, whole
 }

@@ -148,6 +148,36 @@ func (r *Runner) probeHeld_internal(ctx context.Context, row, harness string) bo
 	}
 }
 
+// hookHeld_internal is the start's sprint hook, after the probe passed. A
+// hook the sprint refuses (ErrRefused: above all a machine nova-config does
+// not name, verbs/hook.go namedForHook) never exits the worker: an exit
+// would have the service start it again and pay for the probe every time.
+// It is reported and tried again after the probe's backoff (ProbeBackoff
+// doubling to ProbeBackoffMax), the probe not run again. Any other failure
+// is returned, as before. True when hooked, false when ctx ended.
+func (r *Runner) hookHeld_internal(ctx context.Context, row string) (bool, error) {
+	wait := ProbeBackoff
+	for {
+		err := r.sprintHook_internal(ctx, row)
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, ErrRefused) {
+			return false, err
+		}
+		if ctx.Err() != nil {
+			return false, nil
+		}
+		r.report(fmt.Sprintf("row %s not hooked in (hooked again in %s): the sprint refused its hook", row, wait), err)
+		r.logStep_internal(row, "-", "hook", "held: "+err.Error(), 0)
+		r.wait_internal(ctx, wait)
+		if ctx.Err() != nil {
+			return false, nil
+		}
+		wait = min(2*wait, ProbeBackoffMax)
+	}
+}
+
 func ignoreStoreDown_internal(err error) error {
 	if errors.Is(err, ErrStoreDown) {
 		return nil
@@ -196,6 +226,38 @@ func (r *Runner) stepRow_internal(ctx context.Context, row string, detach bool) 
 	return nil
 }
 
+// rehook_internal hooks row in again when next says it is not hooked in
+// while this worker's bus hook is alive: the run retired it (nova-config
+// stopped naming it, or a hook raced a machine add) or its hook was
+// replaced. The sprint follows nova-config (Glenn, 2026-11-15), so a row
+// nova-config names again comes back with nothing done by anyone
+// (tla/RowAlive.tla Rehook, ReNamedComesBack). The hook verb refuses while
+// nova-config does not name the row; that refusal is logged when it changes
+// (the first, a different one, and when it clears), never on every pass,
+// and the next pass tries again. The probe this start ran still holds, so
+// only the hook and the advertisement are done again.
+func (r *Runner) rehook_internal(ctx context.Context, row string) {
+	err := r.sprintHook_internal(ctx, row)
+	words := ""
+	if err != nil {
+		words = err.Error()
+	}
+	r.mu.Lock()
+	last := r.hookRefused[row]
+	r.hookRefused[row] = words
+	r.mu.Unlock()
+	if err != nil {
+		if words != last {
+			r.logStep_internal(row, "-", "hook", "again: "+words, 0)
+		}
+		return
+	}
+	if last != "" {
+		r.logStep_internal(row, "-", "hook", "again: ok, the refusal cleared", 0)
+	}
+	r.advertise_internal(ctx, row)
+}
+
 // planPass_internal recovers the row's jobs (what is owed is sent, a job
 // waiting for a slot goes on), then reads the row and claims its dealt cards up to
 // width. Each launch is claimed (in flight) before the pass returns, so the
@@ -213,6 +275,10 @@ func (r *Runner) planPass_internal(ctx context.Context, row string) (next NextRe
 		if l, ok := r.claim_internal(ctx, l.c, l.resume); ok {
 			launches = append(launches, l)
 		}
+	}
+	if next.Unhooked {
+		r.rehook_internal(ctx, row)
+		return next, launches, unsent, nil
 	}
 	if next.State != card.Up || next.Held {
 		return next, launches, unsent, nil
