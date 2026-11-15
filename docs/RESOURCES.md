@@ -290,6 +290,15 @@ Glenn: "the current view we have for 'Fleet' turns into 'Resources' and we have
 a new view there, resource centric where the width is now, basically CPU,
 memory, [tags] like gpu etc."
 
+A machine's bars are split by type of work, in the colors the board already
+uses for its working cells: blocker, critical, fix, read and work. *Settled.*
+Who is doing the work (a friend, or work the dealer placed) is not shown.
+
+Glenn: "I don't care about 'card work' 'friend work' but i care about type of
+work", "so the same colors as before."
+
+CI is a type of work the board has no color for today. It needs one.
+
 The load column goes. *Settled.* Glenn: "i would suggest we remove load %
 column entirely." What is held on a machine says how busy it is.
 
