@@ -282,6 +282,21 @@ or no.
 Glenn: "because that's the real view we need. are we using resources fully
 yes/no."
 
+On the board, the section called Fleet today becomes Resources. *Settled.* Its
+rows are still the machines. Where a row shows its width and its working cells
+today, it shows its CPU, its memory and its tags.
+
+Glenn: "the current view we have for 'Fleet' turns into 'Resources' and we have
+a new view there, resource centric where the width is now, basically CPU,
+memory, [tags] like gpu etc."
+
+The Friends section still draws consumer cards. What those cards hold is shown
+in Resources, not beside the friend.
+
+Glenn: "the friend stuff, these are still a visualizion of the consumer cards,
+but behind them the actual resource being used are shown in the resources
+section".
+
 A card links the two. In the friend view it is a piece of work a friend is
 doing. In the resource view it is one or more holds on machines.
 
