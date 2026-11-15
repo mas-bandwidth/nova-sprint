@@ -58,8 +58,12 @@ func internalCommand(ctx context.Context, args []string) (int, bool) {
 		if code, bad := internalArgs(args, 1); bad {
 			return code, true
 		}
-		yes, err := verbs.SprintStoreChild(ctx, mode == "--internal-store-setup", versionString())
-		return internalJSON("ready", yes, err), true
+		if mode == "--internal-store-probe" {
+			yes, err := verbs.SprintStoreChild(ctx, false, versionString())
+			return internalJSON("ready", yes, err), true
+		}
+		yes, restored, err := verbs.SprintStoreSetup(ctx, versionString())
+		return internalSetupJSON(yes, restored, err), true
 	}
 	return 0, false
 }
@@ -78,6 +82,23 @@ func internalJSON(key string, value bool, err error) int {
 		return verbs.ChildFailed(err, 1)
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(map[string]bool{key: value}); err != nil {
+		return verbs.ChildFailed(edge.Cause("write result", err), 1)
+	}
+	return 0
+}
+
+// internalSetupJSON is the store setup child's result: {"ready": bool}, with
+// "restored" naming the rows it put back from the log when there are any
+// (the parent prints them; a child's stderr is shown only when it fails).
+func internalSetupJSON(ready bool, restored []string, err error) int {
+	if err != nil {
+		return verbs.ChildFailed(err, 1)
+	}
+	result := struct {
+		Ready    bool     `json:"ready"`
+		Restored []string `json:"restored,omitempty"`
+	}{ready, restored}
+	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		return verbs.ChildFailed(edge.Cause("write result", err), 1)
 	}
 	return 0

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ type PGSetupStore struct {
 	Secrets        NovaSecrets
 	Binary         string
 	Command        CommandOutput
+	Out            io.Writer // where Install names the rows the store setup put back; nil: stdout
 }
 
 func (p PGSetupStore) configured() bool {
@@ -51,11 +53,26 @@ func (p PGSetupStore) Install(ctx context.Context) error {
 		return err
 	}
 
-	ok, err := p.child(ctx, "--internal-store-setup")
+	return p.storeSetup(ctx)
+}
+
+// storeSetup runs the store child's setup and prints, on Out, each row it put
+// back from the log: the child's stderr is shown only when it fails.
+func (p PGSetupStore) storeSetup(ctx context.Context) error {
+	r, err := p.childResult(ctx, "--internal-store-setup", sprintPasswordName)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	out := p.Out
+	if out == nil {
+		out = os.Stdout
+	}
+	for _, name := range r.Restored {
+		if _, err := fmt.Fprintf(out, "UP store: row %s was missing from sprint.rows; put back from the log\n", Redact(name)); err != nil {
+			return cause("write the restored rows", err)
+		}
+	}
+	if !r.Ready {
 		return fmt.Errorf("store setup did not verify: the store child answered ready false after --internal-store-setup with no error (a bug: take it to the project's own tracker with this line)")
 	}
 	return nil
@@ -64,11 +81,23 @@ func (p PGSetupStore) child(ctx context.Context, mode string) (bool, error) {
 	return p.childWith(ctx, mode, sprintPasswordName)
 }
 
-// childWith runs mode under nova-secrets exec with only the names in only
-// (comma-separated) and reads its {"ready": bool}.
+// storeChildResult is a store child's answer: ready, and on setup the rows
+// it put back from the log.
+type storeChildResult struct {
+	Ready    bool
+	Restored []string
+}
+
 func (p PGSetupStore) childWith(ctx context.Context, mode, only string) (bool, error) {
+	r, err := p.childResult(ctx, mode, only)
+	return r.Ready, err
+}
+
+// childResult runs mode under nova-secrets exec with only the names in only
+// (comma-separated) and reads its {"ready": bool, "restored": [names]}.
+func (p PGSetupStore) childResult(ctx context.Context, mode, only string) (storeChildResult, error) {
 	if !filepath.IsAbs(p.Binary) || p.Secrets.Store == "" || p.Secrets.KeyFile == "" || p.Secrets.Seat == "" {
-		return false, fmt.Errorf("store child configuration unavailable: binary %q absolute %t; secrets store, key file and seat set %t/%t/%t", Redact(p.Binary), filepath.IsAbs(p.Binary), p.Secrets.Store != "", p.Secrets.KeyFile != "", p.Secrets.Seat != "")
+		return storeChildResult{}, fmt.Errorf("store child configuration unavailable: binary %q absolute %t; secrets store, key file and seat set %t/%t/%t", Redact(p.Binary), filepath.IsAbs(p.Binary), p.Secrets.Store != "", p.Secrets.KeyFile != "", p.Secrets.Seat != "")
 	}
 	args := []string{"exec", "--only", only, "--store", p.Secrets.Store, "--key", p.Secrets.KeyFile, "--as", p.Secrets.Seat, "--", p.Binary, mode}
 	cmd := p.Command
@@ -78,28 +107,42 @@ func (p PGSetupStore) childWith(ctx context.Context, mode, only string) (bool, e
 	out, err := cmd(ctx, "nova-secrets", args...)
 	if err != nil {
 		if r := AsRefusal(err); r != nil {
-			return false, r // the child's own refusal: its Problem and Fix as it wrote them
+			return storeChildResult{}, r // the child's own refusal: its Problem and Fix as it wrote them
 		}
-		return false, fmt.Errorf("store child %s failed: %w", mode, err)
+		return storeChildResult{}, fmt.Errorf("store child %s failed: %w", mode, err)
 	}
 	var result struct {
-		Ready *bool `json:"ready"`
+		Ready    *bool    `json:"ready"`
+		Restored []string `json:"restored"`
 	}
 	if len(out) > 1024 {
-		return false, fmt.Errorf("store child returned invalid result: %d bytes, over 1024; first bytes %q", len(out), firstBytes(out))
+		return storeChildResult{}, fmt.Errorf("store child returned invalid result: %d bytes, over 1024; first bytes %q", len(out), firstBytes(out))
 	}
 	if err := json.Unmarshal(out, &result); err != nil {
-		return false, fmt.Errorf("store child returned invalid result: %s", ParseFailure(err, out))
+		return storeChildResult{}, fmt.Errorf("store child returned invalid result: %s", ParseFailure(err, out))
 	}
 	if result.Ready == nil {
-		return false, fmt.Errorf("store child returned invalid result: no \"ready\"; first bytes %q", firstBytes(out))
+		return storeChildResult{}, fmt.Errorf("store child returned invalid result: no \"ready\"; first bytes %q", firstBytes(out))
 	}
-	return *result.Ready, nil
+	return storeChildResult{Ready: *result.Ready, Restored: result.Restored}, nil
 }
 
 // SprintStoreChild runs only in the dedicated nova-secrets child. Its caller
 // receives a boolean and no credential or raw command output.
 func SprintStoreChild(ctx context.Context, install bool, version string) (bool, error) {
+	return sprintStoreChild(ctx, install, version, nil)
+}
+
+// SprintStoreSetup is SprintStoreChild installing, with the names of the rows
+// it put back from the log (store.PG.RestoreLostRows), for the child's
+// result: its stderr is shown only when it fails.
+func SprintStoreSetup(ctx context.Context, version string) (bool, []string, error) {
+	var restored []string
+	ok, err := sprintStoreChild(ctx, true, version, &restored)
+	return ok, restored, err
+}
+
+func sprintStoreChild(ctx context.Context, install bool, version string, restored *[]string) (bool, error) {
 	dsn, password, dir := os.Getenv("NOVA_PG_DSN"), os.Getenv(sprintPasswordName), os.Getenv("NOVA_SPRINT_BACKUP_DIR")
 	if dir == "" {
 		home, err := os.UserHomeDir()
@@ -134,6 +177,18 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 	ok, err := ensureStoreSchema(ctx, pg, install)
 	if err != nil || !ok {
 		return false, err
+	}
+	if install { // before the first backup, whose restore verification refuses a store with a lost row
+		lost, err := pg.RestoreLostRows(ctx)
+		if err != nil {
+			return false, cause("restoring the rows lost from the table", err)
+		}
+		for _, name := range lost { // stderr is shown when the child fails later (the backup); its result carries them when it does not
+			fmt.Fprintf(os.Stderr, "nova-sprint: store: row %s was missing from sprint.rows; put back from the log\n", name)
+		}
+		if restored != nil {
+			*restored = lost
+		}
 	}
 	archive := PGBackups{DSN: dsn, Password: password, Directory: dir, Version: version, Loader: PGSQLLoader{}}
 	ok, _, err = verifiedFirstBackup(ctx, pg, archive, dir)

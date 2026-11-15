@@ -971,3 +971,35 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   build; Migrate adds the two columns and records the round-24 hash. Tests: conformance
   `identity` (Fake and PG), `TestRound23Hash`, `TestFunctionalMigrateRound23` (run on this
   machine's local test PostgreSQL: pass, measured).
+
+## Built: a row lost from the table is put back from the log (2026-11-15)
+
+No store write removes a row: a row nova-config no longer names is retired
+(round 32) and stays in `sprint.rows`. A `DELETE` run on the table by hand
+leaves a log that rebuilds to a row the table lacks, so `check --integrity`
+and the first backup's restore verification refuse the store "in rows", and
+`up` cannot start. On the live store it was `space3`, a held, unhooked
+row, deleted by hand on 2026-11-12 after its last event (an unhook) and
+found on 2026-11-15.
+
+- `PG.RestoreLostRows` puts back every row of the current epoch the log
+  holds and the table lacks, as the log's last after-image has it (gen,
+  hold, heartbeat and all), under the writer lock, and names each. It logs
+  no event: the log already says the row is there, and the repair is the
+  table brought back to it. A second run finds none.
+- It touches nothing else. A row whose columns differ from the log, a row
+  retired in the table but live in the log, or an epoch mismatch is not a
+  lost row: it is left, and the integrity check still names it. The check
+  itself is unchanged.
+- `up`'s store setup (install) runs it after the schema is current and
+  before the first backup. The child names each row it put back in its
+  result (`{"ready":true,"restored":["space3"]}`), since its stderr is shown
+  only when it fails, and `PGSetupStore.Install` prints one line per row:
+  `UP store: row space3 was missing from sprint.rows; put back from the log`.
+  A put back row nova-config does not name is then retired by the tick as
+  any other.
+- `TestFunctionalRestoreLostRows` reproduces it: a held row hooked, beat and
+  unhooked, deleted by hand, the check refusing "in rows", the repair, the
+  check passing and the snapshot as before; and the two rows it leaves, one
+  retired in the table but live in the log and an epoch mismatch.
+  `TestSetupStoreSetupPrintsRestoredRows` checks the parent prints them.
