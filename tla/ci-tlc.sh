@@ -21,10 +21,11 @@
 #     reach check AnsweredQuietNeverReopens must be violated
 #   RowAlive.tla with RowAlive.cfg (every row up on its hook, down off it,
 #     its hand returned and dealt again, retired when nova-config stops naming
-#     it: docs/README.md "Hard requirements" 1, 2, 4)
+#     it and back when it names it again: docs/README.md "Hard
+#     requirements" 1, 2, 4)
 #                                      must pass            (TLC exit 0);
 #     its witnesses RowAlive{ManualUp,NoGone,GoneKeeps,HoldKeeps,NoSweep,NoRedeal,
-#     RetireEmpty,RetireKeeps,NoRetireFence} and reach checks
+#     RetireEmpty,RetireKeeps,NoRetireFence,NoRehook} and reach checks
 #     RowAliveNever{Down,Back,Owed,Retired}, each a cfg on RowAlive.tla,
 #     must be violated
 #   VerbFence.tla with VerbFence.cfg and VerbFenceCoarse.cfg (a verb on a store others write)
@@ -276,7 +277,7 @@ run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg Answ
 # RowAlive's reversed witnesses (one per requirement it holds) and reach
 # checks (a row goes down, comes back up by itself, and is retired), each a cfg on
 # RowAlive.tla.
-for m in ManualUp NoGone GoneKeeps HoldKeeps NoSweep NoRedeal RetireEmpty RetireKeeps NoRetireFence; do
+for m in ManualUp NoGone GoneKeeps HoldKeeps NoSweep NoRedeal RetireEmpty RetireKeeps NoRetireFence NoRehook; do
     run "witness-RowAlive$m" violate . "RowAlive$m.cfg" RowAlive.tla 1
 done
 for m in NeverDown NeverBack NeverOwed NeverRetired; do

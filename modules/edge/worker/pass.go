@@ -196,6 +196,23 @@ func (r *Runner) stepRow_internal(ctx context.Context, row string, detach bool) 
 	return nil
 }
 
+// rehook_internal hooks row in again when next says it is not hooked in
+// while this worker's bus hook is alive: the run retired it (nova-config
+// stopped naming it, or a hook raced a machine add) or its hook was
+// replaced. The sprint follows nova-config (Glenn, 2026-11-15), so a row
+// nova-config names again comes back with nothing done by anyone
+// (tla/RowAlive.tla Rehook, ReNamedComesBack). The hook verb refuses while
+// nova-config does not name the row; that refusal is logged and the next
+// pass tries again. The probe this start ran still holds, so only the hook
+// and the advertisement are done again.
+func (r *Runner) rehook_internal(ctx context.Context, row string) {
+	if err := r.sprintHook_internal(ctx, row); err != nil {
+		r.logStep_internal(row, "-", "hook", "again: "+err.Error(), 0)
+		return
+	}
+	r.advertise_internal(ctx, row)
+}
+
 // planPass_internal recovers the row's jobs (what is owed is sent, a job
 // waiting for a slot goes on), then reads the row and claims its dealt cards up to
 // width. Each launch is claimed (in flight) before the pass returns, so the
@@ -213,6 +230,10 @@ func (r *Runner) planPass_internal(ctx context.Context, row string) (next NextRe
 		if l, ok := r.claim_internal(ctx, l.c, l.resume); ok {
 			launches = append(launches, l)
 		}
+	}
+	if next.Unhooked {
+		r.rehook_internal(ctx, row)
+		return next, launches, unsent, nil
 	}
 	if next.State != card.Up || next.Held {
 		return next, launches, unsent, nil

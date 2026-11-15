@@ -41,9 +41,11 @@ Every change keeps all four, for friend rows and bench rows alike
    `TestShowRowWithTheRosterUnreadable` (`modules/verbs/check_test.go`).
 4. A store row nova-config no longer names is retired by the next tick, its
    hand returned in the same op, and shows nowhere until it hooks in again;
-   a failed or empty roster read retires nothing (Glenn, 2026-11-15):
-   `tla/RowAlive.tla` HandEmptyWhenRetired, NothingLost, NoRetireOnBadRead
-   and AutoRetire; `modules/run/retire_test.go`.
+   a failed or empty roster read retires nothing; a row nova-config names
+   again is hooked again by its running worker (Glenn, 2026-11-15):
+   `tla/RowAlive.tla` HandEmptyWhenRetired, NothingLost, NoRetireOnBadRead,
+   AutoRetire and ReNamedComesBack; `modules/run/retire_test.go`,
+   `modules/edge/worker/rehook_test.go`.
 
 `tla/RowAlive.tla` is not yet trace-bound to the code (owed).
 

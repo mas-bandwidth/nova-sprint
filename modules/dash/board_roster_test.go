@@ -57,8 +57,9 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 
 // Machines removed from nova-config (Glenn, 2026-11-15: aws-schema-bench-1..4
 // stayed on the board as down) are in neither table, a bench's row and a
-// friend's alike, whatever the store says of them; a roster row with no store
-// row is still there, down, at its roster width.
+// friend's alike, whatever the store says of them, but a hooked coordinator
+// (never retired) stays; a roster row with no store row is still there,
+// down, at its roster width.
 func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{
@@ -70,6 +71,7 @@ func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 		"aws-schema-bench-1": {Name: "aws-schema-bench-1", State: "up", Cores: 8, CPUPeakDeci: 500},
 		"aws-schema-bench-2": {Name: "aws-schema-bench-2", State: "down"},
 		"old-friend":         {Name: "old-friend", State: "up", Session: "x", Role: "worker"},
+		"rowan":              {Name: "rowan", State: "up", Session: "y", Role: "coordinator"},
 	}}
 	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	fleet := d.Tables["fleet"].(map[string]*fleetRow)
@@ -82,7 +84,10 @@ func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 	if g := fleet["new-bench"]; g == nil || *g != (fleetRow{Status: "down", Width: 4}) {
 		t.Errorf("new-bench = %+v, want down at width 4", g)
 	}
-	if len(fleet) != 2 || len(friends) != 1 || fleet["amd-1"].Status != "up" || friends["stella"].Status != "up" {
+	if g := fleet["rowan"]; g == nil {
+		t.Errorf("the hooked coordinator nova-config does not name is never retired (steps.Retirable), so it stays on the board")
+	}
+	if len(fleet) != 3 || len(friends) != 1 || fleet["amd-1"].Status != "up" || friends["stella"].Status != "up" {
 		t.Fatalf("fleet %+v friends %+v", fleet, friends)
 	}
 }

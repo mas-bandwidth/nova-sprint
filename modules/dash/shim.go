@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/usage"
 )
@@ -165,7 +166,9 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 // store has the row (the human, 2026-11-07: "we definitely need all that stuff
 // back"). A store row nova-config does not name is in neither table (Glenn,
 // 2026-11-15: removed machines must not show in the fleet; the run retires
-// such a row, and this covers the ticks before it does). With an empty
+// such a row, and this covers the ticks before it does): exactly the rows
+// steps.Retirable judges retired, so a hooked coordinator nova-config does
+// not name, which is never retired, stays on the board. With an empty
 // roster (a failed read, or nova-config with nothing in it) nothing is
 // judged absent: every store row shows, down, at width 0. A row nova-config
 // names that is not a roster row (a machine that is not a bench, a disabled
@@ -178,7 +181,7 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		friends[n] = &fleetRow{Status: "down", Width: k.Width}
 	}
 	for n, r := range rows {
-		if !ros.Empty() && !ros.Names(n) {
+		if steps.Retirable(ros, r) {
 			continue
 		}
 		status := r.State

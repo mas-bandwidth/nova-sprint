@@ -146,13 +146,21 @@ not yet trace-bound to the code (owed).
    heads kept) and the row is then in no read (show, check, next, the deal,
    the board) until nova-config names it and it hooks in again. A failed or
    empty roster read retires nothing, and a row hooked as the coordinator is
-   never retired. `nova-sprint retire` is the worst case by hand. Held by
-   `RowAlive.HandEmptyWhenRetired`, `RowAlive.NothingLost`,
-   `RowAlive.NoRetireOnBadRead` and `RowAlive.AutoRetire` (witnesses
-   `RowAliveRetireEmpty`, `RowAliveRetireKeeps`, `RowAliveNoRetireFence`)
+   never retired. A row nova-config names again comes back by itself: its
+   running worker sees `next --json` say `"unhooked": true` and hooks again
+   on its next pass (the hook refuses a worker nova-config does not name,
+   and a failed or empty read refuses no hook). `nova-sprint retire` is the
+   worst case by hand. Held by `RowAlive.HandEmptyWhenRetired`,
+   `RowAlive.NothingLost`, `RowAlive.NoRetireOnBadRead`,
+   `RowAlive.AutoRetire` and `RowAlive.ReNamedComesBack` (witnesses
+   `RowAliveRetireEmpty`, `RowAliveRetireKeeps`, `RowAliveNoRetireFence`,
+   `RowAliveNoRehook`)
    and `TestTickRetiresARowTheRosterNoLongerNames`,
    `TestTickRetiresNothingOnAnEmptyRoster`,
-   `TestServeRosterFailureRetiresNothing` (`modules/run/retire_test.go`).
+   `TestServeRosterFailureRetiresNothing` (`modules/run/retire_test.go`),
+   `TestPassHooksAgainWhenNextSaysUnhooked`
+   (`modules/edge/worker/rehook_test.go`) and `TestHookWaitsForNovaConfig`
+   (`modules/verbs/retire_test.go`).
 
 Every dealt attempt has an id and generation, written `<card>@<gen>`, and a
 sprint epoch. Copy these from the latest receipt. They prevent an old session

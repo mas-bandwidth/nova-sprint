@@ -36,11 +36,15 @@ type (
 		Gen, Attempt, Score                               int
 	}
 	NextResponse struct {
-		Epoch, Width          int
-		Seq                   int64
-		Row, State            string
-		Harness               string
-		Held                  bool
+		Epoch, Width int
+		Seq          int64
+		Row, State   string
+		Harness      string
+		Held         bool
+		// Unhooked is next --json's "unhooked": the row is not hooked in
+		// (retired, or its bus hook replaced); the pass hooks again
+		// (rehook_internal).
+		Unhooked              bool `json:"unhooked"`
 		Ready, Working, Final []ConsumerSummary
 		// TierModels are the models the row may run by tier it serves, in
 		// provider/model form (a bench's: the policy's candidates).

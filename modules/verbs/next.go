@@ -19,15 +19,20 @@ import (
 // a row, its inventory (nova-worker reads `next --json`). The lists are
 // never null; width 0 is an answer (no room, or no roster).
 type nextView struct {
-	Message    string              `json:"message"`
-	Next       string              `json:"next"`
-	Epoch      int                 `json:"epoch"`
-	Seq        int64               `json:"seq"`
-	Row        string              `json:"row"`
-	State      string              `json:"state"`
-	Role       string              `json:"role"`
-	Width      int                 `json:"width"`
-	Held       bool                `json:"held"`
+	Message string `json:"message"`
+	Next    string `json:"next"`
+	Epoch   int    `json:"epoch"`
+	Seq     int64  `json:"seq"`
+	Row     string `json:"row"`
+	State   string `json:"state"`
+	Role    string `json:"role"`
+	Width   int    `json:"width"`
+	Held    bool   `json:"held"`
+	// Unhooked says the row is not hooked in: never hooked, retired (in no
+	// read), or its bus hook started since. A live worker hooks again on it
+	// (worker pass.go rehook_internal; tla/RowAlive.tla Rehook). An older build
+	// never sets it, so its worker never hooks again on it.
+	Unhooked   bool                `json:"unhooked,omitempty"`
 	Model      string              `json:"model"`
 	TierModels map[string][]string `json:"tier_models"`
 	Harness    string              `json:"harness"`
@@ -101,6 +106,7 @@ func (e *Engine) look(ctx context.Context, v *nextView, epoch int, inventory boo
 		e.fillRoster(ctx, v, snap)
 	}
 	if row.Session == "" || row.Session != live.Session { // never hooked, or its bus hook was started since (hooked.go)
+		v.Unhooked = true
 		v.Message, v.Next = v.Row+" is not hooked in to the sprint", "nova-sprint hook --as "+v.Row+" --role "+cmp.Or(row.Role, "worker")
 		return nil
 	}

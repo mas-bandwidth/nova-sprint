@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -65,4 +66,35 @@ func TestCheckNamesRowsNovaConfigDoesNotName(t *testing.T) {
 	r := w.do("", "check")
 	want(t, r, r.Exit, "CHECK WARN row alice is not in nova-config; the run retires it on its next tick: wait one tick, or nova-sprint retire alice --reason",
 		"CHECK WARN row carol is not in nova-config and is hooked as the coordinator, so it is never retired")
+}
+
+// TestHookWaitsForNovaConfig: a retired row's next --json says it is not
+// hooked in ("unhooked", the typed answer its worker hooks again on); the
+// worker's hook is refused while nova-config does not name the row, naming
+// the nova-config verbs, and goes through once nova-config names it again
+// (tla/RowAlive.tla RehookDue). A failed or empty roster read refuses no
+// hook; a hooked row's next carries no "unhooked".
+func TestHookWaitsForNovaConfig(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	alice := w.roster.ro.Workers["alice"]
+	delete(w.roster.ro.Workers, "alice")
+	want(t, w.do("carol", "retire", "alice", "--reason", "machine removed"), 0, "row alice retired")
+	want(t, w.do("alice", "next", "--json"), 0, `"unhooked":true`)
+	want(t, w.do("alice", "hook", "--role", "worker"), 1, "alice is not in nova-config", "nova-config machine add alice", "nova-config friend add alice")
+	w.roster.ro.Workers["alice"] = alice
+	want(t, w.do("alice", "hook", "--role", "worker"), 0, "HOOKED alice role=worker")
+	if r := w.do("alice", "next", "--json"); strings.Contains(r.Output, `"unhooked"`) {
+		t.Fatalf("a hooked row's next says unhooked: %s", r.Output)
+	}
+	for _, prep := range []func(*world){
+		func(w *world) { w.roster.err = errors.New("postgres: connect failed") },
+		func(w *world) { w.roster.ro = roster.Roster{} },
+	} {
+		w := newWorld(t)
+		delete(w.roster.ro.Workers, "alice")
+		want(t, w.do("carol", "retire", "alice", "--reason", "machine removed"), 0, "row alice retired")
+		prep(w)
+		want(t, w.do("alice", "hook", "--role", "worker"), 0, "HOOKED alice role=worker")
+	}
 }

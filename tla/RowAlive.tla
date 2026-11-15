@@ -31,6 +31,13 @@
 (*     (roster.Empty, steps.Retirable). read is that tick's read (ReadOf). *)
 (*     A hooked coordinator is never retired; the model leaves roles out, *)
 (*     so that exception is the code's and its tests' alone.             *)
+(*  4. A row nova-config names again comes back by itself while its hook  *)
+(*     is alive: the worker's pass reads next --json, which says the row  *)
+(*     is not hooked in (unhooked: retired, or its hook replaced), and    *)
+(*     hooks again (modules/edge/worker/pass.go rehook_internal). The     *)
+(*     hook verb refuses a worker nova-config does not name on a read     *)
+(*     that is ok and not empty (verbs/hook.go), so Rehook needs it named *)
+(*     or the read bad. Rehook is the worker's own step: fair.            *)
 (*                                                                         *)
 (* Two stated exceptions to 1, both the code's on purpose:                *)
 (*  - A tick whose `nova-bus who` read failed is no evidence of silence:  *)
@@ -65,6 +72,9 @@
 (*               refusal): HandEmptyWhenRetired fails;                     *)
 (*   "nofence"   the store takes a deal to a retired row: a deal planned  *)
 (*               before the retire strands its card: HandEmptyWhenRetired *)
+(*               fails;                                                    *)
+(*   "norehook"  the worker never hooks again after a retire (the pass    *)
+(*               loop before this fix only logged): ReNamedComesBack     *)
 (*               fails.                                                    *)
 (***************************************************************************)
 EXTENDS Naturals, Integers
@@ -262,13 +272,15 @@ ReadChange(x) ==
   /\ read' = x
   /\ UNCHANGED <<now, bus, seen, up, held, answered, holder, skipped, owed, owedAt, returned, wentDown, named, retired, badRetire>>
 
-\* Environment: a retired row's hook puts it again (PutRow): back, a new
-\* row, down and not held; Raise brings it up if its hook is on the bus.
+\* The worker hooks again (pass.go rehook_internal): its hook is on the bus,
+\* next says the row is not hooked in, and the hook verb takes it unless an
+\* ok read does not name it. The row is back, a new row, down and not held;
+\* Raise brings it up. Break = "norehook" is the worker that never does.
+RehookDue(r) == Break # "norehook" /\ retired[r] /\ bus[r] /\ ~(read = "ok" /\ ~named[r])
 Rehook(r) ==
-  /\ env < MaxEnv /\ retired[r]
-  /\ env' = env + 1
+  /\ RehookDue(r)
   /\ retired' = [retired EXCEPT ![r] = FALSE]
-  /\ UNCHANGED <<now, bus, seen, up, held, answered, holder, skipped, owed, owedAt, returned, wentDown, named, read, badRetire>>
+  /\ UNCHANGED <<now, bus, seen, up, held, answered, holder, skipped, owed, owedAt, returned, wentDown, env, named, read, badRetire>>
 
 \* The witness "manualup" only: the model answers, or never does.
 Answer(r) ==
@@ -325,10 +337,14 @@ Next ==
   \/ \E c \in Cards : Skip(c)
   \/ \E c \in Cards, r \in Rows : Deal(c, r) \/ RaceDeal(c, r)
 
-\* The run's own steps are taken whenever due (the tick); the environment
-\* and a model's answer carry no fairness.
+\* The run's own steps are taken whenever due (the tick), the clock moves
+\* when no step is due (Advance: the run ticks every second), and a live
+\* worker hooks again (Rehook); the environment and a model's answer carry
+\* no fairness.
 Fairness ==
   /\ \A r \in Rows : WF_vars(Gone(r)) /\ WF_vars(Raise(r)) /\ WF_vars(Sweep(r)) /\ WF_vars(Retire(r))
+  /\ \A r \in Rows : WF_vars(Rehook(r))
+  /\ WF_vars(Advance)
   /\ \A c \in Cards, r \in Rows : WF_vars(Deal(c, r))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
@@ -382,13 +398,18 @@ Redealt == \A c \in Cards :
 
 \* Requirement 3, automatic: a row nova-config does not name is retired by
 \* the run, nothing done by anyone, unless nova-config names it again or the
-\* read stops being ok first, or its hand holds a card this tick cannot touch:
-\* the retire then waits for a later tick (RetireDue), and the clock carries
-\* no fairness here, as for every property above. Once a tick clears the
-\* skip, the property holds afresh and the retire is due.
+\* read stops being ok first. A card in its hand this tick cannot touch makes
+\* the retire wait for a later tick (RetireDue); the clock is fair, so that
+\* tick comes, unless the model's clock bound ends first.
 AutoRetire == \A r \in Rows :
   [](~named[r] /\ ~retired[r] /\ read = "ok" =>
-       <>(retired[r] \/ named[r] \/ read # "ok" \/ Hand(r) \cap skipped # {}))
+       <>(retired[r] \/ named[r] \/ read # "ok" \/ now = MaxClock))
+
+\* Requirement 4: a row nova-config names again, whose hook is alive, is
+\* eventually up and not retired, nothing done by anyone, unless
+\* nova-config stops naming it or its hook leaves first.
+ReNamedComesBack == \A r \in Rows :
+  [](named[r] /\ bus[r] => <>((up[r] /\ ~retired[r]) \/ ~named[r] \/ ~bus[r]))
 
 \* Reach (expected violated in RowAliveNever*.cfg): a row really goes down,
 \* comes back up by itself, a skipped card is really owed to a tick, and a
