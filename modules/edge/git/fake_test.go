@@ -19,10 +19,51 @@ type fakeForgeWorld_internal struct {
 	checks   map[string]forge.CheckRollup
 	failures map[string][]forge.Failure
 	basePRs  map[string]forge.BasePR
+	runs     []forge.Run // the repo's unfinished workflow runs (one repo per fake)
+	runsErr  error       // Runs fails with it
+	cancel   []int64     // the runs CancelRun cancelled, in order
 }
 
 func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
 	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{}, basePRs: map[string]forge.BasePR{}}
+}
+
+// Runs is the world's unfinished runs.
+func (f *fakeForge_internal) Runs(context.Context, string) ([]forge.Run, error) {
+	f.call_internal("Runs")
+	if f.world == nil {
+		return nil, nil
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	if f.world.runsErr != nil {
+		return nil, f.world.runsErr
+	}
+	return slices.Clone(f.world.runs), nil
+}
+
+// CancelRun removes run id from the world's unfinished runs.
+func (f *fakeForge_internal) CancelRun(_ context.Context, _ string, id int64) error {
+	f.call_internal("CancelRun")
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.cancel = append(f.world.cancel, id)
+	f.world.runs = slices.DeleteFunc(f.world.runs, func(r forge.Run) bool { return r.ID == id })
+	return nil
+}
+
+// SetRuns sets the world's unfinished runs.
+func (f *fakeForge_internal) SetRuns(runs ...forge.Run) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.runs = runs
+}
+
+// Cancelled is the runs CancelRun cancelled, in order.
+func (f *fakeForge_internal) Cancelled() []int64 {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	return slices.Clone(f.world.cancel)
 }
 
 type fakeForge_internal struct {

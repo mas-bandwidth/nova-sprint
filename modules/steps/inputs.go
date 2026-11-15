@@ -80,6 +80,9 @@ type EdgeRequest struct {
 	// base too (policy's landing(stream).land_on_shared_red; LANDING.md
 	// "A red base").
 	SharedRed bool
+	// Quiet is the branches of the stream's other merging cards: the
+	// landing cancels their unfinished runs (git.LandRequest.Quiet).
+	Quiet []string
 }
 
 // RefusedOp is an op of the last tick that layer 1 refused: its groups (from

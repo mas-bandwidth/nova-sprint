@@ -50,6 +50,10 @@ type LandRequest struct {
 	Heads, Branches             []string
 	Gate                        Gate
 	LandOnSharedRed             bool
+	// Quiet is the branches of the stream's other merging cards: no CI
+	// on them gates anything, so a pass that pushes a new gate cancels
+	// their unfinished runs (quietRuns_internal).
+	Quiet []string
 }
 
 // Gate is what a landing's CI gates: the PR's head branch, the sha, the
@@ -82,6 +86,13 @@ type LandResult struct {
 	SharedRed                                                             []string
 	ConflictHead, SharedProof                                             string
 	Gate                                                                  Gate
+	// Cancelled is the workflow runs this pass cancelled because they gate
+	// no landing: the runs of merging cards' branches and of replaced group
+	// heads (LANDING.md, "The landing's CI comes first").
+	Cancelled []int64
+	// CancelFault is why a run could not be read or cancelled ("" none): the
+	// run says it as an edge fault, and the pass went on.
+	CancelFault string
 }
 
 // Kept is the gate the next pass of the same request reads: this pass's
@@ -151,7 +162,42 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 	}
 	res.GatedSHA = gated
 	res.Gate = Gate{Branch: prHead, SHA: gated, Base: baseTip, Rung: res.Rung}
+	quietRuns_internal(ctx, fg, req, &res)
 	return gateAndMerge_internal(ctx, g, fg, req, prHead, res)
+}
+
+// quietRuns_internal cancels, once per gate pushed, every unfinished
+// workflow run that gates no landing, so the landing's own CI is never
+// queued behind them (LANDING.md, "The landing's CI comes first"; Glenn
+// 2026-11-15): a run on the group branch at any sha but the gate's (a
+// replaced group head), and a run on a branch of the request or of the
+// stream's other merging cards (req.Quiet) at any sha but the gate's (a
+// card that is merging is gated only by its landing's PR). Nothing else is
+// touched: not base, not another stream, not a card still being worked. A
+// read or a cancel that fails is said in the reason and never stops the
+// pass (LandResult.CancelFault); a rested forge is asked again with the
+// next gate.
+
+func quietRuns_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) {
+	quiet := map[string]bool{GroupBranch(req.Stream): true}
+	for _, b := range append(slices.Clone(req.Branches), req.Quiet...) {
+		quiet[b] = true
+	}
+	runs, err := fg.Runs(ctx, req.Repo)
+	if err != nil {
+		res.CancelFault = "the unfinished runs could not be read to cancel those that gate no landing: " + edge.RedactN(err.Error(), edge.FailureMax)
+		return
+	}
+	for _, r := range runs {
+		if !quiet[r.Branch] || (r.Branch == res.Gate.Branch && strings.EqualFold(r.HeadSHA, res.GatedSHA)) {
+			continue
+		}
+		if err := fg.CancelRun(ctx, req.Repo, r.ID); err != nil {
+			res.CancelFault = strings.TrimPrefix(res.CancelFault+fmt.Sprintf("; run %d on %s could not be cancelled: %s", r.ID, r.Branch, edge.RedactN(err.Error(), edge.FailureMax)), "; ")
+			continue
+		}
+		res.Cancelled = append(res.Cancelled, r.ID)
+	}
 }
 
 // moved_internal is whether a card branch is not at the head the read

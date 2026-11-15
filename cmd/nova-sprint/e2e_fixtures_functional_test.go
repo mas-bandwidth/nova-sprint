@@ -296,7 +296,18 @@ func (f *fakeForge) Failures(_ context.Context, _, sha string) ([]forge.Failure,
 	return nil, nil
 }
 
+func (f *fakeForge) Runs(_ context.Context, repo string) ([]forge.Run, error) {
+	f.log("Runs %s", repo)
+	return nil, nil
+}
+
+func (f *fakeForge) CancelRun(_ context.Context, _ string, id int64) error {
+	f.log("CancelRun %d", id)
+	return nil
+}
+
 func (f *fakeForge) BasePR(_ context.Context, _, sha string) (forge.BasePR, bool, error) {
+
 	f.log("BasePR %s", sha)
 	return forge.BasePR{}, false, nil
 }

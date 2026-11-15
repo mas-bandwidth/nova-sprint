@@ -109,9 +109,11 @@ type WidthAnswer struct{ Work int }
 // HoldSharedRed is land_on_shared_red false: a red gate whose reds are all
 // the base's own, and a conflict, are judgements as before 2026-11-15; the
 // zero value lands the one and sends the other to fix (land.go).
+//
+// GroupMax is the most cards one landing gates (0: the engine's, 4).
 type LandingAnswer struct {
-	BackedUp, Flowing, CIWait int
-	HoldSharedRed             bool
+	BackedUp, Flowing, CIWait, GroupMax int
+	HoldSharedRed                       bool
 }
 
 // Limits is limits(): the counts, and layer 3's steering numbers in the
@@ -190,7 +192,7 @@ var Engine = Defaults{
 		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 250, Pack: 50},
 	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, MergingNag: 300, MergingNagEvery: 1, BaseRegate: []int{120, 300},
 		Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}},
-	Landing: LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
+	Landing: LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600, GroupMax: 4},
 }
 
 // oracle is one tick's answers: the version's where usable, the defaults
@@ -350,7 +352,7 @@ func (o *oracle) width(r RowFacts) WidthAnswer {
 func (o *oracle) landing(s StreamFacts) LandingAnswer {
 	l, ok := o.a.Landing[s.Name]
 	if o.usable("landing", "landing("+s.Name+")", ok) {
-		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 {
+		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 && l.GroupMax >= 0 && l.GroupMax <= 1000 {
 			return l
 		}
 		o.refuse("landing", fmt.Sprintf("landing(%s) is flowing %d, backed_up %d, ci_wait %d: outside 0 <= flowing < backed_up <= 1000, ci_wait 0..86400", s.Name, l.Flowing, l.BackedUp, l.CIWait))

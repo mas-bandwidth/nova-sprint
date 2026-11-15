@@ -77,7 +77,7 @@ func TestMergingNagOneLineForTheQueue(t *testing.T) {
 	s.report("p1.r1.1", "ok", sha(1), "fine")
 	s.run(2)
 	first := s.request("land", "s1")
-	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", Reason: "failing unit"})
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "merge_refused", Reason: "failing unit"})
 	s.tick()
 	require.Equal(t, []string{"land.p1.1"}, s.openJudgements("land"))
 	s.now = s.now.Add(60 * time.Second)

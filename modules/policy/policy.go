@@ -117,10 +117,18 @@ type Limits struct {
 // be automatic") lands a red gate whose every failing check is red on the
 // base too, and sends a card whose head does not merge back to fix; false
 // makes both the coordinator's judgement (LANDING.md, "A red base").
+//
+// GroupMax (optional, default DefaultGroupMax; Glenn 2026-11-15: "merge
+// cards as they arrive") is the most cards one landing gates: a group
+// lands within one CI run, and a red in it costs at most that many solo
+// passes to find.
 type Landing struct {
-	BackedUp, Flowing, CIWait int
-	LandOnSharedRed           bool
+	BackedUp, Flowing, CIWait, GroupMax int
+	LandOnSharedRed                     bool
 }
+
+// DefaultGroupMax is landing(stream).group_max when policy names none.
+const DefaultGroupMax = 4
 
 // Timeouts are seconds of running time; BaseRegate is a rising list. Tick
 // is run's budget for one tick (drift row 26); ReadyNag is how often run

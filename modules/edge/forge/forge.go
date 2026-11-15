@@ -123,6 +123,12 @@ type Forge interface {
 	// how the landing reads a base tip's checks that run only on PRs
 	// (LANDING.md, "A red base").
 	BasePR(ctx context.Context, repo, sha string) (BasePR, bool, error)
+	// Runs is the repo's unfinished workflow runs (the newest RunsPage
+	// queued and the newest RunsPage in progress); CancelRun cancels one.
+	// The landing cancels the runs that gate no landing, so its own CI is
+	// never queued behind them (LANDING.md, "The landing's CI comes first").
+	Runs(ctx context.Context, repo string) ([]Run, error)
+	CancelRun(ctx context.Context, repo string, id int64) error
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on

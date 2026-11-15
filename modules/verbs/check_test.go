@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
@@ -221,6 +222,18 @@ func TestCheckLandingWaits(t *testing.T) {
 		{name: "waits for its landing", args: []string{"check"}, exit: 0, prep: healthy,
 			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st },
 			want: []string{"CHECK landing s: 1 merging (p2) waits for its landing PR's CI (rung 1 the card's branch, rung 2 sprint-group/s; run asks every 30s)"}},
+		{name: "a landing PR queued behind card runs past merging_nag", args: []string{"check"}, exit: 1,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.forge.runs = queuedBehind(6 * time.Minute) }),
+			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st },
+			want: []string{"CHECK RED landing s: 1 merging (p2) landing PR 77 has 2 runs queued behind 2 runs on other PRs, the oldest queued 6m0s (longer than 5m0s, timeouts merging_nag)", "gh run cancel <id> --repo o/r"}},
+		{name: "a landing PR queued a short while", args: []string{"check"}, exit: 0,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.forge.runs = queuedBehind(time.Minute) }),
+			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st },
+			want: []string{"rung 2 sprint-group/s; run asks every 30s); landing PR 77 has 2 runs queued behind 2 runs on other PRs, the oldest queued 1m0s"}},
+		{name: "a CI queue that cannot be read", args: []string{"check"}, exit: 0,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.forge.runsE = errors.New("HTTP 502") }),
+			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st },
+			want: []string{"run asks every 30s); its CI queue could not be read: HTTP 502"}},
 		{name: "on base", args: []string{"check"}, exit: 0, prep: healthy,
 			snap: func(s *store.Snapshot) {
 				merging(s)
@@ -249,7 +262,25 @@ func TestCheckLandingWaits(t *testing.T) {
 	})
 }
 
+// queuedBehind is a CI queue whose landing PR 77 (group branch run and a
+// rung 1 run on p2's branch) was queued age ago, behind two card PR runs
+// queued before it; a later card run, base's push and a running run count
+// for nothing.
+func queuedBehind(age time.Duration) []forge.Run {
+	at := t0.Add(-age)
+	return []forge.Run{
+		{ID: 1, Branch: "sprint/s/p9", Status: "queued", Event: "pull_request", Created: at.Add(-2 * time.Minute)},
+		{ID: 2, Branch: "sprint/s/p8", Status: "queued", Event: "pull_request", Created: at.Add(-time.Minute)},
+		{ID: 3, Branch: "sprint-group/s", Status: "queued", Event: "pull_request", Created: at, PRs: []int{77}},
+		{ID: 4, Branch: "sprint/s/p2", Status: "queued", Event: "pull_request", Created: at.Add(time.Second), PRs: []int{78}},
+		{ID: 5, Branch: "sprint/s/p7", Status: "queued", Event: "pull_request", Created: at.Add(time.Minute)},
+		{ID: 6, Branch: "main", Status: "queued", Event: "push", Created: at.Add(-3 * time.Minute)},
+		{ID: 7, Branch: "sprint/s/p6", Status: "in_progress", Event: "pull_request", Created: at.Add(-3 * time.Minute)},
+	}
+}
+
 // failingAnswers is a policy that fails the order question.
+
 type failingAnswers struct{ fakeAnswers }
 
 func (f failingAnswers) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {

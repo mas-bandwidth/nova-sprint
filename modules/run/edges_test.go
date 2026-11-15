@@ -144,6 +144,8 @@ func (g *lockGit) Fetch(context.Context, string, ...string) error {
 // landForge is a forge LandPass never reaches here.
 type landForge struct{ forge.Forge }
 
+func (landForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+
 // TestCloneAndFetchTakeTheClonesLock: run's clone and land take the clone's
 // lock (<clone>.lock beside it, the lock nova-sprint check takes in the
 // same repos dir), so they never run git in one repository at once with
@@ -226,6 +228,8 @@ func (g *passGit) Push(_ context.Context, dir, _, _, _ string) error {
 
 // pendingForge answers a PR whose head is not yet the gated sha: pending.
 type pendingForge struct{ forge.Forge }
+
+func (pendingForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
 
 func (pendingForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
 	return forge.PRInfo{Number: 1, HeadSHA: strings.Repeat("d", 40)}, true, nil

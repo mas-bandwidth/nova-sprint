@@ -173,14 +173,16 @@ func toMerging(s *sim) EdgeRequest {
 // is one land judgement per card on the coordinator's row, that tick, with
 // the facts and the choices land, fix and retry; nothing moves, nothing is
 // blamed, and no new request is asked while it is open. A conflict is the
-// card's fix instead (TestTickConflictGoesToFix) unless land_on_shared_red
-// is off, which this checks too.
+// card's fix instead (TestTickConflictGoesToFix), and so is a card's own red
+// (TestTickOwnRedGoesToFix), unless land_on_shared_red is off, which this
+// checks too.
+
 func TestTickLandJudgementEveryOutcome(t *testing.T) {
 	t.Parallel()
 	for _, outcome := range []string{"ci_red", "no-ci", "conflict", "merge_refused", "pr_unopenable", "branch_failed", "ci_fault", "missing_head", "head_moved", "hand", "fault"} {
 		s := newSim(t)
 		first := toMerging(s)
-		if outcome == "conflict" {
+		if outcome == "conflict" || outcome == "ci_red" {
 			holdShared(s)
 		}
 		s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: outcome, Reason: "rung 1; base tip " + base + "; failing unit; first failing lines: --- FAIL: TestX"})
@@ -223,14 +225,14 @@ func TestTickLandAnswers(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
 	first := toMerging(s)
-	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", Reason: "failing unit"})
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "merge_refused", Reason: "failing unit"})
 	s.run(2)
 	_, ref := s.verb(Request{Actor: "rowan", Judgement: "land.p1.1", Answer: "retry"})
 	require.Nil(t, ref)
 	s.run(2)
 	second := s.request("land", "s1")
 	assert.Equal(t, first.Heads, second.Heads, "retry asks the landing again")
-	s.arrive(InboxItem{Kind: "land", Request: second.ID, Outcome: "ci_red", Reason: "failing unit again"})
+	s.arrive(InboxItem{Kind: "land", Request: second.ID, Outcome: "merge_refused", Reason: "failing unit again"})
 	s.run(2)
 	_, ref = s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Red{Head: sha(1), Reason: "unit fails: fix TestX"}, Judgement: "land.p1.2", Answer: "fix"})
 	require.Nil(t, ref)

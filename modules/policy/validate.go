@@ -232,11 +232,13 @@ func fraction(what string, v starlark.Value) (float64, string) {
 
 // checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000, an
 // optional "ci_wait": seconds, 1..86400 (absent is the engine's 600), and
-// an optional "land_on_shared_red": True or False (absent is True).
+// an optional "land_on_shared_red": True or False (absent is True), and an
+// optional "group_max": 1..1000 (absent is DefaultGroupMax).
+
 func checkLanding(v starlark.Value) (Landing, string) {
 	keys := []string{"backed_up", "flowing"}
 	if d, ok := v.(*starlark.Dict); ok {
-		for _, k := range []string{"ci_wait", "land_on_shared_red"} {
+		for _, k := range []string{"ci_wait", "land_on_shared_red", "group_max"} {
 			if _, found, _ := d.Get(starlark.String(k)); found {
 				keys = append(keys, k)
 			}
@@ -268,7 +270,13 @@ func checkLanding(v starlark.Value) (Landing, string) {
 	if msg != "" {
 		return Landing{}, msg + " (below backed_up)"
 	}
-	return Landing{BackedUp: b, Flowing: f, CIWait: w, LandOnSharedRed: shared}, ""
+	g := DefaultGroupMax
+	if d["group_max"] != nil {
+		if g, msg = intIn("group_max", d["group_max"], 1, 1000); msg != "" {
+			return Landing{}, msg
+		}
+	}
+	return Landing{BackedUp: b, Flowing: f, CIWait: w, GroupMax: g, LandOnSharedRed: shared}, ""
 }
 
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the

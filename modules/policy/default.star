@@ -77,7 +77,7 @@ def limits():
 def landing(stream):
     # rung 2 at more than four heads waiting; ci_wait a guess; a red gate
     # whose reds are all the base's own lands (Glenn 2026-11-15)
-    return {"backed_up": 4, "flowing": 1, "ci_wait": 600, "land_on_shared_red": True}
+    return {"backed_up": 4, "flowing": 1, "ci_wait": 600, "land_on_shared_red": True, "group_max": 4}
 
 def timeouts():
     return {

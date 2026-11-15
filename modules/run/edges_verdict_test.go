@@ -60,7 +60,10 @@ type stopForge struct {
 	forge.Forge
 }
 
+func (f *stopForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+
 func (f *stopForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
+
 	return forge.PRInfo{Number: 1, HeadSHA: strings.Repeat("a", 40)}, true, nil
 }
 

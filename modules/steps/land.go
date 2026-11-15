@@ -34,6 +34,8 @@ func (t *tick) landResults() {
 		case it.Outcome == "landed":
 			t.landGroup(it, req)
 		case it.Outcome == "conflict" && req.Kind == "land" && req.SharedRed && t.conflictFix(it, req):
+		case (it.Outcome == "ci_red" || it.Outcome == "conflict") && req.Kind == "land" && req.SharedRed && len(req.Cards) > 1 && t.peel(it, req):
+		case it.Outcome == "ci_red" && req.Kind == "land" && req.SharedRed && len(req.Cards) == 1 && t.redFix(it, req):
 		default:
 			t.landJudge(it, req)
 			t.consume(it.ID)
@@ -143,6 +145,62 @@ func (t *tick) conflictFix(it InboxItem, req EdgeRequest) bool {
 	return true
 }
 
+// peel answers a group's own red (one the base does not share), or a
+// conflict that names no card, with no judgement (land_on_shared_red;
+// LANDING.md "One card's red never holds the others"; Glenn 2026-11-15):
+// the item is consumed and, in the same tick, the group's first card still
+// merging at its head is asked alone. Its own verdict lands it or sends it
+// to fix, and the rest regroup after it, so a card that breaks its group is
+// found in at most group_max solo passes, and never holds the others in a
+// judgement. False when no card of the group is still merging and free.
+func (t *tick) peel(it InboxItem, req EdgeRequest) bool {
+	for i, p := range req.Cards {
+		c, ok := t.v.Cards[p]
+		if !ok || c.State != "merging" || c.Head != req.Heads[i] || !t.free(p) || t.judged(p) {
+			continue
+		}
+		t.consume(it.ID)
+		l := t.o.landing(t.streamFacts(req.Stream))
+		t.landRequest("land", req.Stream, []store.Card{c}, l.CIWait)
+		t.edges[len(t.edges)-1].SharedRed = !l.HoldSharedRed
+		t.edges[len(t.edges)-1].Quiet = t.quiet(req.Stream, []string{p})
+		return true
+	}
+	return false
+}
+
+// redFix sends a card whose own landing came back red on checks the base
+// does not share back to fix, with the failing checks as its finding, in a
+// group that consumes the item (land_on_shared_red; LANDING.md "One
+// card's red never holds the others"): no judgement. False when the card
+// is no longer merging at the head: the judgement as before.
+func (t *tick) redFix(it InboxItem, req EdgeRequest) bool {
+	p := req.Cards[0]
+	c, ok := t.v.Cards[p]
+	if !ok || c.State != "merging" || c.Head != req.Heads[0] || !t.free(p) {
+		return false
+	}
+	reason := fmt.Sprintf("red: head %s of branch %s is red onto %s at %s on checks the base does not share: %s; fix them and finish again",
+		c.Head, req.Branches[0], t.v.Streams[req.Stream].Base, req.Base, cmp.Or(it.Reason, "no facts given"))
+	if g := t.group("land", p, t.producerMove(p, card.Red{Head: c.Head, Reason: reason})); g != nil {
+		g.key.Item = it.ID
+	}
+	return true
+}
+
+// quiet is the branches of stream s's merging producers but those named:
+// no CI on them gates a landing, so the landing cancels their runs
+// (EdgeRequest.Quiet; LANDING.md "The landing's CI comes first").
+func (t *tick) quiet(s string, except []string) []string {
+	var out []string
+	for _, p := range t.v.Producers("merging") {
+		if c := t.v.Cards[p]; c.Stream == s && !slices.Contains(except, p) {
+			out = append(out, branch(c))
+		}
+	}
+	return out
+}
+
 // judged is whether card p has a land judgement open, or opened this tick.
 func (t *tick) judged(p string) bool { return t.isOpen("land", p) || t.pending("land", p) }
 
@@ -182,7 +240,7 @@ func (t *tick) landRequests() {
 		if based := slices.DeleteFunc(slices.Clone(queued), func(c store.Card) bool { return !onBase(c) }); len(based) > 0 && !t.busy(s, "promote") {
 			t.landRequest("promote", s, based, t.o.landing(t.streamFacts(s)).CIWait)
 		}
-		if t.busy(s, "land") {
+		if t.busy(s, "land") || t.plannedIn(s, "land") {
 			continue
 		}
 		picks := t.eligible(slices.DeleteFunc(queued, onBase))
@@ -193,8 +251,13 @@ func (t *tick) landRequests() {
 		if l.BackedUp > len(picks) {
 			picks = picks[:1]
 		}
+		if max := cmp.Or(l.GroupMax, Engine.Landing.GroupMax); len(picks) > max {
+			picks = picks[:max] // a group never grows past group_max: it lands within one CI run
+		}
 		t.landRequest("land", s, picks, l.CIWait)
 		t.edges[len(t.edges)-1].SharedRed = !l.HoldSharedRed
+		t.edges[len(t.edges)-1].Quiet = t.quiet(s, t.edges[len(t.edges)-1].Cards)
+
 	}
 	t.unlanded()
 }

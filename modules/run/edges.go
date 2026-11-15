@@ -153,7 +153,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	var gate git.Gate // the gate the last pass kept: read to its verdict, never rebuilt meanwhile
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate, LandOnSharedRed: r.SharedRed})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate, LandOnSharedRed: r.SharedRed, Quiet: r.Quiet})
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
@@ -173,6 +173,10 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		}
 		res, err := e.pass(ctx, dir, pass)
 		gate = res.Kept()
+		if res.CancelFault != "" {
+			e.fault("land "+r.ID+" stream "+r.Stream+" cancel", errors.New(res.CancelFault))
+		}
+
 		if err == nil {
 			e.sawBaseRed(s, res)
 		}

@@ -144,7 +144,7 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 		a.Width[row] = steps.WidthAnswer{Work: w.Work}
 	}
 	for s, l := range p.Landing {
-		a.Landing[s] = steps.LandingAnswer{BackedUp: l.BackedUp, Flowing: l.Flowing, CIWait: l.CIWait, HoldSharedRed: !l.LandOnSharedRed}
+		a.Landing[s] = steps.LandingAnswer{BackedUp: l.BackedUp, Flowing: l.Flowing, CIWait: l.CIWait, GroupMax: l.GroupMax, HoldSharedRed: !l.LandOnSharedRed}
 	}
 	l, d := p.Limits, steps.Engine.Limits
 	a.Limits = &steps.Limits{Bounces: l.Bounces, Faults: l.Faults, SameFinding: l.SameFinding, ReportsPerTick: l.ReportsPerTick,

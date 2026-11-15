@@ -63,10 +63,12 @@ func TestTickGroupConflictJudgesOnlyTheCardThatDoesNotMerge(t *testing.T) {
 }
 
 // A conflict that names no head (GitHub's mergeable state on the group's
-// PR) is still one judgement per card: the edge could not say which.
+// PR), with land_on_shared_red off, is still one judgement per card: the
+// edge could not say which (on, the group peels: TestTickGroupRedPeels).
 func TestTickConflictWithNoHeadJudgesTheGroup(t *testing.T) {
 	t.Parallel()
-	s, req := threeMerging(t, false)
+	s, req := threeMerging(t, true)
+
 	s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "conflict", Reason: "GitHub says #1 conflicts with v2"})
 	s.tick()
 	assert.Equal(t, []string{"land.p1.1", "land.p2.1", "land.p3.1"}, s.openJudgements("land"))

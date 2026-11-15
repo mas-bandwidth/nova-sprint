@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
@@ -167,7 +169,12 @@ func (e *Engine) checkLanding(ctx context.Context, r *checkReport, snap store.Sn
 	case onBase == len(ids):
 		r.ok("%s waits for %s's PR to main and its CI (run asks every %s)", what, s.Base, run.LandPoll)
 	default:
-		r.ok("%s %s", what, e.groupWait(ctx, s))
+		wait := e.groupWait(ctx, s)
+		if line, red := e.landingQueue(ctx, snap, s, ids); red {
+			r.red(refuse(what+" "+line, "gh run list --repo "+s.Repo+" --status queued, then gh run cancel <id> --repo "+s.Repo+" for each card run ahead of it"))
+		} else {
+			r.ok("%s %s%s", what, wait, line)
+		}
 	}
 }
 
@@ -199,7 +206,70 @@ func (e *Engine) groupWait(_ context.Context, s store.Stream) string {
 	return fmt.Sprintf("waits for its landing PR's CI (rung 1 the card's branch, rung 2 %s; run asks every %s)", git.GroupBranch(s.Name), run.LandPoll)
 }
 
+// landingQueue is a github stream's landing PR's place in the repo's CI
+// queue (Glenn 2026-11-15: "the landing PR's CI must never wait behind card
+// CI"): its runs are the unfinished runs on the group branch or a merging
+// card's branch (the run cancels every other one of those each pass, so what
+// is left gates the landing), and the runs it waits behind are the queued
+// runs of other pull requests created before its oldest queued one. Red,
+// with "landing PR <n> has <q> runs queued behind <m> runs on other PRs",
+// once that oldest queued run has waited longer than timeouts merging_nag
+// (the merge-queue nag's own limit); else "" or that line as a note. A run
+// list that cannot be read is said, and is not red (the landing reads its
+// checks without it).
+func (e *Engine) landingQueue(ctx context.Context, snap store.Snapshot, s store.Stream, ids []string) (string, bool) {
+	if s.Forge != "github" || e.Forge == nil {
+		return "", false
+	}
+	runs, err := e.Forge.Runs(ctx, s.Repo)
+	if err != nil {
+		return "; its CI queue could not be read: " + clipN(errText(err), 160), false
+	}
+	mine := map[string]bool{git.GroupBranch(s.Name): true}
+	for _, id := range ids {
+		mine["sprint/"+s.Name+"/"+id] = true
+	}
+	var queued []forge.Run
+	oldest, pr := time.Time{}, 0
+	for _, r := range runs {
+		if !mine[r.Branch] || r.Status != "queued" {
+			continue
+		}
+		queued = append(queued, r)
+		if oldest.IsZero() || r.Created.Before(oldest) {
+			oldest = r.Created
+			if len(r.PRs) > 0 {
+				pr = r.PRs[0]
+			}
+		}
+	}
+	if len(queued) == 0 {
+		return "", false
+	}
+	behind := 0
+	for _, r := range runs {
+		if !mine[r.Branch] && r.Status == "queued" && r.Event == "pull_request" && r.Created.Before(oldest) {
+			behind++
+		}
+	}
+	limit := time.Duration(policy.DefaultMergingNag) * time.Second
+	if _, tm, err := e.rules(ctx, snap); err == nil && tm.MergingNag > 0 {
+		limit = time.Duration(tm.MergingNag) * time.Second
+	}
+	name := "landing PR " + strconv.Itoa(pr)
+	if pr == 0 {
+		name = "landing PR (no number yet)"
+	}
+	age := e.Now().Sub(oldest)
+	line := fmt.Sprintf("%s has %d runs queued behind %d runs on other PRs, the oldest queued %s", name, len(queued), behind, age.Round(time.Second))
+	if age > limit {
+		return line + fmt.Sprintf(" (longer than %s, timeouts merging_nag)", limit), true
+	}
+	return "; " + line, false
+}
+
 // firstN is up to n names, then how many more.
+
 func firstN(names []string, n int) string {
 	s := strings.Join(names[:min(len(names), n)], ", ")
 	if more := len(names) - n; more > 0 {

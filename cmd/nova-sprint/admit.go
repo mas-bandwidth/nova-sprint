@@ -64,6 +64,11 @@ func (f hostForge) Checks(ctx context.Context, repo string, shas []string) (map[
 	return f.land.Checks(ctx, repo, shas)
 }
 
+// Runs is the landing forge's read of repo's unfinished workflow runs.
+func (f hostForge) Runs(ctx context.Context, repo string) ([]forge.Run, error) {
+	return f.land.Runs(ctx, repo)
+}
+
 // actingPermissions are the repository permissions that may push branches
 // and open and merge pull requests.
 var actingPermissions = []string{"ADMIN", "MAINTAIN", "WRITE"}

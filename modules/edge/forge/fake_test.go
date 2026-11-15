@@ -182,4 +182,16 @@ func (f *Fake) BasePR(context.Context, string, string) (BasePR, bool, error) {
 	return BasePR{}, false, nil
 }
 
+// Runs is none: the fake runs no workflows.
+func (f *Fake) Runs(context.Context, string) ([]Run, error) {
+	f.call_internal("Runs")
+	return nil, nil
+}
+
+// CancelRun cancels nothing.
+func (f *Fake) CancelRun(context.Context, string, int64) error {
+	f.call_internal("CancelRun")
+	return nil
+}
+
 var _ Forge = (*Fake)(nil)
