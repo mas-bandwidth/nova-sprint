@@ -181,6 +181,9 @@ func (g restGit) IsAncestor(_ context.Context, _, ancestor, _ string) (bool, err
 type limitedForge struct{ forge.Forge }
 
 func (limitedForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+func (limitedForge) RunsAt(context.Context, string, string, string) ([]forge.Run, error) {
+	return nil, nil
+}
 
 func (limitedForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
 	return forge.PRInfo{}, false, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, RetryAfter: 1060, Reason: "HTTP 403: API rate limit exceeded"}

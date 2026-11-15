@@ -204,9 +204,15 @@ Odd(s) == LET cs1 == req[s].cards
 \* CI not let go), on the base it was built on; else built on base's tip
 \* and pushed, at the rung the pass finds, its CI started.
 Kept(s) == req[s].ci # "none"
-Gate1(s) == IF Kept(s) THEN req[s]
+\* A kept gate on a base that moved whose CI no runner has taken yet is
+\* let go and rebuilt on the tip in the same pass (Glenn 2026-11-15:
+\* keeps_internal, queuedOnly_internal); once its CI started it is read to
+\* its verdict (GateKept; live 2026-11-10).
+MovedQueued(s) == req[s].ci = "queued" /\ req[s].gbase # Len(base)
+KeepsGate(s) == Kept(s) /\ ~MovedQueued(s)
+Gate1(s) == IF KeepsGate(s) THEN req[s]
             ELSE [req[s] EXCEPT !.gate = Gated(s), !.gbase = Len(base), !.rung = RungOf(s),
-                                !.ci = "running", !.res = "none", !.late = FALSE]
+                                !.ci = "queued", !.res = "none", !.late = FALSE]
 \* A gate let go: the next pass builds on the tip.
 LetGo(r) == [r EXCEPT !.ci = "none"]
 
@@ -233,13 +239,13 @@ Pass(s) ==
         /\ ~NoMerge(s) \/ Kept(s)
         /\ UNCHANGED <<base, req>>
      \/ /\ ~(req[s].cards \subseteq Tip.cards)
-        /\ ~NoMerge(s) \/ Kept(s)               \* a kept gate is read whatever base did since
+        /\ ~NoMerge(s) \/ KeepsGate(s)          \* a kept gate whose CI started is read whatever base did since
         /\ LET r == Gate1(s) IN
            \/ /\ Flaky
               /\ Done(s, r, "absent")                  \* no CI in time, a fault, a PR not opened
               /\ UNCHANGED base
-           \/ /\ r.ci = "running" \/ (r.ci = "partial" /\ ~r.late)   \* no verdict yet: asked again
-              /\ Kept(s) => passes < MaxPass
+           \/ /\ r.ci \in {"queued", "running"} \/ (r.ci = "partial" /\ ~r.late)   \* no verdict yet: asked again
+              /\ KeepsGate(s) => passes < MaxPass
               /\ req' = [req EXCEPT ![s] = r]
               /\ UNCHANGED base
            \/ /\ r.ci = "partial" /\ r.late            \* the wait passed: no verdict
@@ -265,6 +271,14 @@ Pass(s) ==
               /\ UNCHANGED base
   /\ ticked' = FALSE
   /\ UNCHANGED <<cs, js, jc, held>>
+
+\* A runner takes the gate's CI.
+CIStarts(s) ==
+  /\ req[s].st = "sent"
+  /\ req[s].ci = "queued"
+  /\ req' = [req EXCEPT ![s].ci = "running"]
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<base, cs, js, jc, held, passes>>
 
 \* The gate's checks move on: a check fails or is stopped while others
 \* still run (partial), or they all complete (CIOf; never green once one
@@ -332,7 +346,7 @@ Answer(c, choice) ==
 
 Next ==
   \/ Tick
-  \/ \E s \in Streams : Pass(s) \/ CIStep(s) \/ Late(s)
+  \/ \E s \in Streams : Pass(s) \/ CIStarts(s) \/ CIStep(s) \/ Late(s)
   \/ \E b \in SUBSET Checks : BaseMoves(b)
   \/ \E s \in Streams : Switch(s)
   \/ \E c \in Cards, choice \in {"land", "fix", "retry"} : Answer(c, choice)
@@ -340,11 +354,15 @@ Next ==
 Spec == Init /\ [][Next]_vars
 
 \* CI that runs completes (LandEdgeLive.cfg).
-LiveSpec == Spec /\ \A s \in Streams : WF_vars(CIStep(s))
+LiveSpec == Spec /\ \A s \in Streams : WF_vars(CIStarts(s)) /\ WF_vars(CIStep(s))
 
 \* And the run keeps passing and ticking (LandEdgeSharedLive.cfg, Flaky
 \* off): no human step is assumed, though the coordinator may act.
-SharedLiveSpec == Spec /\ WF_vars(Tick) /\ \A s \in Streams : WF_vars(CIStep(s)) /\ WF_vars(Pass(s))
+SharedLiveSpec == Spec /\ WF_vars(Tick) /\ \A s \in Streams : WF_vars(CIStarts(s)) /\ WF_vars(CIStep(s)) /\ WF_vars(Pass(s))
+
+\* CI may never start (queued behind other runs); the run keeps passing
+\* and ticking (LandEdgeQueuedLive.cfg, Flaky off).
+QueuedLiveSpec == Spec /\ WF_vars(Tick) /\ \A s \in Streams : WF_vars(Pass(s))
 
 -----------------------------------------------------------------------------
 (* Invariants                                                              *)
@@ -358,7 +376,8 @@ TypeOK ==
   /\ held \subseteq Streams
   /\ ticked \in BOOLEAN
   /\ \A s \in Streams : req[s].st \in {"none", "sent", "done"}
-  /\ \A s \in Streams : req[s].ci \in {"none", "running", "partial", "done"}
+  /\ \A s \in Streams : req[s].ci \in {"none", "queued", "running", "partial", "done"}
+
   /\ \A s \in Streams : req[s].res \in {"none", "green", "red", "stopped"}
   /\ \A s \in Streams : req[s].late \in BOOLEAN
 
@@ -421,10 +440,13 @@ ConflictNeverJudged == SharedRed => jc \cap js = {}
 \* One group in flight per stream, kept to its verdict: a gate whose CI
 \* still runs is never replaced (rebuilt, pushed again) while its request
 \* is in flight, whatever the base does; a base switch lets it go first.
+\* A gate whose CI is only queued is kept too while the base has not moved
+\* (MovedQueued lets it go once the base moved).
 GateKept ==
   [][\A s \in Streams :
-       req[s].st = "sent" /\ req[s].ci \in {"running", "partial"}
+       req[s].st = "sent" /\ (req[s].ci \in {"running", "partial"} \/ (req[s].ci = "queued" /\ req[s].gbase = Len(base)))
          => req'[s].gate = req[s].gate /\ req'[s].gbase = req[s].gbase]_vars
+
 
 \* A gate in flight reaches a verdict (its checks complete) or its request
 \* an outcome, the same gate (LiveSpec: CI that runs completes), unless the
@@ -434,6 +456,18 @@ GateReachesVerdict ==
     (req[s].st = "sent" /\ req[s].ci \in {"running", "partial"} /\ req[s].gbase = n)
       ~> \/ req[s].gbase = n /\ (req[s].ci = "done" \/ req[s].st = "done")
          \/ \E i \in (n + 1)..Len(base) : base[i].how = "switch"
+
+\* A gate in flight on a base that moved, whose CI no runner has taken, is
+\* let go and rebuilt on the tip (Glenn 2026-11-15: a base move lets the
+\* in-flight group go), even if its CI never starts (QueuedLiveSpec: no
+\* fairness for CIStarts): it never waits on CI of a base that is gone.
+MovedQueuedLetsGo ==
+  \A s \in Streams, n \in 1..8 :
+    (req[s].st = "sent" /\ req[s].ci = "queued" /\ req[s].gbase = n /\ Len(base) > n)
+      ~> \/ req[s].gbase # n
+         \/ req[s].st # "sent"
+         \/ req[s].ci # "queued"
+
 
 \* A merging card in a request whose gate completed red on the base's own
 \* reds lands with no human step (SharedLiveSpec, Flaky off), unless base

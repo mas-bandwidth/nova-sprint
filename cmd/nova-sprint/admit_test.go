@@ -223,6 +223,9 @@ func TestLandedEvenWhenTheLockFailsToRelease(t *testing.T) {
 // landChecks is the landing's forge as admission's Checks reaches it: only
 // Checks answers (any other method is a nil interface call, a test failure).
 func (f *landChecks) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+func (f *landChecks) RunsAt(context.Context, string, string, string) ([]forge.Run, error) {
+	return nil, nil
+}
 
 type landChecks struct {
 	forge.Forge

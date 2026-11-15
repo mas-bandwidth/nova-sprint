@@ -39,7 +39,21 @@ func (f *fakeForge_internal) Runs(context.Context, string) ([]forge.Run, error) 
 	if f.world.runsErr != nil {
 		return nil, f.world.runsErr
 	}
-	return slices.Clone(f.world.runs), nil
+	return slices.DeleteFunc(slices.Clone(f.world.runs), func(r forge.Run) bool { return r.Status == "completed" }), nil
+}
+
+// RunsAt is the world's runs of branch at sha, completed ones included.
+func (f *fakeForge_internal) RunsAt(_ context.Context, _, branch, sha string) ([]forge.Run, error) {
+	f.call_internal("RunsAt")
+	if f.world == nil {
+		return nil, nil
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	if f.world.runsErr != nil {
+		return nil, f.world.runsErr
+	}
+	return slices.DeleteFunc(slices.Clone(f.world.runs), func(r forge.Run) bool { return r.Branch != branch || r.HeadSHA != sha }), nil
 }
 
 // CancelRun removes run id from the world's unfinished runs.
