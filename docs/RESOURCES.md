@@ -86,6 +86,15 @@ chooses where to do the work, and runs each command there through nova-reserve
 over ssh, naming what the card needs. Where the friend's session runs does not
 matter.
 
+CI comes ahead of cards. When a CI job needs CPU on a full machine, cards
+there yield to it: enough of them, lowest priority first, are paused until the
+job ends, so the machine never counts over what it has. A paused card is not
+killed and does not start over. When the job ends, paused cards are unpaused
+before any new card is dealt to that machine.
+
+Glenn: "the card yields to CI", "unpausing cards are done, before new cards are
+dealt."
+
 The dealer and a friend can choose the same machine at the same moment. That
 is safe: nova-reserve on the machine gives the room to one, and the other
 waits.
