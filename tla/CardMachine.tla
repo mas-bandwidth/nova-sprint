@@ -764,6 +764,13 @@ Add(p, ns, as) ==
 ReportHeads(c, res) ==
   IF cs[c].kind = "read" THEN {ps[c[1]].head}
   ELSE IF res = "ok" THEN Heads \ ({cs[c].prior} \cap FinishedHeads(c[1])) ELSE {0} \cup (Heads \ {cs[c].prior})
+\* The lines a fail may report. Only Repeats reads a line, and it needs two
+\* fails, so under MaxBounce 1 (one fail per behaviour) the line is fixed at
+\* 0: the choice could change no guard, and it would only double the state
+\* space of the scenarios that check everything else (a bound of the
+\* model's, like MaxBounce itself).
+FailLines == IF MaxBounce >= 2 THEN Lines ELSE {0}
+
 \* A work consumer reports ok, fail, refuted or fault; a read ok, fix or
 \* fault. The model's bound on bounces sits here, on the report that would
 \* raise them (fail, refuted, fix), so Broken and ReadFix are always enabled
@@ -778,7 +785,7 @@ Report(c, r, res, h) ==
   /\ cs[c].row = r
   /\ res \in ReportResults(c)
   /\ h \in ReportHeads(c, res)
-  /\ \E ln \in (IF res = "fail" THEN Lines ELSE {0}) :   \* a plain fail's first reason line
+  /\ \E ln \in (IF res = "fail" THEN FailLines ELSE {0}) :   \* a plain fail's first reason line
        CStep("Report", c, r, [cs[c] EXCEPT !.st = "done", !.res = res, !.head = h, !.line = ln])
 
 \* Withdraw fails a live consumer, with its last pushed head h when it has
