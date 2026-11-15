@@ -45,8 +45,8 @@ The number is approximate, and that is accepted. Glenn: "this will all be
 approximate, but better than what we have which is weirdly non-scientific
 around guessing the # of cards per-machine".
 
-Where the number comes from is likely a benchmark, run on each machine, that
-gives a CPU score per core. Glenn: "we might need to benchmark machines to work
+The number comes from a benchmark run on each machine
+([Scoring a machine](#scoring-a-machine)). Glenn: "we might need to benchmark machines to work
 out their CPU score per-core, and also consider hyperthreading." Two
 hyperthreads on one core are not two cores, so the benchmark measures the whole
 machine with every thread busy and the machine's number is what it measured,
@@ -220,6 +220,39 @@ decides where to send work from what each machine reports it has free. That
 report can be a moment old, so work that arrives to find no room waits for it
 there, as it does for a slot today.
 
+## Scoring a machine
+
+The anchor and the benchmark are Rowan's choice, at Glenn's ask ("you
+decide."). His to overrule.
+
+**The benchmark** is one small Go program in nova-tools, with no dependencies,
+the same binary on every machine. It does a fixed mix of the kind of work a
+compiler and a test run do: building and walking trees and maps, compressing,
+hashing and sorting. It runs for a few seconds and counts how much it got done.
+
+It runs twice:
+
+1. **Every thread busy.** This is the machine's score. Hyperthreads and slow
+   cores are in the measurement, so neither needs a rule of its own.
+2. **One thread.** This is the speed of the machine's best core, and it is
+   what decides `fast-core` (below).
+
+It runs when a machine is set up and whenever its owner asks, holding the whole
+machine through nova-reserve so nothing else is running while it measures.
+
+**The anchor.** One CPU unit is a fixed score, written as a constant in the
+benchmark. The constant is set once, so that one CPU unit is one core of hulk
+with every core busy, and then it does not move. So a request reads as "this
+many cores of our slow machine", every faster machine has more CPU units than
+cores, and a machine that is retired takes nothing with it.
+
+**A machine's CPU units** are its every-thread score divided by the constant,
+rounded down to a whole number, at least 1. Rounding down means a machine never
+claims compute it did not show.
+
+The number is written to nova-config. An owner can also set it by hand, and
+nova-config's history says which it was.
+
 ## From CPU units to cores
 
 This rule is Rowan's, at Glenn's ask ("work out something good.
@@ -284,12 +317,9 @@ particular machine or whatever."
 
 These are Glenn's to decide before this layer is built.
 
-1. **What one CPU unit is worth, and how a machine is scored.** The numbers on
-   machines and on cards need a shared anchor, so that `cpu 4` means the same
-   amount to everyone who writes it. A benchmark would define it: one CPU unit
-   is a fixed score. Which benchmark, where it lives (nova-tools is the likely
-   home), and whether a machine's number can also be set by hand are not
-   chosen.
+1. **The speed that makes a core fast.** `fast-core` needs one line: the
+   one-thread score a core must reach. It is set after the fleet has been
+   measured, from the numbers, and not before.
 2. **How a card states its resources.** The coordinator decides them for each
    piece of work. Where they are written (a line of the brief, as tier and
    routes are today), whether a card's reads are stated apart from its work,
