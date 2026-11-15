@@ -53,7 +53,7 @@ func (e *Engine) checkMergeQueue(ctx context.Context, r *checkReport, snap store
 	}
 	since, floor, err := e.mergingSince(ctx, snap)
 	if err != nil {
-		r.red(refuse("merge queue: "+errText(err), "nova-sprint check again"))
+		r.red(RefusalOr(err, refuse("merge queue: "+errText(err), "nova-sprint check again")))
 		return
 	}
 	now := e.Now()

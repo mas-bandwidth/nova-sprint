@@ -134,7 +134,7 @@ func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) 
 		base := slices.ContainsFunc(f.w.base, func(e walkEntry_internal) bool { return e.sha == sha })
 		reds := f.w.reds_internal(sha)
 		r := forge.CheckRollup{SHA: sha, State: forge.CheckGreen, Failing: failingOf_internal(reds), Ran: walkChecks, URL: walkJob}
-		ci, res := "done", map[bool]string{true: "red", false: "green"}[len(reds) > 0]
+		var ci, res string
 		switch {
 		case sha == f.gate:
 			ci, res = f.ci, f.res
@@ -142,7 +142,8 @@ func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) 
 			ci, res = "running", "none" // a gate new to the request
 		default: // a base tip's own run: test alone, never lint
 			r.Ran, r.Failing = []string{"test"}, []string{"test"}
-			res = map[bool]string{true: "red", false: "green"}[slices.Contains(reds, "test")]
+			ci, res = "done", map[bool]string{true: "red", false: "green"}[slices.Contains(reds, "test")]
+
 		}
 		switch {
 		case f.absent && !base:
