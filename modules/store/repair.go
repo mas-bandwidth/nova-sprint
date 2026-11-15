@@ -107,4 +107,3 @@ func (p *PG) restoreLostRows(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	}
 	return names, nil
 }
-
