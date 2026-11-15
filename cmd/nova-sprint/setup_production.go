@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
@@ -710,7 +711,10 @@ func (p productionSetup) validateRunService(run verbs.FleetService) error {
 	if p.cfg.BusUser != "" {
 		expected = append(expected, "NOVA_BUS_PASSWORD")
 	}
-	actual := append([]string(nil), run.Keys...)
+	// GH_GATE_TOKEN is optional: the run's git and gh take it as their one
+	// credential when nova-secrets exec puts it in (forge.TokenEnv), so no
+	// call reaches the macOS keychain. Any other extra name is refused.
+	actual := slices.DeleteFunc(append([]string(nil), run.Keys...), func(k string) bool { return k == forge.TokenEnv })
 	slices.Sort(expected)
 	slices.Sort(actual)
 	if !slices.Equal(actual, expected) {
@@ -1029,7 +1033,10 @@ func selectRunService(rows []setupServiceRow, host string) (verbs.FleetService, 
 		if row.Machine != host || row.Seat == "" || row.Every != 0 || !row.Keepalive || !row.Enabled || row.Log != "" || len(row.Argv) != 4 || (row.Argv[0] != "nova-sprint" && !filepath.IsAbs(row.Argv[0])) || row.Argv[1] != "run" || row.Argv[2] != "--listen" || row.Argv[3] == "" {
 			return verbs.FleetService{}, false
 		}
-		for key := range row.Env {
+		for key, value := range row.Env {
+			if guard, ok := verbs.GitGuardEnv[key]; ok && value == guard { // the keychain guard, optional
+				continue
+			}
 			if key != "NOVA_PG_DSN" && key != "NOVA_BUS_REDIS" && key != "NOVA_BUS_USER" && key != "NOVA_PG_PASSWORD_ENV" && key != run.MachineEnv {
 				return verbs.FleetService{}, false
 			}

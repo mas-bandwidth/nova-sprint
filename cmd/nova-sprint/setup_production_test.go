@@ -651,3 +651,35 @@ func TestContinuationWriteSurvivesALiveRun(t *testing.T) {
 		t.Fatalf("a continuation over beats: %q %v after %d beats", written, err, 100-beating.n)
 	}
 }
+
+// The live sprint-run record (2026-11-15) carries GH_GATE_TOKEN, the run's
+// optional git and gh credential, and the keychain guard
+// GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 (never the macOS keychain):
+// up takes both as optional, and still refuses any other extra key or
+// variable, or a guard variable with another value.
+func TestRunServiceTakesTheGateTokenAndTheKeychainGuard(t *testing.T) {
+	t.Parallel()
+	row := setupServiceRow{Name: "sprint-run", Machine: "studio", Seat: "studio", Keys: "GH_GATE_TOKEN,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD", Argv: []string{"nova-sprint", "run", "--listen", "100.100.1.2:8080"}, Keepalive: true, Enabled: true,
+		Env: map[string]string{"NOVA_BUS_REDIS": "100.100.1.3:6379", "NOVA_BUS_USER": "bus", "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}}
+	service, ok := selectRunService([]setupServiceRow{row}, "studio")
+	if !ok {
+		t.Fatal("the live record's shape was refused")
+	}
+	p := productionSetup{cfg: productionSetupConfig{Host: "studio", BusRedis: "100.100.1.3:6379", BusUser: "bus"}}
+	if err := p.validateRunService(service); err != nil {
+		t.Fatal("GH_GATE_TOKEN refused:", err)
+	}
+	service.Keys = append(service.Keys, "UNRELATED_SECRET")
+	if err := p.validateRunService(service); err == nil {
+		t.Fatal("an extra key other than GH_GATE_TOKEN accepted")
+	}
+	row.Env["GIT_TERMINAL_PROMPT"] = "1"
+	if _, ok := selectRunService([]setupServiceRow{row}, "studio"); ok {
+		t.Fatal("a guard variable with another value accepted")
+	}
+	row.Env["GIT_TERMINAL_PROMPT"] = "0"
+	row.Env["GIT_CONFIG_GLOBAL"] = "/dev/null"
+	if _, ok := selectRunService([]setupServiceRow{row}, "studio"); ok {
+		t.Fatal("an extra variable other than the guard accepted")
+	}
+}
