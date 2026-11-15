@@ -244,6 +244,19 @@ appear as holds on the machine they run on, each with what it holds and who
 holds it. This works because all of them go through the same holds: nothing
 that uses a machine is invisible.
 
+## Producer cards and consumer cards
+
+There are two types of card, and resources touch only one of them.
+
+A **producer card** is the unit of work in a stream. Producer cards do not
+change at all. *Settled.* Glenn: "producer cards -- no change at all."
+
+A **consumer card** is one go at a producer's work: a work attempt or a read.
+It is the consumer that runs, so it is the consumer that holds resources.
+Today a consumer is tied to CPU only by taking one of a machine's width.
+Glenn: "consumer cards are effectively, mapped to CPU implicitly by width
+per-machine".
+
 ## Two views
 
 **The friend view** is there to see that friends are working. It is centered
