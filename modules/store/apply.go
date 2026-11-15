@@ -25,6 +25,9 @@ type txn interface {
 	// inHand is one consumer row holds live (ready or working), the first
 	// by id, and false when it holds none
 	inHand(row string) (string, bool, error)
+	// inStream is one card of the epoch that names stream, in any state,
+	// the first by id, and false when none does
+	inStream(stream string) (string, bool, error)
 	open() error // epoch n = n + 1; later puts go to the new epoch
 	putCard(c Card) error
 	putStream(s Stream) error
@@ -423,8 +426,13 @@ func (w *work) mustJudgement(id string) (Judgement, string, error) {
 	return j, when(err == nil && !ok, "judgement %s does not exist", id), err
 }
 
+// mustStream is stream name, refused when it does not exist or is removed
+// (round 33: a removed stream is absent to every write but PutStream).
 func (w *work) mustStream(name string) (Stream, string, error) {
 	s, ok, err := w.tx.stream(name)
+	if err == nil && ok && s.Removed {
+		return s, fmt.Sprintf("stream %s is removed; it comes back when it is added again", name), nil
+	}
 	return s, when(err == nil && !ok, "stream %s does not exist", name), err
 }
 

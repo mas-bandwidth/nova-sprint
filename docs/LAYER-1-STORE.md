@@ -776,6 +776,28 @@ model and harness wherever they are named).
   (Store.tla leaves it out); the row and hand rules are
   `tla/RowAlive.tla` Retire. Tests: `TestRound31Hash`, the conformance
   case `retire row`, `TestFunctionalMigrateRound31`.
+- A removed stream (round 33, 2026-11-15; Glenn asked to remove the empty
+  rocketnet stream, and nothing removed a stream): `Stream` gains `Removed`,
+  a column of `sprint.streams` (`boolean NOT NULL DEFAULT false`).
+  `RemoveStream{Stream}` removes it, its record kept (nothing is deleted);
+  refused when the stream does not exist or is removed, and while any card
+  of the epoch names it, in any state (`stream s1 has card c0; a stream is
+  removed only when no card names it`), so a card added between a remove's
+  plan and its commit refuses the remove. A removed stream is in no read
+  (`Snapshot`, `Read`; `Fold`, `Rebuild` and the steps' view drop it on its
+  after-image), and every write and condition but `PutStream` refuses it as
+  absent (`stream s1 is removed; it comes back when it is added again`), so
+  no card is added to it, nothing is dealt from it and nothing lands into
+  it. `PutStream` brings it back as a new stream (not held, no gates). A
+  round-32 store is upgraded in place (round32Hash,
+  testdata/schema-round32.sql). The trace projection does not project
+  RemoveStream, as for SetStreamHeld: Store.tla has no streams, and no
+  model holds which streams exist (Steps.tla's are a constant, with only
+  their hold as state). The verb is `stream remove <s> --reason <why>`.
+  Tests: `TestRound32Hash`, the conformance case `remove stream`,
+  `TestFunctionalMigrateRound32`, `TestViewFoldEqualsBuild`,
+  `TestStreamRemove`, `TestStreamRemoveRefusals`,
+  `TestStreamRemoveCardAddedBetween`.
 - A policy version read by its name (2026-11-11, no schema change):
   `Store.PoliciesNamed(kind, name, max)`, the newest max versions of a kind
   under a name, newest first, read from `sprint.policy`, which grows with

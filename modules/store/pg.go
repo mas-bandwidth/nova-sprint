@@ -123,6 +123,12 @@ const round30Hash = "c5bc4eca91743d1afeb6e00ab61db4247910ef04d887235c124c701f2a5
 // nova-config no longer names is retired), then the new hash is recorded.
 const round31Hash = "c66a2c0674ff709923dcca09806a832982353c50726adbf85e7ab4305db1246c"
 
+// round32Hash is the schema hash of round 32's schema.sql
+// (testdata/schema-round32.sql): its streams have no removed flag. Running
+// schema.sql on it adds streams.removed, false on every stream (round 33: a
+// stream no card names is removed), then the new hash is recorded.
+const round32Hash = "be93f30090944b90de4d539e04ce15497ec426b2d07c0a0d7136ab02dc8a4c54"
+
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.

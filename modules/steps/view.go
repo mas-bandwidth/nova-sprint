@@ -126,6 +126,10 @@ func (v *View) Fold(events []store.Event) {
 			v.Since = e.At
 		}
 		for _, st := range e.After.Streams {
+			if st.Removed { // in no read, as store.Fold drops it (round 33)
+				delete(v.Streams, st.Name)
+				continue
+			}
 			v.Streams[st.Name] = st
 		}
 		for _, r := range e.After.Rows {

@@ -346,6 +346,21 @@ func TestRound31Hash(t *testing.T) {
 	assert.True(t, knownOlder(round31Hash))
 }
 
+// round32Hash is the hash of round 32's schema.sql, kept in testdata: its
+// streams have no removed flag, which this build's schema adds (round 33: a
+// stream no card names is removed). Unit: reads a file in the package, no
+// store.
+func TestRound32Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round32.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round32Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round32Hash, schemaHash)
+	assert.NotContains(t, string(old), "removed boolean")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS removed")
+	assert.True(t, knownOlder(round32Hash))
+}
+
 // PoliciesNamed is the newest versions of one kind under one name, newest
 // first and at most max; another name or kind is never among them.
 func TestPoliciesNamedNewestFirst(t *testing.T) {

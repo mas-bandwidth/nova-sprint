@@ -221,6 +221,68 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	return done(waitNext, append(append(append([]string{line}, moved...), gateLines(gates)...), e.gatelessWarn(ctx, snap, store.Stream{Name: name, Gates: gates})...)...), nil
 }
 
+// runStreamRemove is `stream remove`: a stream no card of the epoch names
+// removed from the store (store.RemoveStream; Glenn, 2026-11-15, the empty
+// rocketnet stream), so it shows nowhere (show, check, the board, the deal,
+// the landing, policy's facts) until stream add puts it back. A card of any
+// state names its stream for the epoch's record, so a stream with a card
+// (landed, done and fail included) is refused, naming the count; there is
+// no force. One op, fenced as stream set is; the plan reads the cards
+// again on every try, and the store refuses a card added between the plan
+// and the commit.
+func runStreamRemove(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	name, reason := in.arg(0), in.str("reason")
+	if reason == "" {
+		return "", refuse("a stream remove needs its reason", "add --reason \"<why>\"")
+	}
+	if _, ok := snap.Streams[name]; !ok {
+		return "", refuse("no stream "+name+" in the store (a removed stream is in no read)", "nova-sprint show")
+	}
+	if err := streamEmpty(snap, name); err != nil {
+		return "", err
+	}
+	if in.has("dry-run") {
+		return done(nextAfter(in), "STREAM "+name+" removed (dry run)"), nil
+	}
+	// fenced on the streams (this one as read) and the hooks (the caller the
+	// coordinator); the cards are read again on every plan, and the store
+	// refuses the removal while any card names the stream
+	plan := func(cur store.Snapshot) (store.Op, error) {
+		if err := streamEmpty(cur, name); err != nil {
+			return store.Op{}, err
+		}
+		op := e.newOp("stream-remove", in.actor, cur, name, reason)
+		op.Expect = []store.Expect{store.UnchangedSince{Seq: cur.Seq, Streams: true, Hooks: true}} // and the caller still the coordinator it was read as
+		op.Writes, op.Note = []store.Write{store.RemoveStream{Stream: name}}, reason
+		return op, nil
+	}
+	r, _, err := e.fenced(ctx, snap, "nova-sprint show "+name, owns(hookChange(in.actor), streamChange(name)), plan)
+	if err != nil {
+		return "", err
+	}
+	return done(nextAfter(in), fmt.Sprintf("STREAM %s removed at seq %d", name, r.Seq)), nil
+}
+
+// streamEmpty refuses stream name while any card of snap names it, in any
+// state, naming how many and the first few.
+func streamEmpty(snap store.Snapshot, name string) error {
+	var ids []string
+	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
+		if snap.Cards[id].Stream == name {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	shown := strings.Join(ids[:min(len(ids), 5)], ", ")
+	if len(ids) > 5 {
+		shown += ", ..."
+	}
+	return refuse(fmt.Sprintf("stream %s has %d cards (%s); a stream is removed only when no card of the epoch names it, in any state (landed, done and fail included)", name, len(ids), shown),
+		"keep the stream, or hold it so nothing more is dealt from it: nova-sprint hold "+name+" --reason \"<why>\"; its cards end with the epoch (nova-sprint help clear)")
+}
+
 // streamChange is stream name's own record changed: what stream set read
 // and admitted (repository, base, mode, forge, gates), or the stream gone.
 // Its hold and its position are not stream set's.

@@ -91,8 +91,34 @@ func (w *work) writePutStream(v PutStream) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := Stream{Name: v.Name, Repo: v.Repo, Base: v.Base, Pos: v.Pos, Held: ok && old.Held, Mode: cmp.Or(v.Mode, StreamAuto), Forge: v.Forge, Gates: normList(old.Gates)}
+	next := Stream{Name: v.Name, Repo: v.Repo, Base: v.Base, Pos: v.Pos, Mode: cmp.Or(v.Mode, StreamAuto), Forge: v.Forge}
+	if ok && !old.Removed { // a removed stream comes back as a new one: not held, no gates
+		next.Held, next.Gates = old.Held, normList(old.Gates)
+	}
 	return "", w.putStream(old, ok, next)
+}
+
+// removeStream is RemoveStream: the stream removed, its record kept.
+// Refused when the stream does not exist or is removed already, and while
+// any card of the epoch names it, in any state (a landed, done or failed
+// card is the epoch's record and keeps its stream), so a card added between
+// a remove's plan and its commit refuses the remove rather than being left
+// in a stream no read shows.
+func (w *work) removeStream(v RemoveStream) (string, error) {
+	old, r, err := w.mustStream(v.Stream)
+	if r != "" || err != nil {
+		return r, err
+	}
+	id, named, err := w.tx.inStream(v.Stream)
+	if err != nil {
+		return "", err
+	}
+	if named {
+		return fmt.Sprintf("stream %s has card %s; a stream is removed only when no card names it", v.Stream, id), nil
+	}
+	next := old
+	next.Held, next.Removed = false, true
+	return "", w.putStream(old, true, next)
 }
 
 // setStreamGates sets a stream's gates, refused when it has them already.

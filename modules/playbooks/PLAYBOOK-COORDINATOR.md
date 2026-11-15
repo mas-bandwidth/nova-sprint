@@ -320,6 +320,10 @@ promotion; let the promotion land them, then set the base again. Its receipt nam
 merging ones have any gate built on the old base let go, and their group is built on the new
 base at the landing's next pass. Working ones finish their attempt on the old base and land
 onto the new one. Cards taken from now on, and every retry, start from the new base.
+A stream no card of the epoch names (in any state, landed, done and fail included) is removed
+with `nova-sprint stream remove <s> --reason "<why>"`; it then shows nowhere, and `stream add`
+puts it back as a new stream. A stream with any card is refused, naming how many: keep it, or
+hold it so nothing more is dealt from it.
 
 A rule every card of a stream must keep (the committed generated tree is current, the lint is
 clean) is a stream gate, never a line each brief has to remember: `--gate "<command>"` on
@@ -526,7 +530,7 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `nova-sprint unhold <card> --reason "<why>"` sends it back to `waiting`, and it is dealt again
    when its needs have landed. A consumer id is refused with its producer's id.
    A busy sprint writes while a verb runs (deals, reports, hooks). `hold`, `unhold`, `replace`,
-   `drop`, `judge`, `priority`, `relink`, `land`, `stream add`, `stream set`, `stop`, `start`,
+   `drop`, `judge`, `priority`, `relink`, `land`, `stream add`, `stream set`, `stream remove`, `stop`, `start`,
    `stats reset`, `identity`, `policy set` and `policy activate` read again by themselves when
    the write was not to their own row, stream, card, judgement, policy or your hook, up to 5
    tries; each is refused only when its own record changed, and the refusal names what changed.

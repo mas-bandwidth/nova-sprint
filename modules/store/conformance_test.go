@@ -48,6 +48,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"row gen race":            rowGenRace,
 		"row load":                rowLoad,
 		"retire row":              retireRow,
+		"remove stream":           removeStream,
 		"sentinels":               sentinels,
 		"after":                   afterOrder,
 		"no blocked state":        noBlockedState,
@@ -1877,4 +1878,42 @@ func retireRow(h *harness) {
 	got = h.snap()
 	assert.Equal(h.t, []string{"r2"}, slices.Sorted(maps.Keys(got.Rows)), "a clear carries no retired row")
 	assert.Equal(h.t, Rebuild(h.events()), got)
+}
+
+// removeStream (round 33): RemoveStream is refused while any card of the
+// epoch names the stream, whatever its state (a landed one included), and
+// for a stream that does not exist; a removed stream is in no read, the
+// fold drops it as the read does, every stream write, card put and
+// condition refuses it as absent, and PutStream brings it back as a new
+// stream (not held, no gates).
+func removeStream(h *harness) {
+	h.seed()
+	h.refused(h.op("remove s1", nil, RemoveStream{"s1"}), "stream s1 has card c0; a stream is removed only when no card names it")
+	h.ok(h.op("s2", nil, PutStream{"s2", "o/r", "main", 2, "", ""}, PutCard{Tier: "pro", Kind: "producer", ID: "d1", Stream: "s2"}, SetCardState{"d1", "landed"},
+		PutStream{"s3", "o/r", "dev", 3, "hand", "github"}, SetStreamHeld{"s3", true}, SetStreamGates{"s3", []string{"make lint"}}))
+	h.refused(h.op("remove s2", nil, RemoveStream{"s2"}), "stream s2 has card d1; a stream is removed only when no card names it")
+	h.refused(h.op("remove s9", nil, RemoveStream{"s9"}), "stream s9 does not exist")
+	h.refused(h.op("remove and add", nil, RemoveStream{"s3"}, PutCard{Tier: "pro", Kind: "producer", ID: "d2", Stream: "s3"}), "stream s3 is removed; it comes back when it is added again")
+	r := h.ok(h.op("remove s3", nil, RemoveStream{"s3"}))
+	assert.True(h.t, r.After.Streams["s3"].Removed, "the after-image carries the removal")
+	got := h.snap()
+	_, shown := got.Streams["s3"]
+	assert.False(h.t, shown, "a removed stream is in no read")
+	assert.Equal(h.t, []string{"s1", "s2"}, slices.Sorted(maps.Keys(got.Streams)))
+	assert.Equal(h.t, Rebuild(h.events()), got, "the fold drops the removed stream as the read does")
+	removed := "stream s3 is removed; it comes back when it is added again"
+	h.refusedAll([]refusal{
+		{SetStreamHeld{"s3", false}, removed},
+		{SetStreamMode{"s3", StreamAuto}, removed},
+		{SetStreamForge{"s3", ""}, removed},
+		{SetStreamGates{"s3", nil}, removed},
+		{RemoveStream{"s3"}, removed},
+		{PutCard{Tier: "pro", Kind: "producer", ID: "d2", Stream: "s3"}, removed},
+	})
+	h.refused(h.op("fenced", []Expect{StreamHeld{"s3", false}}, SetCardReason{"c1", "r"}), removed)
+	h.ok(h.op("add again", nil, PutStream{"s3", "o/r", "main", 3, "", ""}))
+	assert.Equal(h.t, Stream{Name: "s3", Repo: "o/r", Base: "main", Pos: 3, Mode: StreamAuto}, h.snap().Streams["s3"], "back as a new stream: not held, no gates")
+	assert.Equal(h.t, Rebuild(h.events()), h.snap())
+	h.ok(h.op("card in s3", nil, PutCard{Tier: "pro", Kind: "producer", ID: "d2", Stream: "s3"}))
+	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 }

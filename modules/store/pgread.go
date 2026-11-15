@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	streamCols = "name, repo, base, held, pos, mode, forge, gates"
+	streamCols = "name, repo, base, held, pos, mode, forge, gates, removed"
 	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding, red, model, usage, bounce_base`
 	rowCols    = "name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version, retired"
 	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
@@ -23,7 +23,7 @@ const (
 
 func scanStream(r pgx.Row) (Stream, error) {
 	var s Stream
-	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos, &s.Mode, &s.Forge, &s.Gates)
+	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos, &s.Mode, &s.Forge, &s.Gates, &s.Removed)
 	s.Gates = normList(s.Gates)
 	return s, err
 }
@@ -130,7 +130,7 @@ func snapshotTx(ctx context.Context, tx pgx.Tx, scope Scope) (Snapshot, error) {
 	if err != nil {
 		return s, err
 	}
-	if s.Streams, err = all(ctx, tx, scanStream, func(v Stream) string { return v.Name }, "SELECT "+streamCols+" FROM sprint.streams WHERE epoch = $1", s.Epoch); err != nil {
+	if s.Streams, err = all(ctx, tx, scanStream, func(v Stream) string { return v.Name }, "SELECT "+streamCols+" FROM sprint.streams WHERE epoch = $1 AND NOT removed", s.Epoch); err != nil {
 		return s, err
 	}
 	cardID := func(v Card) string { return v.ID }
@@ -311,6 +311,15 @@ func (t *pgTx) inHand(row string) (string, bool, error) {
 	return id, err == nil, err
 }
 
+func (t *pgTx) inStream(stream string) (string, bool, error) {
+	var id string
+	err := t.tx.QueryRow(t.ctx, "SELECT id FROM sprint.cards WHERE epoch = $1 AND stream = $2 ORDER BY id COLLATE \"C\" LIMIT 1", t.epoch, stream).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	return id, err == nil, err
+}
+
 func (t *pgTx) rows() ([]Row, error) {
 	m, err := all(t.ctx, t.tx, scanRow, func(r Row) string { return r.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1 AND NOT retired", t.epoch)
 	var out []Row
@@ -329,10 +338,10 @@ func (t *pgTx) open() error {
 }
 
 func (t *pgTx) putStream(s Stream) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos, mode, forge, gates) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos, mode, forge, gates, removed) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (epoch, name) DO UPDATE SET repo = EXCLUDED.repo, base = EXCLUDED.base, held = EXCLUDED.held, pos = EXCLUDED.pos,
-		mode = EXCLUDED.mode, forge = EXCLUDED.forge, gates = EXCLUDED.gates`,
-		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos, s.Mode, s.Forge, list0(s.Gates))
+		mode = EXCLUDED.mode, forge = EXCLUDED.forge, gates = EXCLUDED.gates, removed = EXCLUDED.removed`,
+		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos, s.Mode, s.Forge, list0(s.Gates), s.Removed)
 	return err
 }
 
