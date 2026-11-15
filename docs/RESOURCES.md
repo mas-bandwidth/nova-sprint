@@ -1,524 +1,108 @@
-# Resources
+# Resources in a sprint
 
-The layer under everything else: what a machine has, and what work takes from it.
+How the dealer uses the fleet's resources to decide where a card's work runs.
 
-This page is a design. Nothing on it is built. The rules marked *settled* are
-Glenn's, 2026-11-15; the section [Not settled](#not-settled) lists what is still
-his to decide.
+This page is a design. Nothing on it is built. It was settled with Glenn on
+2026-11-15. Rules marked *Rowan's* are choices he left to Rowan and can
+overrule.
 
-## The idea
+Resources themselves belong to nova-tools: what a machine has, tags, holds,
+CPU units and the resource view are in nova-tools `docs/RESOURCES.md`, on its
+`idea/resources` branch. They work with no sprint. This page is only what a
+sprint adds.
 
-Work requires resources, and can run anywhere those resources are provided.
+## What changes
 
-Glenn: "The actual pattern is that cards require resources, and can run anywhere
-those resources are provided. Be it CPU, memory, GPU, dev tools whatever..."
+Today a bench machine is a row with a width: its core count, at most
+`fleet_width_cap`, and at most its nova-reserve slots. Every working consumer
+takes one of the width, whatever it does.
 
-The purpose is to spread work across the fleet better than a count of cards per
-machine can. Glenn: "basically, we want to distribute work better."
+A machine's width goes away, replaced by its CPU and memory. Glenn: "machine
+width in fleet definitely goes away and is replaced by cpu resource."
 
-## What a resource is
-
-A resource is a name and a whole number. *Settled.*
-
-There is one kind of resource. CPU, memory, a GPU and an attached device are
-all the same record: a name and an integer amount. Amounts are never fractions.
-
-| Resource | Unit | Example on a machine |
-| --- | --- | --- |
-| `cpu` | CPU units | `cpu 16` |
-| `memory` | gigabytes | `memory 64` |
-| a thing the machine has or does not have | amount 1 | `ps5 1` |
-
-### CPU units
-
-CPU is measured in CPU units, not cores. *Settled.*
-
-Glenn: "i like cpu units", "not cores."
-
-A CPU unit is an amount of compute. It is not a core, because cores differ in
-power from machine to machine. A machine has one CPU number: how much compute
-it has, in CPU units. A stronger machine has a higher number than a weaker one
-with the same core count. Fitting work onto machines uses that number and
-nothing else.
-
-The number is approximate, and that is accepted. Glenn: "this will all be
-approximate, but better than what we have which is weirdly non-scientific
-around guessing the # of cards per-machine".
-
-The number comes from a benchmark run on each machine
-([Scoring a machine](#scoring-a-machine)). Glenn: "we might need to benchmark machines to work
-out their CPU score per-core, and also consider hyperthreading." Two
-hyperthreads on one core are not two cores, so the benchmark measures the whole
-machine with every thread busy and the machine's number is what it measured,
-not a thread count times a single-thread score.
-
-The unit is coarse. Work asks for a small whole number, and there is nothing
-smaller than one unit.
-
-Glenn: "the idea is to keep it simple and not have it super fine grained."
-
-Work says how much compute it needs, and the machine it lands on works out how
-many of its own cores that is. The same request is more cores on a slow machine
-than on a fast one.
-
-Glenn's example: "we could reserve say, 4 cores for a CI runner doing golang
-tests that must finish in under 2m on a slower machine like hulk". The runner's
-job states its CPU units once. On hulk that reserves 4 cores; on a faster
-machine it reserves fewer, and the tests still finish in time.
-
-### Memory
-
-Memory is in whole gigabytes. *Settled.*
-
-### Things
-
-A thing is a resource with amount 1. It cannot be split: work has it or does
-not. *Settled.*
-
-Glenn: "the resource would be defined as having amount=1, so you can't split it
-up, you have it or not."
-
-Work that needs a PS5 requires `ps5 1` and holds the whole of it while it runs.
-Work that does not need one does not name it at all.
-
-## Tags
-
-A tag is a name a machine has or does not have, such as `windows`, `mac` or
-`linux`. *Settled.* Work names the tags it needs, and runs only on a machine
-that has all of them.
-
-Glenn: "i would like also tags like 'windows', 'mac', 'linux' etc.", "so we can
-also say, we need this sort of os", "and each fleet machine registers with
-these tags, again, it's just configuration".
-
-A tag is not an amount and is never held. Any number of pieces of work can run
-on a `linux` machine at once; the tag only says where work may go. A resource
-says how much of something work takes while it is there.
-
-Tags are not only for operating systems. `gpu` and `metal` are tags too
-(Glenn: "we could also add tags like 'gpu' 'metal'"): work that renders with
-Metal names `metal` and goes only to a machine that has it.
-
-On the fleet (Glenn's example):
-
-| Machine | Tags |
+| Where width is today | What it becomes |
 | --- | --- |
-| captain | `gpu` |
-| studio | `gpu`, `metal` |
-| mini-m5 | `gpu`, `metal` |
+| The roster sets a bench's width from its cores, capped | The machine's tags, CPU units and memory, from nova-config |
+| The store refuses working consumers above a row's width | Work is refused a hold that would exceed the machine's CPU or memory |
+| The dealer asks whether a row has room in its width | The dealer asks which machine has the card's tags, and its CPU and memory free |
+| The board shows working cells out of width | The board shows CPU and memory bars |
 
-Work that names `gpu` can go to any of the three. Work that names `gpu` and
-`metal` can go to studio or mini-m5, and never to captain.
+`fleet_width_cap` has nothing left to bound.
 
-The same hardware can be a tag or a resource, and the choice says whether work
-shares it. `gpu` as a tag means "this machine has a GPU", and everything sent
-there may use it at once. `gpu 1` as a resource means the work holds the GPU
-and nothing else gets it until the work ends.
+Tier, routes and a friend's width stay as they are.
 
-Each machine's tags are configuration, kept in nova-config with its resources.
+## Cards
 
-## Machines provide
-
-Each machine provides a set of resources: for each name, an amount. A machine
-that does not list a resource does not have it.
-
-The fleet's resources are kept in nova-config, beside its machines. *Settled.*
-
-The link runs both ways. *Settled.* From a resource, the fleet can be asked
-which machines have it. From a machine, it can be asked which resources it has.
-
-Glenn: "resources point to machines that have them in fleet. machines can also
-walk to the resources tehy have. bidirectional."
-
-At any moment each resource on a machine also has an amount in use: the sum of
-what the work running there holds.
-
-## A uniform fleet
-
-The default set of tools is installed on every machine with ansible, so the
-fleet is as uniform as it can be made. *Settled.*
-
-Glenn: "the default set of stuff done with ansible. we try to push the fleet to
-be as uniform as we can, for flexibility."
-
-So a resource is not a list of what is installed. Work can assume the default
-set anywhere. A resource names what is counted (CPU, memory) or what only some
-machines have (a GPU, a console and its toolchain).
-
-## Work requires
-
-Each piece of work requires a set of resources: for each name, an amount of at
-least 1.
-
-Work fits on a machine when, for every resource it requires, the amount in use
-plus the amount required is at most what the machine provides.
-
-Work acquires everything it requires before it starts, holds it while it runs,
-and releases all of it when it ends, however it ends.
-
-| Requirement | Meaning |
-| --- | --- |
-| `cpu 4` | holds 4 of the machine's CPU units |
-| `memory 8` | holds 8 GB |
-| `ps5 1` | holds the machine's PS5 |
-
-### How a card states it
-
-A card describes what it needs as tags and numbers, and a number left out
-means 1. *Settled.*
-
-Glenn: "card describes the resources it needs via tags and numbers (a number
-omitted assume 1)".
-
-A card that needs four CPU units, eight gigabytes, a Mac with Metal and the
-PS5 says:
-
-    cpu 4, memory 8, mac, metal, ps5
-
-`cpu 4` and `memory 8` are amounts. `ps5` has no number, so it is `ps5 1`.
-`mac` and `metal` are tags. The card's writer does not have to know which
-names are tags and which are resources: the fleet's configuration says what
-each name is, and a name with no number reads correctly either way.
-
-### Work across several machines
-
-An idea, not settled. Glenn: "maybe a card could even grab resources across
-mulitple machines for a friend to work on".
-
-Some work needs more than one machine at once: a renderer checked on a Mac
-with Metal and on a Windows machine with a GPU. A card could then state more
-than one set of needs, each set held on one machine:
-
-    mac, metal, cpu 4
-    windows, gpu, cpu 4
-
-The friend working the card holds both and works across them from its one
-session.
-
-A card that holds part of what it needs while it waits for the rest can block
-another card doing the same, for ever. So the rule would be all or nothing: a
-card holds every set it states, or none of them.
-
-### Who says what work requires
-
-The coordinator, by judgement, for each piece of work. *Settled.* There is no
-default amount of CPU or memory.
-
-Glenn: "it depends on the work. a read is cheaper yes, but coding might require
-compiling and tests and so on. you really need to just use your judgement. in
-short, 'what resources do you want for this work, as coordinator?'"
-
-A read needs less than the work it reads. Work that compiles and runs tests
-needs more than work that edits a page.
-
-## Levels
-
-A friend is at a higher level than the machines. Glenn: "so the friend is
-higher level".
-
-1. **Machines** have tags and resources. This is configuration.
-2. **Holds** are resources acquired on a machine for a while, and released.
-3. **Whoever places the work** acquires holds. The dealer decides where a
-   card's work runs, using resources. A friend chooses where its own work
-   runs. Glenn: "the AI picks and chooses." A CI runner holds what its jobs
-   need.
-4. **Cards** say what the work needs, as the coordinator judged it. Cards are
-   the primary thing: Glenn: "the primary cards are the actual work being
-   done".
-
-Fleet work as its own kind of thing goes away. *Settled.* Glenn: "the fleet
-work, that entirely goes away.", "that is just, the dealer deciding where to
-run work using resources, and the fleet view now becomes effectively a resource
-view."
-
-Today the fleet is a set of rows, one per bench machine, each dealt cards up to
-its width. With resources a machine is not a row that takes cards. The work is
-the cards. For each one the dealer decides where it runs, by what it needs and
-what is free. The fleet view stops showing machines as workers and shows the
-fleet's resources: what each machine has, and what is held.
-
-The resource view shows everything that is using resources, not only cards.
-Glenn: "the resource view shows what resources are being used.", "(including
-everything, CI etc...)". A CI job, a friend's build and a card's work all
-appear as holds on the machine they run on, each with what it holds and who
-holds it. This works because all of them go through the same holds: nothing
-that uses a machine is invisible.
-
-## Producer cards and consumer cards
-
-There are two types of card, and resources touch only one of them.
+There are two types of card, and resources touch only one.
 
 A **producer card** is the unit of work in a stream. Producer cards do not
-change at all. *Settled.* Glenn: "producer cards -- no change at all."
+change at all.
 
 A **consumer card** is one go at a producer's work: a work attempt or a read.
 It is the consumer that runs, so it is the consumer that holds resources.
-Today a consumer is tied to CPU only by taking one of a machine's width.
-Glenn: "consumer cards are effectively, mapped to CPU implicitly by width
-per-machine".
 
-Consumer cards still exist for work the dealer places on the fleet. *Settled.*
-What changes is how the fleet is shown. Today the board draws the fleet as
-machines with their consumer cards. That goes: the fleet is drawn as resources.
+A card states what its work needs as one list of tags and numbers, and a
+number left out means 1:
 
-Glenn: "consumer cards, now, they still exist for fleet workk, but we're not
-visualizing them like we do not, acros fleet.", "instead we visualize the fleet
-as resources".
+    cpu 4, memory 8, mac, metal
 
-## Two views
+The coordinator decides the list for each card, by judgement. There is no
+table of defaults. Glenn: "it depends on the work. a read is cheaper yes, but
+coding might require compiling and tests and so on. you really need to just
+use your judgement. in short, 'what resources do you want for this work, as
+coordinator?'"
 
-**The friend view** is there to see that friends are working. It is centered
-on cards, as the board is today: each friend, and the cards it is working.
-Resources are behind it, not on it.
+A card that names no `cpu` or `memory` holds 1 of each (*Rowan's*).
 
-Glenn: "friend view is just there for when we are making sure friends are
-working. it's a card centric view, like we have now, but behind it -- is
-resources."
+## Who decides where work runs
 
-**The resource view** is the fleet: each machine, what it has, and every hold
-on it. It answers one question: are we using the fleet's resources fully, yes
-or no.
+The dealer decides for the work it places on fleet machines. A friend decides
+for the work it is dealt.
 
-Glenn: "because that's the real view we need. are we using resources fully
-yes/no."
+Glenn: "dealer decides for what previously was fleet work, friend decides for
+work they are dealt."
 
-On the board, the section called Fleet today becomes Resources. *Settled.* Its
-rows are still the machines. Where a row shows its width and its working cells
-today, it shows its CPU, its memory and its tags.
+**The dealer** places a consumer on a machine that has every tag the card
+names and has its CPU and memory free. Higher priority work is placed first.
+Nothing running is stopped to make room (*Rowan's*).
 
-Glenn: "the current view we have for 'Fleet' turns into 'Resources' and we have
-a new view there, resource centric where the width is now, basically CPU,
-memory, [tags] like gpu etc."
-
-A machine's bars are split by type of work, in the colors the board already
-uses for its working cells: blocker, critical, fix, read and work. *Settled.*
-Who is doing the work (a friend, or work the dealer placed) is not shown.
-
-Glenn: "I don't care about 'card work' 'friend work' but i care about type of
-work", "so the same colors as before."
-
-CI is a type of work the board has no color for today. It needs one.
-
-The load column goes. *Settled.* Glenn: "i would suggest we remove load %
-column entirely." What is held on a machine says how busy it is.
-
-The measurement behind it stays. *Settled.* Each machine still reports its
-real CPU use; it is kept for checking and is not drawn on the board.
-
-Glenn: "you should still have this data, so you can be aware of it internalyl
-and check it".
-
-It is the check on the whole design. What is held is a plan; what the machine
-measures is what happened. A machine far busier than its holds has something
-running without a hold. Work that uses far more or far less than it held was
-given the wrong numbers, and the coordinator learns to ask better.
-
-The Friends section still draws consumer cards. What those cards hold is shown
-in Resources, not beside the friend.
-
-Glenn: "the friend stuff, these are still a visualizion of the consumer cards,
-but behind them the actual resource being used are shown in the resources
-section".
-
-A card links the two. In the friend view it is a piece of work a friend is
-doing. In the resource view it is one or more holds on machines.
-
-## What takes resources
-
-A consumer of a card (each work attempt and each read), wherever the dealer or
-a friend runs it, and a GitHub runner's job. All state what they require in the
-same names and units, and all draw on the same amounts of the machine the work
-runs on.
-
-## CI runners
-
-A CI runner is a thing in the fleet that has tags and takes resources, like
-any other work. *Settled.*
-
-Glenn: "previously, they were sort of an invisible resource. now they should
-become a thing that has tags, and grabs resources too".
-
-Today nova-config gives a machine a count of runners and their labels, and what
-a runner's jobs use is counted nowhere. Card work only stays out of CI's way by
-running at a lower priority.
-
-With resources, a runner states what it requires in the same names and units
-as a card, and what it holds comes out of the same amounts on its machine. Its
-tags are the labels a workflow selects it by.
-
-## On the machine: nova-reserve
-
-nova-reserve is how a machine holds its resources. *Settled.* It is kept and
-upgraded.
-
-Glenn: "nova-reserve is superceded by this design, or implements it. it is a
-preview of this design, basically. keep and upgrade nova-reserve".
-
-Today nova-reserve already does the whole job for one unnamed resource. A
-machine has a capacity in slots. A command run through it waits for a slot,
-holds it while it runs, and frees it when it ends, however it ends. On Linux it
-pins the command to that slot's share of the CPUs, so `nproc`, `make -j` and Go
-size themselves to what was reserved. People, AIs and CI on the machine all go
-through the same capacity.
-
-The upgrade is from one number to named numbers. The machine's capacity becomes
-its resources from nova-config. A command states what it requires by name, and
-nova-reserve holds exactly that.
-
-nova-reserve on the machine is the authority on what is held there. The sprint
-decides where to send work from what each machine reports it has free. That
-report can be a moment old, so work that arrives to find no room waits for it
-there, as it does for a slot today.
-
-## Scoring a machine
-
-The anchor and the benchmark are Rowan's choice, at Glenn's ask ("you
-decide."). His to overrule.
-
-**The benchmark** is one small Go program in nova-tools, with no dependencies,
-the same binary on every machine. It does a fixed mix of the kind of work a
-compiler and a test run do: building and walking trees and maps, compressing,
-hashing and sorting. It runs for a few seconds and counts how much it got done.
-
-It runs twice:
-
-1. **Every thread busy.** This is the machine's score. Hyperthreads and slow
-   cores are in the measurement, so neither needs a rule of its own.
-2. **One thread.** This is the speed of the machine's best core, and it is
-   what decides `fast-core` (below).
-
-It runs when a machine is set up and whenever its owner asks, holding the whole
-machine through nova-reserve so nothing else is running while it measures.
-
-**The anchor.** One CPU unit is a fixed score, written as a constant in the
-benchmark. The constant is set once, so that one CPU unit is one core of hulk
-with every core busy, and then it does not move. So a request reads as "this
-many cores of our slow machine", every faster machine has more CPU units than
-cores, and a machine that is retired takes nothing with it.
-
-**A machine's CPU units** are its every-thread score divided by the constant,
-rounded down to a whole number, at least 1. Rounding down means a machine never
-claims compute it did not show.
-
-The number is written to nova-config. An owner can also set it by hand, and
-nova-config's history says which it was.
-
-## From CPU units to cores
-
-This rule is Rowan's, at Glenn's ask ("work out something good.
-implementatino detail really."). His to overrule.
-
-A machine knows two numbers about its CPU: its CPU units and its cores (the
-CPUs the operating system shows, hyperthreads included). Work that asks for
-some CPU units holds a whole number of the machine's cores:
-
-    cores held = units asked x machine's cores / machine's CPU units, rounded up, at least 1
-
-The machine counts in its own cores. Work fits when the cores already held plus
-the cores it would hold are at most the cores the machine has. So a machine
-never gives out more cores than it has, and work never gets less compute than
-it asked for. On a machine with strong cores it can get a little more.
-
-nova-reserve pins the work to the cores it holds, so the work's own tools see
-that many and run that many jobs.
-
-With made-up numbers: hulk has 16 cores and 16 CPU units, so `cpu 4` holds 4
-cores there. A machine with 16 stronger cores and 48 CPU units holds 2 cores
-for the same `cpu 4`.
-
-## Work that cannot be split
-
-This rule is Rowan's, at Glenn's ask ("think up something good."). His to
-overrule.
-
-More cores do not help work that runs on one thread. It needs one fast core.
-
-The benchmark that scores a machine also times one thread on each kind of core
-it has. A machine gets a resource, `fast-core`, whose amount is how many of its
-cores clear a fixed speed. A machine with no such cores has none.
-
-Work that cannot be split requires `cpu 1` and `fast-core 1`. It is sent only
-to a machine with a fast core free, holds that core while it runs, and is
-pinned to it. Nothing new is needed to do this: `fast-core` is a resource like
-any other, counted and held the same way.
-
-## What this replaces
-
-Today a bench has a width: its core count, at most `fleet_width_cap`, and at
-most its `nova-reserve` slots. Every working consumer takes one of the width,
-whatever it does. A consumer can state a tier and routes and nothing else.
-
-A machine's width goes away, replaced by its `cpu` resource. *Settled.* How
-many consumers a machine works at once follows from what each one requires and
-what the machine has left. `fleet_width_cap` has nothing to bound. A route a
-machine serves is a tag it has.
-
-Glenn: "machine width in fleet definitely goes away and is replaced by cpu
-resource."
-
-The bench machine as a row that is dealt cards goes away with the width.
-*Settled.* The dealer places each piece of work on a machine by resources, and
-the fleet view becomes a resource view.
-
-A friend's work goes wherever in the fleet it needs to, by the card and its
-resources. *Settled as the aim.*
-
-Glenn: "my ideal would be that friend work can be done across the fleet,
-wherever it needs to do its work, based on the card and resources."
-
-Glenn: "the goal is, friends can run work and grab resources to do that work,
-as they see fit, across the entire fleet, even if they are kinda driving from
-studio (doing the session there)".
-
-Where a friend's session runs does not matter. What matters is where it
-chooses to do the work, because that is where the resources are acquired.
+**A friend** takes a card as it does today, up to its own width. It then
+chooses where to do the work: it asks for the resources the card names, gets a
+hold on a machine that has them, and works there over ssh. Where the friend's
+session runs does not matter.
 
 Glenn: "a friend can run, and ACQUIRE resources to do work, from where it is
 running (doesn't matter much), what matters is where it chooses to do the
 work."
 
-So a friend is not tied to one machine, and it is the friend that grabs. Its
-session stays where it is. When it has work to run, it asks the fleet for the
-resources that work needs, gets a hold on a machine that has them, and runs
-the work there over ssh. It may do this as often as its work calls for: a
-build on one machine, a GPU test on another.
+Friends run today in apps on studio and the macbook. Until a friend can ask
+the whole fleet for a hold, its work runs on the machine its app is on.
 
-This needs one thing the machine-local nova-reserve does not have: a way to
-ask the whole fleet. A friend, a person or a worker names tags and amounts,
-and is given a machine and a hold on it.
+## The board
 
-A friend keeps its width for now. *Settled.* It is the friend's own limit: how
-many pieces of work it takes on at once. It says nothing about where they run.
+The section called Fleet becomes Resources. Its rows are still the machines.
+Where a row shows its width and working cells today, it shows its CPU, its
+memory and its tags.
 
-Glenn: "leave friend width the same for now".
+Glenn: "the current view we have for 'Fleet' turns into 'Resources' and we have
+a new view there, resource centric where the width is now, basically CPU,
+memory, [tags] like gpu etc."
+
+It answers one question: are we using the fleet's resources fully, yes or no.
+
+- **Bars are split by type of work,** in the colors the board already uses for
+  working cells: blocker, critical, fix, read and work. Who is doing the work
+  is not shown. CI is a type of work the board has no color for yet.
+- **Everything that holds is shown,** CI included.
+- **The load column goes.** What is held says how busy a machine is. The
+  measurement behind it is kept for checking and not drawn.
+- **Friends is unchanged.** It still draws each friend's consumer cards
+  against its width. What those cards hold shows in Resources.
 
 ## Not settled
 
-These are Glenn's to decide before this layer is built.
-
-1. **The speed that makes a core fast.** `fast-core` needs one line: the
-   one-thread score a core must reach. It is set after the fleet has been
-   measured, from the numbers, and not before.
-2. **A card's reads, and a card that names no CPU.** A read is cheaper than the
-   work it reads, so whether a card states its reads' needs apart from its
-   work's is not chosen. Nor is what a card holds when it does not name `cpu`
-   or `memory` at all. Rowan's reading of "a number omitted assume 1" is that
-   it then holds 1 of each, so no card is refused for leaving them out.
-3. **How a friend works on a machine it is sent to.** The aim is settled; the
-   means is not designed. Friends today run in apps on studio and the macbook
-   (Glenn: "this is tempered somewhat by the fact that right now, friends run
-   on studio and macbook via apps."), and a friend works where its session
-   runs. The fleet-wide ask (name tags and amounts, get a machine and a hold),
-   how the hold is kept while the friend's command runs over ssh (Glenn: "eg.
-   the friend ssh's there"), and how it is freed if the friend's session dies
-   are not designed. Until they exist, a friend's work runs on the machine its
-   app is on.
-4. **When a runner holds its resources.** GitHub picks the runner for a job,
-   not the fleet, so a runner cannot be moved to where there is room. Either a
-   runner holds what it requires all the time, busy or idle, or it acquires
-   when a job starts and the job waits if the machine is full. Holding all the
-   time is simple and keeps CI fast; it also keeps those resources from cards
-   while the runner is idle.
-5. **Operating system and architecture as tags.** nova-config already holds
-   each machine's operating system and architecture. Whether those become its
-   tags automatically, or every tag is written by hand, is not chosen.
+1. **A card's reads.** A read is cheaper than the work it reads. Whether a
+   card states its reads' needs apart from its work's is not chosen.
+2. **The ready, done and ok% columns on a machine's row.** They count cards per
+   machine, which means less once a machine is not a row that takes cards.
+3. **A color for CI** on the board.
