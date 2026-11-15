@@ -99,6 +99,17 @@ Tags are not only for operating systems. `gpu` and `metal` are tags too
 (Glenn: "we could also add tags like 'gpu' 'metal'"): work that renders with
 Metal names `metal` and goes only to a machine that has it.
 
+On the fleet (Glenn's example):
+
+| Machine | Tags |
+| --- | --- |
+| captain | `gpu` |
+| studio | `gpu`, `metal` |
+| mini-m5 | `gpu`, `metal` |
+
+Work that names `gpu` can go to any of the three. Work that names `gpu` and
+`metal` can go to studio or mini-m5, and never to captain.
+
 The same hardware can be a tag or a resource, and the choice says whether work
 shares it. `gpu` as a tag means "this machine has a GPU", and everything sent
 there may use it at once. `gpu 1` as a resource means the work holds the GPU
