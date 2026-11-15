@@ -6,10 +6,11 @@ This page is a design. Nothing on it is built. It was settled with Glenn on
 2026-11-15. Rules marked *Rowan's* are choices he left to Rowan and can
 overrule.
 
-Resources themselves belong to nova-tools: what a machine has, tags, holds,
-CPU units and the resource view are in nova-tools `docs/RESOURCES.md`, on its
-`idea/resources` branch. They work with no sprint. This page is only what a
-sprint adds.
+Resources themselves belong to nova-tools: what a machine has, tags, holds and
+CPU units are in nova-tools `docs/RESOURCES.md`, on its `idea/resources`
+branch. They work with no sprint. This page is only what a sprint adds: the
+dealing, and the view. nova-tools answers questions about resources; the
+picture of them is the sprint's board.
 
 ## What changes
 
