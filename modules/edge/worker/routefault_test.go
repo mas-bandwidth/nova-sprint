@@ -25,6 +25,9 @@ func TestMissingRouteNamesWhatTheBenchLacks(t *testing.T) {
 		{"a missing command run by the shell itself", "sh: 1: luau: not found", "luau", 127},
 		{"bash's missing command", "bash: line 1: sbcl: command not found", "sbcl", 127},
 		{"zsh's missing command", "zsh: command not found: dart", "dart", 127},
+		// A script's own line names the script (measured: bash, dash).
+		{"a bash script's missing command", "./t.sh: line 2: nosuchtoolxyz: command not found\nmake: *** [s] Error 127", "nosuchtoolxyz", 2},
+		{"a dash script's missing command", "./t.sh: 2: zig: not found", "zig", 127},
 		// make runs a plain recipe itself (measured: GNU make 3.81 and 4.4.1).
 		{"make 3.81's missing command", "make: nosuchtoolxyz: No such file or directory\nmake: *** [a] Error 1", "nosuchtoolxyz", 2},
 		{"gmake 4.4's missing command", "gmake: nosuchtoolxyz: No such file or directory\ngmake: *** [Makefile:2: a] Error 127", "nosuchtoolxyz", 2},
@@ -50,6 +53,8 @@ func TestMissingRouteNamesWhatTheBenchLacks(t *testing.T) {
 		{"a red test whose error says not found", "--- FAIL: TestGet (0.00s)\n    x_test.go:9: get: not found\nFAIL\nmake: *** [test] Error 1", "", 2},
 		{"a red test whose log quotes a resolver", "    fetch_test.go:30: got \"fatal: unable to access 'u': Could not resolve host: u\"\nFAIL", "", 1},
 		{"a shell line naming no command", "/bin/sh: 1: : not found", "", 127},
+		{"a makefile the head lacks (measured: make 3.81, gmake 4.4.1)", "make: ci.mk: No such file or directory\nmake: *** No rule to make target 'ci.mk'.  Stop.", "", 2},
+		{"a makefile the head lacks, older make's quotes", "make: ci.mk: No such file or directory\nmake: *** No rule to make target `ci.mk'.  Stop.", "", 2},
 		{"a file of the head's, by its path", "/bin/sh: 1: ./build.sh: not found\nmake: ./gen: No such file or directory", "", 2},
 		{"a command of the wall's own", "/bin/sh: 1: nova-sandbox: not found", "", 127},
 		{"a name no brief can declare", "/bin/sh: 1: g++: not found", "", 127},

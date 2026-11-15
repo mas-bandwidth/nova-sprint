@@ -692,9 +692,10 @@ func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
 // log that quotes such text is not taken for one. route is the
 // card.MissingRoute name of what is missing; "" names it from the
 // line's first group, a command run by its bare name (one with a path is
-// a file of the head's, and its absence the card's). Measured: the shell's
-// and make's own lines for a missing command (dash, bash, sh, GNU make
-// 3.81 and 4.4), the wall's for a gate's program on no PATH entry,
+// a file of the head's, and its absence the card's). Measured: the shell's,
+// a script's and make's own lines for a missing command (dash, bash, sh,
+// GNU make 3.81 and 4.4; not make's for a makefile the head lacks), the
+// wall's for a gate's program on no PATH entry,
 // a launcher's for five toolchains; and on the benches, 2026-11-15,
 // rustc's linker and std target, Go's module lookup with no proxy, and a
 // host name no resolver answered.
@@ -703,6 +704,7 @@ var missingRouteSignatures = []struct {
 	route string
 }{
 	{regexp.MustCompile(`(?m)^(?:/bin/|/usr/bin/)?(?:sh|bash|dash)(?:: line \d+)?(?:: \d+)?: ([^\s:/]+): (?:command )?not found\s*$`), ""},
+	{regexp.MustCompile(`(?m)^[^\s:]+: (?:line )?\d+: ([^\s:/]+): (?:command )?not found\s*$`), ""}, // a script's own line: ./t.sh: line 2: x, ./t.sh: 2: x
 	{regexp.MustCompile(`(?m)^zsh: command not found: ([^\s:/]+)\s*$`), ""},
 	{regexp.MustCompile(`(?m)^g?make(?:\[\d+\])?: ([^\s:/]+): (?:No such file or directory|Command not found)\s*$`), ""},
 	{regexp.MustCompile(`(?m)^SANDBOX REFUSED reason=not_found: ([^\s:/]+) is on no PATH entry`), ""},
@@ -741,8 +743,8 @@ func missingRoute_internal(res WallRunResult) (route, why string) {
 		if name == "" && len(m) >= 4 && m[2] >= 0 {
 			name = routeWord_internal(out[m[2]:m[3]])
 		}
-		if name == "" {
-			continue
+		if name == "" || strings.Contains(out, "target '"+name+"'") || strings.Contains(out, "target `"+name+"'") {
+			continue // make's line for a makefile the head lacks names a file, not a tool: "No rule to make target 'ci.mk'"
 		}
 		route, last = name, m[1]
 	}
