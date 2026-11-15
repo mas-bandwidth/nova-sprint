@@ -54,7 +54,12 @@ func TestFunctionalRestoreLostRows(t *testing.T) {
 	after := h.snap()
 	back := after.Rows["lost"]
 	old := want.Rows["lost"]
-	assert.Equal(t, Row{Name: "lost", State: old.State, Session: old.Session, Role: old.Role, Flaps: old.Flaps, Held: true, Reason: old.Reason, Gen: back.Gen}, back, "state, hold, reason and hook as the log had them; the heartbeat is cleared")
+	assert.Greater(t, back.Gen, old.Gen, "the gen goes on from the row's last gen: the RowGen fence never sees an old gen again")
+	assert.Equal(t, old.Gen+1, back.Gen)
+	next := old
+	next.Gen = back.Gen
+	assert.Equal(t, next, back, "the row as the log last had it, hold and heartbeat included, at the next gen")
+	assert.True(t, old.Held && old.Load1Centi == 564, "the fixture row is held and has beaten")
 	assert.Equal(t, want.Seq+1, after.Seq, "put back through one op, so a running view folds it")
 	last := h.events()[len(h.events())-1]
 	assert.Equal(t, "store-repair", last.Actor)

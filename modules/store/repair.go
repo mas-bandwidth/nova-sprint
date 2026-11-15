@@ -19,14 +19,14 @@ import (
 // state the tables do not hold, so the first backup's restore verification
 // and check --integrity refuse the store (guarantee 5).
 //
-// The rows come back through one op of the protocol (actor store-repair,
-// kind repair), so the log and the table agree again and a run already
-// running sees the row: its view was read cold and then only folds events,
-// so a row put back with no event would stay out of its ticks (defect,
-// 2026-11-15: the put back space3 was never retired). The op puts each row
-// with its last after-image's session and role (PutRow), then its state,
-// hold and flaps; the rest is telemetry (the heartbeat, cleared) and the gen,
-// which goes on from the new row. A row the table holds with columns the log
+// Each row is first inserted as the log last had it, then an op of the
+// protocol (actor store-repair, kind repair) puts it with its own session
+// and role (PutRow), so its before-image is that last image and its gen
+// goes on from it (the RowGen fence never sees an old gen again; round 32:
+// a returning row's gen goes on). The op is what a run already running
+// needs: its view was read cold and then only folds events, so a row put
+// back with no event stays out of its ticks (2026-11-15: the put back
+// space3 was never retired). A row the table holds with columns the log
 // does not give is not touched: that is not a lost row, and the integrity
 // check still names it. It holds the writer lock, so no op lands between
 // the fold and the put, and a second run finds none.
@@ -36,7 +36,7 @@ func (p *PG) RestoreLostRows(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("store: restore lost rows: %w", err)
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }() // ignored: a no-op after the commit
-	names, err := restoreLostRows(ctx, tx)
+	names, err := p.restoreLostRows(ctx, tx)
 	if err != nil {
 		return nil, fmt.Errorf("store: restore lost rows: %w", err)
 	}
@@ -46,7 +46,7 @@ func (p *PG) RestoreLostRows(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-func restoreLostRows(ctx context.Context, tx pgx.Tx) ([]string, error) {
+func (p *PG) restoreLostRows(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	if _, err := tx.Exec(ctx, "LOCK TABLE sprint.epoch IN SHARE ROW EXCLUSIVE MODE"); err != nil { // the writer lock (inTx)
 		return nil, err
 	}
@@ -69,6 +69,7 @@ func restoreLostRows(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	if got.Epoch != snap.Epoch {
 		return nil, nil // not a lost row: the integrity check names the epoch
 	}
+	t := &pgTx{ctx: ctx, tx: tx, epoch: snap.Epoch}
 	var names []string
 	var writes []Write
 	for _, name := range slices.Sorted(maps.Keys(got.Rows)) {
@@ -82,7 +83,11 @@ func restoreLostRows(ctx context.Context, tx pgx.Tx) ([]string, error) {
 		if present { // retired in the table, live in the log: not a lost row, left for the check
 			continue
 		}
-		names, writes = append(names, name), append(writes, putBack(got.Rows[name])...)
+		last := got.Rows[name]
+		if err := t.putRow(last); err != nil { // the op's before-image: the row as the log last had it
+			return nil, fmt.Errorf("putting back row %s: %w", name, err)
+		}
+		names, writes = append(names, name), append(writes, PutRow{Name: name, Session: last.Session, Role: last.Role})
 	}
 	if len(names) == 0 {
 		return nil, nil
@@ -93,7 +98,7 @@ func restoreLostRows(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	}
 	op := Op{ID: fmt.Sprintf("store-repair-%d-%s", snap.Seq, strings.Join(names, ",")), Epoch: snap.Epoch, Actor: "store-repair", Kind: "repair", At: at(now),
 		Note: "rows lost from sprint.rows outside the store, put back from the log: " + strings.Join(names, ", "), Writes: writes}
-	r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+	r, err := p.inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
 	switch {
 	case err != nil:
 		return nil, fmt.Errorf("putting back rows %s: %w", strings.Join(names, ", "), err)
@@ -103,18 +108,3 @@ func restoreLostRows(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	return names, nil
 }
 
-// putBack is the writes that put row r back as a new row: its session and
-// role, then its state, hold and flaps where they are not a new row's.
-func putBack(r Row) []Write {
-	w := []Write{PutRow{Name: r.Name, Session: r.Session, Role: r.Role}}
-	if r.State != "down" {
-		w = append(w, SetRowState{Row: r.Name, State: r.State})
-	}
-	if r.Held {
-		w = append(w, SetRowHeld{Row: r.Name, Held: true, Reason: r.Reason})
-	}
-	if r.Flaps != 0 {
-		w = append(w, SetRowFlaps{Row: r.Name, Flaps: r.Flaps})
-	}
-	return w
-}
