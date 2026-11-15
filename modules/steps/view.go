@@ -38,9 +38,9 @@ type View struct {
 	// MergingAt is producer -> when it last went merging (the merge-queue
 	// nag's age, nag.go).
 	MergingAt map[string]time.Time
-	Landed  map[string]time.Time // stream -> when a producer of it last landed
-	Down    map[string]time.Time // row -> when it last went down
-	Ends    map[string][]End     // row -> its consumers' last finishes, oldest first (at most maxEnds)
+	Landed    map[string]time.Time // stream -> when a producer of it last landed
+	Down      map[string]time.Time // row -> when it last went down
+	Ends      map[string][]End     // row -> its consumers' last finishes, oldest first (at most maxEnds)
 	// RateLimited is model -> when a consumer on it last faulted on a
 	// provider's rate limit (card.RateLimited): the model rests (deal.go).
 	RateLimited map[string]time.Time

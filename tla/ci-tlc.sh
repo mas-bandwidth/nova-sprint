@@ -221,6 +221,7 @@ run RowAlive pass . RowAlive.cfg RowAlive.tla 2
 run VerbFence pass . VerbFence.cfg VerbFence.tla 2
 run VerbFenceCoarse pass . VerbFenceCoarse.cfg VerbFence.tla 2
 run BaseRed pass . BaseRed.cfg BaseRed.tla 2
+run MergeNag pass . MergeNag.cfg MergeNag.tla 2
 run AnsweredQuiet pass . AnsweredQuiet.cfg AnsweredQuiet.tla 2
 run Hook pass . Hook.cfg Hook.tla 2
 
@@ -259,7 +260,8 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
          HookAnySession HookReplaceUnhooks HookReplaceChangesRole \
-         BaseRedNoPush BaseRedQuietSwallows AnsweredQuietReopens AnsweredQuietSwallows; do
+         BaseRedNoPush BaseRedQuietSwallows AnsweredQuietReopens AnsweredQuietSwallows \
+         MergeNagPerCard MergeNagOnce MergeNagNeverStops MergeNagOffBus; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
@@ -275,6 +277,8 @@ for m in NeverOpens NeverReplaced; do
     run "reach-BaseRed$m" violate . "BaseRed$m.cfg" BaseRed.tla 1
 done
 run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg AnsweredQuiet.tla 1
+run reach-MergeNagNeverNags violate . MergeNagNeverNags.cfg MergeNag.tla 1
+
 
 # RowAlive's reversed witnesses (one per requirement it holds) and reach
 # checks (a row goes down, comes back up by itself, and is retired), each a cfg on

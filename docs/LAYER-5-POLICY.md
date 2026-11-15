@@ -100,8 +100,8 @@ end of file` (ruled 2026-11-07).
 | `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
 | `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
 | `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses; `fleet_width_cap` 1..256 (the most consumers a worker machine works, its cores at most this; the roster's cap, drift row 26), 8, a guess; `chain_limit` 1..100, optional (the longest NEEDS chain add admits), 3 |
-| `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000, optional `"ci_wait"`: seconds 1..86400 | f >= b, ci_wait outside 1..86400 | backed up (rung 2) at 2 merging, flowing again at 1; ci_wait 600 (a guess) |
-| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (the seconds after a deal from which a row is nagged each tick for a card in hand it has not taken: Glenn 2026-11-07, default 1) and `ready_take` (the seconds after which such a card is withdrawn and dealt to another row with room: default 180); optional `judgement_unseen` (the age at which an open judgement counts as unseen: its push woke nobody, and `next`, `check` and the coordinator's verbs print an UNSEEN line; a held card's judgement waits by design and never counts: Glenn 2026-11-08, default 300) | zero, negative, absent: no wait is ever unbounded | below |
+| `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000, optional `"ci_wait"`: seconds 1..86400, optional `"land_on_shared_red"`: True or False (a gate red only on the base tip's own reds lands automatically, and a conflict that names its card goes back to fix: LANDING "Landing on the base's own reds", Glenn 2026-11-15, default True) | f >= b, ci_wait outside 1..86400, land_on_shared_red not a bool | backed up (rung 2) at 2 merging, flowing again at 1; ci_wait 600 (a guess); land_on_shared_red True |
+| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (the seconds after a deal from which a row is nagged each tick for a card in hand it has not taken: Glenn 2026-11-07, default 1) and `ready_take` (the seconds after which such a card is withdrawn and dealt to another row with room: default 180); optional `judgement_unseen` (the age at which an open judgement counts as unseen: its push woke nobody, and `next`, `check` and the coordinator's verbs print an UNSEEN line; a held card's judgement waits by design and never counts: Glenn 2026-11-08, default 300); optional `merging_nag` (the age in merging past which the coordinator is pushed one line for the whole merge queue, and `check` prints CHECK RED: Glenn 2026-11-15, default 300) and `merging_nag_every` (that push's interval: default 1) | zero, negative, absent: no wait is ever unbounded | below |
 | `stitch(stream)` | name, cards, landed | `True` or `False` | a non-bool | `True` when the stream has more than one card |
 | `prices()` | none | dict: model name to `{"in": n, "out": n}`, micro-dollars per million tokens, n >= 0 | a negative or non-int price | `{}`: every run unpriced until the coordinator sets them |
 
@@ -180,18 +180,21 @@ def limits():
 
 def landing(stream):
     # rung 2 at more than one head waiting (intent rule 32); ci_wait a guess
-    return {"backed_up": 2, "flowing": 1, "ci_wait": 600}
+    return {"backed_up": 2, "flowing": 1, "ci_wait": 600, "land_on_shared_red": True}
 
 def timeouts():
     return {
         "row_silent_gone": 600,       # guess; never one missed challenge (LESSONS 4.7)
         "row_silent_withdraw": 1800,  # guess; above a 600 s gate (LESSONS 2.9)
-        "landing_stall": 60,          # v1 (LANDING step 10)
+        "landing_stall": 300,         # 2026-11-15, with merging_nag
         "base_regate": [120, 300],    # v1 (LANDING step 8)
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
         "ready_nag": 1,               # Glenn 2026-11-07
+        "merging_nag": 300,           # Glenn 2026-11-15: pested past 5 minutes merging
+        "merging_nag_every": 1,       # Glenn 2026-11-15: every 1 s
     }
+
 
 def stitch(stream):
     return stream.cards > 1

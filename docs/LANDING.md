@@ -115,6 +115,13 @@ card before it in the group; the judgement says so. A conflict that names
 no head (GitHub's mergeable state on the group's PR) is still one
 judgement per card.
 
+With `land_on_shared_red` on (policy `landing(stream)`, the default since
+2026-11-15) the named card is not judged: the tick sends it back to its
+producer as `fix`, with the reason "conflict: head <sha> of branch <b>
+does not merge onto <base> at <tip>: <the files>; merge <base> into the
+branch, resolve, and finish again". A conflict that names no head is
+still a judgement. Off, it is the judgement above.
+
 ### A verdict only from completed checks (2026-11-11)
 
 The sprint of 2026-11-10 judged landings red while their CI still ran: the
@@ -172,11 +179,63 @@ While they still run the reason says "base CI still running at its tip
 <sha>: <n> red so far (<names>)", and no comparison is made; the head's
 red is itself taken only from completed checks (above).
 
-A red base is a merge question for the whole picture, so the landing does
-not classify which of the head's failures are "the base's" and gives no
-advice: the coordinator decides with all three choices (land, fix, retry).
-A base tip whose checks cannot be read is said in the reason. Red never
-lands by itself (`BaseNeverRed`).
+With `land_on_shared_red` off, a red base is a merge question for the
+whole picture: the landing does not classify which of the head's failures
+are "the base's" and gives no advice; the coordinator decides with all
+three choices (land, fix, retry). A base tip whose checks cannot be read
+is said in the reason. Red never lands by itself (`BaseNeverRed`).
+
+### Landing on the base's own reds (2026-11-15)
+
+On 2026-11-15 about 130 cards sat in `merging` on one repository while its
+main was red: 92 of 120 land judgements said only that the base itself was
+red. A card whose every red is the base's own adds nothing red to it, the
+way a heavy suite red on main is fine for a merge into it: a hierarchical
+merge. With `land_on_shared_red` on (the default) such a card lands with
+no judgement, as a green gate does (`LandResult.SharedRed`,
+`SharedProof`), and the landing's record says why: "on the base's own reds
+(<checks>) at base <sha>: <proof>; gated <sha>". Every other red stays the
+card's own and is the `ci_red` judgement above, with the reason it did
+not land on the base's reds.
+
+Each failing check of the gated head (failed on its own; any stopped
+check on the head means no automatic landing) is weighed against the base
+tip it was gated on, whose checks must all have completed:
+
+- **The base tip's own run read it red:** shared.
+- **The base tip's own run completed it, green or stopped:** the card's
+  own red.
+- **The base tip's own run never ran it** (a check that runs only on pull
+  requests: lint-fast, go-test-touched): shared only by proof from the PR
+  that merged the base tip (`forge.BasePR`: GitHub's associated pull
+  request of the tip commit, merged, whose head commit has the tip's very
+  tree). That PR's checks must all have completed, and it must have
+  failed that check on its own. The PR ran the base's exact code, so its
+  red is the base's red. Anything else is the card's own red: no such PR,
+  a head with another tree (a merge commit that combined it with a moved
+  base), a PR whose checks did not complete, or one that did not fail
+  that check.
+- **A check with no name, or a base whose checks were read only in part:**
+  the card's own red.
+
+A read GitHub rate-limited is `forge_rested` and asked again, never taken
+as a fact either way. A merge that conflicts is not clean and never lands
+this way: it goes back to its card (above). The switch off is the landing
+as it was before: every red a judgement. Modelled in `tla/LandEdge.tla`:
+`SharedRedOnly`, `SharedRedNeverJudged`, `SharedRedLands` (below).
+
+### The merge-queue nag (2026-11-15)
+
+While any card has been merging longer than `timeouts.merging_nag`
+(default 300 s), the run pushes the coordinator one line every
+`timeouts.merging_nag_every` (default 1 s): the count, the oldest card and
+its age, and the exact command that clears it (the open land judgement's
+command, or `nova-sprint land <card> --head <sha> --reason "<why>"`). It
+is one line for the whole queue, never one per card. It stops when the
+queue clears, and goes only to a coordinator hooked on the bus
+(`modules/steps/nag.go`, `tla/MergeNag.tla`). `nova-sprint check` prints
+CHECK RED with the same facts while any card is merging past
+`merging_nag`. `landing_stall` now defaults to 300.
 
 The landing does nothing else on a red base, but the coordinator is told
 once for the base itself (2026-11-10): the run reads each watched base tip's
@@ -382,14 +441,38 @@ gate each time.
 
 `tla/LandEdge.tla` (layers 3 and 4): the three rungs from a tick's land
 request to the base, with outside commits to base and the coordinator's
-answers. Automatic moves: green to landed; anything else to a judgement.
-Invariants: `BaseNeverRed` (every tree the landing put on base was green),
+answers. Automatic moves: green to landed; with `SharedRed` (policy's
+`land_on_shared_red`) a red gate whose every red is `Known` red on the
+base it was gated on to landed too, and a conflict that names its card to
+fix; anything else to a judgement. Checks have names: `test` runs on base
+pushes and PRs, `lint` only on PRs; a tree is red on `Reds` (test with
+c1 and c3, lint with c2, and what an outside commit broke). `Known(i)` is
+base i's own reds on the checks that run on base, and on PR-only checks
+the `proof` of the PR that merged it when that PR's head is its very tree
+(an automatic landing's gate; a hand landing of a card onto the first
+commit). Invariants: `SharedRedOnly` (every tree the landing put on base
+is the tree CI gated and red on nothing the base it landed on was not),
+`SharedRedNeverJudged` (no red judgement is all the base's own reds),
+`ConflictNeverJudged` (no card judged for a conflict); on
+`SharedLiveSpec` (`LandEdgeSharedLive.cfg`, faults off) `SharedRedLands`
+(a merging card whose gate completed red on the base's own reds lands
+with no human step, unless base moved under it first). Reversed
+witnesses: `LandEdgeOwnRedLands` (any red lands), `LandEdgeNotRunIsShared`
+(a PR-only check taken as red on the base with no proof),
+`LandEdgeSharedRedJudged` and the live `LandEdgeSharedRedWaits` (the
+v2.0.43 rule: a shared red waits for a human), `LandEdgeConflictJudged`
+(a conflict waits for a human); reach checks show a landing on shared
+reds, one on a PR-only red by proof, and a conflict sent to fix.
+`LandEdgeHeld.cfg` runs the switch off, where
+`BaseNeverRed` (every tree the landing put on base was green) holds,
+reversed witness `LandEdgeHeldRedLands`. Further invariants:
 `NothingLandsUnpassed` (a card enters base only in the exact tree CI gated,
 or by the coordinator's hand; an outside commit brings none; a landed card
 is on base), `MergingCovered` (after a tick, every merging card is under a
 land judgement or its stream has a request in flight, or had one when the
 tick began). Reversed witnesses, one each: `LandEdgeRedLands` (the merge
-does not read the gate, so a red tree merges), `LandEdgeStaleGate` (base
+does not read the gate, so a red tree merges, breaking `SharedRedOnly`), `LandEdgeStaleGate` (base
+
 moves under the gate and the pass merges anyway: the heads on the new tip
 land, not the tree CI passed), `LandEdgeJudgementHoldsStream` (a judgement
 on one card holds its whole stream, so the stream's other merging cards
