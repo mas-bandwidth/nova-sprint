@@ -348,14 +348,15 @@ func (o *oracle) width(r RowFacts) WidthAnswer {
 }
 
 // landing is landing(stream): 0 <= flowing < backed_up <= 1000, a CI wait
-// of at most a day.
+// of at most a day, group_max 0..1000 (0: the engine's).
 func (o *oracle) landing(s StreamFacts) LandingAnswer {
 	l, ok := o.a.Landing[s.Name]
 	if o.usable("landing", "landing("+s.Name+")", ok) {
 		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 && l.GroupMax >= 0 && l.GroupMax <= 1000 {
 			return l
 		}
-		o.refuse("landing", fmt.Sprintf("landing(%s) is flowing %d, backed_up %d, ci_wait %d: outside 0 <= flowing < backed_up <= 1000, ci_wait 0..86400", s.Name, l.Flowing, l.BackedUp, l.CIWait))
+		o.refuse("landing", fmt.Sprintf("landing(%s) is flowing %d, backed_up %d, ci_wait %d, group_max %d: outside 0 <= flowing < backed_up <= 1000, ci_wait 0..86400, group_max 0..1000", s.Name, l.Flowing, l.BackedUp, l.CIWait, l.GroupMax))
+
 	}
 	return o.d.Landing
 }

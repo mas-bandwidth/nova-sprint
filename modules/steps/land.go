@@ -35,7 +35,7 @@ func (t *tick) landResults() {
 			t.landGroup(it, req)
 		case it.Outcome == "conflict" && req.Kind == "land" && req.SharedRed && t.conflictFix(it, req):
 		case (it.Outcome == "ci_red" || it.Outcome == "conflict") && req.Kind == "land" && req.SharedRed && len(req.Cards) > 1 && t.peel(it, req):
-		case it.Outcome == "ci_red" && req.Kind == "land" && req.SharedRed && len(req.Cards) == 1 && t.redFix(it, req):
+		case it.Outcome == "ci_red" && it.OwnRed && req.Kind == "land" && req.SharedRed && len(req.Cards) == 1 && t.redFix(it, req):
 		default:
 			t.landJudge(it, req)
 			t.consume(it.ID)
@@ -156,7 +156,7 @@ func (t *tick) conflictFix(it InboxItem, req EdgeRequest) bool {
 func (t *tick) peel(it InboxItem, req EdgeRequest) bool {
 	for i, p := range req.Cards {
 		c, ok := t.v.Cards[p]
-		if !ok || c.State != "merging" || c.Head != req.Heads[i] || !t.free(p) || t.judged(p) {
+		if !ok || c.State != "merging" || c.Head != req.Heads[i] || !t.free(p) || t.judged(p) || t.afterHeld(c) {
 			continue
 		}
 		t.consume(it.ID)
@@ -164,13 +164,15 @@ func (t *tick) peel(it InboxItem, req EdgeRequest) bool {
 		t.landRequest("land", req.Stream, []store.Card{c}, l.CIWait)
 		t.edges[len(t.edges)-1].SharedRed = !l.HoldSharedRed
 		t.edges[len(t.edges)-1].Quiet = t.quiet(req.Stream, []string{p})
+		t.edges[len(t.edges)-1].Fresh = true
 		return true
 	}
 	return false
 }
 
-// redFix sends a card whose own landing came back red on checks the base
-// does not share back to fix, with the failing checks as its finding, in a
+// redFix sends a card whose own landing came back red on a check proven
+// the card's own (InboxItem.OwnRed: it completed on the base tip and was
+// not red there) back to fix, with the failing checks as its finding, in a
 // group that consumes the item (land_on_shared_red; LANDING.md "One
 // card's red never holds the others"): no judgement. False when the card
 // is no longer merging at the head: the judgement as before.
@@ -257,6 +259,7 @@ func (t *tick) landRequests() {
 		t.landRequest("land", s, picks, l.CIWait)
 		t.edges[len(t.edges)-1].SharedRed = !l.HoldSharedRed
 		t.edges[len(t.edges)-1].Quiet = t.quiet(s, t.edges[len(t.edges)-1].Cards)
+		t.edges[len(t.edges)-1].Fresh = true
 
 	}
 	t.unlanded()

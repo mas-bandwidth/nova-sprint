@@ -54,6 +54,12 @@ type LandRequest struct {
 	// on them gates anything, so a pass that pushes a new gate cancels
 	// their unfinished runs (quietRuns_internal).
 	Quiet []string
+	// Fresh gates even one head on the group branch (rung 2), never on the
+	// card's own branch: the sprint's landings cancel a merging card's
+	// runs (quietRuns_internal), so its own head may carry no verdict, and
+	// the group branch's fresh merge always runs CI again (the cold read
+	// of 2026-11-15).
+	Fresh bool
 }
 
 // Gate is what a landing's CI gates: the PR's head branch, the sha, the
@@ -93,6 +99,11 @@ type LandResult struct {
 	// CancelFault is why a run could not be read or cancelled ("" none): the
 	// run says it as an edge fault, and the pass went on.
 	CancelFault string
+	// OwnRed is whether a red is proven the card's own: a failing check
+	// completed on the base tip read complete and was not red there
+	// (sharedRed_internal). Only then does the tick send a card alone
+	// straight back to fix; any other red stays the coordinator's.
+	OwnRed bool
 }
 
 // Kept is the gate the next pass of the same request reads: this pass's
@@ -175,9 +186,9 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 // card that is merging is gated only by its landing's PR). Nothing else is
 // touched: not base, not another stream, not a card still being worked. A
 // read or a cancel that fails is said in the reason and never stops the
-// pass (LandResult.CancelFault); a rested forge is asked again with the
-// next gate.
-
+// pass (LandResult.CancelFault: the first failure and how many); a rate
+// limit stops the cancelling for this pass, and the next gate asks again.
+// At most CancelMax runs are cancelled in one pass.
 func quietRuns_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) {
 	quiet := map[string]bool{GroupBranch(req.Stream): true}
 	for _, b := range append(slices.Clone(req.Branches), req.Quiet...) {
@@ -188,17 +199,38 @@ func quietRuns_internal(ctx context.Context, fg forge.Forge, req LandRequest, re
 		res.CancelFault = "the unfinished runs could not be read to cancel those that gate no landing: " + edge.RedactN(err.Error(), edge.FailureMax)
 		return
 	}
+	first, failed := "", 0
+	defer func() {
+		if failed > 0 {
+			res.CancelFault = fmt.Sprintf("%d runs could not be cancelled; the first: %s", failed, first)
+		}
+	}()
 	for _, r := range runs {
 		if !quiet[r.Branch] || (r.Branch == res.Gate.Branch && strings.EqualFold(r.HeadSHA, res.GatedSHA)) {
 			continue
 		}
+		if len(res.Cancelled) >= CancelMax {
+			return
+		}
 		if err := fg.CancelRun(ctx, req.Repo, r.ID); err != nil {
-			res.CancelFault = strings.TrimPrefix(res.CancelFault+fmt.Sprintf("; run %d on %s could not be cancelled: %s", r.ID, r.Branch, edge.RedactN(err.Error(), edge.FailureMax)), "; ")
+			failed++
+			if first == "" {
+				first = fmt.Sprintf("run %d on %s: %s", r.ID, r.Branch, edge.RedactN(err.Error(), edge.FailureMax))
+			}
+			var fe *forge.FaultError
+			if errors.As(err, &fe) && fe.Kind == forge.FaultRateLimit {
+				return
+			}
 			continue
 		}
 		res.Cancelled = append(res.Cancelled, r.ID)
 	}
 }
+
+// CancelMax is the most runs one pass cancels: a backlog longer than that
+// is cancelled over the next gates, so a burst of POSTs never spends the
+// forge identity's budget the landing itself reads its checks with.
+const CancelMax = 300
 
 // moved_internal is whether a card branch is not at the head the read
 // passed, on either rung: a moved branch is the coordinator's judgement,
@@ -367,7 +399,7 @@ func fetchHeads_internal(ctx context.Context, g Git, req LandRequest) (string, [
 // else the group branch, rebuilt and pushed (done with its outcome when the
 // merge or the push failed).
 func gatedHead_internal(ctx context.Context, g Git, req LandRequest, baseTip string, res *LandResult) (string, string, bool, error) {
-	if len(req.Heads) == 1 {
+	if len(req.Heads) == 1 && !req.Fresh {
 		up, err := g.IsAncestor(ctx, req.RepoDir, baseTip, req.Heads[0])
 		if err != nil {
 			return "", "", true, err
@@ -590,8 +622,10 @@ func sharedRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, re
 			return
 		case slices.Contains(bc.failing, f.Name):
 		case slices.Contains(bc.ran, f.Name) || bc.partial:
+			res.OwnRed = slices.Contains(bc.ran, f.Name)
 			no(f.Name + " is red on the card's head, not on the base tip " + res.BaseTip)
 			return
+
 		default:
 			prOnly = append(prOnly, f.Name)
 		}

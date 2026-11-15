@@ -250,7 +250,68 @@ again within `CIWait`, and at once when a land pass reads its base tip red. It
 clears when a later tip completes green (LAYER-3-STEPS
 "Judgements"; `tla/BaseRed.tla`).
 
+### Cards land as they arrive (2026-11-15)
+
+Glenn, 2026-11-15: "We are supposed to merge cards as they arrive." The
+sprint had backed up 100+ cards in merging: one group held them all, and
+its PR's CI sat queued behind about 1800 runs of those same cards' PRs.
+Four rules now keep the merge queue moving.
+
+**What gates a landing.** Only the gated sha's checks, as
+`readChecks_internal` reads them through `forge.Checks`. Every landing
+the tick asks is `Fresh`, so even one card gates on the group branch
+`sprint-group/<stream>`, at a fresh `--no-ff` merge onto the base tip. No
+card PR's own CI gates anything once the card is merging. A hand landing
+(`nova-sprint land`) still uses rung 1 when its head contains the base tip.
+
+**Groups are small.** `landing(stream).group_max` defaults to 4. A group
+is at most the first four merging cards in landing order. A group of four
+lands within one CI run; one red in it costs at most one solo pass for
+each card ahead of the red. The other merging cards wait, and their
+branches are the request's `Quiet` ones.
+
+**One card's red never holds the others.** With `land_on_shared_red` on
+(the default), a group red on checks the base does not share, or a
+conflict that names no card, opens no judgement. In the same tick its
+first card is asked alone, and the rest regroup after it. A card asked
+alone whose red is *proven* its own (`OwnRed`: a failing check completed
+on the base tip, read complete, and was not red there) goes straight back
+to fix, with the failing checks as its finding. A red that is not proven
+the card's own (the base's CI still running or unread, a PR-only check
+with no proof) stays the coordinator's judgement, so nothing is sent to
+fix for what may be the base's own red.
+
+**The landing's CI comes first.** A pass that pushes a new gate cancels,
+through the forge (`Runs`, `CancelRun`), the queued and in-progress runs
+that gate no landing:
+
+- the runs of the request's cards' branches and of the quiet branches;
+- a replaced group head.
+
+It never cancels:
+
+- the gate's own run (its branch at the gated sha);
+- base's runs;
+- another stream's runs;
+- a card still being worked.
+
+A kept gate cancels nothing. At most `git.CancelMax` (300) runs are
+cancelled in one pass, and a rate limit stops the cancelling until the
+next gate. A read or a cancel that fails is an edge fault and never stops
+the pass.
+
+Cancelling was chosen over drafts or labels. Draft PRs and label gates
+need workflow edits in every repository the sprint serves, and workers
+open the card PRs; the cancel needs neither. `nova-sprint check` says
+"landing PR <n> has <q> runs queued behind <m> runs on other PRs". The
+line is red once the landing's oldest queued run has waited longer than
+`merging_nag`. Any card merging past that already starts the 1 s nag.
+`tla/MergeFlow.tla` models it: `MergingDrains` holds, and the reversed
+witnesses `MergeFlowUncapped`, `MergeFlowNoPeel` and `MergeFlowNoCancel`
+reproduce the starvation.
+
 ### land: the hand merge
+
 
 `nova-sprint land <card> --reason <why> [--head <sha>]` is the coordinator's
 merge with no check gate. It lands a merging producer's own read-ok head

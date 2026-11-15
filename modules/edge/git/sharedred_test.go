@@ -86,6 +86,11 @@ func TestOwnRedIsNeverLanded(t *testing.T) {
 		if !w.off && !strings.Contains(res.Reason, "not landed on the base's reds") {
 			t.Errorf("%s: the reason says nothing of why it was not landed: %s", name, res.Reason)
 		}
+		// proven the card's own only where the failing check completed on
+		// the base tip, read complete, and was not red there
+		if want := name == "base all green"; res.OwnRed != want {
+			t.Errorf("%s: OwnRed = %v, want %v", name, res.OwnRed, want)
+		}
 	}
 }
 

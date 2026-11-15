@@ -153,7 +153,8 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	var gate git.Gate // the gate the last pass kept: read to its verdict, never rebuilt meanwhile
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate, LandOnSharedRed: r.SharedRed, Quiet: r.Quiet})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate, LandOnSharedRed: r.SharedRed, Quiet: r.Quiet, Fresh: r.Fresh})
+
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
@@ -246,7 +247,7 @@ func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration
 // the group's merge names, as Head, the head whose merge failed: that card
 // alone is the coordinator's.
 func landItem(id string, res git.LandResult, err error, wait time.Duration) steps.InboxItem {
-	it := steps.InboxItem{Kind: "land", Request: id, Outcome: string(res.Outcome), Head: res.ConflictHead}
+	it := steps.InboxItem{Kind: "land", Request: id, Outcome: string(res.Outcome), Head: res.ConflictHead, OwnRed: res.OwnRed}
 	switch {
 	case err != nil:
 		it.Outcome, it.Reason = "fault", err.Error()

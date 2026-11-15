@@ -97,7 +97,7 @@ func TestLandCancelRefusals(t *testing.T) {
 	cf := &cancelFails{fakeForge_internal: ff2}
 	ff2.SetRuns(forge.Run{ID: 30, Branch: "sprint/s1/c1", HeadSHA: e1, Status: "queued"})
 	res, err = LandPass(context.Background(), gf2, cf, group_internal(e1, e2))
-	if err != nil || res.GatedSHA == "" || len(res.Cancelled) != 0 || !strings.Contains(res.CancelFault, "run 30 on sprint/s1/c1 could not be cancelled: HTTP 403") {
+	if err != nil || res.GatedSHA == "" || len(res.Cancelled) != 0 || !strings.Contains(res.CancelFault, "1 runs could not be cancelled; the first: run 30 on sprint/s1/c1: HTTP 403") {
 		t.Fatalf("pass = %+v err=%v, want the cancel failure in the reason", res, err)
 	}
 
@@ -121,4 +121,55 @@ type cancelFails struct{ *fakeForge_internal }
 
 func (c *cancelFails) CancelRun(context.Context, string, int64) error {
 	return errors.New("HTTP 403: Resource not accessible")
+}
+
+// A Fresh request (every landing the tick asks since 2026-11-15) gates
+// even one head that contains the base tip on the group branch: its own
+// head's runs may have been cancelled.
+func TestLandFreshGatesOneHeadOnTheGroupBranch(t *testing.T) {
+	t.Parallel()
+	gf, ff, _, c1, _ := landWorld_internal()
+	req := one_internal(c1)
+	req.Fresh = true
+	res, err := LandPass(context.Background(), gf, ff, req)
+	if err != nil || res.Rung != 2 || res.Gate.Branch != GroupBranch("s1") {
+		t.Fatalf("pass = %+v err=%v, want rung 2 on the group branch (Client.MergeGroup merges --no-ff: a fresh sha)", res, err)
+	}
+}
+
+// A rate limit stops the cancelling for the pass (one failure said, the
+// rest left for the next gate), and one pass cancels at most CancelMax.
+func TestLandCancelStopsAtARateLimitAndAtCancelMax(t *testing.T) {
+	t.Parallel()
+	gf, ff, _, c1, c2 := landWorld_internal()
+	ff.SetRuns(
+		forge.Run{ID: 50, Branch: "sprint/s1/c1", HeadSHA: c1, Status: "queued"},
+		forge.Run{ID: 51, Branch: "sprint/s1/c2", HeadSHA: c2, Status: "queued"},
+	)
+	rl := &rateLimited{fakeForge_internal: ff}
+	res, err := LandPass(context.Background(), gf, rl, group_internal(c1, c2))
+	if err != nil || rl.calls != 1 || !strings.HasPrefix(res.CancelFault, "1 runs could not be cancelled; the first: run 50") {
+		t.Fatalf("pass = %+v err=%v calls=%d, want one cancel tried and the rate limit said", res, err, rl.calls)
+	}
+
+	gf2, ff2, _, d1, d2 := landWorld_internal()
+	var runs []forge.Run
+	for i := range CancelMax + 5 {
+		runs = append(runs, forge.Run{ID: int64(100 + i), Branch: "sprint/s1/c1", HeadSHA: d1, Status: "queued"})
+	}
+	ff2.SetRuns(runs...)
+	res, err = LandPass(context.Background(), gf2, ff2, group_internal(d1, d2))
+	if err != nil || len(res.Cancelled) != CancelMax || res.CancelFault != "" {
+		t.Fatalf("cancelled %d fault %q err=%v, want exactly CancelMax %d", len(res.Cancelled), res.CancelFault, err, CancelMax)
+	}
+}
+
+type rateLimited struct {
+	*fakeForge_internal
+	calls int
+}
+
+func (r *rateLimited) CancelRun(context.Context, string, int64) error {
+	r.calls++
+	return &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, Reason: "HTTP 403: API rate limit exceeded"}
 }

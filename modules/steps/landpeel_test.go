@@ -38,24 +38,40 @@ func TestTickGroupRedPeels(t *testing.T) {
 		require.Len(t, es, 1, outcome)
 		assert.Equal(t, []string{"p1"}, es[0].Cards, "%s: the first card alone", outcome)
 		assert.True(t, es[0].SharedRed, outcome)
+		assert.True(t, es[0].Fresh, "%s: the card alone gates on a fresh group sha, its own runs cancelled", outcome)
 		assert.ElementsMatch(t, []string{"sprint/s1/p2", "sprint/s1/p3"}, es[0].Quiet, outcome)
 		for _, c := range []string{"p1", "p2", "p3"} {
 			s.requireState(c, "merging")
 		}
 		s.run(2)
-		assert.Equal(t, []string{"p1"}, s.request("land", "s1").Cards, outcome)
+		solo := s.request("land", "s1")
+		assert.Equal(t, []string{"p1"}, solo.Cards, outcome)
 		assert.Empty(t, s.openJudgements("engine"), outcome)
+		s.arrive(InboxItem{Kind: "land", Request: solo.ID, Outcome: "landed", Landed: solo.Heads, Merge: sha(40), Main: true})
+		s.run(2)
+		assert.NotEqual(t, "merging", s.card("p1").State, "%s: the solo card landed", outcome)
+		assert.Equal(t, []string{"p2", "p3"}, s.request("land", "s1").Cards, "%s: the rest regroup", outcome)
 	}
 }
 
-// TestTickOwnRedGoesToFix: a card asked alone whose landing is red on
-// checks the base does not share goes straight back to fix with the
-// failing checks as its finding, and no judgement opens.
+// TestTickOwnRedGoesToFix: a card asked alone whose landing is red on a
+// check proven its own (InboxItem.OwnRed) goes straight back to fix with
+// the failing checks as its finding, and no judgement opens. A red not
+// proven the card's own (the base's checks still running, say) stays the
+// coordinator's judgement: never fix for what may be the base's red.
 func TestTickOwnRedGoesToFix(t *testing.T) {
 	t.Parallel()
+	u := newSim(t)
+	unproven := toMerging(u)
+	u.arrive(InboxItem{Kind: "land", Request: unproven.ID, Outcome: "ci_red", Reason: "failing unit; not landed on the base's reds: the base tip's checks were not read complete"})
+	u.tick()
+	u.requireState("p1", "merging")
+	assert.Len(t, u.openJudgements("land"), 1, "an unproven red is judged")
+
 	s := newSim(t)
 	first := toMerging(s)
-	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", Reason: "rung 1; failing unit; first failing lines: --- FAIL: TestX"})
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", OwnRed: true, Reason: "rung 1; failing unit; first failing lines: --- FAIL: TestX"})
+
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1", "ready")

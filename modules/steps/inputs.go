@@ -56,6 +56,7 @@ type InboxItem struct {
 	Landed  []string // land: the heads that landed (all of the request's); promote: the merges now on main
 	Merge   string   // land: the merge commit base has now
 	Main    bool     // land: base is main, so the merge is on main (LANDING.md, "Landed means on main")
+	OwnRed  bool     // land ci_red: proven the card's own (git.LandResult.OwnRed), so one card alone goes to fix
 }
 
 // EdgeRequest is work for layer 4: a landing (Kind land: Heads of Cards on
@@ -83,6 +84,10 @@ type EdgeRequest struct {
 	// Quiet is the branches of the stream's other merging cards: the
 	// landing cancels their unfinished runs (git.LandRequest.Quiet).
 	Quiet []string
+	// Fresh gates even one card on the group branch (git.LandRequest.Fresh):
+	// the tick's landings cancel merging cards' runs, so a card's own head
+	// may carry no verdict.
+	Fresh bool
 }
 
 // RefusedOp is an op of the last tick that layer 1 refused: its groups (from

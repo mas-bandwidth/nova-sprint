@@ -23,31 +23,44 @@ type Run struct {
 	PRs     []int // the pull requests it runs for (none for a push)
 }
 
-// RunsPage is how many runs one read of each status returns: GitHub's
-// largest page. A backlog longer than that is read again on the next pass.
-const RunsPage = 100
+// RunsPage is how many runs one read returns (GitHub's largest page), and
+// RunsPages how many pages of each status Runs reads at most: a backlog of
+// up to 2000 runs of each status is read whole (the backlog of 2026-11-15
+// was about 1800 queued), a longer one its newest 2000.
+const (
+	RunsPage  = 100
+	RunsPages = 20
+)
 
-// Runs is repo's unfinished workflow runs, the newest RunsPage of each of
-// queued and in progress: the landing cancels from it the runs that do not
-// gate a landing (LANDING.md, "The landing's CI comes first").
+// Runs is repo's unfinished workflow runs, queued and in progress, read a
+// page at a time until a short page or RunsPages pages: the landing cancels
+// from it the runs that do not gate a landing, and check counts what a
+// landing PR's runs wait behind (LANDING.md, "The landing's CI comes
+// first").
 func (c *Client) Runs(ctx context.Context, repo string) ([]Run, error) {
 	if repo == "" {
 		return nil, fmt.Errorf("forge refused: Runs requires a repo")
 	}
 	var out []Run
 	for _, status := range []string{"queued", "in_progress"} {
-		stdout, _, err := c.runGHBytes_internal(ctx, 4<<20, "api", "--method", "GET", "repos/"+repo+"/actions/runs",
-			"-f", "status="+status, "-f", "per_page="+strconv.Itoa(RunsPage))
-		if err != nil {
-			return nil, err
+		for page := 1; page <= RunsPages; page++ {
+			stdout, _, err := c.runGHBytes_internal(ctx, 4<<20, "api", "--method", "GET", "repos/"+repo+"/actions/runs",
+				"-f", "status="+status, "-f", "per_page="+strconv.Itoa(RunsPage), "-f", "page="+strconv.Itoa(page))
+			if err != nil {
+				return nil, err
+			}
+			runs, err := parseRuns_internal(stdout)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, runs...)
+			if len(runs) < RunsPage {
+				break
+			}
 		}
-		runs, err := parseRuns_internal(stdout)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, runs...)
 	}
 	return out, nil
+
 }
 
 // parseRuns_internal decodes one page of GET /repos/{repo}/actions/runs.

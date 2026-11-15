@@ -170,8 +170,8 @@ func (e *Engine) checkLanding(ctx context.Context, r *checkReport, snap store.Sn
 		r.ok("%s waits for %s's PR to main and its CI (run asks every %s)", what, s.Base, run.LandPoll)
 	default:
 		wait := e.groupWait(ctx, s)
-		if line, red := e.landingQueue(ctx, snap, s, ids); red {
-			r.red(refuse(what+" "+line, "gh run list --repo "+s.Repo+" --status queued, then gh run cancel <id> --repo "+s.Repo+" for each card run ahead of it"))
+		if line, red := e.landingQueue(ctx, snap, s); red {
+			r.red(refuse(what+" "+line, "gh run list --repo "+s.Repo+" --status queued, then gh run cancel <id> --repo "+s.Repo+" for each merging card's run ahead of it (never a card still being worked)"))
 		} else {
 			r.ok("%s %s%s", what, wait, line)
 		}
@@ -208,16 +208,15 @@ func (e *Engine) groupWait(_ context.Context, s store.Stream) string {
 
 // landingQueue is a github stream's landing PR's place in the repo's CI
 // queue (Glenn 2026-11-15: "the landing PR's CI must never wait behind card
-// CI"): its runs are the unfinished runs on the group branch or a merging
-// card's branch (the run cancels every other one of those each pass, so what
-// is left gates the landing), and the runs it waits behind are the queued
+// CI"): its runs are the unfinished runs on the group branch (every landing
+// the tick asks is Fresh, so gated there), and the runs it waits behind are the queued
 // runs of other pull requests created before its oldest queued one. Red,
 // with "landing PR <n> has <q> runs queued behind <m> runs on other PRs",
 // once that oldest queued run has waited longer than timeouts merging_nag
 // (the merge-queue nag's own limit); else "" or that line as a note. A run
 // list that cannot be read is said, and is not red (the landing reads its
 // checks without it).
-func (e *Engine) landingQueue(ctx context.Context, snap store.Snapshot, s store.Stream, ids []string) (string, bool) {
+func (e *Engine) landingQueue(ctx context.Context, snap store.Snapshot, s store.Stream) (string, bool) {
 	if s.Forge != "github" || e.Forge == nil {
 		return "", false
 	}
@@ -225,10 +224,8 @@ func (e *Engine) landingQueue(ctx context.Context, snap store.Snapshot, s store.
 	if err != nil {
 		return "; its CI queue could not be read: " + clipN(errText(err), 160), false
 	}
+	// the tick's landings are Fresh: every gate is on the group branch
 	mine := map[string]bool{git.GroupBranch(s.Name): true}
-	for _, id := range ids {
-		mine["sprint/"+s.Name+"/"+id] = true
-	}
 	var queued []forge.Run
 	oldest, pr := time.Time{}, 0
 	for _, r := range runs {
