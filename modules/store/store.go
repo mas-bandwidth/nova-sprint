@@ -154,6 +154,14 @@ type Stream struct {
 	Mode  string   `json:"mode"`
 	Forge string   `json:"forge"`
 	Gates []string `json:"gates,omitempty"`
+	// Removed is set by RemoveStream (round 33): no card of the epoch names
+	// the stream and the coordinator removed it (Glenn, 2026-11-15). A
+	// removed stream is in no read (Snapshot, Read, Rebuild and Fold leave
+	// it out), every write and condition but PutStream refuses it as
+	// absent, so no card is added to it, nothing is dealt from it and
+	// nothing lands into it; PutStream brings it back as a new stream. Only
+	// an after-image carries it, so a fold drops the stream.
+	Removed bool `json:"removed,omitempty"`
 }
 
 // UnmarshalJSON reads a stream image, a mode the image does not carry (one
@@ -487,7 +495,13 @@ func Fold(s Snapshot, events []Event) Snapshot {
 		if e.After.Identity != nil {
 			s.Identity = *e.After.Identity
 		}
-		overlay(s.Streams, e.After.Streams)
+		for n, st := range e.After.Streams {
+			if st.Removed {
+				delete(s.Streams, n)
+			} else {
+				s.Streams[n] = st
+			}
+		}
 		for id, c := range e.After.Cards {
 			old, had := s.Cards[id]
 			s.Cards[id] = FoldCard(old, had, c)

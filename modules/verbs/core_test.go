@@ -20,7 +20,7 @@ func TestTheVerbsAreExactlyTheList(t *testing.T) {
 	t.Parallel()
 	want := []string{"next", "check", "up", "hook", "wake", "unhook", "help", "version",
 		"take", "finish", "read", "report", "release", "beat", "show", "queue",
-		"stream add", "stream set", "add", "judge", "land", "hold", "unhold", "retire", "priority", "drop", "relink", "replace",
+		"stream add", "stream set", "stream remove", "add", "judge", "land", "hold", "unhold", "retire", "priority", "drop", "relink", "replace",
 		"policy set", "policy activate", "policy show", "policy check",
 		"run", "worker", "dash", "stop", "start", "stats reset", "identity", "backup", "restore", "clear"}
 	var got []string
@@ -35,7 +35,7 @@ func TestTheVerbsAreExactlyTheList(t *testing.T) {
 // The role matrix: who may run each verb.
 func TestRoleMatrix(t *testing.T) {
 	t.Parallel()
-	coordinator := map[string]bool{"stream add": true, "stream set": true, "add": true, "judge": true, "land": true, "hold": true, "unhold": true, "retire": true,
+	coordinator := map[string]bool{"stream add": true, "stream set": true, "stream remove": true, "add": true, "judge": true, "land": true, "hold": true, "unhold": true, "retire": true,
 		"priority": true, "drop": true, "relink": true, "replace": true, "policy set": true, "policy activate": true,
 		"stop": true, "start": true, "stats reset": true, "identity": true, "backup": true, "clear": true}
 	worker := map[string]bool{"beat": true, "take": true, "finish": true, "read": true, "report": true, "release": true, "show": true, "queue": true,

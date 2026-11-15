@@ -134,6 +134,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | an open judgement on it: `judge <id> drop` (a live consumer is released by the drop itself) | `nothing; wait for the bus` | 0, 1 |
 | `hold`, `unhold` | `<row\|stream>... --reason <why> [--dry-run]` | unknown name | `nothing; wait for the bus` | 0, 1 |
 | `retire` | `<row> --reason <why> [--dry-run]` (coordinator; the worst case: the run retires a row nova-config no longer names by itself) | no reason; a row the store lacks; a row nova-config still names (`nova-config machine remove` / `friend remove`); a hooked coordinator; nova-config unreadable or naming nothing | `nothing; wait for the bus` | 0, 1, 2 |
+| `stream remove` | `<s> --reason <why> [--dry-run]` (coordinator; a stream no card of the epoch names, in any state: it then shows nowhere until `stream add` puts it back) | no reason; a stream the store lacks; any card of the stream, naming the count (keep it, or `hold <s>`) | `nothing; wait for the bus` | 0, 1, 2 |
 | `dash` | `--listen <addr> --pull <tailnet addr>` | no `--pull`; the pulled run not answering | the URL | 0 on SIGTERM |
 | `backup` | `[--out <dir>]` | `pg_dump` missing or older than the server | `nothing` | 0, 1, 2 |
 | `restore` | `<file>` | schema `sprint` not empty; a run holds the lock; the dump fails its rebuild check | `run` | 0, 1, 2 |

@@ -152,6 +152,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	s := emptySnapshot(f.epoch)
 	s.Seq = f.seq0 + int64(len(f.events))
 	pick(s.Streams, f.streams, f.epoch)
+	maps.DeleteFunc(s.Streams, func(_ string, st Stream) bool { return st.Removed }) // a removed stream is in no read (round 33)
 	pick(s.Cards, f.cards, f.epoch)
 	for id, c := range s.Cards {
 		s.Cards[id] = cardCopy(c) // the caller's own copy: editing it never changes the store
@@ -374,6 +375,19 @@ func (t *fakeTx) inHand(row string) (string, bool, error) {
 	var ids []string
 	for k, c := range t.st.cards {
 		if k.epoch == t.st.epoch && c.Holder == row && (c.State == "ready" || c.State == "working") {
+			ids = append(ids, c.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return "", false, nil
+	}
+	return slices.Min(ids), true, nil
+}
+
+func (t *fakeTx) inStream(stream string) (string, bool, error) {
+	var ids []string
+	for k, c := range t.st.cards {
+		if k.epoch == t.st.epoch && c.Stream == stream {
 			ids = append(ids, c.ID)
 		}
 	}

@@ -67,6 +67,11 @@ ALTER TABLE sprint.streams ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT '
 -- after forge, so a store Migrate upgrades and a new store have the columns
 -- in the same order.
 ALTER TABLE sprint.streams ADD COLUMN IF NOT EXISTS gates text[] NOT NULL DEFAULT '{}';
+ALTER TABLE sprint.streams ADD COLUMN IF NOT EXISTS removed boolean NOT NULL DEFAULT false;
+-- removed (round 33, RemoveStream): the coordinator removed a stream no card of the
+-- epoch names (Glenn, 2026-11-15). The record stays, as nothing is deleted, but no
+-- read shows it and no write but PutStream (which brings it back) takes it, so no
+-- card is added to it. Appended last.
 
 -- A row is sprint state only (round 22): what a worker or kin is (kind,
 -- width, tiers, model, harness) is configuration, nova-config's, read

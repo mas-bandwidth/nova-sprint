@@ -147,6 +147,14 @@ type SetStreamGates struct {
 	Gates  []string
 }
 
+// RemoveStream removes a stream no card of the epoch names (round 33;
+// Glenn, 2026-11-15, the empty rocketnet stream): from then on it is in no
+// read and every write and condition but PutStream refuses it as absent;
+// PutStream brings it back as a new stream (not held, no gates). Refused
+// when the stream does not exist or is removed, and while any card of the
+// epoch, in any state, names it.
+type RemoveStream struct{ Stream string }
+
 // PutCard adds a card of a kind (producer, sentinel, work or read): refused
 // when it exists. It starts waiting, gen 0, attempt 0. Its stream must exist;
 // every need, and every card it comes after, must name another card of the
@@ -424,6 +432,7 @@ func (SetStreamHeld) isWrite()    {}
 func (SetStreamMode) isWrite()    {}
 func (SetStreamForge) isWrite()   {}
 func (SetStreamGates) isWrite()   {}
+func (RemoveStream) isWrite()     {}
 func (PutCard) isWrite()          {}
 func (SetCardState) isWrite()     {}
 func (SetCardResult) isWrite()    {}
@@ -513,6 +522,8 @@ func specOf(w Write) spec {
 		})
 	case SetStreamGates:
 		return put("stream", v.Stream, func(c *checker) { c.text(v.Gates...) }, "gates").then(func(w *work) (string, error) { return w.setStreamGates(v) })
+	case RemoveStream:
+		return put("stream", v.Stream, nil, "removed").then(func(w *work) (string, error) { return w.removeStream(v) })
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
 			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding, v.Model).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).

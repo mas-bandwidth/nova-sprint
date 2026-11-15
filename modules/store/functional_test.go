@@ -595,6 +595,35 @@ func TestFunctionalMigrateRound31(t *testing.T) {
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
 }
 
+// TestFunctionalMigrateRound32 is a round 32 store upgraded in place: its
+// streams gain removed, false on each, and a removal then holds.
+func TestFunctionalMigrateRound32(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round32.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round32Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, repo, base, epoch) VALUES ('s1', 'o/r', 'main', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round32Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 32}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, "o/r", h.snap().Streams["s1"].Repo, "a migrated stream is not removed")
+	h.ok(h.op("remove", nil, RemoveStream{"s1"}))
+	_, shown := h.snap().Streams["s1"]
+	assert.False(t, shown)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
 // columns is every sprint table's columns in their order, the order a
 // positional INSERT (pg_dump --inserts) fills them in.
 func columns(t *testing.T, c *pgx.Conn) map[string][]string {
