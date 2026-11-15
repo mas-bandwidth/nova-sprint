@@ -95,6 +95,15 @@ A tag is not an amount and is never held. Any number of pieces of work can run
 on a `linux` machine at once; the tag only says where work may go. A resource
 says how much of something work takes while it is there.
 
+Tags are not only for operating systems. `gpu` and `metal` are tags too
+(Glenn: "we could also add tags like 'gpu' 'metal'"): work that renders with
+Metal names `metal` and goes only to a machine that has it.
+
+The same hardware can be a tag or a resource, and the choice says whether work
+shares it. `gpu` as a tag means "this machine has a GPU", and everything sent
+there may use it at once. `gpu 1` as a resource means the work holds the GPU
+and nothing else gets it until the work ends.
+
 Each machine's tags are configuration, kept in nova-config with its resources.
 
 ## Machines provide
