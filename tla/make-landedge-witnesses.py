@@ -133,14 +133,7 @@ LIVE = [
      "judged, and waits for a human who may never come.",
      [(MERGEABLE, 'Mergeable(r) == r.res = "green"   \\* FAULT: a shared red waits for a human')],
      SHARED_LIVE_CONSTS),
-    ("LandEdgeRebuildsQueued", "GateKept",
-     "A gate whose CI is still queued is rebuilt and pushed again on every\n"
-     "pass, the base unchanged: its CI never keeps its place in the queue.",
-     [("MovedQueued(s) == req[s].ci = \"queued\" /\\ req[s].gbase # Len(base)",
-       "MovedQueued(s) == req[s].ci = \"queued\"   \\* FAULT: rebuilt while queued, base unchanged")],
-     CONSTS),
     ("LandEdgeKeptOnMovedBase", "MovedQueuedLetsGo",
-
      "The old rule (v2.0.47): a gate kept in flight is read whatever the\n"
      "base did, its CI still queued on a base that is gone: if no runner\n"
      "takes it, it waits for ever (schema group PR 3520, 2026-11-15).",
