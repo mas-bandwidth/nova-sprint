@@ -290,6 +290,9 @@ Glenn: "the current view we have for 'Fleet' turns into 'Resources' and we have
 a new view there, resource centric where the width is now, basically CPU,
 memory, [tags] like gpu etc."
 
+The load column goes. *Settled.* Glenn: "i would suggest we remove load %
+column entirely." What is held on a machine says how busy it is.
+
 The Friends section still draws consumer cards. What those cards hold is shown
 in Resources, not beside the friend.
 
