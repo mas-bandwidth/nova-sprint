@@ -35,6 +35,9 @@ func writeJobMD_internal(j Job) error {
 			fmt.Fprintf(&b, "%s: %s\n", kv[0], kv[1])
 		}
 	}
+	if note := preMergeNote_internal(j); note != "" {
+		fmt.Fprintf(&b, "\n%s\n", note)
+	}
 	for _, d := range j.DoneWhen {
 		fmt.Fprintf(&b, "done-when: %s\n", d)
 	}
@@ -49,6 +52,23 @@ func writeJobMD_internal(j Job) error {
 		return fmt.Errorf("write %s for %s: %w", JobMDName, j.Consumer, err)
 	}
 	return nil
+}
+
+// preMergeNote_internal is what staging's merge of the stream tip into the
+// prior head (j.PreMerge) means for the harness, word for word the same in
+// JOB.md and the prompt; "" when staging made none. Conflicted, the
+// harness must resolve the markers committed in the merge before anything
+// else.
+func preMergeNote_internal(j Job) string {
+	pm := j.PreMerge
+	if pm == nil {
+		return ""
+	}
+	if len(pm.Conflicts) == 0 {
+		return "The worker merged " + cmp.Or(j.Base, "the base") + " at " + pm.Tip + " into the prior head before you started: the checkout is at that merge, " + pm.Head + ". Continue from it."
+	}
+	return "The worker merged " + cmp.Or(j.Base, "the base") + " at " + pm.Tip + " into the prior head before you started, and the merge conflicted: the checkout is at that merge, " + pm.Head + ", committed with its conflict markers (<<<<<<<, =======, >>>>>>>) in:\n  " + strings.Join(pm.Conflicts, "\n  ") + "\n" +
+		"You must resolve every one of them first, keeping the card's intent and the base's changes, and commit the resolution: a head that still holds a marker fails its done-when tests. Never hand-merge a file under generated/: resolve its sources, then regenerate it with the repo's generator."
 }
 
 // finishRules_internal is how j finishes on a bench, word for word the

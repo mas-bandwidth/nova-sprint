@@ -129,6 +129,7 @@ func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal)
 	}
 	p.job, _ = buildJob_internal(next, info, jobDir, r.ProxyAddr, r.Now())
 	p.rec = rec
+	p.job.PreMerge = rec.PreMerge // staging's, for the prompt of a job run again; a job staged again stages it afresh
 	r.logStep_internal(rec.Row, rec.Consumer, "resume", "from "+rec.State, 0)
 	switch {
 	case rec.State == JobHarvested:

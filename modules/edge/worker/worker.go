@@ -74,6 +74,28 @@ type (
 		// Routes are the key proxy's route names: a harness declares only
 		// models whose provider is one of them.
 		Routes []string
+		// PreMerge is staging's merge of the stream tip into a retry's prior
+		// head (JobRecord.PreMerge), for the prompt and JOB.md.
+		PreMerge *PreMerge
+	}
+	// PreMerge is the merge staging made of the stream's tip into the prior
+	// head a retry starts from (checkoutJob_internal), so the harness starts
+	// on the base the stream step will merge after it: a retry that started
+	// on the old head met the same conflict again after every attempt
+	// (2026-11-15: sm-a1-c-unnamed-record-check, four on mini-m5). Head is the
+	// merge commit the harness starts on; Conflicts, when the merge did not
+	// go clean, are the files it left with conflict markers, committed in
+	// Head for the harness to resolve. Model: tla/Runner.tla Stage, stale.
+	PreMerge struct {
+		Tip       string
+		Head      string
+		Conflicts []string `json:",omitempty"`
+	}
+	// Staged is what StageWorktree made: the head the harness starts on and
+	// staging's merge of the stream tip, nil when none was made.
+	Staged struct {
+		Head  string
+		Merge *PreMerge
 	}
 	Outcome struct {
 		Result, Head, Reason, Finding string
@@ -119,6 +141,10 @@ type (
 		// Harness is the harness the job ran (Job.HarnessName), so the
 		// clean step knows where its own log is (keepJobLogs_internal).
 		Harness string `json:",omitempty"`
+		// PreMerge is staging's merge of the stream tip into PriorHead (nil:
+		// none). A harness that adds nothing over its Head added nothing over
+		// the prior head (harvestWorkHead_internal).
+		PreMerge *PreMerge `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex

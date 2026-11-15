@@ -51,8 +51,9 @@ type (
 		// its jobs of that repo, before any of them stage (defect 72).
 		Fetch(ctx context.Context, js ...Job) error
 		// StageWorktree makes j's worktree from the work clone as the last
-		// Fetch left it; it fetches nothing.
-		StageWorktree(ctx context.Context, j Job) (headSHA string, err error)
+		// Fetch left it; it fetches nothing. A work retry's prior head has
+		// the stream's tip merged in (PreMerge).
+		StageWorktree(ctx context.Context, j Job) (Staged, error)
 		// BranchTip is j's branch on origin as the last Fetch left it in the
 		// work clone: its sha, or "" when the branch does not exist. A work
 		// job's first push leases from it (defect 78).
@@ -92,8 +93,10 @@ type (
 	}
 	// Sealed is a sealed job for Collect: its directory, the worker's
 	// clone of it, its clone URL, the head it started from, and the
-	// sprint's commit identity for the clone's rebase.
-	Sealed        struct{ JobDir, Clone, Remote, Base, Name, Email string }
+	// sprint's commit identity for the clone's rebase. Merged is the stream
+	// tip staging merged into Base (PreMerge), "" for none: the commits it
+	// reaches are the stream's, not the job's.
+	Sealed        struct{ JobDir, Clone, Remote, Base, Name, Email, Merged string }
 	WallRunResult struct {
 		ExitCode, PID  int
 		Leftovers      int    // processes of the command's group still alive after it, killed (OSReserveWall.KillGroup)
@@ -574,7 +577,8 @@ func (r *Runner) stageStep_internal(ctx context.Context, job *Job, rec *JobRecor
 	start := r.Now()
 	if r.Git != nil {
 		stageCtx, cancel := context.WithTimeout(ctx, r.Timeouts.Stage)
-		_, err := r.Git.StageWorktree(stageCtx, *job)
+		staged, err := r.Git.StageWorktree(stageCtx, *job)
+		rec.PreMerge, job.PreMerge = staged.Merge, staged.Merge
 		if err == nil && job.Kind == "work" {
 			rec.StartTip, err = r.Git.BranchTip(stageCtx, *job)
 		}
@@ -722,6 +726,12 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 		return Outcome{Result: "fault", Reason: "missing git edge for a work consumer: start the worker through nova-sprint worker, which gives it one"}
 	}
 	sha, herr := r.sealAndCollect_internal(ctx, job, *rec)
+	if pm := rec.PreMerge; herr == nil && pm != nil && sha == pm.Head {
+		// Nothing over staging's merge of the stream is nothing over the
+		// prior head: it is judged as one (a finished one is NothingNew),
+		// and the stream step merges the stream into it again.
+		sha = job.PriorHead
+	}
 	// The verdict is the head's (v1's path, tla/Runner.tla Harvest): a new
 	// head is ok here and its done-when tests decide it
 	// (rebaseAndTestStep_internal); the harness's own word, or none, never
@@ -860,7 +870,11 @@ func (r *Runner) sealAndCollect_internal(ctx context.Context, job Job, rec JobRe
 	if err != nil {
 		return "", fmt.Errorf("the seal step: %w", err)
 	}
-	return r.Git.Collect(ctx, Sealed{JobDir: job.JobDir, Clone: r.clonePath_internal(rec.Consumer), Remote: remote, Base: base, Name: job.CommitName, Email: job.CommitEmail})
+	s := Sealed{JobDir: job.JobDir, Clone: r.clonePath_internal(rec.Consumer), Remote: remote, Base: base, Name: job.CommitName, Email: job.CommitEmail}
+	if rec.PreMerge != nil {
+		s.Merged = rec.PreMerge.Tip
+	}
+	return r.Git.Collect(ctx, s)
 }
 func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, rec *JobRecord) error {
 	if rec.Kind != "work" || rec.Outcome.Result != "ok" {
@@ -1464,62 +1478,148 @@ func (g *OSGitOps) Fetch(ctx context.Context, js ...Job) error {
 // StageWorktree makes j's worktree, a shared clone of the work clone as the
 // pass's Fetch left it, whose origin is the repo, and stages beside it the
 // siblings the repo's SIBLINGS file names at j's base (siblings.go).
-func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
+func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (Staged, error) {
 	url, name, err := cloneURL_internal(j)
 	if err != nil {
-		return "", err
+		return Staged{}, err
 	}
 	lock := g.cloneLock_internal(url)
 	lock.Lock()
 	work, err := g.workClone_internal(ctx, url, name)
 	lock.Unlock()
 	if err != nil {
-		return "", err
+		return Staged{}, err
 	}
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
 	if err := os.RemoveAll(j.WorktreeDir); err != nil {
-		return "", fmt.Errorf("stage: clear the work tree: %w", err)
+		return Staged{}, fmt.Errorf("stage: clear the work tree: %w", err)
 	}
 	lock.RLock()
 	err = g.sharedClone_internal(ctx, to, work, j.WorktreeDir)
+	tip := ""
+	if err == nil && preMergeWanted_internal(j) {
+		tip, err = g.branchTipIn_internal(ctx, to, work, j.Base)
+	}
 	lock.RUnlock()
 	if err != nil {
-		return "", fmt.Errorf("stage: the work tree: %w", err)
+		return Staged{}, fmt.Errorf("stage: the work tree: %w", err)
 	}
 	if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", url); err != nil {
-		return "", err
+		return Staged{}, err
 	}
-	head, err := g.checkoutJob_internal(ctx, to, j)
+	staged, err := g.checkoutJob_internal(ctx, to, j, tip)
 	if err != nil {
-		return "", err
+		return Staged{}, err
 	}
-	return head, g.stageSiblings_internal(ctx, j, url, name, work, lock)
+	return staged, g.stageSiblings_internal(ctx, j, url, name, work, lock)
+}
+
+// branchTipIn_internal is branch's tip in the work clone work, as the
+// pass's Fetch left it ("" when it is absent), read under its lock.
+func (g *OSGitOps) branchTipIn_internal(ctx context.Context, to time.Duration, work, branch string) (string, error) {
+	out, err := g.runGit_internal(ctx, to, work, "for-each-ref", "--format=%(objectname)", "refs/remotes/origin/"+branch)
+	if err != nil {
+		return "", fmt.Errorf("read the tip of %s: %w", branch, err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// preMergeWanted_internal: j is a work retry, starting from a prior head an
+// earlier attempt pushed, so staging merges the stream's tip into it
+// (preMergeTip_internal).
+func preMergeWanted_internal(j Job) bool {
+	return j.Kind == "work" && j.PriorHead != "" && j.PriorHead != j.BaseSHA && j.Base != ""
+}
+
+// preMergeTip_internal is the stream tip staging merges into j's prior
+// head before the harness ("" for none): a retry started on the head the
+// last attempt left met the conflict the stream step found after it again,
+// every attempt (2026-11-15). tip is the stream's tip as the pass fetched
+// it. Model: tla/Runner.tla Stage, NoHarnessOnAStaleRetry; the trace walk
+// reads stale from it.
+func preMergeTip_internal(j Job, tip string) string {
+	if !preMergeWanted_internal(j) || tip == "" || tip == j.PriorHead {
+		return ""
+	}
+	return tip
 }
 
 // checkoutJob_internal checks out j's base (a read: detached at its head,
 // with no push URL) and sets the sprint's commit identity from the
-// receipt; a job with none is refused, never committed as the bench.
-func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j Job) (string, error) {
+// receipt; a job with none is refused, never committed as the bench. A
+// work retry then has tip, the stream's tip, merged in (preMerge_internal).
+func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j Job, tip string) (Staged, error) {
 	baseRef := cmp.Or(j.PriorHead, j.BaseSHA, "HEAD")
 	if j.Kind == "read" {
 		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "--detach", cmp.Or(j.Head, baseRef)); err != nil {
-			return "", err
+			return Staged{}, err
 		}
 		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "--push", "origin", "no-push-on-read"); err != nil {
-			return "", err
+			return Staged{}, err
 		}
 	} else if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "-B", j.Branch, baseRef); err != nil {
-		return "", err
+		return Staged{}, err
 	}
 	if j.CommitName == "" || j.CommitEmail == "" { // a receipt from before the sprint's identity: never the bench's own
-		return "", fmt.Errorf("stage: %s has no commit identity in its receipt (taken from an older nova-sprint): the coordinator sets it with nova-sprint identity, and the next deal carries it", j.Consumer)
+		return Staged{}, fmt.Errorf("stage: %s has no commit identity in its receipt (taken from an older nova-sprint): the coordinator sets it with nova-sprint identity, and the next deal carries it", j.Consumer)
 	}
 	for _, kv := range [][2]string{{"user.name", j.CommitName}, {"user.email", j.CommitEmail}} {
 		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1]); err != nil {
-			return "", err
+			return Staged{}, err
 		}
 	}
-	return g.headSHA_internal(ctx, j.WorktreeDir, "HEAD")
+	var merge *PreMerge
+	if t := preMergeTip_internal(j, tip); t != "" {
+		var err error
+		if merge, err = g.preMerge_internal(ctx, to, j, t); err != nil {
+			return Staged{}, err
+		}
+	}
+	head, err := g.headSHA_internal(ctx, j.WorktreeDir, "HEAD")
+	if err != nil {
+		return Staged{}, err
+	}
+	if merge != nil && merge.Head != head {
+		return Staged{}, fmt.Errorf("stage: the merge of %s at %s left HEAD at %s, not %s", j.Base, tip, head, merge.Head)
+	}
+	return Staged{Head: head, Merge: merge}, nil
+}
+
+// preMerge_internal merges tip, the stream's tip, into the prior head j's
+// tree is at, before the harness, merged in and never rebased, as the
+// stream step does (RebaseOntoStream). Clean, the merge commit is the
+// harness's start. Conflicted, the merge is committed with its conflict
+// markers, Conflicts naming the files, and the prompt tells the harness to
+// resolve them: committed, so the seal step (whose reset ends a merge in
+// progress) keeps the stream as the head's parent, and the stream step
+// after the harness finds it merged. nil: tip is already in the prior head.
+// Any other failure is staging's fault, the tree as git left it.
+func (g *OSGitOps) preMerge_internal(ctx context.Context, to time.Duration, j Job, tip string) (*PreMerge, error) {
+	wt := j.WorktreeDir
+	before, err := g.headSHA_internal(ctx, wt, "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	msg := "Merge " + j.Base + " at " + tip + " into the card before the attempt\n\nnova-worker merged the stream's tip into the prior head before the harness ran, so the attempt starts on the base the stream step merges after it.\n"
+	_, mergeErr := g.runGit_internal(ctx, to, wt, "merge", "--no-edit", "--no-verify", "-m", msg, tip)
+	var conflicts []string
+	if mergeErr != nil {
+		out, err := g.runGit_internal(ctx, to, wt, "diff", "--name-only", "--diff-filter=U")
+		if conflicts = strings.Fields(out); err != nil || len(conflicts) == 0 {
+			return nil, fmt.Errorf("stage: merge %s at %s into the prior head %s: %w", j.Base, tip, before, errors.Join(mergeErr, err))
+		}
+		msg = "Merge " + j.Base + " at " + tip + " into the card before the attempt, with conflicts\n\nnova-worker merged the stream's tip into the prior head before the harness ran; the merge conflicted, and the attempt resolves the conflict markers committed here in:\n  " + strings.Join(conflicts, "\n  ") + "\n"
+		for _, args := range [][]string{{"add", "-A", "--", "."}, {"commit", "-q", "--no-verify", "-m", msg}} {
+			if _, err := g.runGit_internal(ctx, to, wt, args...); err != nil {
+				return nil, fmt.Errorf("stage: commit the conflicted merge of %s at %s: %w", j.Base, tip, err)
+			}
+		}
+	}
+	head, err := g.headSHA_internal(ctx, wt, "HEAD")
+	if err != nil || head == before {
+		return nil, err
+	}
+	return &PreMerge{Tip: tip, Head: head, Conflicts: conflicts}, nil
 }
 
 // BranchTip reads j's branch from the work clone's remote-tracking refs
@@ -1639,7 +1739,7 @@ func (g *OSGitOps) Collect(ctx context.Context, s Sealed) (string, error) {
 	if _, err := g.runGit_internal(ctx, to, s.Clone, "merge-base", "--is-ancestor", s.Base, head); err != nil {
 		return "", fmt.Errorf("collect refused: the sealed head %s does not descend from %s, the head the job started from: %w", head, s.Base, err)
 	}
-	if err := g.newGitlinks_internal(ctx, to, s.Clone, s.Base, head); err != nil {
+	if err := g.newGitlinks_internal(ctx, to, s.Clone, s.Base, s.Merged, head); err != nil {
 		return "", err
 	}
 	if _, err := g.runGit_internal(ctx, to, s.Clone, "checkout", "--quiet", "--detach", head); err != nil {
@@ -1691,8 +1791,10 @@ func copySealed_internal(jobDir, clone string) (string, error) {
 }
 
 // newGitlinks_internal refuses a commit in base..head whose tree holds a
-// gitlink (mode 160000, a submodule) that base's tree does not.
-func (g *OSGitOps) newGitlinks_internal(ctx context.Context, to time.Duration, clone, base, head string) error {
+// gitlink (mode 160000, a submodule) that base's tree does not. merged, the
+// stream tip staging merged in ("" for none), is the base's too: its
+// gitlinks are known and the commits it reaches are not the job's.
+func (g *OSGitOps) newGitlinks_internal(ctx context.Context, to time.Duration, clone, base, merged, head string) error {
 	links := func(commit string) ([]string, error) {
 		out, err := g.runGit_internal(ctx, to, clone, "ls-tree", "-r", "-z", commit)
 		var found []string
@@ -1707,7 +1809,15 @@ func (g *OSGitOps) newGitlinks_internal(ctx context.Context, to time.Duration, c
 	if err != nil {
 		return err
 	}
-	revs, err := g.runGit_internal(ctx, to, clone, "rev-list", base+".."+head)
+	revList := []string{"rev-list", head, "^" + base}
+	if merged != "" {
+		more, err := links(merged)
+		if err != nil {
+			return err
+		}
+		known, revList = append(known, more...), append(revList, "^"+merged)
+	}
+	revs, err := g.runGit_internal(ctx, to, clone, revList...)
 	if err != nil {
 		return err
 	}

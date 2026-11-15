@@ -65,6 +65,8 @@ type fakeGit struct {
 	checkouts   []string // every CheckOut's sha
 	streamTip   string   // StreamTip's answer: the stream tip the last merge used
 	tipErr      error
+	preMerge    *PreMerge // staging's merge of a work retry (StageWorktree); nil: none
+	collected   []Sealed  // every Collect's argument
 }
 
 // CheckOut checks sha out in the worker's clone.
@@ -101,18 +103,25 @@ func (g *fakeGit) Fetch(_ context.Context, js ...Job) error {
 	return g.fetchErr
 }
 
-func (g *fakeGit) StageWorktree(_ context.Context, j Job) (string, error) {
+// StageWorktree stages j at its prior head or base; with preMerge set, a
+// work retry's tree is at preMerge's head (the merge OSGitOps makes).
+func (g *fakeGit) StageWorktree(_ context.Context, j Job) (Staged, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.stageErr != nil {
-		return "", g.stageErr
+		return Staged{}, g.stageErr
 	}
 	g.stagedJobs = append(g.stagedJobs, j)
 	_ = os.MkdirAll(j.WorktreeDir, 0o755)
+	var merge *PreMerge
+	if g.preMerge != nil && preMergeWanted_internal(j) {
+		m := *g.preMerge
+		merge, g.headByWT[j.WorktreeDir] = &m, m.Head
+	}
 	if g.headByWT[j.WorktreeDir] == "" {
 		g.headByWT[j.WorktreeDir] = cmp.Or(j.PriorHead, j.BaseSHA)
 	}
-	return g.headByWT[j.WorktreeDir], nil
+	return Staged{Head: g.headByWT[j.WorktreeDir], Merge: merge}, nil
 }
 
 func (g *fakeGit) BranchTip(_ context.Context, j Job) (string, error) {
@@ -126,6 +135,7 @@ func (g *fakeGit) BranchTip(_ context.Context, j Job) (string, error) {
 func (g *fakeGit) Collect(_ context.Context, sl Sealed) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.collected = append(g.collected, sl)
 	wt := filepath.Join(sl.JobDir, "repo")
 	if g.dirtyByWT[wt] {
 		g.dirtyByWT[wt] = false
