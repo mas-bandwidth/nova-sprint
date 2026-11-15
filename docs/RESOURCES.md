@@ -81,6 +81,22 @@ up, you have it or not."
 Work that needs a PS5 requires `ps5 1` and holds the whole of it while it runs.
 Work that does not need one does not name it at all.
 
+## Tags
+
+A tag is a name a machine has or does not have, such as `windows`, `mac` or
+`linux`. *Settled.* Work names the tags it needs, and runs only on a machine
+that has all of them.
+
+Glenn: "i would like also tags like 'windows', 'mac', 'linux' etc.", "so we can
+also say, we need this sort of os", "and each fleet machine registers with
+these tags, again, it's just configuration".
+
+A tag is not an amount and is never held. Any number of pieces of work can run
+on a `linux` machine at once; the tag only says where work may go. A resource
+says how much of something work takes while it is there.
+
+Each machine's tags are configuration, kept in nova-config with its resources.
+
 ## Machines provide
 
 Each machine provides a set of resources: for each name, an amount. A machine
@@ -126,6 +142,18 @@ and releases all of it when it ends, however it ends.
 | `memory 8` | holds 8 GB |
 | `ps5 1` | holds the machine's PS5 |
 
+### Who says what work requires
+
+The coordinator, by judgement, for each piece of work. *Settled.* There is no
+default amount of CPU or memory.
+
+Glenn: "it depends on the work. a read is cheaper yes, but coding might require
+compiling and tests and so on. you really need to just use your judgement. in
+short, 'what resources do you want for this work, as coordinator?'"
+
+A read needs less than the work it reads. Work that compiles and runs tests
+needs more than work that edits a page.
+
 ## What takes resources
 
 A consumer of a card (each work attempt and each read), a GitHub runner's job,
@@ -148,6 +176,69 @@ With resources, a runner states what it requires in the same names and units
 as a card, and what it holds comes out of the same amounts on its machine. Its
 tags are the labels a workflow selects it by.
 
+## On the machine: nova-reserve
+
+nova-reserve is how a machine holds its resources. *Settled.* It is kept and
+upgraded.
+
+Glenn: "nova-reserve is superceded by this design, or implements it. it is a
+preview of this design, basically. keep and upgrade nova-reserve".
+
+Today nova-reserve already does the whole job for one unnamed resource. A
+machine has a capacity in slots. A command run through it waits for a slot,
+holds it while it runs, and frees it when it ends, however it ends. On Linux it
+pins the command to that slot's share of the CPUs, so `nproc`, `make -j` and Go
+size themselves to what was reserved. People, AIs and CI on the machine all go
+through the same capacity.
+
+The upgrade is from one number to named numbers. The machine's capacity becomes
+its resources from nova-config. A command states what it requires by name, and
+nova-reserve holds exactly that.
+
+nova-reserve on the machine is the authority on what is held there. The sprint
+decides where to send work from what each machine reports it has free. That
+report can be a moment old, so work that arrives to find no room waits for it
+there, as it does for a slot today.
+
+## From CPU units to cores
+
+This rule is Rowan's, at Glenn's ask ("work out something good.
+implementatino detail really."). His to overrule.
+
+A machine knows two numbers about its CPU: its CPU units and its cores (the
+CPUs the operating system shows, hyperthreads included). Work that asks for
+some CPU units holds a whole number of the machine's cores:
+
+    cores held = units asked x machine's cores / machine's CPU units, rounded up, at least 1
+
+The machine counts in its own cores. Work fits when the cores already held plus
+the cores it would hold are at most the cores the machine has. So a machine
+never gives out more cores than it has, and work never gets less compute than
+it asked for. On a machine with strong cores it can get a little more.
+
+nova-reserve pins the work to the cores it holds, so the work's own tools see
+that many and run that many jobs.
+
+With made-up numbers: hulk has 16 cores and 16 CPU units, so `cpu 4` holds 4
+cores there. A machine with 16 stronger cores and 48 CPU units holds 2 cores
+for the same `cpu 4`.
+
+## Work that cannot be split
+
+This rule is Rowan's, at Glenn's ask ("think up something good."). His to
+overrule.
+
+More cores do not help work that runs on one thread. It needs one fast core.
+
+The benchmark that scores a machine also times one thread on each kind of core
+it has. A machine gets a resource, `fast-core`, whose amount is how many of its
+cores clear a fixed speed. A machine with no such cores has none.
+
+Work that cannot be split requires `cpu 1` and `fast-core 1`. It is sent only
+to a machine with a fast core free, holds that core while it runs, and is
+pinned to it. Nothing new is needed to do this: `fast-core` is a resource like
+any other, counted and held the same way.
+
 ## What this replaces
 
 Today a bench has a width: its core count, at most `fleet_width_cap`, and at
@@ -157,7 +248,7 @@ whatever it does. A consumer can state a tier and routes and nothing else.
 A machine's width goes away, replaced by its `cpu` resource. *Settled.* How
 many consumers a machine works at once follows from what each one requires and
 what the machine has left. `fleet_width_cap` has nothing to bound. A route a
-machine serves is a thing it has.
+machine serves is a tag it has.
 
 Glenn: "machine width in fleet definitely goes away and is replaced by cpu
 resource."
@@ -179,31 +270,24 @@ These are Glenn's to decide before this layer is built.
    is a fixed score. Which benchmark, where it lives (nova-tools is the likely
    home), and whether a machine's number can also be set by hand are not
    chosen.
-2. **From CPU units to cores.** A machine turns the CPU units a piece of work
-   holds into a number of its own cores, which is also the work's parallel job
-   count. The likely rule is the machine's cores times the units held, divided
-   by the machine's CPU units, rounded up.
-3. **CPU and memory for work that names none.** The default tools need no
-   naming, but every piece of work uses some CPU and memory. What a consumer
-   holds when its card states no `cpu` or `memory` is not chosen.
-4. **Where a friend's work acquires.** Two ways are on the table. In one, a
+2. **How a card states its resources.** The coordinator decides them for each
+   piece of work. Where they are written (a line of the brief, as tier and
+   routes are today), whether a card's reads are stated apart from its work,
+   and whether a card that states no `cpu` or `memory` is refused when it is
+   added are not chosen.
+3. **Where a friend's work acquires.** Two ways are on the table. In one, a
    friend carries a tag (such as `codex`) that ties its work to a particular
    machine. In the other, resources place a friend's work exactly as they
    place a bench's: the work acquires on whichever machine has what it needs,
    and the friend reaches that machine over ssh. Glenn: "or we can use
    resources fully to distribute friend work across the machine, eg. the
    friend ssh's there". The second needs no friend width at all.
-5. **When a runner holds its resources.** GitHub picks the runner for a job,
+4. **When a runner holds its resources.** GitHub picks the runner for a job,
    not the fleet, so a runner cannot be moved to where there is room. Either a
    runner holds what it requires all the time, busy or idle, or it acquires
    when a job starts and the job waits if the machine is full. Holding all the
    time is simple and keeps CI fast; it also keeps those resources from cards
    while the runner is idle.
-6. **The machine-local reservation.** `nova-reserve` has one capacity per
-   machine, in slots, shared with people and CI. It either learns named
-   resources or gives way to the accounting here.
-7. **A thing several can use at once.** A thing has amount 1, so one piece of
-   work holds it at a time. If some thing outside the default set can serve
-   several at once, whether it is given a higher amount is not decided.
-8. **Single-threaded work.** A CPU unit measures a machine's total. Work that
-   cannot be split runs slower on weak cores however many units it holds.
+5. **Operating system and architecture as tags.** nova-config already holds
+   each machine's operating system and architecture. Whether those become its
+   tags automatically, or every tag is written by hand, is not chosen.
