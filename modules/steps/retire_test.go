@@ -204,3 +204,25 @@ func TestRetireRefusedWhenAHookLandsFirst(t *testing.T) {
 	_, shown = s.snap().Rows["r1"]
 	assert.True(t, shown, "nova-config names r1: nothing retired")
 }
+
+// TestTickRetiresAHeldUnhookedRow: the live space3 (2026-11-15): up, held,
+// unhooked, an empty hand, and nova-config no longer names it. The hold is
+// the coordinator's "deal it nothing", which no longer matters once the
+// row is out of the fleet: the tick retires it like any other.
+func TestTickRetiresAHeldUnhookedRow(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 2, "pro")
+	s.must("hold", store.SetRowHeld{Row: "r2", Held: true, Reason: "measurement machine; held"})
+	s.must("unhook", store.PutRow{Name: "r2"})
+	s.run(2)
+	require.Equal(t, store.Row{Name: "r2", State: "up", Held: true, Reason: "measurement machine; held", Gen: s.snap().Rows["r2"].Gen}, s.snap().Rows["r2"])
+	delete(s.roster.Workers, "r2")
+	s.tick()
+	require.Empty(t, s.rejected)
+	_, shown := s.snap().Rows["r2"]
+	assert.False(t, shown, "the held row is retired")
+	assert.Empty(t, s.openJudgements("roster"))
+}

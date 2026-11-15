@@ -983,10 +983,21 @@ row, deleted by hand on 2026-11-12 after its last event (an unhook) and
 found on 2026-11-15.
 
 - `PG.RestoreLostRows` puts back every row of the current epoch the log
-  holds and the table lacks, as the log's last after-image has it (gen,
-  hold, heartbeat and all), under the writer lock, and names each. It logs
-  no event: the log already says the row is there, and the repair is the
-  table brought back to it. A second run finds none.
+  holds and the table lacks, under the writer lock, and names each, through
+  one op of the protocol (actor `store-repair`, kind `repair`). Each row is
+  first inserted as the log last had it, in the same transaction, and the
+  op's `PutRow` with its own session and role lands on top: its
+  before-image is that last image, so state, hold, flaps and heartbeat are
+  kept and the gen goes on (last gen + 1; the `RowGen` fence never sees an
+  old gen again, as round 32 keeps it for a returning row). A second run
+  finds none.
+- It is an op, not a bare insert, because a run already running read its
+  view cold and then only folds events: v2.0.45 put space3 back with no
+  event, the live run (started before `up`) never saw the row, and its
+  ticks never retired it, while `check`, which reads the table, said the
+  next tick would. The steps retire a held, unhooked row like any other
+  (`TestTickRetiresAHeldUnhookedRow`; `tla/RowAlive.tla` `RetireDue` does
+  not read the hold).
 - It touches nothing else. A row whose columns differ from the log, a row
   retired in the table but live in the log, or an epoch mismatch is not a
   lost row: it is left, and the integrity check still names it. The check

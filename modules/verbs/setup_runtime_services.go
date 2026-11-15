@@ -130,9 +130,36 @@ func (f FleetServices) existing(ctx context.Context, s FleetService) (bool, erro
 	return found, nil
 }
 
+// GitGuardEnv is the environment a service record may carry beyond what
+// setup writes, each with exactly this value: git reads no system config
+// and never prompts, so no git or gh call of the service reaches the macOS
+// keychain (Glenn's ruling: never the keychain, nova-secrets only; the
+// operator added it to the live records on 2026-11-12). Any other extra
+// variable, or one of these with another value, still conflicts.
+var GitGuardEnv = map[string]string{"GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
+
+// WithoutGitGuard is env less every GitGuardEnv entry with its value that
+// want does not set itself; env when there is none.
+func WithoutGitGuard(env, want map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range env {
+		if g, ok := GitGuardEnv[k]; ok && g == v {
+			if _, set := want[k]; !set {
+				continue
+			}
+		}
+		out[k] = v
+	}
+	if len(out) == len(env) {
+		return env
+	}
+	return out
+}
+
 // fleetServiceDiff names the fields where the record differs from what setup
 // wants; environment differences name the variables, never their values.
 func fleetServiceDiff(got configService, want FleetService) string {
+	got.Env = WithoutGitGuard(got.Env, want.Env)
 	keys := append([]string(nil), want.Keys...)
 	sort.Strings(keys)
 	diff := []string{}
@@ -173,6 +200,7 @@ func fleetServiceDiff(got configService, want FleetService) string {
 	return strings.Join(diff, "; ")
 }
 func sameFleetService(got configService, want FleetService) bool {
+	got.Env = WithoutGitGuard(got.Env, want.Env)
 	keys := append([]string(nil), want.Keys...)
 	sort.Strings(keys)
 	env := want.Env

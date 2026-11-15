@@ -120,3 +120,25 @@ func TestFleetServicesRefusesConflictsAndMalformedOutput(t *testing.T) {
 		}
 	}
 }
+
+// A worker record with the keychain guard (GIT_CONFIG_NOSYSTEM=1,
+// GIT_TERMINAL_PROMPT=0) is the same service setup wants; any other extra
+// variable, or a guard variable with another value, conflicts.
+func TestSameFleetServiceTakesTheKeychainGuard(t *testing.T) {
+	t.Parallel()
+	want := FleetService{Name: "sprint-worker-studio", Machine: "studio", Seat: "studio", Argv: []string{"nova-sprint", "worker"}, Keys: []string{"NOVA_SPRINT_PG_PASSWORD", "GH_GATE_TOKEN"}, Env: map[string]string{"NOVA_PG_DSN": "postgres://x"}}
+	got := configService{Name: want.Name, Machine: "studio", Seat: "studio", Argv: want.Argv, Keys: "GH_GATE_TOKEN,NOVA_SPRINT_PG_PASSWORD", Keepalive: true, Enabled: true,
+		Env: map[string]string{"NOVA_PG_DSN": "postgres://x", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}}
+	if !sameFleetService(got, want) || fleetServiceDiff(got, want) != "" {
+		t.Fatal("guarded record conflicts:", fleetServiceDiff(got, want))
+	}
+	got.Env["GIT_TERMINAL_PROMPT"] = "1"
+	if sameFleetService(got, want) || fleetServiceDiff(got, want) != "env differs in GIT_TERMINAL_PROMPT" {
+		t.Fatal("guard with another value accepted:", fleetServiceDiff(got, want))
+	}
+	got.Env["GIT_TERMINAL_PROMPT"] = "0"
+	got.Env["OTHER"] = "x"
+	if sameFleetService(got, want) || fleetServiceDiff(got, want) != "env differs in OTHER" {
+		t.Fatal("extra variable accepted:", fleetServiceDiff(got, want))
+	}
+}
