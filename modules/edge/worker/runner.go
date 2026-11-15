@@ -1034,11 +1034,8 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		}
 	}
 	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, Repo: rec.Repo, Forge: rec.Forge, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
-	if fault, err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
-		rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
-		if fault {
-			rec.Outcome.Result = "fault"
-		}
+	if err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
+		rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
 		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 		return nil
 	}
@@ -1341,11 +1338,17 @@ func dropBaseArgv_internal(dir string) []string {
 // applyRebased_internal checks the rebased head out in the job's tree,
 // inside the wall, before the done-when tests: Export from the worker's
 // clone, applyArgv_internal in the wall. Nothing to do with no rebase or
-// no tests. fault: the failure is the worker's or the wall's (the export,
-// or isInfraFault_internal), not the card's.
-func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) (bool, error) {
+// no tests. Every failure here is a fault, taken for the worker's or the
+// wall's (the export, isInfraFault_internal, a checkout in the job's tree
+// that did not go through), never the card's fail: the gates did not run,
+// so the head is not judged, and dealt again the card continues from the
+// head it pushed (2026-11-15: as a fail it spent nine attempts of one card
+// on the AWS benches; tla/Runner.tla GateNotRun). No work fault counts
+// toward a limit, so a checkout that fails on every bench is dealt again
+// until the coordinator holds the card.
+func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) error {
 	if r.Wall == nil || !slices.ContainsFunc(slices.Concat(rec.DoneWhen, rec.StreamGates), func(c string) bool { return strings.TrimSpace(c) != "" }) {
-		return false, nil
+		return nil
 	}
 	start := cmp.Or(rec.PriorHead, rec.BaseSHA)
 	var argv []string
@@ -1357,22 +1360,22 @@ func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord
 		// them, and the gates must not pass on that.
 		argv = resetArgv_internal(start)
 	case r.Git == nil || rec.StreamRef == "":
-		return false, nil
+		return nil
 	default:
 		bundle := filepath.Join(j.JobDir, RebasedBundle)
 		if err := r.Git.Export(ctx, r.clonePath_internal(rec.Consumer), start, bundle); err != nil {
-			return true, err
+			return err
 		}
 		argv = applyArgv_internal(bundle)
 	}
 	res, err := r.Wall.RunStep(ctx, j, argv, r.Timeouts.RebaseAndTest)
 	if fault, why := isInfraFault_internal(res, err); fault {
-		return true, errors.New(why)
+		return errors.New(why)
 	}
 	if res.ExitCode != 0 {
-		return false, fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
+		return fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
 	}
-	return false, nil
+	return nil
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	rec.State = JobReporting
