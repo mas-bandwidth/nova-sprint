@@ -237,6 +237,13 @@ the cards. For each one the dealer decides where it runs, by what it needs and
 what is free. The fleet view stops showing machines as workers and shows the
 fleet's resources: what each machine has, and what is held.
 
+The resource view shows everything that is using resources, not only cards.
+Glenn: "the resource view shows what resources are being used.", "(including
+everything, CI etc...)". A CI job, a friend's build and a card's work all
+appear as holds on the machine they run on, each with what it holds and who
+holds it. This works because all of them go through the same holds: nothing
+that uses a machine is invisible.
+
 ## What takes resources
 
 A consumer of a card (each work attempt and each read), wherever the dealer or
