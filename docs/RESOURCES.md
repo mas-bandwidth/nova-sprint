@@ -244,6 +244,22 @@ appear as holds on the machine they run on, each with what it holds and who
 holds it. This works because all of them go through the same holds: nothing
 that uses a machine is invisible.
 
+## Two views
+
+**The friend view** is there to see that friends are working. It is centered
+on cards, as the board is today: each friend, and the cards it is working.
+Resources are behind it, not on it.
+
+Glenn: "friend view is just there for when we are making sure friends are
+working. it's a card centric view, like we have now, but behind it -- is
+resources."
+
+**The resource view** is the fleet: each machine, what it has, and every hold
+on it.
+
+A card links the two. In the friend view it is a piece of work a friend is
+doing. In the resource view it is one or more holds on machines.
+
 ## What takes resources
 
 A consumer of a card (each work attempt and each read), wherever the dealer or
