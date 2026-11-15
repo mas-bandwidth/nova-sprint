@@ -123,6 +123,11 @@ It answers one question: are we using the fleet's resources fully, yes or no.
   working cells: blocker, critical, fix, read and work. Who is doing the work
   is not shown. CI is a type of work the board has no color for yet.
 - **Everything that holds is shown,** CI included.
+- **Paused work is shown on the machine's bar.** When CI is holding CPU and
+  cards have yielded to it, the bar shows both: what CI holds, and the paused
+  work behind it. A view of cards could not show this; a paused card only
+  looks slow. Glenn: "this is why we visualize resourcecs and what tehy are
+  doing", "per-machine -- NOT cards."
 - **The load column goes,** from Resources and from Friends, which share one
   table. What is held says how busy a machine is. The measurement behind it is
   kept for checking and not drawn.
