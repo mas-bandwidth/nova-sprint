@@ -163,8 +163,13 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 // mapRows fills the Fleet and Friends tables. Every roster worker is a Fleet
 // row and every roster kin a Friends row, at its roster width, down until the
 // store has the row (the human, 2026-11-07: "we definitely need all that stuff
-// back"); a store row the roster does not name is shown as down (Stella,
-// v2-l6). The tables are maps, so the order is by name.
+// back"). A store row nova-config does not name is in neither table (Glenn,
+// 2026-11-15: removed machines must not show in the fleet; the run retires
+// such a row, and this covers the ticks before it does). With an empty
+// roster (a failed read, or nova-config with nothing in it) nothing is
+// judged absent: every store row shows, down, at width 0. A row nova-config
+// names that is not a roster row (a machine that is not a bench, a disabled
+// friend) shows as down. The tables are maps, so the order is by name.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, w := range ros.Workers {
 		fleet[n] = &fleetRow{Status: "down", Width: w.Width}
@@ -173,12 +178,15 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		friends[n] = &fleetRow{Status: "down", Width: k.Width}
 	}
 	for n, r := range rows {
+		if !ros.Empty() && !ros.Names(n) {
+			continue
+		}
 		status := r.State
 		if r.State == "up" && r.Held {
 			status = "held"
 		}
 		kind, width, _, found := ros.Row(n)
-		if !found { // not in nova-config: down, whatever the store says (Stella, v2-l6)
+		if !found { // named but not a roster row, or the roster is empty: down, whatever the store says
 			status = "down"
 		}
 		f := &fleetRow{Status: status, Width: width}
