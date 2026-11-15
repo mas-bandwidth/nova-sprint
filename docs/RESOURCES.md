@@ -180,6 +180,25 @@ PS5 says:
 names are tags and which are resources: the fleet's configuration says what
 each name is, and a name with no number reads correctly either way.
 
+### Work across several machines
+
+An idea, not settled. Glenn: "maybe a card could even grab resources across
+mulitple machines for a friend to work on".
+
+Some work needs more than one machine at once: a renderer checked on a Mac
+with Metal and on a Windows machine with a GPU. A card could then state more
+than one set of needs, each set held on one machine:
+
+    mac, metal, cpu 4
+    windows, gpu, cpu 4
+
+The friend working the card holds both and works across them from its one
+session.
+
+A card that holds part of what it needs while it waits for the rest can block
+another card doing the same, for ever. So the rule would be all or nothing: a
+card holds every set it states, or none of them.
+
 ### Who says what work requires
 
 The coordinator, by judgement, for each piece of work. *Settled.* There is no
