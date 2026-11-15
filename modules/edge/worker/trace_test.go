@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -824,6 +825,9 @@ func (h *runnerWalkHarness_internal) gateNotRunStep_internal(t *testing.T, c str
 	if err := h.runner.rebaseAndTestStep_internal(context.Background(), dir, &rec); err != nil {
 		t.Fatalf("the stream-and-test step of %s: %v", c, err)
 	}
+	if rec.Outcome.Result != "fault" || card.RouteName(rec.Outcome.Reason) != "network" {
+		t.Errorf("a done-when with no network for it left %+v, want the network's route fault", rec.Outcome) // TLC refuses the trace too
+	}
 	h.bounced[c], h.notRun[c] = rec.Outcome.Result == "fail", true
 	rec.State = JobRebased
 	if err := WriteJobRecord(dir, rec); err != nil {
@@ -862,6 +866,65 @@ func walkPriorHead_internal(t *testing.T, prior string) []runnerTraceStep_intern
 		do(act, "c2")
 	}
 	return append(steps, refinementRunnerState_internal(t, h, "Done", "none"))
+}
+
+// walkGateNotRun_internal is a scripted walk of a gate the bench cannot
+// run: c1, at an unfinished prior head, its done-when with no network for
+// it (gateNotRunStep_internal), then pushed, reported and cleaned; c2 a
+// first attempt. breaker is the walk to that step with the outcome the
+// code before 2026-11-15 left there, a fail that bounces.
+func walkGateNotRun_internal(t *testing.T) (steps, breaker []runnerTraceStep_internal) {
+	t.Helper()
+	h := newRunnerWalkHarness_internal(t)
+	h.prior["c1"], h.atPriorAlways = "unfinished", true
+	steps = []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
+	do := func(act, c string) {
+		if act == "GateNotRun" {
+			act = h.gateNotRunStep_internal(t, c)
+		} else {
+			h.applyStep_internal(t, act, c)
+		}
+		steps = append(steps, refinementRunnerState_internal(t, h, act, c))
+		if act == "GateNotRun" {
+			breaker = slices.Clone(steps)
+			last := breaker[len(breaker)-1]
+			last.jobDir = maps.Clone(last.jobDir)
+			d := last.jobDir[c]
+			d.outcome, d.bounced = "fail", true
+			last.jobDir[c] = d
+			breaker[len(breaker)-1] = last
+		}
+	}
+	do("PassStart", "none")
+	for _, act := range []string{"Take", "Stage", "Run", "Harvest", "GateNotRun", "Push", "Report", "Clean"} {
+		do(act, "c1")
+	}
+	for _, act := range []string{"Take", "Stage", "Run", "Harvest", "Rebase", "Push", "Report", "Clean"} {
+		do(act, "c2")
+	}
+	return append(steps, refinementRunnerState_internal(t, h, "Done", "none")), breaker
+}
+
+// writeRunnerTrace_internal writes steps into dir for make-traces.sh;
+// forbiddenAt > 0: a breaker, which TLC must refuse at that record.
+func writeRunnerTrace_internal(t *testing.T, dir string, steps []runnerTraceStep_internal, forbiddenAt int) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if forbiddenAt > 0 {
+		cfg, err := os.ReadFile(filepath.Join("..", "..", "..", "tla", "RunnerTrace.cfg"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := strings.Replace(string(cfg), "\\* expect: matched", fmt.Sprintf("\\* expect: forbidden at %d", forbiddenAt), 1)
+		if err := os.WriteFile(filepath.Join(dir, "RunnerTrace.cfg"), []byte(want), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "RunnerTraceLog.tla"), []byte(formatRunnerTraceTLA_internal(steps)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func walkRunnerTrace_internal(t *testing.T, seed int64) []runnerTraceStep_internal {
@@ -1114,6 +1177,17 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 				}
 			}
 		}
+	}
+	// A gate the bench cannot run, at an unfinished prior head, walked by
+	// script; and its breaker, the same walk with the code that failed the
+	// card for it (before 2026-11-15), which TLC must refuse at that step.
+	gate, breaker := walkGateNotRun_internal(t)
+	for _, s := range gate {
+		seen[s.action]++
+	}
+	if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
+		writeRunnerTrace_internal(t, filepath.Join(traceDir, "runner-walk-gate-not-run"), gate, 0)
+		writeRunnerTrace_internal(t, filepath.Join(traceDir, "runner-breaker-gate-fails"), breaker, len(breaker))
 	}
 	// The two prior-head paths, each walked once by script.
 	for _, prior := range []string{"finished", "unfinished"} {

@@ -686,72 +686,93 @@ func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
 	return false, ""
 }
 
-// missingRouteSignatures are the outputs that say a gate's run lacked
-// something of the bench's, not that the head is red: route is the
-// card.MissingRoute name of what is missing, "" for the shell's own
-// missing command, named from its line (missingCommand_internal); shell:
-// the line is only a missing tool when make or the shell printed it. The
-// rest were measured on the benches on 2026-11-15: rustc's linker and std
-// target, Go's module lookup with no proxy, and a host name no resolver
-// answered.
+// missingRouteSignatures are the lines that say a gate's run lacked
+// something of the bench's, not that the head is red: each is matched on
+// its own line, with the prefix of the tool that printed it, so a test's
+// log that quotes such text is not taken for one. route is the
+// card.MissingRoute name of what is missing; "" names it from the
+// line's first group, a command run by its bare name (one with a path is
+// a file of the head's, and its absence the card's). Measured: the shell's
+// and make's own lines for a missing command (dash, bash, sh, GNU make
+// 3.81 and 4.4), the wall's for a gate's program on no PATH entry,
+// a launcher's for five toolchains; and on the benches, 2026-11-15,
+// rustc's linker and std target, Go's module lookup with no proxy, and a
+// host name no resolver answered.
 var missingRouteSignatures = []struct {
-	needle, route string
-	shell         bool
+	re    *regexp.Regexp
+	route string
 }{
-	{"command not found", "", true},
-	{": not found", "", true},
-	{"No such file or directory: 'elixir'", "elixir", true},
-	{"No such file or directory: 'luau'", "luau", true},
-	{"No such file or directory: 'sbcl'", "sbcl", true},
-	{"No such file or directory: 'dart'", "dart", true},
-	{"No such file or directory: 'dotnet'", "dotnet", true},
-	{"could not exec the linker", "linker", false},
-	{"target may not be installed", "rust-target", false},
-	{"target not installed", "rust-target", false},
-	{"can't find crate for `std`", "rust-target", false},
-	{"module lookup disabled", "network", false},
-	{"Could not resolve host", "network", false},
+	{regexp.MustCompile(`(?m)^(?:/bin/|/usr/bin/)?(?:sh|bash|dash)(?:: line \d+)?(?:: \d+)?: ([^\s:/]+): (?:command )?not found\s*$`), ""},
+	{regexp.MustCompile(`(?m)^zsh: command not found: ([^\s:/]+)\s*$`), ""},
+	{regexp.MustCompile(`(?m)^g?make(?:\[\d+\])?: ([^\s:/]+): (?:No such file or directory|Command not found)\s*$`), ""},
+	{regexp.MustCompile(`(?m)^SANDBOX REFUSED reason=not_found: ([^\s:/]+) is on no PATH entry`), ""},
+	{regexp.MustCompile(`No such file or directory: '(elixir|luau|sbcl|dart|dotnet)'`), ""},
+	{regexp.MustCompile("(?m)could not exec the linker|^error: linker `[^`]+` not found"), "linker"},
+	{regexp.MustCompile("can't find crate for `std`|target may not be installed|(?m)^error: .*target not installed"), "rust-target"},
+	{regexp.MustCompile(`module lookup disabled by GOPROXY=off`), "network"},
+	{regexp.MustCompile(`(?m)^(?:fatal: unable to access '[^']*': |curl: \(\d+\) |ssh: )Could not resolve host`), "network"},
 }
 
 // missingRoute_internal is the route a gate's red run says the bench
-// lacks (missingRouteSignatures), and why, its output's end; route "" when
-// it says none. A run the wall refused is the wall's (isInfraFault_internal),
-// whatever its output names.
+// lacks (missingRouteSignatures, the last such line in its output), and
+// why, its output's end; route "" when it says none. Only a run that
+// exited by itself (1 to 128, 127 among them: a shell's missing command)
+// says it: the wall's own exits (125, 126) and a kill (above 128) are not
+// the gate's word. A run the wall refused is the wall's whatever its
+// output names, but for the refusal that names the gate's program on no
+// PATH entry; so is a command of the wall's own (nova-*).
 func missingRoute_internal(res WallRunResult) (route, why string) {
-	out := string(res.Output)
-	if res.ExitCode == 0 || strings.Contains(out, "SANDBOX REFUSED") {
+	if res.ExitCode <= 0 || res.ExitCode > 128 || res.ExitCode == 125 || res.ExitCode == 126 {
 		return "", ""
 	}
-	shell := strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")
+	out := string(res.Output)
+	refused := strings.Contains(out, "SANDBOX REFUSED")
+	last := -1
 	for _, sig := range missingRouteSignatures {
-		if !strings.Contains(out, sig.needle) || sig.shell && !shell {
+		if refused && !strings.HasPrefix(sig.re.String(), "(?m)^SANDBOX REFUSED") {
 			continue
 		}
-		route = cmp.Or(sig.route, missingCommand_internal(out, sig.needle), "toolchain")
-		return route, fmt.Sprintf("%s missing in the wall (exit %d): %s", route, res.ExitCode, TailBytes(res.Output, 512))
+		all := sig.re.FindAllStringSubmatchIndex(out, -1)
+		if len(all) == 0 || all[len(all)-1][1] <= last {
+			continue
+		}
+		m := all[len(all)-1]
+		name := sig.route
+		if name == "" && len(m) >= 4 && m[2] >= 0 {
+			name = routeWord_internal(out[m[2]:m[3]])
+		}
+		if name == "" {
+			continue
+		}
+		route, last = name, m[1]
 	}
-	return "", ""
+	if route == "" {
+		return "", ""
+	}
+	return route, fmt.Sprintf("%s missing in the wall (exit %d): %s", route, res.ExitCode, TailBytes(res.Output, 512))
 }
 
-// missingCommand_internal is the command the shell's line holding needle
-// says it did not find: "/bin/sh: elixir: command not found", "sh: 1:
-// luau: not found" and "make: dotnet: command not found" name the word
-// before needle; "" when that is no command's name.
-func missingCommand_internal(out, needle string) string {
-	i := strings.Index(out, needle)
-	line := out[:i]
-	if j := strings.LastIndexByte(line, '\n'); j >= 0 {
-		line = line[j+1:]
-	}
-	parts := strings.Split(strings.TrimSuffix(strings.TrimSpace(line), ":"), ":")
-	name := filepath.Base(strings.TrimSpace(parts[len(parts)-1]))
+// routeWord_internal is name as a route's name, as a brief declares one
+// (card.RouteField: 1 to 128 of a-z A-Z 0-9 . _ -), with a letter in it;
+// "" when it is none, or a command of the wall's own (nova-*): that one
+// missing is the wall's fault, not a route the bench lacks.
+func routeWord_internal(name string) string {
 	letter := strings.IndexFunc(name, func(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' }) >= 0
-	if !letter || strings.IndexFunc(name, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._+-", r))
-	}) >= 0 {
+	other := strings.IndexFunc(name, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-", r))
+	}) >= 0
+	if !letter || other || len(name) > 128 || strings.HasPrefix(name, "nova-") {
 		return ""
 	}
 	return name
+}
+
+// routeReason_internal is a route fault's reason: card.MissingRoute and
+// route, then what, its end kept within MaxReasonBytes (the start is the
+// fault's kind, and TailBytes alone would cut it).
+func routeReason_internal(route, what string) string {
+	head := card.MissingRoute + " " + route + " "
+	return head + TailBytes([]byte(what), MaxReasonBytes-len(head))
 }
 func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobRecord, res WallRunResult, runErr error) error {
 	h, err := r.harnessFor_internal(job.HarnessName)
@@ -1140,8 +1161,7 @@ func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, ki
 		// coordinator (card.RouteFault) and is not dealt again by itself:
 		// a bench of the same kind would lack it too (tla/Runner.tla
 		// GateNotRun).
-		head := card.MissingRoute + " " + route + " "
-		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: head + TailBytes([]byte(fmt.Sprintf("%s (%s) did not run: %s", kind.name, cmd, why)), MaxReasonBytes-len(head))}, true, false
+		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: routeReason_internal(route, fmt.Sprintf("%s (%s) did not run: %s", kind.name, cmd, why))}, true, false
 	}
 	if fault, why := isInfraFault_internal(tres, err); fault {
 		return notRun(why)
@@ -1171,7 +1191,8 @@ var (
 // and green at the base fails the attempt as a red DONE-WHEN does; so does
 // a stream gate that timed out, was killed or did not run, at the head,
 // whatever the base. One red at the head that the worker could not judge
-// at the base is a fault: the worker's failing, not the card's.
+// at the base is a fault: the worker's failing, not the card's; a route
+// fault when its run at the base lacked a route (missingRoute_internal).
 func (r *Runner) streamGates_internal(ctx context.Context, j Job, rec JobRecord) (out Outcome, red bool, note string) {
 	if r.Wall == nil {
 		return Outcome{}, false, ""
@@ -1204,6 +1225,13 @@ func (r *Runner) streamGates_internal(ctx context.Context, j Job, rec JobRecord)
 		default:
 			notes = append(notes, fmt.Sprintf("stream gate %s is red at base %s", cmd, base))
 		}
+	}
+	if what, ok := card.RouteFault(why); len(unjudged) > 0 && ok && card.RouteName(why) != "" {
+		// The base's run lacked a route this bench lacks: judged nowhere of
+		// its kind, so the card waits for the coordinator, as at the head.
+		route := card.RouteName(why)
+		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: routeReason_internal(route, fmt.Sprintf("stream gate (%s) is red at the head and could not be judged at the base %s: %s",
+			strings.Join(unjudged, "; "), cmp.Or(base, "(unknown)"), strings.TrimSpace(strings.TrimPrefix(what, route))))}, true, ""
 	}
 	if len(unjudged) > 0 {
 		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("stream gate (%s) is red at the head and was not judged at the base %s: %s",
@@ -1272,7 +1300,10 @@ func (r *Runner) baseGateRed_internal(ctx context.Context, j Job, rec JobRecord,
 	var whys []string
 	for _, cmd := range ask {
 		o, isRed, testsRed := r.doneWhen_internal(ctx, bJob, rec, streamGate, cmd)
-		if isRed && !testsRed {
+		if _, route := card.RouteFault(o.Reason); isRed && !testsRed && route {
+			whys = append([]string{o.Reason}, whys...) // first: the base's route fault is the step's (streamGates_internal)
+			continue
+		} else if isRed && !testsRed {
 			whys = append(whys, o.Reason) // not judged at the base: nothing kept
 			continue
 		}

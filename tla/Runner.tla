@@ -111,10 +111,10 @@
 (* A gate that did not run is a fault (2026-11-15): GateNotRun is the      *)
 (* stream-and-test step finding a done-when gate it could not run on this  *)
 (* bench: the wall lacks its toolchain or the network (a route fault,      *)
-(* card.MissingRoute, that leaves the card waiting for the coordinator),   *)
-(* or the head could not be checked out for it. jobDir[c].notRun is that   *)
-(* cause; the head is not judged, so it is never the card's fail and       *)
-(* spends no bounce. GateNotRunIsAFault; witness RunnerGateNotRunFails.    *)
+(* card.MissingRoute, that leaves the card waiting for the coordinator).   *)
+(* jobDir[c].notRun is that cause; the head is not judged, so it is never  *)
+(* the card's fail and spends no bounce. GateNotRunIsAFault; witness       *)
+(* RunnerGateNotRunFails; breaker trace runner-breaker-gate-fails.         *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -295,16 +295,15 @@ Conflict(c) ==
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
 
 \* A done-when gate the step could not run: its toolchain or the network
-\* missing in the wall (a route fault), or the head not checked out for it.
-\* The head is not judged: a fault, no bounce (runner.go doneWhen_internal,
-\* applyRebased_internal).
+\* missing in the wall (a route fault). The head is not judged: a fault, no
+\* bounce (runner.go doneWhen_internal, missingRoute_internal).
 GateNotRun(c) ==
   /\ ~env.crashed
   /\ storeState[c] = "working"   \* a withdrawn job moves only to Retire
   /\ jobState[c] = "harvested"
   /\ jobDir[c].outcome = "ok"
   /\ ~(jobDir[c].atPrior /\ jobDir[c].prior = "finished")   \* nothing new over a finished head runs no gate
-  /\ jobDir' = [jobDir EXCEPT ![c].outcome = "fault", ![c].bounced = FALSE, ![c].notRun = TRUE]
+  /\ jobDir' = [jobDir EXCEPT ![c].notRun = TRUE, ![c].outcome = "fault", ![c].bounced = FALSE]
   /\ jobState' = [jobState EXCEPT ![c] = "rebased"]
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
 
@@ -690,8 +689,7 @@ NoHarnessOnAStaleRetry ==
 
 \* 2026-11-15: a gate that did not run judged nothing: the job is a fault
 \* that spends no bounce, never the card's fail (a missing toolchain or
-\* network failed cards on every bench that lacked it, and a failed
-\* checkout of the head failed one nine times).
+\* network failed cards on every bench that lacked it).
 GateNotRunIsAFault ==
   \A c \in Consumers : jobDir[c].notRun => jobDir[c].outcome = "fault" /\ ~jobDir[c].bounced
 
