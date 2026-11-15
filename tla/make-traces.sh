@@ -16,6 +16,8 @@
 #                       and said so, when it is missing, unless NOVA_TRACE_PG=1,
 #                       which makes a missing initdb a failure)
 #   card-walk-<seed>    modules/card/trace_test.go TestTraceColdWalk, the card walk on the Fake
+#   card-repeat         TestTraceRepeatHeld: two fails with the same first line, held, unheld,
+#                       failed again (a committed fixture, rewritten here; must match whole)
 #   policy-walk-<seed>  modules/policy/trace_test.go TestTraceWalk, the policy walk on the Fake
 #   verbfence-walk-<seed>  modules/verbs/fence_trace_test.go TestVerbFenceTraceWalk, replace on the
 #                       Fake with other writers between its reads and its commits (VerbFence.tla)
@@ -70,7 +72,7 @@ export NOVA_TRACE_DIR="$OUT"
 # exit code is kept and any failure fails the script after all have ended.
 pids=()
 if on store; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./modules/store/ & pids+=($!); fi
-if on card; then go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ & pids+=($!); fi
+if on card; then go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence|TestTraceRepeatHeld' ./modules/card/ & pids+=($!); fi
 if on policy; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ & pids+=($!); fi
 if on steps; then go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ & pids+=($!); fi
 if on steps-fixtures; then go test -count=1 -run 'TestMergeNagTraceWalk$' ./modules/steps/ & pids+=($!); fi

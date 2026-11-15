@@ -160,3 +160,65 @@ func (tr *cardTrace) add(f []string, st ModelState) {
 	tr.recs = append(tr.recs, "["+strings.Join(f, ", ")+"]")
 	tr.prev = st
 }
+
+// repeatWalk is p1 failing twice with the same first line ("r"), the second
+// fail held by the repeat (RepeatedFail); then unheld, dealt and failed the
+// same way once more, which an unhold's fresh budget does not hold. The card
+// walk's random draws rarely line two such fails up, so this walk binds the
+// repeat to tla/CardMachine.tla's Broken (Repeats) on every run.
+func repeatWalk(t *testing.T) *cardTrace {
+	w := newWorld(t, producer("p1"))
+	tr := newCardTrace(w, true)
+	prod := func(e Event) {
+		t.Helper()
+		plan, r := w.plan("p1", e)
+		require.Nil(t, r, name(e))
+		w.op(kind(e), plan)
+		w.ev = e
+		tr.step(name(e)+" p1", plan)
+	}
+	cons := func(id string, e Event) {
+		t.Helper()
+		plan := w.consumerPlan(id, e)
+		w.op(kind(e), plan)
+		w.ev = e
+		tr.step(name(e)+" "+id, plan)
+	}
+	for a := 1; a <= 3; a++ {
+		id := fmt.Sprintf("p1.w%d", a)
+		switch a {
+		case 1:
+			prod(Resolve{})
+		case 3:
+			require.Equal(t, Waiting, w.card("p1").State, "held at w2")
+			require.Equal(t, RepeatReason(Card{ID: "p1.w1"}, Card{ID: "p1.w2", Reason: "r"}), w.card("p1").Reason)
+			prod(UnholdCard{Reason: "looked"})
+			prod(Resolve{})
+		}
+		prod(Start{Row: "r1", Branch: "b-p1", Base: base})
+		cons(id, Report{Row: "r1", Result: "fail", Reason: "r\nsecond line"})
+		prod(Broken{Consumer: id})
+	}
+	require.Equal(t, Ready, w.card("p1").State, "an unhold is a fresh budget")
+	return tr
+}
+
+// TestTraceRepeatHeld: the repeat walk holds p1 at w2 and deals it again
+// only after the unhold; its trace is the fixture tla/traces/card-repeat,
+// which check-trace.sh must match whole.
+func TestTraceRepeatHeld(t *testing.T) {
+	t.Parallel()
+	tr := repeatWalk(t)
+	if out := os.Getenv(traceEnv); out != "" {
+		require.NoError(t, tr.write(filepath.Join(out, "card-repeat"), "matched"))
+	}
+	dir := t.TempDir()
+	require.NoError(t, tr.write(dir, "matched"))
+	for _, name := range []string{"CardMachineTraceLog.tla", "CardMachineTrace.cfg"} {
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+		want, err := os.ReadFile(filepath.Join("..", "..", "tla", "traces", "card-repeat", name))
+		require.NoError(t, err, "the fixture: NOVA_TRACE_DIR=$PWD/tla/traces go test -run TestTraceRepeatHeld ./modules/card/ writes it")
+		require.Equal(t, string(want), string(got), "tla/traces/card-repeat/%s is stale", name)
+	}
+}
