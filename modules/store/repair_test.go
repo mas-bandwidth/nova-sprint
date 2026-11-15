@@ -51,7 +51,16 @@ func TestFunctionalRestoreLostRows(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"lost"}, names)
 	require.NoError(t, validate(), "the table is the log's again")
-	assert.Equal(t, want, h.snap(), "the row is back as it was, gen, hold and heartbeat included, and the log has no new event")
+	after := h.snap()
+	back := after.Rows["lost"]
+	old := want.Rows["lost"]
+	assert.Equal(t, Row{Name: "lost", State: old.State, Session: old.Session, Role: old.Role, Flaps: old.Flaps, Held: true, Reason: old.Reason, Gen: back.Gen}, back, "state, hold, reason and hook as the log had them; the heartbeat is cleared")
+	assert.Equal(t, want.Seq+1, after.Seq, "put back through one op, so a running view folds it")
+	last := h.events()[len(h.events())-1]
+	assert.Equal(t, "store-repair", last.Actor)
+	assert.Contains(t, last.After.Rows, "lost")
+	want.Rows["lost"], want.Seq = back, after.Seq
+	assert.Equal(t, want, after, "nothing else changed")
 
 	names, err = p.RestoreLostRows(ctx)
 	require.NoError(t, err)
