@@ -391,6 +391,15 @@ type SetRowLoad struct {
 	Version                                  string // the release of the binary that beat ("" unknown)
 }
 
+// RetireRow retires a row nova-config no longer names (round 32; Glenn,
+// 2026-11-15: "the nova-sprint system and dash follows the set of machines
+// defined automatically in nova-config"): it is unhooked, down, not held,
+// its heartbeat cleared and Reason kept, and from then on it is in no read
+// and every write but PutRow refuses it as absent; PutRow brings it back as
+// a new row (its gen goes on). Refused when the row does not exist or is
+// retired, and while it holds a live consumer (ready or working).
+type RetireRow struct{ Row, Reason string }
+
 // PutPolicy adds the next policy version, inactive; actor and at come from the op.
 type PutPolicy struct{ Kind, Name, Body string }
 
@@ -441,6 +450,7 @@ func (SetRowHeld) isWrite()       {}
 func (SetRowState) isWrite()      {}
 func (SetRowFlaps) isWrite()      {}
 func (SetRowLoad) isWrite()       {}
+func (RetireRow) isWrite()        {}
 func (PutPolicy) isWrite()        {}
 func (SetActivePolicy) isWrite()  {}
 func (SetStopped) isWrite()       {}
@@ -623,6 +633,8 @@ func rowSpec(w Write) spec {
 		s := row(v.Row, "state", func(r *Row) { r.State = v.State }, func(c *checker) { c.oneOf("row state", v.State, RowStates) })
 		s.is = "is already " + v.State
 		return s
+	case RetireRow:
+		return put("row", v.Row, func(c *checker) { c.text(v.Reason) }, "retired").then(func(w *work) (string, error) { return w.retireRow(v) })
 	case SetRowFlaps:
 		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) })
 	case SetRowLoad:

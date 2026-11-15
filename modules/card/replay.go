@@ -169,6 +169,8 @@ func idleWrite(w store.Write, cur records) bool {
 	case store.SetRowHeld:
 		r, ok := cur.rows[x.Row]
 		return ok && r.Held == x.Held
+	case store.RetireRow:
+		return false // a retired row is in no read: a retire always changes it
 	default:
 		return idleCard(w, cur)
 	}
@@ -904,6 +906,8 @@ func foldWrite(s records, w store.Write) {
 		editRow(s, x.Row, func(r *Row) { r.Flaps = x.Flaps })
 	case store.SetRowHeld:
 		editRow(s, x.Row, func(r *Row) { r.Held, r.Reason = x.Held, x.Reason })
+	case store.RetireRow:
+		editRow(s, x.Row, func(r *Row) { r.State, r.Held, r.Flaps, r.Reason = Down, false, 0, x.Reason })
 	default:
 		foldCard(s, w)
 	}

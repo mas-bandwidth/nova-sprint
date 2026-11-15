@@ -285,7 +285,7 @@ func TestRowTable(t *testing.T) {
 		{rowMove(down, Gone{}), "row r3 is down, Gone needs up"},
 		{rowMove(held, Hold{}), "row r4 is already held"},
 		{rowMove(up, Unhold{}), "row r1 is already not held"},
-		{rowMove(up, Resolve{}), "Resolve is not a row event; MoveRow takes Seen, Gone, Hold and Unhold"},
+		{rowMove(up, Resolve{}), "Resolve is not a row event; MoveRow takes Seen, Gone, Hold, Unhold and Retire"},
 	} {
 		c.check(t)
 	}

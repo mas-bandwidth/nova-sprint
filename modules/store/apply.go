@@ -21,8 +21,11 @@ type txn interface {
 	lastSeq() (int64, error)
 	// every accepted event after seq, in order: its seq and after-image
 	acceptedSince(seq int64) ([]Event, error)
-	rows() ([]Row, error) // every row of the epoch
-	open() error          // epoch n = n + 1; later puts go to the new epoch
+	rows() ([]Row, error) // every row of the epoch but the retired
+	// inHand is one consumer row holds live (ready or working), the first
+	// by id, and false when it holds none
+	inHand(row string) (string, bool, error)
+	open() error // epoch n = n + 1; later puts go to the new epoch
 	putCard(c Card) error
 	putStream(s Stream) error
 	putRow(r Row) error
@@ -405,8 +408,13 @@ func (w *work) mustCard(id string) (Card, string, error) {
 	return c, when(err == nil && !ok, "card %s does not exist", id), err
 }
 
+// mustRow is row name, refused when it does not exist or is retired (round
+// 32: a retired row is absent to every write but PutRow).
 func (w *work) mustRow(name string) (Row, string, error) {
 	r, ok, err := w.tx.row(name)
+	if err == nil && ok && r.Retired {
+		return r, fmt.Sprintf("row %s is retired: nova-config no longer names it; it comes back when it hooks in again", name), nil
+	}
 	return r, when(err == nil && !ok, "row %s does not exist", name), err
 }
 

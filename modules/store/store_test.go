@@ -331,6 +331,21 @@ func TestRound30Hash(t *testing.T) {
 	assert.True(t, knownOlder(round30Hash))
 }
 
+// round31Hash is the hash of round 31's schema.sql, kept in testdata: its
+// rows have no retired flag, which this build's schema adds (round 32: a
+// row nova-config no longer names is retired). Unit: reads a file in the
+// package, no store.
+func TestRound31Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round31.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round31Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round31Hash, schemaHash)
+	assert.NotContains(t, string(old), "retired")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS retired")
+	assert.True(t, knownOlder(round31Hash))
+}
+
 // PoliciesNamed is the newest versions of one kind under one name, newest
 // first and at most max; another name or kind is never among them.
 func TestPoliciesNamedNewestFirst(t *testing.T) {

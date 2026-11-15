@@ -165,6 +165,8 @@ func writtenRow(w store.Write) string {
 		return x.Row
 	case store.SetRowHeld:
 		return x.Row
+	case store.RetireRow:
+		return x.Row
 	}
 	return ""
 }

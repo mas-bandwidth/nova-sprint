@@ -16,7 +16,7 @@ import (
 const (
 	streamCols = "name, repo, base, held, pos, mode, forge, gates"
 	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding, red, model, usage, bounce_base`
-	rowCols    = "name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version"
+	rowCols    = "name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version, retired"
 	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
@@ -37,7 +37,7 @@ func scanCard(r pgx.Row) (Card, error) {
 
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
-	err := r.Scan(&w.Name, &w.State, &w.Session, &w.Role, &w.Flaps, &w.Held, &w.Gen, &w.Reason, &w.Load1Centi, &w.Cores, &w.SlotsUsed, &w.SlotsTotal, &w.Tiers, &w.CPUPeakDeci, &w.Version)
+	err := r.Scan(&w.Name, &w.State, &w.Session, &w.Role, &w.Flaps, &w.Held, &w.Gen, &w.Reason, &w.Load1Centi, &w.Cores, &w.SlotsUsed, &w.SlotsTotal, &w.Tiers, &w.CPUPeakDeci, &w.Version, &w.Retired)
 	return w, err
 }
 
@@ -150,7 +150,7 @@ func snapshotTx(ctx context.Context, tx pgx.Tx, scope Scope) (Snapshot, error) {
 	if err != nil {
 		return s, err
 	}
-	if s.Rows, err = all(ctx, tx, scanRow, func(v Row) string { return v.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", s.Epoch); err != nil {
+	if s.Rows, err = all(ctx, tx, scanRow, func(v Row) string { return v.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1 AND NOT retired", s.Epoch); err != nil {
 		return s, err
 	}
 	judgements := "SELECT " + judgeCols + " FROM sprint.judgements WHERE epoch = $1"
@@ -302,8 +302,17 @@ func (t *pgTx) acceptedSince(seq int64) ([]Event, error) {
 	return out, rows.Err()
 }
 
+func (t *pgTx) inHand(row string) (string, bool, error) {
+	var id string
+	err := t.tx.QueryRow(t.ctx, "SELECT id FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') ORDER BY id COLLATE \"C\" LIMIT 1", t.epoch, row).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	return id, err == nil, err
+}
+
 func (t *pgTx) rows() ([]Row, error) {
-	m, err := all(t.ctx, t.tx, scanRow, func(r Row) string { return r.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", t.epoch)
+	m, err := all(t.ctx, t.tx, scanRow, func(r Row) string { return r.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1 AND NOT retired", t.epoch)
 	var out []Row
 	for _, r := range m {
 		out = append(out, r)
@@ -344,11 +353,11 @@ func (t *pgTx) putCard(c Card) error {
 }
 
 func (t *pgTx) putRow(r Row) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version, retired) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT (epoch, name) DO UPDATE SET state = EXCLUDED.state, session = EXCLUDED.session,
 		role = EXCLUDED.role, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen, reason = EXCLUDED.reason,
-		load1_centi = EXCLUDED.load1_centi, cores = EXCLUDED.cores, slots_used = EXCLUDED.slots_used, slots_total = EXCLUDED.slots_total, tiers = EXCLUDED.tiers, cpu_peak_deci = EXCLUDED.cpu_peak_deci, version = EXCLUDED.version`,
-		t.epoch, r.Name, r.State, r.Session, r.Role, r.Flaps, r.Held, r.Gen, r.Reason, r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.Tiers, r.CPUPeakDeci, r.Version)
+		load1_centi = EXCLUDED.load1_centi, cores = EXCLUDED.cores, slots_used = EXCLUDED.slots_used, slots_total = EXCLUDED.slots_total, tiers = EXCLUDED.tiers, cpu_peak_deci = EXCLUDED.cpu_peak_deci, version = EXCLUDED.version, retired = EXCLUDED.retired`,
+		t.epoch, r.Name, r.State, r.Session, r.Role, r.Flaps, r.Held, r.Gen, r.Reason, r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.Tiers, r.CPUPeakDeci, r.Version, r.Retired)
 	return err
 }
 

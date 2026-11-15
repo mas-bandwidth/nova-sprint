@@ -146,6 +146,11 @@ func (v *View) Fold(events []store.Event) {
 }
 
 func (v *View) foldRow(r store.Row, at time.Time) {
+	if r.Retired { // in no read, as store.Fold drops it (round 32)
+		delete(v.Rows, r.Name)
+		delete(v.Down, r.Name)
+		return
+	}
 	if old, ok := v.Rows[r.Name]; ok && old.State == "up" && r.State == "down" {
 		v.Down[r.Name] = at
 	}

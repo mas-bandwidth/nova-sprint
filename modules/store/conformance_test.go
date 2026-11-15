@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -45,6 +47,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"working count":           workingCount,
 		"row gen race":            rowGenRace,
 		"row load":                rowLoad,
+		"retire row":              retireRow,
 		"sentinels":               sentinels,
 		"after":                   afterOrder,
 		"no blocked state":        noBlockedState,
@@ -1834,4 +1837,44 @@ func coldRead4(h *harness) {
 		{SetStreamHeld{"s1", true}, "stream s1 is already held"},
 	})
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
+}
+
+// retireRow is RetireRow (round 32; Glenn, 2026-11-15: the sprint follows
+// nova-config's set of machines): refused while the row holds a live card;
+// accepted, the row is in no read (Snapshot, Rebuild) while its epoch's
+// cards still name it, every write but PutRow refuses it as absent, PutRow
+// brings it back as a new row with its gen going on, and a clear does not
+// carry a retired row into the next epoch.
+func retireRow(h *harness) {
+	h.seed()
+	h.ok(h.op("work", nil, SetCardState{"u1", "working"}, SetRowHeld{"w1", true, "held"}, SetRowFlaps{"w1", 2}, SetRowLoad{"w1", 100, 8, 1, 8, "pro", 50, "v2.0.6"}))
+	g := h.snap().Rows["w1"].Gen
+	h.refused(h.op("retire", []Expect{RowGen{"w1", g}}, RetireRow{"w1", "gone"}), "row w1 holds card u1; return its hand before it is retired")
+	h.ok(h.op("retire", []Expect{RowGen{"w1", g}}, SetCardState{"u1", "done"}, RetireRow{"w1", "retired: nova-config no longer names it"}))
+	got := h.snap()
+	_, shown := got.Rows["w1"]
+	assert.False(h.t, shown, "a retired row is in no read")
+	assert.Equal(h.t, "w1", got.Cards["u1"].Holder, "its cards still name it")
+	assert.Equal(h.t, Rebuild(h.events()), got, "the fold drops the retired row as the read does")
+	retired := "row w1 is retired: nova-config no longer names it; it comes back when it hooks in again"
+	h.refusedAll([]refusal{
+		{SetRowState{"w1", "up"}, retired},
+		{SetRowHeld{"w1", false, "x"}, retired},
+		{SetRowFlaps{"w1", 0}, retired},
+		{SetRowLoad{"w1", 200, 8, 1, 8, "", 0, ""}, retired},
+		{RetireRow{"w1", "again"}, retired},
+		{PutCard{Tier: "pro", ID: "u4", Kind: "work", Of: "c2", Stream: "s1", Holder: "w1"}, retired},
+		{RetireRow{"w9", "never"}, "row w9 does not exist"},
+	})
+	h.refused(h.op("fenced", []Expect{RowGen{"w1", g + 1}}, SetCardReason{"c1", "r"}), retired)
+	h.ok(h.op("hook", nil, PutRow{Name: "w1", Session: "sess-b", Role: "worker"}))
+	back := h.snap().Rows["w1"]
+	assert.Equal(h.t, Row{Name: "w1", State: "down", Session: "sess-b", Role: "worker", Gen: g + 2}, back, "back as a new row: down, not held, no flaps or beat; its gen goes on")
+	assert.Equal(h.t, Rebuild(h.events()), h.snap())
+	h.ok(h.op("put r2", nil, PutRow{Name: "r2"}))
+	h.ok(h.op("retire again", nil, RetireRow{"w1", "gone"}))
+	h.clear()
+	got = h.snap()
+	assert.Equal(h.t, []string{"r2"}, slices.Sorted(maps.Keys(got.Rows)), "a clear carries no retired row")
+	assert.Equal(h.t, Rebuild(h.events()), got)
 }

@@ -157,6 +157,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 		s.Cards[id] = cardCopy(c) // the caller's own copy: editing it never changes the store
 	}
 	pick(s.Rows, f.rows, f.epoch)
+	maps.DeleteFunc(s.Rows, func(_ string, r Row) bool { return r.Retired }) // a retired row is in no read (round 32)
 	pick(s.Judgements, f.judges, f.epoch)
 	maps.Copy(s.Cursors, f.cursors)
 	s.Stopped, s.StopReason, s.Identity = f.stop.Stopped, f.stop.Reason, f.identity
@@ -294,7 +295,7 @@ func (t *fakeTx) acceptedSince(seq int64) ([]Event, error) {
 func (t *fakeTx) rows() ([]Row, error) {
 	var out []Row
 	for k, r := range t.st.rows {
-		if k.epoch == t.st.epoch {
+		if k.epoch == t.st.epoch && !r.Retired {
 			out = append(out, r)
 		}
 	}
@@ -367,4 +368,17 @@ func decodeReceipt(b []byte) Receipt {
 		panic(err) // written by encode
 	}
 	return r
+}
+
+func (t *fakeTx) inHand(row string) (string, bool, error) {
+	var ids []string
+	for k, c := range t.st.cards {
+		if k.epoch == t.st.epoch && c.Holder == row && (c.State == "ready" || c.State == "working") {
+			ids = append(ids, c.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return "", false, nil
+	}
+	return slices.Min(ids), true, nil
 }

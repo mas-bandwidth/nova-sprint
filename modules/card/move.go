@@ -1379,8 +1379,10 @@ func MoveRow(r Row, e Event) (Plan, *Refusal) {
 		w, refusal = store.SetRowHeld{Row: r.Name, Held: true, Reason: v.Reason}, rowHeld(r, true)
 	case Unhold:
 		w, refusal = store.SetRowHeld{Row: r.Name, Held: false, Reason: v.Reason}, rowHeld(r, false)
+	case Retire:
+		w = store.RetireRow{Row: r.Name, Reason: v.Reason} // from any state and hold: the store refuses it while the row holds a live card
 	default:
-		refusal = no("%s is not a row event; MoveRow takes Seen, Gone, Hold and Unhold", name(e))
+		refusal = no("%s is not a row event; MoveRow takes Seen, Gone, Hold, Unhold and Retire", name(e))
 	}
 	if refusal != nil {
 		return Plan{}, refusal

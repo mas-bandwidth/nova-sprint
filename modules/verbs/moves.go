@@ -103,6 +103,8 @@ func effects(op store.Op) string {
 			}
 		case store.SetRowHeld:
 			out = append(out, fmt.Sprintf("row %s held=%t", x.Row, x.Held))
+		case store.RetireRow:
+			out = append(out, "row "+x.Row+" retired")
 		case store.SetStreamHeld:
 			out = append(out, fmt.Sprintf("stream %s held=%t", x.Stream, x.Held))
 		case store.SetCardPriority:
