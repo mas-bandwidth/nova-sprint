@@ -371,6 +371,7 @@ func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []s
 	}
 	return MergeResult{Kind: MergeOK, SHA: strings.TrimSpace(shaOut)}, nil
 }
+
 // Probe commits onto's tree again with onto as its one parent, authored and
 // committed at onto's date as the sprint's identity, and returns its sha
 // (git commit-tree: no checkout, no work tree touched).

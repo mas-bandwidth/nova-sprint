@@ -432,6 +432,7 @@ func (f *Fake) commonAncestorFilesLocked_internal(a, b string) map[string]string
 	}
 	return best
 }
+
 // Probe is onto's files again, onto its one parent: the same onto, the same
 // sha (as git's commit-tree dated at onto's date).
 func (f *Fake) Probe(_ context.Context, _, onto string) (string, error) {
