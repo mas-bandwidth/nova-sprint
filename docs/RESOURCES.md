@@ -257,6 +257,14 @@ Today a consumer is tied to CPU only by taking one of a machine's width.
 Glenn: "consumer cards are effectively, mapped to CPU implicitly by width
 per-machine".
 
+Consumer cards still exist for work the dealer places on the fleet. *Settled.*
+What changes is how the fleet is shown. Today the board draws the fleet as
+machines with their consumer cards. That goes: the fleet is drawn as resources.
+
+Glenn: "consumer cards, now, they still exist for fleet workk, but we're not
+visualizing them like we do not, acros fleet.", "instead we visualize the fleet
+as resources".
+
 ## Two views
 
 **The friend view** is there to see that friends are working. It is centered
