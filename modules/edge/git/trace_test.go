@@ -688,6 +688,7 @@ var landEdgeBreakers = map[string]func(t *testing.T, w *landWalk_internal, step 
 	"landedge-breaker-rebuilds-in-flight": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
 		w.passWith_internal("s1", false, false, false, false)
 		step(walkMove_internal{act: "Pass", arg: "s1"})
+		breakerStart_internal(w, step, "s1")
 		gate := w.req["s1"].gate
 		w.extCommit_internal()
 		step(walkMove_internal{act: "BaseMoves"})
@@ -703,6 +704,7 @@ var landEdgeBreakers = map[string]func(t *testing.T, w *landWalk_internal, step 
 	"landedge-breaker-conflict-judges-group": func(t *testing.T, w *landWalk_internal, step func(walkMove_internal)) {
 		w.passWith_internal("s2", false, false, false, false)
 		step(walkMove_internal{act: "Pass", arg: "s2"})
+		breakerStart_internal(w, step, "s2")
 		r := w.req["s2"]
 		r.ci, r.res = "done", "green"
 		w.req["s2"] = r
@@ -720,12 +722,24 @@ var landEdgeBreakers = map[string]func(t *testing.T, w *landWalk_internal, step 
 	},
 }
 
-// breakerOldForge_internal is s1's first pass (the gate's CI starts), CI
-// moved to ci/res, and one pass on the old forge, which judges red.
+// breakerStart_internal is the model's CIStarts on stream s: a runner
+// takes the gate's CI.
+func breakerStart_internal(w *landWalk_internal, step func(walkMove_internal), s string) {
+	r := w.req[s]
+	r.ci = "running"
+	w.req[s] = r
+	step(walkMove_internal{act: "CIStarts", arg: s})
+}
+
+// breakerOldForge_internal is s1's first pass (the gate's CI queued, then
+// started), CI moved to ci/res, and one pass on the old forge, which
+// judges red.
 func breakerOldForge_internal(t *testing.T, w *landWalk_internal, step func(walkMove_internal), ci, res string) {
 	w.passWith_internal("s1", false, false, false, false)
 	step(walkMove_internal{act: "Pass", arg: "s1"})
+	breakerStart_internal(w, step, "s1")
 	r := w.req["s1"]
+
 	if ci == "done" {
 		r.ci = "partial" // running -> done is one CIStep; partial first keeps both breakers one shape
 		w.req["s1"] = r
