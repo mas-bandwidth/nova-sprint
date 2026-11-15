@@ -330,9 +330,19 @@ on whichever machine in the fleet has what it needs. *Settled as the aim.*
 Glenn: "my ideal would be that friend work can be done across the fleet,
 wherever it needs to do its work, based on the card and resources."
 
-So a friend is not tied to one machine. The card says what the work needs, the
-fleet says where that is free, and the friend does the work there, reaching the
-machine over ssh.
+Glenn: "the goal is, friends can run work and grab resources to do that work,
+as they see fit, across the entire fleet, even if they are kinda driving from
+studio (doing the session there)".
+
+So a friend is not tied to one machine, and it is the friend that grabs. Its
+session stays where it is. When it has work to run, it asks the fleet for the
+resources that work needs, gets a hold on a machine that has them, and runs
+the work there over ssh. It may do this as often as its work calls for: a
+build on one machine, a GPU test on another.
+
+This needs one thing the machine-local nova-reserve does not have: a way to
+ask the whole fleet. A friend, a person or a worker names tags and amounts,
+and is given a machine and a hold on it.
 
 A friend keeps its width for now. *Settled.* It is the friend's own limit: how
 many pieces of work it takes on at once. It says nothing about where they run.
@@ -355,10 +365,11 @@ These are Glenn's to decide before this layer is built.
    means is not designed. Friends today run in apps on studio and the macbook
    (Glenn: "this is tempered somewhat by the fact that right now, friends run
    on studio and macbook via apps."), and a friend works where its session
-   runs. The session can stay in its app while the work goes elsewhere: the
-   friend is told which machine holds its resources, reaches it (Glenn: "eg.
-   the friend ssh's there"), and runs its builds and tests there under that
-   hold. Until that exists, a friend's work runs on the machine its app is on.
+   runs. The fleet-wide ask (name tags and amounts, get a machine and a hold),
+   how the hold is kept while the friend's command runs over ssh (Glenn: "eg.
+   the friend ssh's there"), and how it is freed if the friend's session dies
+   are not designed. Until they exist, a friend's work runs on the machine its
+   app is on.
 4. **When a runner holds its resources.** GitHub picks the runner for a job,
    not the fleet, so a runner cannot be moved to where there is room. Either a
    runner holds what it requires all the time, busy or idle, or it acquires
