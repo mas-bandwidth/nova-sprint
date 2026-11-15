@@ -218,16 +218,20 @@ higher level".
 
 1. **Machines** have tags and resources. This is configuration.
 2. **Holds** are resources acquired on a machine for a while, and released.
-3. **Whoever does the work** acquires holds: a friend, a bench worker, a CI
-   runner. None of them is a machine. Each chooses, or is told, where its work
-   runs.
+3. **Whoever does the work** acquires holds: a friend, or a CI runner. Neither
+   is a machine. A friend chooses where its work runs. Glenn: "the AI picks and
+   chooses."
 4. **Cards** say what the work needs, as the coordinator judged it.
+
+There is no fleet worker. *Settled.* Glenn: "the fleet work, that entirely goes
+away." A fleet machine is not dealt cards and does not run a worker of its own.
+It provides tags and resources, and friends do all the work on it.
 
 ## What takes resources
 
-A consumer of a card (each work attempt and each read), a GitHub runner's job,
-and a friend's work. All state what they require in the same names and units,
-and all draw on the same amounts of the machine they run on.
+A friend working a consumer of a card (a work attempt or a read), and a GitHub
+runner's job. Both state what they require in the same names and units, and
+both draw on the same amounts of the machine the work runs on.
 
 ## CI runners
 
@@ -355,8 +359,13 @@ machine serves is a tag it has.
 Glenn: "machine width in fleet definitely goes away and is replaced by cpu
 resource."
 
-A friend's work is placed like any other work: by the card and its resources,
-on whichever machine in the fleet has what it needs. *Settled as the aim.*
+The bench worker goes away with the width. *Settled.* Today a bench machine is
+a row of the roster: it is dealt cards and runs a harness session for each one.
+With resources a machine is never dealt to. Cards go to friends, and a friend
+uses the fleet's machines to do the work.
+
+A friend's work goes wherever in the fleet it needs to, by the card and its
+resources. *Settled as the aim.*
 
 Glenn: "my ideal would be that friend work can be done across the fleet,
 wherever it needs to do its work, based on the card and resources."
