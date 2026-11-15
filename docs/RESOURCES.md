@@ -302,6 +302,17 @@ CI is a type of work the board has no color for today. It needs one.
 The load column goes. *Settled.* Glenn: "i would suggest we remove load %
 column entirely." What is held on a machine says how busy it is.
 
+The measurement behind it stays. *Settled.* Each machine still reports its
+real CPU use; it is kept for checking and is not drawn on the board.
+
+Glenn: "you should still have this data, so you can be aware of it internalyl
+and check it".
+
+It is the check on the whole design. What is held is a plan; what the machine
+measures is what happened. A machine far busier than its holds has something
+running without a hold. Work that uses far more or far less than it held was
+given the wrong numbers, and the coordinator learns to ask better.
+
 The Friends section still draws consumer cards. What those cards hold is shown
 in Resources, not beside the friend.
 
