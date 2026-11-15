@@ -222,6 +222,7 @@ run VerbFence pass . VerbFence.cfg VerbFence.tla 2
 run VerbFenceCoarse pass . VerbFenceCoarse.cfg VerbFence.tla 2
 run BaseRed pass . BaseRed.cfg BaseRed.tla 2
 run MergeNag pass . MergeNag.cfg MergeNag.tla 2
+run MergeFlow pass . MergeFlow.cfg MergeFlow.tla 2
 run AnsweredQuiet pass . AnsweredQuiet.cfg AnsweredQuiet.tla 2
 run Hook pass . Hook.cfg Hook.tla 2
 
@@ -278,6 +279,11 @@ for m in NeverOpens NeverReplaced; do
 done
 run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg AnsweredQuiet.tla 1
 run reach-MergeNagNeverNags violate . MergeNagNeverNags.cfg MergeNag.tla 1
+# MergeFlow's reversed witnesses: the uncapped group and the red group held
+# starve (MergingDrains), no cancel queues the gate behind its cards (GateFirst).
+for m in MergeFlowUncapped MergeFlowNoPeel MergeFlowNoCancel; do
+    run "witness-$m" violate . "$m.cfg" MergeFlow.tla 1
+done
 
 
 # RowAlive's reversed witnesses (one per requirement it holds) and reach
