@@ -132,6 +132,22 @@ A consumer of a card (each work attempt and each read), a GitHub runner's job,
 and a friend's work. All state what they require in the same names and units,
 and all draw on the same amounts of the machine they run on.
 
+## CI runners
+
+A CI runner is a thing in the fleet that has tags and takes resources, like
+any other work. *Settled.*
+
+Glenn: "previously, they were sort of an invisible resource. now they should
+become a thing that has tags, and grabs resources too".
+
+Today nova-config gives a machine a count of runners and their labels, and what
+a runner's jobs use is counted nowhere. Card work only stays out of CI's way by
+running at a lower priority.
+
+With resources, a runner states what it requires in the same names and units
+as a card, and what it holds comes out of the same amounts on its machine. Its
+tags are the labels a workflow selects it by.
+
 ## What this replaces
 
 Today a bench has a width: its core count, at most `fleet_width_cap`, and at
@@ -177,11 +193,17 @@ These are Glenn's to decide before this layer is built.
    and the friend reaches that machine over ssh. Glenn: "or we can use
    resources fully to distribute friend work across the machine, eg. the
    friend ssh's there". The second needs no friend width at all.
-5. **The machine-local reservation.** `nova-reserve` has one capacity per
+5. **When a runner holds its resources.** GitHub picks the runner for a job,
+   not the fleet, so a runner cannot be moved to where there is room. Either a
+   runner holds what it requires all the time, busy or idle, or it acquires
+   when a job starts and the job waits if the machine is full. Holding all the
+   time is simple and keeps CI fast; it also keeps those resources from cards
+   while the runner is idle.
+6. **The machine-local reservation.** `nova-reserve` has one capacity per
    machine, in slots, shared with people and CI. It either learns named
    resources or gives way to the accounting here.
-6. **A thing several can use at once.** A thing has amount 1, so one piece of
+7. **A thing several can use at once.** A thing has amount 1, so one piece of
    work holds it at a time. If some thing outside the default set can serve
    several at once, whether it is given a higher amount is not decided.
-7. **Single-threaded work.** A CPU unit measures a machine's total. Work that
+8. **Single-threaded work.** A CPU unit measures a machine's total. Work that
    cannot be split runs slower on weak cores however many units it holds.
