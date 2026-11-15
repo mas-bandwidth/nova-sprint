@@ -352,10 +352,13 @@ These are Glenn's to decide before this layer is built.
    or `memory` at all. Rowan's reading of "a number omitted assume 1" is that
    it then holds 1 of each, so no card is refused for leaving them out.
 3. **How a friend works on a machine it is sent to.** The aim is settled; the
-   means is not designed. A friend today works where its own session runs. To
-   work anywhere in the fleet it has to be told which machine holds its
-   resources, reach it (Glenn: "eg. the friend ssh's there"), and run its
-   commands there under that hold.
+   means is not designed. Friends today run in apps on studio and the macbook
+   (Glenn: "this is tempered somewhat by the fact that right now, friends run
+   on studio and macbook via apps."), and a friend works where its session
+   runs. The session can stay in its app while the work goes elsewhere: the
+   friend is told which machine holds its resources, reaches it (Glenn: "eg.
+   the friend ssh's there"), and runs its builds and tests there under that
+   hold. Until that exists, a friend's work runs on the machine its app is on.
 4. **When a runner holds its resources.** GitHub picks the runner for a job,
    not the fleet, so a runner cannot be moved to where there is room. Either a
    runner holds what it requires all the time, busy or idle, or it acquires
