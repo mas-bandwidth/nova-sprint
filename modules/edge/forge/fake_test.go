@@ -177,3 +177,9 @@ func (f *Fake) Failures(_ context.Context, repo, sha string) ([]Failure, error) 
 }
 
 var _ Forge = (*Fake)(nil)
+
+// Runs and Jobs: the fake world keeps no Actions runs (the landing's base
+// comparison is tested on the git package's forge fake).
+func (f *Fake) Runs(context.Context, string, string) ([]Run, error) { return nil, nil }
+
+func (f *Fake) Jobs(context.Context, string, int64) ([]Job, error) { return nil, nil }

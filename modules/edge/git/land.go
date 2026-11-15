@@ -13,10 +13,10 @@ import (
 )
 
 // LandOutcome is what one landing pass found (LANDING.md). landed is the
-// only automatic move; pending, unfinished, absent, base-moved and
-// forge-rested are asked again by the caller (unfinished and absent only
-// until the request's wait); every other outcome is a judgement for the
-// coordinator.
+// only automatic move; pending, unfinished, absent, base-pending,
+// base-moved and forge-rested are asked again by the caller (unfinished,
+// absent and base-pending only until the request's wait); every other
+// outcome is a judgement for the coordinator.
 type LandOutcome string
 
 const (
@@ -25,6 +25,7 @@ const (
 	OutcomeUnfinished LandOutcome = "ci_unfinished" // a check failed while others still run: no verdict yet; the caller bounds the wait
 	OutcomeNoVerdict  LandOutcome = "ci_no_verdict" // every failing check was stopped (killed, cancelled, timed out), not failed
 	OutcomeAbsent     LandOutcome = "ci_absent"     // no check reported yet: the caller bounds the wait
+	OutcomeBaseWait   LandOutcome = "base_pending"  // red, and the base's run to compare it with is not done yet: the caller bounds the wait
 	OutcomeBaseMoved  LandOutcome = "base_moved"    // base moved after the gate: the pass runs again
 	OutcomeRested     LandOutcome = "forge_rested"  // GitHub rate-limited the forge's identity: the pass runs again
 	OutcomeRed        LandOutcome = "ci_red"        // a check failed
@@ -59,30 +60,42 @@ type Gate struct {
 }
 
 // LandResult is one pass's outcome with the facts a judgement shows. A red
-// one carries BaseFailing, the base tip's own failing checks when the base
-// is red too, read from the base's completed checks only: a red base is the
-// coordinator's whole-picture judgement, never classified here (LANDING.md
-// "A red base"). Stopped names the failing checks GitHub says were stopped
-// (killed, cancelled, timed out), apart from FailingCI, the ones that failed
-// on their own; Pending is how many checks were still running. Gate is
-// the gate the pass read; ConflictHead the head whose merge into the group
+// gate's own failures are each compared with the base (LANDING.md "A red
+// base"): BaseRed are the jobs red on the base too (the base's: a landing
+// that merged past them names them), NotBase each other failure and why it
+// is not the base's (green there, still running there, or not compared).
+// Stopped names the failing checks GitHub says were stopped (killed,
+// cancelled, timed out), apart from FailingCI, the ones that failed on
+// their own; Pending is how many checks were still running. Gate is the
+// gate the pass read; ConflictHead the head whose merge into the group
 // failed, when the group's merge conflicted.
 type LandResult struct {
-	Outcome                                                               LandOutcome
-	Rung, Pending                                                         int
-	BaseTip, GroupTip, GatedSHA, MergeSHA, PR, CIURL, Reason              string
-	LandedHeads, Conflicts, FailingCI, FailingLines, BaseFailing, Stopped []string
-	ConflictHead                                                          string
-	Gate                                                                  Gate
+	Outcome                                                           LandOutcome
+	Rung, Pending                                                     int
+	BaseTip, GroupTip, GatedSHA, MergeSHA, PR, CIURL, Reason          string
+	LandedHeads, Conflicts, FailingCI, FailingLines, Stopped, NotBase []string
+	BaseRed                                                           []SharedRed
+	ConflictHead                                                      string
+	Gate                                                              Gate
+}
+
+// SharedRed is one job red at the gated sha and on the base too: the job
+// of the same name, in a run of the same workflow started by the same
+// event (the base's probe PR, on the base branch Base), failed there. It is
+// the base's, not the card's.
+type SharedRed struct {
+	Base, Workflow, Job string
+	HeadRun, BaseRun    int64
 }
 
 // Kept is the gate the next pass of the same request reads: this pass's
-// while its CI has no verdict yet (pending, unfinished, absent, a rested
-// forge), else none: a verdict ends the request, and a green gate whose
-// base moved is built again on the new tip.
+// while its CI has no verdict yet (pending, unfinished, absent, red with
+// the base's run to compare still going, a rested forge), else none: a
+// verdict ends the request, and a green gate whose base moved is built
+// again on the new tip.
 func (r LandResult) Kept() Gate {
 	switch r.Outcome {
-	case OutcomePending, OutcomeUnfinished, OutcomeAbsent, OutcomeRested:
+	case OutcomePending, OutcomeUnfinished, OutcomeAbsent, OutcomeBaseWait, OutcomeRested:
 		return r.Gate
 	}
 	return Gate{}
@@ -380,7 +393,7 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 		res.Outcome, res.Reason = OutcomeConflict, "GitHub says "+res.PR+" conflicts with "+req.Base
 		return res, nil
 	}
-	if done := readChecks_internal(ctx, fg, req, &res); done {
+	if done := readChecks_internal(ctx, g, fg, req, &res); done {
 		return res, nil
 	}
 	now, ok, err := g.LsRemote(ctx, req.RepoDir, "refs/heads/"+req.Base)
@@ -416,11 +429,12 @@ func rested_internal(err error, res *LandResult) bool {
 }
 
 // readChecks_internal reads the gated sha's checks into res: true (with
-// res's outcome) unless they are green. A verdict is taken only from checks
-// that have all completed (LANDING.md "A verdict only from completed
-// checks"): a failure while others still run is unfinished, asked again
-// until the request's wait, and no log is read until its run completed.
-func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) bool {
+// res's outcome) unless they are green, or red only where the base is red
+// too. A verdict is taken only from checks that have all completed
+// (LANDING.md "A verdict only from completed checks"): a failure while
+// others still run is unfinished, asked again until the request's wait,
+// and no log is read until its run completed.
+func readChecks_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, res *LandResult) bool {
 	rollups, err := fg.Checks(ctx, req.Repo, []string{res.GatedSHA})
 	if err != nil {
 		if !rested_internal(err, res) {
@@ -444,24 +458,27 @@ func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, r
 			res.Reason = fmt.Sprintf("%d checks still pending; failing so far: %s", r.Pending, strings.Join(r.Failing, ", "))
 			return true
 		}
-		verdict_internal(ctx, fg, req, res, r)
+		return !verdict_internal(ctx, g, fg, req, res, r)
 	}
 	return true
 }
 
 // verdict_internal judges the gated sha's completed checks that did not
-// pass, read once with how GitHub says each stopped (forge.Failures). A
-// stopped check (killed, cancelled, timed out) is no verdict about the code
-// and is named apart. Every one stopped is the coordinator's no-verdict
-// judgement at once, with the first stopped check's failing lines: the
-// sprint never runs CI again (LESSONS-PRIORITY-AND-MERGE W19). Otherwise red (a fault when
-// none of the own failures is a failed check) with the first own failure's
-// lines and, on red, the base tip's own completed red beside it.
-func verdict_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult, r forge.CheckRollup) {
+// pass, read once with how GitHub says each stopped (forge.Failures), and
+// is true when the gate lands anyway: every own failure is red on the base
+// too (compare_internal) and none was stopped. A stopped check (killed,
+// cancelled, timed out) is no verdict about the code and is named apart.
+// Every one stopped is the coordinator's no-verdict judgement at once, with
+// the first stopped check's failing lines: the sprint never runs CI again
+// (LESSONS-PRIORITY-AND-MERGE W19). Otherwise red (a fault when none of the
+// own failures is a failed check) with the first own failure's lines that
+// is not the base's, or no verdict when the own ones are all the base's and
+// others were stopped, or still waiting for the base's run.
+func verdict_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, res *LandResult, r forge.CheckRollup) bool {
 	fails, err := fg.Failures(ctx, req.Repo, res.GatedSHA)
 	if err != nil {
 		if rested_internal(err, res) {
-			return
+			return false
 		}
 		res.Reason += "; how each failing check stopped was not read: " + edge.RedactN(err.Error(), edge.FailureMax)
 		fails = nil
@@ -474,7 +491,7 @@ func verdict_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 		res.Outcome, res.FailingCI, res.CIURL = OutcomeNoVerdict, nil, stopped[0].URL
 		res.Reason = "every failing check was stopped, not failed (no verdict about the code): " + strings.Join(res.Stopped, ", ")
 		res.FailingLines = failedLines_internal(ctx, fg, req.Repo, stopped[0].URL)
-		return
+		return false
 	}
 	res.FailingCI, res.CIURL = nil, own[0].URL
 	for _, f := range own {
@@ -484,11 +501,29 @@ func verdict_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 	}
 	if r.State == forge.CheckFault {
 		res.Outcome = OutcomeCIFault
-		return
+		return false
 	}
 	res.Outcome = OutcomeRed
-	res.FailingLines = failedLines_internal(ctx, fg, req.Repo, own[0].URL)
-	baseRed_internal(ctx, fg, req, res)
+	if compare_internal(ctx, g, fg, req, res, own) {
+		if len(stopped) == 0 {
+			return true
+		}
+		res.Outcome, res.CIURL = OutcomeNoVerdict, stopped[0].URL
+		res.Reason = "every check that failed on its own is red on the base too; the others were stopped, not failed (no verdict about the code): " + strings.Join(res.Stopped, ", ")
+		res.FailingLines = failedLines_internal(ctx, fg, req.Repo, stopped[0].URL)
+		return false
+	}
+	if res.Outcome == OutcomeRed {
+		first := own[0]
+		for _, f := range own {
+			if !slices.ContainsFunc(res.BaseRed, func(s SharedRed) bool { return s.Job == f.Name }) {
+				first = f
+				break
+			}
+		}
+		res.CIURL, res.FailingLines = first.URL, failedLines_internal(ctx, fg, req.Repo, first.URL)
+	}
+	return false
 }
 
 // split_internal is a sha's failures as its own (failed) and stopped ones;
@@ -515,55 +550,233 @@ func split_internal(fails []forge.Failure, r forge.CheckRollup) (own, stopped []
 	return own, stopped
 }
 
-// baseRed_internal reads the base tip's checks into res.BaseFailing when
-// the base is red too, its checks have all completed and some failed on
-// their own (D's rule, as for the head: forge.Failures). The base's
-// stopped checks are named apart in the reason; a base whose failing
-// checks were all stopped is not red; a base whose checks still run is
-// said as such, with what is red so far, and never compared; one that
-// cannot be read is said in the reason.
-func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) {
-	base, err := fg.Checks(ctx, req.Repo, []string{res.BaseTip})
+// compare_internal compares each own failure of the gated sha with the
+// base (LANDING.md "A red base"): the job of the same name in the same
+// workflow's run, started by the same event, on the base's probe PR
+// (baseSide_internal). Red there too, it is the base's (res.BaseRed); green
+// there, the card's; still running there, it waits; anything else is not
+// compared, and res.NotBase says why. True when every own failure is the
+// base's: the gate lands past them. Else res stays ci_red (a failure that
+// is the card's or not compared), or is base_pending (the base's run still
+// going) or forge_rested.
+func compare_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, res *LandResult, own []forge.Failure) bool {
+	heads, err := fg.Runs(ctx, req.Repo, res.GatedSHA)
 	if err != nil {
-		res.Reason += "; the checks of the base tip " + res.BaseTip + " could not be read: " + edge.RedactN(err.Error(), edge.FailureMax)
-		return
-	}
-	b := base[res.BaseTip]
-	switch {
-	case b.State == forge.CheckPending || b.Waiting:
-		red := []string{}
-		if b.State == forge.CheckRed {
-			red = b.Failing
+		if !rested_internal(err, res) {
+			res.NotBase = append(res.NotBase, "not compared with the base: the runs of "+res.GatedSHA+" were not read: "+edge.RedactN(err.Error(), edge.FailureMax))
 		}
-		res.Reason += fmt.Sprintf("; base CI still running at its tip %s: %d red so far", res.BaseTip, len(red))
-		if len(red) > 0 {
-			res.Reason += " (" + strings.Join(red, ", ") + ")"
-		}
-		return
-	case b.State != forge.CheckRed:
-		return
+		return false
 	}
-	fails, err := fg.Failures(ctx, req.Repo, res.BaseTip)
-	if err != nil {
-		res.Reason += "; the base tip " + res.BaseTip + " is red on " + strings.Join(b.Failing, ", ") + ", but how each stopped was not read, so it is not called red: " + edge.RedactN(err.Error(), edge.FailureMax)
-		return
-	}
-	own, stopped := split_internal(fails, b)
-	var names []string
-	for _, f := range stopped {
-		names = append(names, f.Name+" "+f.Stop)
-	}
+	b := &baseSide_internal{ctx: ctx, g: g, fg: fg, req: req, tip: res.BaseTip, jobs: map[int64][]forge.Job{}}
+	stops, waits := false, false
 	for _, f := range own {
-		if f.Name != "" {
-			res.BaseFailing = append(res.BaseFailing, f.Name)
+		v, shared, fact := b.job(f, heads)
+		switch v {
+		case jobRested:
+			rested_internal(b.err, res)
+			return false
+		case jobShared:
+			res.BaseRed = append(res.BaseRed, shared)
+			continue
+		case jobPending:
+			waits = true
+		default:
+			stops = true
 		}
+		res.NotBase = append(res.NotBase, fact)
 	}
 	switch {
-	case len(stopped) > 0 && len(res.BaseFailing) == 0:
-		res.Reason += "; the base tip's failing checks were all stopped, not failed (no verdict about the base): " + strings.Join(names, ", ")
-	case len(stopped) > 0:
-		res.Reason += "; on the base tip, stopped, not failed: " + strings.Join(names, ", ")
+	case stops:
+	case waits:
+		res.Outcome = OutcomeBaseWait
+		res.Reason = "red, and the base's run to compare it with is still going: " + strings.Join(res.NotBase, "; ")
+	default:
+		return true
 	}
+	return false
+}
+
+type jobVerdict int
+
+const (
+	jobShared     jobVerdict = iota // red on the base too: the base's
+	jobPending                      // the base's run of it still going
+	jobCard                         // green on the base: the card's
+	jobUncompared                   // nothing on the base to compare it with
+	jobRested                       // the forge rests: no fact
+)
+
+// baseSide_internal is the base side of one comparison, read once on
+// first need: the probe (an empty commit on the base tip, pushed to
+// ProbeBranch, its PR into the base opened, so the base's tree runs every
+// pull-request workflow as the landing's PR did), its runs, and each run's
+// jobs.
+type baseSide_internal struct {
+	ctx          context.Context
+	g            Git
+	fg           forge.Forge
+	req          LandRequest
+	tip          string
+	read         bool
+	sha, pr, why string
+	err          error // a rate limit: no fact
+	runs         []forge.Run
+	jobs         map[int64][]forge.Job
+}
+
+// job is one own failure f of the gated sha (heads: its runs) as the base
+// has it: the verdict, the shared red, or the fact that says why not.
+func (b *baseSide_internal) job(f forge.Failure, heads []forge.Run) (jobVerdict, SharedRed, string) {
+	not := f.Name + ": not compared with the base: "
+	i := slices.IndexFunc(heads, func(r forge.Run) bool { return r.ID == forge.RunOf(f.URL) })
+	if i < 0 {
+		return jobUncompared, SharedRed{}, not + "it is no job of an Actions run of the gated sha"
+	}
+	run := heads[i]
+	if run.Event != "pull_request" && run.Event != "pull_request_target" {
+		return jobUncompared, SharedRed{}, fmt.Sprintf("%sits run %d was started by %s, and only a pull request's run has a base PR to compare with", not, run.ID, run.Event)
+	}
+	if b.probe(); b.err != nil {
+		return jobRested, SharedRed{}, ""
+	}
+	if b.why != "" {
+		return jobUncompared, SharedRed{}, not + b.why
+	}
+	on := fmt.Sprintf("the base's probe PR %s at %s", b.pr, b.sha)
+	base, ok := baseRun_internal(b.runs, run)
+	switch {
+	case !ok && settled_internal(b.runs):
+		return jobUncompared, SharedRed{}, fmt.Sprintf("%s%s ran no %s run of workflow %s", not, on, run.Event, run.Name)
+	case !ok:
+		return jobPending, SharedRed{}, fmt.Sprintf("%s: workflow %s has not started on %s yet", f.Name, run.Name, on)
+	}
+	jobs, err := b.jobsOf(base.ID)
+	switch {
+	case err != nil && b.err != nil:
+		return jobRested, SharedRed{}, ""
+	case err != nil:
+		return jobUncompared, SharedRed{}, fmt.Sprintf("%sthe jobs of the base's run %d were not read: %s", not, base.ID, edge.RedactN(err.Error(), edge.FailureMax))
+	}
+	j := slices.IndexFunc(jobs, func(x forge.Job) bool { return x.Name == f.Name })
+	switch {
+	case j < 0 && base.Status != "completed", j >= 0 && jobs[j].Status != "completed":
+		return jobPending, SharedRed{}, fmt.Sprintf("%s: still running in the base's run %d on %s", f.Name, base.ID, on)
+	case j < 0:
+		return jobUncompared, SharedRed{}, fmt.Sprintf("%sthe base's run %d of %s has no job of that name", not, base.ID, run.Name)
+	}
+	switch c := strings.ToLower(jobs[j].Conclusion); c {
+	case "failure":
+		return jobShared, SharedRed{Base: b.req.Base, Workflow: run.Name, Job: f.Name, HeadRun: run.ID, BaseRun: base.ID}, ""
+	case "success", "neutral":
+		return jobCard, SharedRed{}, fmt.Sprintf("%s: red in run %d here, green on the base in run %d: the card's", f.Name, run.ID, base.ID)
+	default:
+		return jobUncompared, SharedRed{}, fmt.Sprintf("%son the base it ended %s in run %d, no verdict", not, cmp.Or(c, "with no conclusion"), base.ID)
+	}
+}
+
+// probe reads the base side once: the probe commit on the tip, pushed to
+// the probe branch when it is not there (a lease on what was), its PR into
+// the base found or opened, and the runs at the probe. A step that fails
+// says why in b.why (nothing on the base to compare with); a rate limit
+// is b.err.
+func (b *baseSide_internal) probe() {
+	if b.read {
+		return
+	}
+	b.read = true
+	ref := "refs/heads/" + ProbeBranch(b.req.Base)
+	sha, err := b.g.Probe(b.ctx, b.req.RepoDir, b.tip)
+	if err != nil {
+		b.why = "the probe commit on " + b.tip + " was not made: " + edge.RedactN(err.Error(), edge.FailureMax)
+		return
+	}
+	b.sha = sha
+	old, _, err := b.g.LsRemote(b.ctx, b.req.RepoDir, ref)
+	if err == nil && old != sha {
+		err = b.g.Push(b.ctx, b.req.RepoDir, sha, ref, old)
+	}
+	if err != nil {
+		b.why = "the probe branch " + ProbeBranch(b.req.Base) + " could not be pushed to " + sha + ": " + edge.RedactN(err.Error(), edge.FailureMax)
+		return
+	}
+	pr, ok, err := b.fg.PR(b.ctx, b.req.Repo, ProbeBranch(b.req.Base), b.req.Base)
+	if err == nil && !ok {
+		pr, err = b.fg.OpenPR(b.ctx, b.req.Repo, ProbeBranch(b.req.Base), b.req.Base, b.req.Base+": its tip, for CI to compare a landing's red with",
+			"Opened by nova-sprint's landing: an empty commit on "+b.req.Base+"'s tip, so its pull-request CI runs the base's tree as a landing's PR runs it. A job red here and on a landing's PR is the base's, not the card's. Never merged.")
+	}
+	if err == nil {
+		b.pr = cmp.Or(pr.URL, fmt.Sprintf("#%d", pr.Number))
+		b.runs, err = b.fg.Runs(b.ctx, b.req.Repo, sha)
+	}
+	b.fail_internal(err, "the base's probe PR or its runs could not be read")
+}
+
+// jobsOf is run's jobs, read once.
+func (b *baseSide_internal) jobsOf(run int64) ([]forge.Job, error) {
+	if jobs, ok := b.jobs[run]; ok {
+		return jobs, nil
+	}
+	jobs, err := b.fg.Jobs(b.ctx, b.req.Repo, run)
+	if err != nil {
+		b.fail_internal(err, "")
+		return nil, err
+	}
+	b.jobs[run] = jobs
+	return jobs, nil
+}
+
+// fail_internal records err: a rate limit as b.err, else, with what, as
+// b.why.
+func (b *baseSide_internal) fail_internal(err error, what string) {
+	var fe *forge.FaultError
+	switch {
+	case err == nil:
+	case errors.As(err, &fe) && fe.Kind == forge.FaultRateLimit:
+		b.err = err
+	case what != "":
+		b.why = what + ": " + edge.RedactN(err.Error(), edge.FailureMax)
+	}
+}
+
+// baseRun_internal is the base's run to compare head's with: of the runs
+// of head's workflow started by head's event, the newest that completed
+// other than cancelled (a run cancelled because the probe moved is no
+// verdict), else the newest still going, else the newest; ok is false when
+// there is none.
+func baseRun_internal(runs []forge.Run, head forge.Run) (forge.Run, bool) {
+	var done, going, newest forge.Run
+	for _, r := range runs {
+		if r.Workflow != head.Workflow || r.Event != head.Event {
+			continue
+		}
+		newest = maxRun_internal(newest, r)
+		switch {
+		case r.Status != "completed":
+			going = maxRun_internal(going, r)
+		case r.Conclusion != "cancelled":
+			done = maxRun_internal(done, r)
+		}
+	}
+	for _, r := range []forge.Run{done, going, newest} {
+		if r.ID != 0 {
+			return r, true
+		}
+	}
+	return forge.Run{}, false
+}
+
+// maxRun_internal is the newer of a and b (the higher id).
+func maxRun_internal(a, b forge.Run) forge.Run {
+	if b.ID > a.ID {
+		return b
+	}
+	return a
+}
+
+// settled_internal is whether runs have started and all completed: a
+// workflow not among them now will not start for this sha.
+func settled_internal(runs []forge.Run) bool {
+	return len(runs) > 0 && !slices.ContainsFunc(runs, func(r forge.Run) bool { return r.Status != "completed" })
 }
 
 // failedLines_internal is the first failing lines of the check at url; a

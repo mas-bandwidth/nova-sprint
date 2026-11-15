@@ -18,10 +18,13 @@ type fakeForgeWorld_internal struct {
 	mu       sync.Mutex
 	checks   map[string]forge.CheckRollup
 	failures map[string][]forge.Failure
+	runs     map[string][]forge.Run
+	jobs     map[int64][]forge.Job
 }
 
 func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
-	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{}}
+	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{},
+		runs: map[string][]forge.Run{}, jobs: map[int64][]forge.Job{}}
 }
 
 type fakeForge_internal struct {
@@ -34,6 +37,7 @@ type fakeForge_internal struct {
 	OnMerge   func(sha string) (string, error)
 	OpenErr   error  // OpenPR fails with it
 	ChecksErr error  // Checks fails with it
+	RunsErr   error  // Runs fails with it
 	Mergeable string // the PR's mergeable state ("" is MERGEABLE)
 	prs       []forge.PRInfo
 }
@@ -152,6 +156,32 @@ func (f *fakeForge_internal) Failures(_ context.Context, repo, sha string) ([]fo
 		out = append(out, forge.Failure{Name: n, URL: map[bool]string{true: r.URL}[i == 0]})
 	}
 	return out, nil
+}
+
+// SetRun records run r at sha (its head) with its jobs; a run already
+// recorded by id is replaced.
+func (f *fakeForge_internal) SetRun(sha string, r forge.Run, jobs ...forge.Job) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.runs[sha] = append(slices.DeleteFunc(f.world.runs[sha], func(x forge.Run) bool { return x.ID == r.ID }), r)
+	f.world.jobs[r.ID] = jobs
+}
+
+func (f *fakeForge_internal) Runs(_ context.Context, _, sha string) ([]forge.Run, error) {
+	f.call_internal("Runs")
+	if f.RunsErr != nil {
+		return nil, f.RunsErr
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	return slices.Clone(f.world.runs[sha]), nil
+}
+
+func (f *fakeForge_internal) Jobs(_ context.Context, _ string, run int64) ([]forge.Job, error) {
+	f.call_internal("Jobs")
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	return slices.Clone(f.world.jobs[run]), nil
 }
 
 // SetFailures sets what Failures answers for sha.
@@ -402,6 +432,22 @@ func (f *Fake) commonAncestorFilesLocked_internal(a, b string) map[string]string
 	}
 	return best
 }
+// Probe is onto's files again, onto its one parent: the same onto, the same
+// sha (as git's commit-tree dated at onto's date).
+func (f *Fake) Probe(_ context.Context, _, onto string) (string, error) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	c, ok := f.world.commits[onto]
+	if !ok {
+		return "", fmt.Errorf("unknown onto commit %s", onto)
+	}
+	sum := sha256.Sum256([]byte("probe\x00" + onto))
+	sha := hex.EncodeToString(sum[:])[:40]
+	f.world.commits[sha] = FakeCommit{SHA: sha, Parents: []string{onto}, Files: c.Files, Tree: c.Tree}
+	f.world.originRefs[sha] = sha
+	return sha, nil
+}
+
 func (f *Fake) Push(_ context.Context, _, sha, ref, expectOld string) error {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()

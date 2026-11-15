@@ -188,3 +188,42 @@ func TestFunctionalCredentialEnvAnswersGitHubOnly(t *testing.T) {
 		}
 	}
 }
+
+// Probe is the tip's tree again with the tip its one parent, dated at the
+// tip's date: the same tip gives the same sha, so a pass that probes again
+// pushes nothing and the probe PR's CI is not restarted; a probe branch is
+// rewritten with a lease when the tip moves; no identity is a refusal.
+func TestFunctionalProbeIsTheTipsTreeOnceMore(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	_, workDir, baseSHA, runGit := setupBareAndWorkRepo_internal(t)
+	client := New(Config{AuthorName: "Test Author", AuthorEmail: "test@mas-bandwidth.com"})
+	p1, err := client.Probe(ctx, workDir, baseSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p2, err := client.Probe(ctx, workDir, baseSHA); err != nil || p2 != p1 {
+		t.Fatalf("probe again = %s err=%v, want the same %s", p2, err, p1)
+	}
+	if tree, base := runGit(workDir, "rev-parse", p1+"^{tree}"), runGit(workDir, "rev-parse", baseSHA+"^{tree}"); tree != base {
+		t.Fatalf("probe tree %s, base tree %s", tree, base)
+	}
+	if parents := runGit(workDir, "rev-list", "--parents", "-n", "1", p1); parents != p1+" "+baseSHA {
+		t.Fatalf("probe parents %q, want %s", parents, baseSHA)
+	}
+	ref := "refs/heads/" + ProbeBranch("v2")
+	if err := client.Push(ctx, workDir, p1, ref, ""); err != nil {
+		t.Fatal(err)
+	}
+	next := commitBranch_internal(t, runGit, workDir, "next", baseSHA, "x.go", "package x\n", "refs/heads/v2")
+	p3, err := client.Probe(ctx, workDir, next)
+	if err != nil || p3 == p1 {
+		t.Fatalf("probe of the new tip = %s err=%v", p3, err)
+	}
+	if err := client.Push(ctx, workDir, p3, ref, p1); err != nil {
+		t.Fatalf("the probe branch is rewritten under its lease: %v", err)
+	}
+	if _, err := New(Config{}).Probe(ctx, workDir, next); err == nil || !strings.Contains(err.Error(), "no commit identity") {
+		t.Fatalf("no identity: %v", err)
+	}
+}

@@ -37,6 +37,7 @@ const (
 
 var (
 	jobRe        = regexp.MustCompile(`/job/(\d+)`)
+	runRe        = regexp.MustCompile(`/actions/runs/(\d+)/job/\d+`)
 	failLineRe   = regexp.MustCompile(`(?i)(error|fail|panic)`)
 	retryAfterRe = regexp.MustCompile(`(?i)retry-after[:\s]+(\d+)`)
 )
@@ -104,6 +105,42 @@ type Forge interface {
 	// with how GitHub says it was stopped, if it was: one read, made only
 	// once sha's checks have all completed.
 	Failures(ctx context.Context, repo, sha string) ([]Failure, error)
+	// Runs is every Actions workflow run whose head is sha, and Jobs one
+	// run's jobs (their latest attempt): what a red job at a landing's
+	// gated sha is compared with on the base (LANDING.md "A red base").
+	Runs(ctx context.Context, repo, sha string) ([]Run, error)
+	Jobs(ctx context.Context, repo string, run int64) ([]Job, error)
+}
+
+// Run is one Actions workflow run: its id, its workflow's id and name, the
+// event that started it, and its status and conclusion as GitHub says them.
+type Run struct {
+	ID         int64  `json:"id"`
+	Workflow   int64  `json:"workflow_id"`
+	Name       string `json:"name"`
+	Event      string `json:"event"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+}
+
+// Job is one job of a run as GitHub says it: its name (the check's name),
+// status and conclusion.
+type Job struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+}
+
+// RunOf is the Actions run a check's url names (…/actions/runs/<id>/job/…),
+// 0 when it names none (a commit status, another app's check).
+func RunOf(url string) int64 {
+	m := runRe.FindStringSubmatch(url)
+	if m == nil {
+		return 0
+	}
+	id, _ := strconv.ParseInt(m[1], 10, 64)
+	return id
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on
@@ -729,6 +766,59 @@ func (c *Client) Failures(ctx context.Context, repo, sha string) ([]Failure, err
 		}
 		after = pi.EndCursor
 	}
+}
+
+// actionsMaxBytes caps a runs or jobs listing (every page, projected by
+// --jq to the fields read): far above a commit's few hundred runs or a
+// run's few hundred jobs.
+const actionsMaxBytes = 4 << 20
+
+// Runs is every Actions workflow run whose head is sha (gh api --paginate
+// actions/runs?head_sha=, projected by --jq), the newest first as GitHub
+// lists them.
+func (c *Client) Runs(ctx context.Context, repo, sha string) ([]Run, error) {
+	path, err := RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.Contains(path, "/") || !isFullSHA_internal(sha) {
+		return nil, fmt.Errorf("forge refused: Runs requires an org/repo and a 40-hex sha")
+	}
+	return listJSON_internal[Run](ctx, c, fmt.Sprintf("repos/%s/actions/runs?head_sha=%s&per_page=100", path, sha),
+		".workflow_runs[] | {id, workflow_id, name, event, status, conclusion}")
+}
+
+// Jobs is run's jobs, each at its latest attempt (gh api --paginate
+// actions/runs/<id>/jobs?filter=latest, projected by --jq).
+func (c *Client) Jobs(ctx context.Context, repo string, run int64) ([]Job, error) {
+	path, err := RepoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.Contains(path, "/") || run <= 0 {
+		return nil, fmt.Errorf("forge refused: Jobs requires an org/repo and a run id")
+	}
+	return listJSON_internal[Job](ctx, c, fmt.Sprintf("repos/%s/actions/runs/%d/jobs?per_page=100&filter=latest", path, run),
+		".jobs[] | {id, name, status, conclusion}")
+}
+
+// listJSON_internal is every page of a REST listing, each item one JSON
+// object as jq prints it.
+func listJSON_internal[T any](ctx context.Context, c *Client, path, jq string) ([]T, error) {
+	stdout, _, err := c.runGHBytes_internal(ctx, actionsMaxBytes, "api", "--paginate", path, "--jq", jq)
+	if err != nil {
+		return nil, err
+	}
+	var out []T
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	for dec.More() {
+		var v T
+		if err := dec.Decode(&v); err != nil {
+			return nil, fmt.Errorf("forge: decode gh api %s: %s", path, edge.ParseFailure(err, []byte(stdout)))
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 // FirstFailing is the first n lines of log that say error, fail or panic,

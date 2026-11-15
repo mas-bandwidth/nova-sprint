@@ -55,6 +55,10 @@ type Git interface {
 	IsAncestor(ctx context.Context, repoDir, ancestor, descendant string) (bool, error)
 	MergeGroup(ctx context.Context, repoDir, onto string, heads []string) (MergeResult, error)
 	Push(ctx context.Context, repoDir, sha, ref, expectOld string) error
+	// Probe is an empty commit on onto (onto's tree, onto its parent),
+	// dated at onto's: the same onto gives the same sha, so the probe PR's
+	// CI is not restarted (LANDING.md "A red base").
+	Probe(ctx context.Context, repoDir, onto string) (string, error)
 	// Main is origin's default branch and its tip (LANDING.md, "Landed
 	// means on main").
 	Main(ctx context.Context, repoDir string) (branch, tip string, err error)
@@ -367,6 +371,26 @@ func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []s
 	}
 	return MergeResult{Kind: MergeOK, SHA: strings.TrimSpace(shaOut)}, nil
 }
+// Probe commits onto's tree again with onto as its one parent, authored and
+// committed at onto's date as the sprint's identity, and returns its sha
+// (git commit-tree: no checkout, no work tree touched).
+func (c *Client) Probe(ctx context.Context, repoDir, onto string) (string, error) {
+	if _, _, ok := c.identity_internal(ctx); !ok {
+		return "", fmt.Errorf("git refused: Probe makes a commit and has no commit identity (the sprint's, round 24); set it with nova-sprint identity --name --email --reason")
+	}
+	date, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "show", "-s", "--format=%cI", onto)
+	if err != nil || code != 0 {
+		return "", cmp.Or(err, c.failed_internal(code, date, stderr, nil, "show", "-s", "--format=%cI", onto))
+	}
+	at := strings.TrimSpace(date)
+	args := []string{"commit-tree", onto + "^{tree}", "-p", onto, "-m", "nova-sprint: the base at " + onto + ", for CI to compare a landing's red with"}
+	sha, stderr, code, err := c.runGitEnv_internal(ctx, repoDir, c.cfg.RebaseTimeout, []string{"GIT_AUTHOR_DATE=" + at, "GIT_COMMITTER_DATE=" + at}, args...)
+	if err != nil || code != 0 {
+		return "", cmp.Or(err, c.failed_internal(code, sha, stderr, nil, args...))
+	}
+	return strings.TrimSpace(sha), nil
+}
+
 func (c *Client) mergeOneHead_internal(ctx context.Context, repoDir, onto, head string, dateEnv []string, commitMsg string) (MergeResult, bool, error) {
 	mergeOut, mergeErr, code, err := c.runGitEnv_internal(ctx, repoDir, c.cfg.RebaseTimeout, dateEnv, "merge", "--no-ff", "-m", commitMsg, head)
 	if err != nil || code == 0 {
@@ -422,6 +446,15 @@ func GroupBranch(stream string) string { return GroupPrefix + strings.TrimSpace(
 
 // GroupRef is GroupBranch as a ref.
 func GroupRef(stream string) string { return "refs/heads/" + GroupBranch(stream) }
+
+// ProbePrefix is the probe branches' namespace, beside sprint-group/:
+// sprint-base/<base> is base's tip plus an empty commit, the head of the PR
+// whose CI runs the base's tree triggered as a landing's PR is (LANDING.md
+// "A red base"). One per base, whatever streams land on it.
+const ProbePrefix = "sprint-base/"
+
+// ProbeBranch is base's probe branch.
+func ProbeBranch(base string) string { return ProbePrefix + strings.TrimSpace(base) }
 
 // GroupBlocker is the branch among heads (refs/heads/<name> -> sha, as
 // Heads reads them) that keeps stream's group branch from being created:
@@ -487,13 +520,13 @@ func ValidateCardBranch(stream, branch string) error {
 }
 
 // classifyPushRef_internal is ref as refs/heads/..., and whether it is a
-// group branch (rewritten with a lease) rather than one that only
+// group or probe branch (rewritten with a lease) rather than one that only
 // fast-forwards.
 func classifyPushRef_internal(ref string) (string, bool) {
 	if !strings.HasPrefix(ref, "refs/heads/") {
 		ref = "refs/heads/" + strings.TrimPrefix(ref, "/")
 	}
-	return ref, strings.HasPrefix(ref, "refs/heads/"+GroupPrefix)
+	return ref, strings.HasPrefix(ref, "refs/heads/"+GroupPrefix) || strings.HasPrefix(ref, "refs/heads/"+ProbePrefix)
 }
 func (c *Client) Push(ctx context.Context, repoDir, sha, ref, expectOld string) error {
 	ref, isStream := classifyPushRef_internal(ref)
