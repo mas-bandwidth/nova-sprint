@@ -70,7 +70,6 @@ type envelope struct {
 	EtaLandings   int                    `json:"eta_landings"`       // landings inside that window
 	Left          int                    `json:"left"`               // cards not yet landed (waiting, ready, working, review, fix, merging)
 	Cost          *costSummary           `json:"cost"`
-	StatsSince    *time.Time             `json:"stats_since,omitempty"` // the stats reset mark's time: Fleet and Friends done, ok, failed and ok% count from it; absent, the epoch's
 	OK            bool                   `json:"ok"`
 	Error         string                 `json:"error,omitempty"`
 }
@@ -135,7 +134,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time, stats *store
 		failed += w.Fail
 		all += w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{StatsSince: markTime(stats), Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 
 // coordinatorOf is the name of the row whose role is coordinator; the first
@@ -326,15 +325,6 @@ func countResult(c store.Card, fleet, friends map[string]*fleetRow) {
 	case c.Result == "fail" || c.Result == "fix":
 		f.Failed++
 	}
-}
-
-// markTime is the stats mark's time as the board carries it, nil for no mark.
-func markTime(stats *store.StatsMark) *time.Time {
-	if stats == nil {
-		return nil
-	}
-	at := stats.At
-	return &at
 }
 
 // sinceMark is whether a done consumer counts in the stats: always with no

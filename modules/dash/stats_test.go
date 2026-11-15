@@ -13,8 +13,9 @@ import (
 
 // After a stats reset (store.StatsCursor) the Fleet and Friends done, ok,
 // failed and ok% count only the consumers done after the mark; tokens and
-// cost count every card as before, and the board carries the mark's time.
-// With no mark the counts are the epoch's.
+// cost count every card as before. The board does not carry the mark's
+// time (Glenn, 2026-11-15: the heads show no "since"). With no mark the
+// counts are the epoch's.
 func TestFleetStatsCountOnlyWhatFinishedAfterTheMark(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{Workers: map[string]roster.Worker{"bench": {Name: "bench", Width: 4}}, Kin: map[string]roster.Kin{"amy": {Name: "amy", Width: 2}}}
@@ -38,38 +39,37 @@ func TestFleetStatsCountOnlyWhatFinishedAfterTheMark(t *testing.T) {
 	if a := friends["amy"]; a.Done != 1 || a.OK != 1 || a.Failed != 0 || a.OKPct != 100 || a.Tokens != 20 {
 		t.Errorf("amy = %+v: her read before the mark is not counted", a)
 	}
-	if d.StatsSince == nil || !d.StatsSince.Equal(at) {
-		t.Errorf("stats_since = %v, want %v", d.StatsSince, at)
-	}
 	if w := d.Tables["work"].(map[string]*workRow)["s"]; w.Cost == nil || w.Cost.Int64() != 700 {
 		t.Errorf("work cost = %v: every card's cost, mark or not", w.Cost)
 	}
 	body, err := json.Marshal(d)
-	if err != nil || !strings.Contains(string(body), `"stats_since":"2026-11-10T19:12:00Z"`) {
-		t.Fatalf("the envelope carries the mark's time: %v\n%s", err, body)
+	if err != nil || strings.Contains(string(body), "stats_since") {
+		t.Fatalf("the envelope carries no mark time: %v\n%s", err, body)
 	}
 
 	life := mapSnapshot(snap, ros, time.Time{}, nil)
 	if b := life.Tables["fleet"].(map[string]*fleetRow)["bench"]; b.Done != 5 || b.OK != 1 || b.Failed != 3 {
 		t.Errorf("no mark: bench = %+v, the epoch's counts", b)
 	}
-	if life.StatsSince != nil {
-		t.Errorf("no mark, no since: %v", life.StatsSince)
-	}
 	if body, err := json.Marshal(life); err != nil || strings.Contains(string(body), "stats_since") {
 		t.Fatalf("no mark, no stats_since: %v", err)
 	}
 }
 
-// The page says the mark beside the Fleet and Friends heads ("since 7:12 PM"),
-// so the counts are read as what they are.
-func TestPageShowsTheStatsMark(t *testing.T) {
+// The Fleet and Friends heads say no "since <time>" after a stats reset
+// (Glenn, 2026-11-15: "Remove the 'Since ...' garbage").
+func TestPageHeadsShowNoStatsMark(t *testing.T) {
 	t.Parallel()
 	js, err := os.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"function sinceWord(", "d.stats_since", `sideWord(d.fleet_work, null) + sinceWord(d)`, `sideWord(d.friends_work, d.friends_tiers) + sinceWord(d)`} {
+	for _, gone := range []string{"sinceWord", "stats_since"} {
+		if strings.Contains(string(js), gone) {
+			t.Errorf("app.js still has %q", gone)
+		}
+	}
+	for _, want := range []string{`" down" + sideWord(d.fleet_work, null));`, `" down" + sideWord(d.friends_work, d.friends_tiers));`} {
 		if !strings.Contains(string(js), want) {
 			t.Errorf("app.js lacks %q", want)
 		}
@@ -89,8 +89,5 @@ func TestFeedCarriesTheStatsMark(t *testing.T) {
 	d := c.pageSnapshot().Data
 	if b := d.Tables["fleet"].(map[string]*fleetRow)["bench"]; b.Done != 1 || b.OK != 1 {
 		t.Errorf("bench = %+v: only b finished after the mark", b)
-	}
-	if d.StatsSince == nil || !d.StatsSince.Equal(at) {
-		t.Errorf("stats_since = %v", d.StatsSince)
 	}
 }
