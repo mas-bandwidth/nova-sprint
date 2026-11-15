@@ -106,7 +106,15 @@ type WidthAnswer struct{ Work int }
 // LandingAnswer is landing(stream): backed up (rung 2) at BackedUp merging
 // heads waiting, flowing again at Flowing; CIWait the seconds a gated sha
 // may have no CI at all before it is a judgement (0: the engine's).
-type LandingAnswer struct{ BackedUp, Flowing, CIWait int }
+// HoldSharedRed is land_on_shared_red false: a red gate whose reds are all
+// the base's own, and a conflict, are judgements as before 2026-11-15; the
+// zero value lands the one and sends the other to fix (land.go).
+//
+// GroupMax is the most cards one landing gates (0: the engine's, 4).
+type LandingAnswer struct {
+	BackedUp, Flowing, CIWait, GroupMax int
+	HoldSharedRed                       bool
+}
 
 // Limits is limits(): the counts, and layer 3's steering numbers in the
 // same dict (LAYER-5 round 5): EscalateAfter and FrontierAfter are the
@@ -130,9 +138,13 @@ type Limits struct {
 // card is withdrawn and dealt to another row with room. Consumer is a
 // consumer's deadline by tier, the take receipt's: past it (and the take
 // window) with no report the card is withdrawn; a tier it lacks has none
-// here (policy's timeouts() names every tier).
+// here (policy's timeouts() names every tier). MergingNag is the seconds
+// a card may be merging before the coordinator is pushed one line every
+// MergingNagEvery seconds until none has been that long (mergingNag; 0:
+// the engine's, a policy stored before them).
 type Timeouts struct {
 	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, ReadyNag, ReadyTake int
+	MergingNag, MergingNagEvery                                                                  int
 	BaseRegate                                                                                   []int
 	Consumer                                                                                     map[string]int
 }
@@ -178,9 +190,9 @@ var Engine = Defaults{
 	UndealtAfter: 2, PresentGrace: 30, Reads: 1, IdleCeiling: 0.75, LandSample: 20,
 	Limits: Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
 		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 250, Pack: 50},
-	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300},
+	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, MergingNag: 300, MergingNagEvery: 1, BaseRegate: []int{120, 300},
 		Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}},
-	Landing: LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
+	Landing: LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600, GroupMax: 4},
 }
 
 // oracle is one tick's answers: the version's where usable, the defaults
@@ -336,14 +348,15 @@ func (o *oracle) width(r RowFacts) WidthAnswer {
 }
 
 // landing is landing(stream): 0 <= flowing < backed_up <= 1000, a CI wait
-// of at most a day.
+// of at most a day, group_max 0..1000 (0: the engine's).
 func (o *oracle) landing(s StreamFacts) LandingAnswer {
 	l, ok := o.a.Landing[s.Name]
 	if o.usable("landing", "landing("+s.Name+")", ok) {
-		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 {
+		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 && l.GroupMax >= 0 && l.GroupMax <= 1000 {
 			return l
 		}
-		o.refuse("landing", fmt.Sprintf("landing(%s) is flowing %d, backed_up %d, ci_wait %d: outside 0 <= flowing < backed_up <= 1000, ci_wait 0..86400", s.Name, l.Flowing, l.BackedUp, l.CIWait))
+		o.refuse("landing", fmt.Sprintf("landing(%s) is flowing %d, backed_up %d, ci_wait %d, group_max %d: outside 0 <= flowing < backed_up <= 1000, ci_wait 0..86400, group_max 0..1000", s.Name, l.Flowing, l.BackedUp, l.CIWait, l.GroupMax))
+
 	}
 	return o.d.Landing
 }
@@ -384,7 +397,8 @@ func (o *oracle) timeouts() Timeouts {
 func timeoutsOK(t Timeouts) bool {
 	day := func(n int) bool { return n >= 1 && n <= 86400 }
 	ok := day(t.RowSilentGone) && day(t.RowSilentWithdraw) && day(t.LandingStall) && day(t.Judgement) && day(t.RouteRestFor) && day(t.ReadyNag) && day(t.ReadyTake) &&
-		t.RowSilentWithdraw >= t.RowSilentGone && len(t.BaseRegate) > 0
+		t.RowSilentWithdraw >= t.RowSilentGone && len(t.BaseRegate) > 0 &&
+		t.MergingNag >= 0 && t.MergingNag <= 86400 && t.MergingNagEvery >= 0 && t.MergingNagEvery <= 86400
 	for i, n := range t.BaseRegate {
 		ok = ok && day(n) && (i == 0 || n > t.BaseRegate[i-1])
 	}

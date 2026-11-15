@@ -144,7 +144,7 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 		a.Width[row] = steps.WidthAnswer{Work: w.Work}
 	}
 	for s, l := range p.Landing {
-		a.Landing[s] = steps.LandingAnswer{BackedUp: l.BackedUp, Flowing: l.Flowing, CIWait: l.CIWait}
+		a.Landing[s] = steps.LandingAnswer{BackedUp: l.BackedUp, Flowing: l.Flowing, CIWait: l.CIWait, GroupMax: l.GroupMax, HoldSharedRed: !l.LandOnSharedRed}
 	}
 	l, d := p.Limits, steps.Engine.Limits
 	a.Limits = &steps.Limits{Bounces: l.Bounces, Faults: l.Faults, SameFinding: l.SameFinding, ReportsPerTick: l.ReportsPerTick,
@@ -152,7 +152,8 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 		FlapLimit: l.FlapLimit, IdleFloor: l.IdleFloor, LandTarget: l.LandTarget, Budget: d.Budget, Pack: d.Pack}
 	tm := p.Timeouts
 	a.Timeouts = &steps.Timeouts{RowSilentGone: tm.RowSilentGone, RowSilentWithdraw: tm.RowSilentWithdraw, LandingStall: tm.LandingStall,
-		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, ReadyNag: tm.ReadyNag, ReadyTake: tm.ReadyTake, BaseRegate: tm.BaseRegate, Consumer: tm.Consumer}
+		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, ReadyNag: tm.ReadyNag, ReadyTake: tm.ReadyTake, MergingNag: tm.MergingNag, MergingNagEvery: tm.MergingNagEvery,
+		BaseRegate: tm.BaseRegate, Consumer: tm.Consumer}
 	for _, f := range fs { // another version's failure is its own policy judgement (policy.Judgements), never this version's
 		if f.Question != "" && f.Version == p.Version {
 			a.Failed[f.Question] = f.Msg

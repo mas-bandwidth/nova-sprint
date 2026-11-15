@@ -28,6 +28,9 @@ type Forge interface {
 	// Checks is each sha's check rollup, read by the forge the landing reads
 	// them with (forge.Forge.Checks); a sha with no checks has no entry.
 	Checks(ctx context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error)
+	// Runs is repo's unfinished workflow runs (forge.Forge.Runs): check
+	// says how many of them a landing PR's runs wait behind.
+	Runs(ctx context.Context, repo string) ([]forge.Run, error)
 }
 
 // baseRed is a github stream's base tip read by the landing's own rule

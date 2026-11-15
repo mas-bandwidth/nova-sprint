@@ -119,6 +119,16 @@ type benchAsk struct{}
 
 func (benchAsk) Ask(Questions) Answers { return Answers{Models: benchModels()} }
 
+// holdShared turns land_on_shared_red off on every land request in
+// flight: the landing as it was before 2026-11-15 (every red and every
+// conflict a judgement). TestTickLandRequestCarriesTheSwitch checks that
+// the policy's answer is what sets it.
+func holdShared(s *sim) {
+	for i := range s.inflight {
+		s.inflight[i].SharedRed = false
+	}
+}
+
 // benchModels is a model for every tier, provider/model, as the catalog's
 // bench key has them.
 func benchModels() map[string]string {

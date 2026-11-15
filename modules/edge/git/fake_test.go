@@ -18,10 +18,52 @@ type fakeForgeWorld_internal struct {
 	mu       sync.Mutex
 	checks   map[string]forge.CheckRollup
 	failures map[string][]forge.Failure
+	basePRs  map[string]forge.BasePR
+	runs     []forge.Run // the repo's unfinished workflow runs (one repo per fake)
+	runsErr  error       // Runs fails with it
+	cancel   []int64     // the runs CancelRun cancelled, in order
 }
 
 func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
-	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{}}
+	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{}, basePRs: map[string]forge.BasePR{}}
+}
+
+// Runs is the world's unfinished runs.
+func (f *fakeForge_internal) Runs(context.Context, string) ([]forge.Run, error) {
+	f.call_internal("Runs")
+	if f.world == nil {
+		return nil, nil
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	if f.world.runsErr != nil {
+		return nil, f.world.runsErr
+	}
+	return slices.Clone(f.world.runs), nil
+}
+
+// CancelRun removes run id from the world's unfinished runs.
+func (f *fakeForge_internal) CancelRun(_ context.Context, _ string, id int64) error {
+	f.call_internal("CancelRun")
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.cancel = append(f.world.cancel, id)
+	f.world.runs = slices.DeleteFunc(f.world.runs, func(r forge.Run) bool { return r.ID == id })
+	return nil
+}
+
+// SetRuns sets the world's unfinished runs.
+func (f *fakeForge_internal) SetRuns(runs ...forge.Run) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.runs = runs
+}
+
+// Cancelled is the runs CancelRun cancelled, in order.
+func (f *fakeForge_internal) Cancelled() []int64 {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	return slices.Clone(f.world.cancel)
 }
 
 type fakeForge_internal struct {
@@ -152,6 +194,25 @@ func (f *fakeForge_internal) Failures(_ context.Context, repo, sha string) ([]fo
 		out = append(out, forge.Failure{Name: n, URL: map[bool]string{true: r.URL}[i == 0]})
 	}
 	return out, nil
+}
+
+// BasePR is the PR SetBasePR named for sha, if any.
+func (f *fakeForge_internal) BasePR(_ context.Context, repo, sha string) (forge.BasePR, bool, error) {
+	f.call_internal("BasePR")
+	if f.world == nil {
+		return forge.BasePR{}, false, nil
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	pr, ok := f.world.basePRs[repo+"\x00"+sha]
+	return pr, ok, nil
+}
+
+// SetBasePR sets the merged PR whose merge commit is sha.
+func (f *fakeForge_internal) SetBasePR(repo, sha string, pr forge.BasePR) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.basePRs[repo+"\x00"+sha] = pr
 }
 
 // SetFailures sets what Failures answers for sha.

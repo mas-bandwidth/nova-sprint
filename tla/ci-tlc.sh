@@ -214,11 +214,15 @@ run StepsBurst pass . StepsBurst.cfg Steps.tla 4
 run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run LandEdgeLive pass . LandEdgeLive.cfg LandEdge.tla 2
+run LandEdgeHeld pass . LandEdgeHeld.cfg LandEdge.tla 2
+run LandEdgeSharedLive pass . LandEdgeSharedLive.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run RowAlive pass . RowAlive.cfg RowAlive.tla 2
 run VerbFence pass . VerbFence.cfg VerbFence.tla 2
 run VerbFenceCoarse pass . VerbFenceCoarse.cfg VerbFence.tla 2
 run BaseRed pass . BaseRed.cfg BaseRed.tla 2
+run MergeNag pass . MergeNag.cfg MergeNag.tla 2
+run MergeFlow pass . MergeFlow.cfg MergeFlow.tla 2
 run AnsweredQuiet pass . AnsweredQuiet.cfg AnsweredQuiet.tla 2
 run Hook pass . Hook.cfg Hook.tla 2
 
@@ -257,7 +261,8 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffWrongType \
          SetupRunFreshRunning \
          HookAnySession HookReplaceUnhooks HookReplaceChangesRole \
-         BaseRedNoPush BaseRedQuietSwallows AnsweredQuietReopens AnsweredQuietSwallows; do
+         BaseRedNoPush BaseRedQuietSwallows AnsweredQuietReopens AnsweredQuietSwallows \
+         MergeNagPerCard MergeNagOnce MergeNagNeverStops MergeNagOffBus; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
@@ -273,6 +278,13 @@ for m in NeverOpens NeverReplaced; do
     run "reach-BaseRed$m" violate . "BaseRed$m.cfg" BaseRed.tla 1
 done
 run reach-AnsweredQuietNeverReopens violate . AnsweredQuietNeverReopens.cfg AnsweredQuiet.tla 1
+run reach-MergeNagNeverNags violate . MergeNagNeverNags.cfg MergeNag.tla 1
+# MergeFlow's reversed witnesses: the uncapped group and the red group held
+# starve (MergingDrains), no cancel queues the gate behind its cards (GateFirst).
+for m in MergeFlowUncapped MergeFlowNoPeel MergeFlowNoCancel; do
+    run "witness-$m" violate . "$m.cfg" MergeFlow.tla 1
+done
+
 
 # RowAlive's reversed witnesses (one per requirement it holds) and reach
 # checks (a row goes down, comes back up by itself, and is retired), each a cfg on

@@ -75,14 +75,15 @@ def limits():
     }
 
 def landing(stream):
-    # rung 2 at more than four heads waiting; ci_wait a guess
-    return {"backed_up": 4, "flowing": 1, "ci_wait": 600}
+    # rung 2 at more than four heads waiting; ci_wait a guess; a red gate
+    # whose reds are all the base's own lands (Glenn 2026-11-15)
+    return {"backed_up": 4, "flowing": 1, "ci_wait": 600, "land_on_shared_red": True, "group_max": 4}
 
 def timeouts():
     return {
         "row_silent_gone": 600,       # guess; never one missed challenge (LESSONS 4.7)
         "row_silent_withdraw": 1800,  # guess; above a 600 s gate (LESSONS 2.9)
-        "landing_stall": 1200,        # 20m so active merges and reviews do not re-trigger stall.<stream> every minute
+        "landing_stall": 300,         # 2026-11-15, with merging_nag: 5m; the stall judgement stays open until the stream lands, and a retry has its cooldown
         "base_regate": [120, 300],    # v1 (LANDING step 8)
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
@@ -90,6 +91,8 @@ def timeouts():
         "ready_nag": 30,              # nag an unacknowledged deal every 30s, not every 1s
         "ready_take": 180,            # Glenn 2026-11-07: a card ready this long is dealt elsewhere
         "judgement_unseen": 300,      # Glenn 2026-11-08: a judgement open this long was pushed to nobody
+        "merging_nag": 300,           # Glenn 2026-11-15: a card merging 5m pushes the coordinator...
+        "merging_nag_every": 1,       # ...one line every 1s until none is
         "consumer": {                 # a consumer's deadline by tier
             "flash": 3600,
             "pro": 7200,

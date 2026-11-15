@@ -168,8 +168,9 @@ func (x *e2e) lands(head string) {
 	calls := x.fg.Calls()
 	x.tr.record("forge calls (fake forge, run side)", 0, strings.Join(calls, "\n"))
 	joined := strings.Join(calls, "\n")
-	// rung 1: one head on the base tip opens its PR from its own card branch
-	for _, want := range []string{"OpenPR sprint/s/e2e1 -> main", "Checks ", "Merge #"} {
+	// a Fresh landing (every one the tick asks): even one head opens its PR
+	// from the group branch, never its own card branch
+	for _, want := range []string{"OpenPR sprint-group/s -> main", "Checks ", "Merge #"} {
 		if !strings.Contains(joined, want) {
 			x.t.Fatalf("the forge never saw %q:\n%s", want, joined)
 		}

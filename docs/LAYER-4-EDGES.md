@@ -550,6 +550,21 @@ hand landing and a red gate. Size: 2 streams, 3 cards, K = 1, BackedUp 2,
 MaxPass 6. The code is bound to it by `LandEdgeTrace.tla` and the walk in
 `modules/edge/git/trace_test.go`.
 
+Since 2026-11-15 (LANDING "Landing on the base's own reds") checks have
+names (`test` on base pushes and PRs, `lint` on PRs only; c2 is red on
+lint, and an outside commit may break either), base entries carry the
+`proof` of the PR that merged them, and with `SharedRed` a red gate whose
+reds are all `Known` on its base lands; a conflict that names its card
+sends it to fix. `LandEdge.cfg`: 5,844,703 distinct states, depth 41
+(vision, TLC 1.8.0, 8 workers, 1 min 42 s); `LandEdgeSharedLive.cfg`
+(`SharedRedLands`, faults off) 354,778 distinct states, 6 min 9 s. The
+landing reads two more facts from the forge for it: `CheckRollup.Ran`
+(the names of every check that ran on a sha; `RanPartial` when GitHub's
+settled-by-counts shortcut skipped pages) and `forge.BasePR` (the merged
+PR associated with a base tip commit, its head and whether that head has
+the tip's tree, one GraphQL call).
+
+
 `tla/Runner.tla`, one bench. Variables: each consumer's store state
 (`ready`, `working`, `done`, `fail`), its job state (`none`, `taken`,
 `staged`, `running`, `harvested`, `rebased`, `ciwait`, `reporting`,

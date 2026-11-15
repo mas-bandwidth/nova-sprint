@@ -170,16 +170,20 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 | L3-T1 | `BUILD-RULES` 2026-11-07 (the lock gate) | The code is bound to the model: the walk's traces are behaviours of `Steps.tla` | `test TestTraceFixtures`, `test TestTraceWalk` |
 | L3-L1 | `LANDING.md` rung 3 (intent rule 32) | Anything but a landed result opens one `land` judgement per card still merging at the request's head, on the coordinator's row in that tick, with the facts and the choices land, fix and retry; nothing moves, nothing is blamed, and it has no deadline | `invariant Steps.MergingCovered`, `witness StepsLandAfterHoldsUntilLanded`, `test TestTickLandJudgementEveryOutcome`, `test TestTickLandAnswers` |
 | L3-L2 | `LANDING.md` rungs 1 and 2 (intent rule 16) | Fewer than `backed_up` merging heads waiting in a stream is one request for the first (rung 1); `backed_up` or more is one request for all of them (rung 2) | `test TestTickLadderRungs` |
-| L3-L3 | `LANDING.md` What is modelled (intent rules 16 and 32) | Base is never red from a landing; nothing lands that CI did not pass except by `land`; after a tick no merging card is without a request or a judgement | `invariant LandEdge.BaseNeverRed`, `invariant LandEdge.NothingLandsUnpassed`, `invariant LandEdge.MergingCovered`, `witness LandEdgeRedLands`, `witness LandEdgeStaleGate`, `witness LandEdgeJudgementHoldsStream` |
+| L3-L3 | `LANDING.md` What is modelled (intent rules 16 and 32) | With `land_on_shared_red` off, base is never red from a landing; on, a landing adds no red the base it lands on lacks; nothing lands that CI did not pass except by `land`; after a tick no merging card is without a request or a judgement | `invariant LandEdge.BaseNeverRed`, `invariant LandEdge.SharedRedOnly`, `invariant LandEdge.NothingLandsUnpassed`, `invariant LandEdge.MergingCovered`, `witness LandEdgeHeldRedLands`, `witness LandEdgeRedLands`, `witness LandEdgeStaleGate`, `witness LandEdgeJudgementHoldsStream` |
+| L3-L4 | `LANDING.md` "Landing on the base's own reds" (Glenn 2026-11-15) | A gate red only on the base tip's own reds (a PR-only check by the proof of the PR that merged the tip) lands with no human step; any other red is the card's own and judged; a conflict that names its card goes back to fix | `invariant LandEdge.SharedRedOnly`, `invariant LandEdge.SharedRedNeverJudged`, `invariant LandEdge.ConflictNeverJudged`, `witness LandEdgeOwnRedLands`, `witness LandEdgeNotRunIsShared`, `witness LandEdgeSharedRedJudged`, `witness LandEdgeSharedRedWaits`, `witness LandEdgeConflictJudged`, `test TestTickConflictGoesToFix`, `test TestTickLandedOnSharedRedRecordsWhy` |
+| L3-L5 | `LANDING.md` "The merge-queue nag" (Glenn 2026-11-15) | Past `merging_nag`, each tick pushes the hooked coordinator one line for the whole queue, until it clears; `check` reads CHECK RED | `invariant MergeNag.OneLinePerTick`, `invariant MergeNag.PushedWhilePast`, `invariant MergeNag.StopsWhenClear`, `invariant MergeNag.NoneOffBus`, `test TestMergeNagTraceWalk`, `test TestMergingNagFromTheThreshold`, `test TestMergingNagOneLineForTheQueue` |
+
 
 ---
 
 ## Summary Counts
 
-Total rules audited: 113
+Total rules audited: 115
 
-- held by a model: 58
-- held by a test: 91
+- held by a model: 60
+- held by a test: 93
+
 - held by the schema: 16
 - held by nothing: 20
 

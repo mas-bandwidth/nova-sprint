@@ -93,3 +93,32 @@ func TestTickNudgesAnUnacknowledgedDeal(t *testing.T) {
 		t.Fatalf("sent %+v", b.sent)
 	}
 }
+
+// TestPusherMergingNagEverySecond: the merge-queue nag (Every 1 s) is sent
+// on every one-second tick, a tick that fires a little early included
+// (half a tick early is on time), never twice inside half a tick, and
+// once per tick however many cards it counts (one nudge, one line).
+func TestPusherMergingNagEverySecond(t *testing.T) {
+	t.Parallel()
+	f := started(t)
+	p := NewPusher()
+	b := &fakeBus{}
+	nag := []steps.Nudge{{Row: "carol", Card: steps.MergingNagCard, Every: time.Second, Line: "MERGING 120 cards merging longer than 5m0s; oldest p1 merging 1h0m0s"}}
+	at := t0
+	for i, step := range []time.Duration{0, time.Second, 999 * time.Millisecond, 1001 * time.Millisecond, 300 * time.Millisecond} {
+		at = at.Add(step)
+		p.Nudge(nag)
+		p.Push(context.Background(), b, f, 1, at)
+		want := 1
+		if i == 4 {
+			want = 0 // 300 ms after the last: inside half a tick
+		}
+		if len(b.sent) != want {
+			t.Fatalf("push %d (+%s): sent %+v, want %d", i, step, b.sent, want)
+		}
+		if want == 1 && (b.sent[0].to != "carol" || strings.Count(b.sent[0].body, "MERGING") != 1) {
+			t.Fatalf("push %d: %+v", i, b.sent[0])
+		}
+		b.sent = nil
+	}
+}

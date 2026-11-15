@@ -58,7 +58,10 @@ type slowForge struct {
 	passes int
 }
 
+func (f *slowForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+
 func (f *slowForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
+
 	return forge.PRInfo{Number: 1, HeadSHA: f.g.group, Mergeable: "MERGEABLE"}, true, nil
 }
 

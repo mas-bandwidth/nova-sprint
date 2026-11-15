@@ -86,6 +86,9 @@ func TestRefusals(t *testing.T) {
 		{"landing", `{"backed_up": 1001, "flowing": 1}`, "landing(s1): backed_up 1001 is outside 1..1000"},
 		{"landing", `{"backed_up": 2, "flowing": 1, "ci_wait": 0}`, "landing(s1): ci_wait 0 is outside 1..86400"},
 		{"landing", `{"backed_up": 2, "flowing": 1, "ci_wait": "soon"}`, "landing(s1): ci_wait is a string, not an int"},
+		{"landing", `{"backed_up": 2, "flowing": 1, "land_on_shared_red": 1}`, "landing(s1): land_on_shared_red is an int, not True or False"},
+		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "merging_nag": 0}`, "timeouts(): merging_nag 0 is outside 1..86400"},
+		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "merging_nag_every": 86401}`, "timeouts(): merging_nag_every 86401 is outside 1..86400"},
 		{"stitch", "1", "stitch(s1): the answer is an int, not True or False"},
 		{"prices", "[]", "prices(): the answer is a list, not a dict"},
 		{"prices", `{"m": {"in": -1, "out": 1}}`, "prices(): m in -1 is outside 0..9223372036854775807"},
@@ -121,6 +124,30 @@ func TestJudgementUnseenOptional(t *testing.T) {
 		require.Empty(t, fs)
 		assert.Equal(t, 2, a.Version)
 		assert.Equal(t, tc.want, a.Timeouts.JudgementUnseen, "timeouts with %q", tc.extra)
+	}
+}
+
+// TestMergeQueueKeysOptional: a stored version that names none of
+// land_on_shared_red, merging_nag and merging_nag_every (one stored before
+// them) answers True, 300 and 1; one that names them answers its own.
+func TestMergeQueueKeysOptional(t *testing.T) {
+	t.Parallel()
+	const times = `"row_silent_gone": 600, "row_silent_withdraw": 1800, "landing_stall": 60, "base_regate": [120], "judgement": 3600, "route_rest_for": 1800, "tick": 10, "consumer": {"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}`
+	w := fakeWorld(t)
+	for _, tc := range []struct {
+		times, landing string
+		nag, every     int
+		shared         bool
+	}{{"", "", DefaultMergingNag, DefaultMergingNagEvery, true}, {`, "merging_nag": 600, "merging_nag_every": 5`, `, "land_on_shared_red": False`, 600, 5, false}} {
+		body, _ := override("timeouts", "def timeouts():\n    return {"+times+tc.times+"}")
+		body, _ = overrideIn(body, "landing", "def landing(stream):\n    return {\"backed_up\": 2, \"flowing\": 1"+tc.landing+"}")
+		a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+		require.Empty(t, fs)
+		assert.Equal(t, tc.nag, a.Timeouts.MergingNag)
+		assert.Equal(t, tc.every, a.Timeouts.MergingNagEvery)
+		for s, l := range a.Landing {
+			assert.Equal(t, tc.shared, l.LandOnSharedRed, "landing(%s) with %q", s, tc.landing)
+		}
 	}
 }
 

@@ -271,7 +271,11 @@ type fakeForge struct {
 	rollups map[string]forge.CheckRollup
 	rollupE error
 	calls   atomic.Int32 // Checks calls
+	runs    []forge.Run
+	runsE   error
 }
+
+func (f *fakeForge) Runs(context.Context, string) ([]forge.Run, error) { return f.runs, f.runsE }
 
 func (f *fakeForge) checksCalls() int { return int(f.calls.Load()) }
 

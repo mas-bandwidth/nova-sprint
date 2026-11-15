@@ -35,9 +35,12 @@ type View struct {
 
 	TakenAt map[string]time.Time // consumer -> when it went working: when it was dealt
 	ReadyAt map[string]time.Time // producer -> when it last went ready
-	Landed  map[string]time.Time // stream -> when a producer of it last landed
-	Down    map[string]time.Time // row -> when it last went down
-	Ends    map[string][]End     // row -> its consumers' last finishes, oldest first (at most maxEnds)
+	// MergingAt is producer -> when it last went merging (the merge-queue
+	// nag's age, nag.go).
+	MergingAt map[string]time.Time
+	Landed    map[string]time.Time // stream -> when a producer of it last landed
+	Down      map[string]time.Time // row -> when it last went down
+	Ends      map[string][]End     // row -> its consumers' last finishes, oldest first (at most maxEnds)
 	// RateLimited is model -> when a consumer on it last faulted on a
 	// provider's rate limit (card.RateLimited): the model rests (deal.go).
 	RateLimited map[string]time.Time
@@ -88,7 +91,7 @@ func (v *View) reset(epoch int) {
 	v.byState, v.byRung, v.consOf = map[string]set{}, map[string]set{}, map[string]set{}
 	v.liveOnRow, v.dependants = map[string]set{}, map[string]set{}
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
-	v.ReadyAt = map[string]time.Time{}
+	v.ReadyAt, v.MergingAt = map[string]time.Time{}, map[string]time.Time{}
 	v.Ends, v.born, v.touched = map[string][]End{}, map[string]int64{}, map[string]int64{}
 	v.RateLimited = map[string]time.Time{}
 	if v.acks == nil { // the store keeps cursors across epochs; so does the view
@@ -179,6 +182,8 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 		}
 	case !isConsumer(c) && c.State == "ready" && (!had || old.State != "ready"):
 		v.ReadyAt[c.ID] = e.At
+	case !isConsumer(c) && c.State == "merging" && (!had || old.State != "merging"):
+		v.MergingAt[c.ID] = e.At
 	case !isConsumer(c) && c.State == "landed" && (!had || old.State != "landed"):
 		v.Landed[c.Stream] = e.At
 	}

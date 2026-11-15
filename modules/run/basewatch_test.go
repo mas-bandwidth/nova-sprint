@@ -14,6 +14,8 @@ import (
 
 // checksForge answers Checks with the rollup set for each sha (or err) and
 // FailedLines with one line per url; it counts both.
+func (f *checksForge) Runs(context.Context, string) ([]forge.Run, error) { return nil, nil }
+
 type checksForge struct {
 	forge.Forge
 	mu      sync.Mutex

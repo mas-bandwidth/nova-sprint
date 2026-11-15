@@ -172,12 +172,19 @@ func toMerging(s *sim) EdgeRequest {
 // TestTickLandJudgementEveryOutcome: anything but landed (intent rule 32)
 // is one land judgement per card on the coordinator's row, that tick, with
 // the facts and the choices land, fix and retry; nothing moves, nothing is
-// blamed, and no new request is asked while it is open.
+// blamed, and no new request is asked while it is open. A conflict is the
+// card's fix instead (TestTickConflictGoesToFix), and so is a card's own red
+// (TestTickOwnRedGoesToFix), unless land_on_shared_red is off, which this
+// checks too.
+
 func TestTickLandJudgementEveryOutcome(t *testing.T) {
 	t.Parallel()
 	for _, outcome := range []string{"ci_red", "no-ci", "conflict", "merge_refused", "pr_unopenable", "branch_failed", "ci_fault", "missing_head", "head_moved", "hand", "fault"} {
 		s := newSim(t)
 		first := toMerging(s)
+		if outcome == "conflict" || outcome == "ci_red" {
+			holdShared(s)
+		}
 		s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: outcome, Reason: "rung 1; base tip " + base + "; failing unit; first failing lines: --- FAIL: TestX"})
 		p := s.tick()
 		require.Empty(t, s.rejected, outcome)
@@ -196,20 +203,36 @@ func TestTickLandJudgementEveryOutcome(t *testing.T) {
 	}
 }
 
+// TestTickLandedOnSharedRedRecordsWhy: a landing on the base's own reds
+// is landed by the tick with no judgement, the edge's why in the card's
+// landed reason.
+func TestTickLandedOnSharedRedRecordsWhy(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	req := toMerging(s)
+	why := "on the base's own reds (heavy) at base " + base + ": heavy red on the base tip " + base + "; gated " + req.Heads[0]
+	s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "landed", Landed: req.Heads, Merge: sha(9), Main: true, Reason: why})
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1", "landed")
+	assert.Equal(t, "landed on main at "+sha(9)+": "+why, s.card("p1").Reason)
+	assert.Empty(t, s.openJudgements("land"))
+}
+
 // TestTickLandAnswers: fix sends the producer to fix with the finding (a
 // red: review +1); retry asks a new landing; land records it landed.
 func TestTickLandAnswers(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
 	first := toMerging(s)
-	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", Reason: "failing unit"})
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "merge_refused", Reason: "failing unit"})
 	s.run(2)
 	_, ref := s.verb(Request{Actor: "rowan", Judgement: "land.p1.1", Answer: "retry"})
 	require.Nil(t, ref)
 	s.run(2)
 	second := s.request("land", "s1")
 	assert.Equal(t, first.Heads, second.Heads, "retry asks the landing again")
-	s.arrive(InboxItem{Kind: "land", Request: second.ID, Outcome: "ci_red", Reason: "failing unit again"})
+	s.arrive(InboxItem{Kind: "land", Request: second.ID, Outcome: "merge_refused", Reason: "failing unit again"})
 	s.run(2)
 	_, ref = s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Red{Head: sha(1), Reason: "unit fails: fix TestX"}, Judgement: "land.p1.2", Answer: "fix"})
 	require.Nil(t, ref)
@@ -223,6 +246,7 @@ func TestTickLandAnswers(t *testing.T) {
 
 	h := newSim(t)
 	req := toMerging(h)
+	holdShared(h)
 	h.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "conflict"})
 	h.run(2)
 	_, ref = h.verb(Request{Actor: "rowan", Card: "p1", Event: card.Landed{Head: sha(1), Merge: sha(7), Reason: "by hand: merged"}, Judgement: "land.p1.1", Answer: "land"})

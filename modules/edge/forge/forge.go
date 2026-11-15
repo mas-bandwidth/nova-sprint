@@ -50,13 +50,28 @@ func (f ExecFunc) Run(ctx context.Context, cmd edge.Cmd) (edge.Result, error) { 
 // queued or running (a red or faulted rollup can still be waiting:
 // directive 76), Pending of them. A red rollup that is still waiting is no
 // verdict yet: the landing reads it as unfinished, never as red (LANDING.md
-// "A verdict only from completed checks").
+// "A verdict only from completed checks"). Ran names every check read on
+// the commit, in any state; RanPartial is set when GitHub's counts settled
+// it without reading every page, so a check missing from Ran may still
+// have run (the landing then never calls a check "not run": LANDING.md,
+// "A red base").
 type CheckRollup struct {
 	SHA, URL, Reason string
 	State            CheckState
 	Failing, URLs    []string
+	Ran              []string
 	Waiting          bool
+	RanPartial       bool
 	Pending          int
+}
+
+// BasePR is the merged PR whose merge commit is a base tip: its number,
+// URL and head, and SameTree, whether the head's tree is the tip's tree
+// (so a check the PR ran on its head ran on the tip's exact code).
+type BasePR struct {
+	Number       int
+	URL, HeadSHA string
+	SameTree     bool
 }
 
 // Failure is one completed check of a commit that did not pass, as GitHub
@@ -104,6 +119,16 @@ type Forge interface {
 	// with how GitHub says it was stopped, if it was: one read, made only
 	// once sha's checks have all completed.
 	Failures(ctx context.Context, repo, sha string) ([]Failure, error)
+	// BasePR is the merged PR whose merge commit is sha, if there is one:
+	// how the landing reads a base tip's checks that run only on PRs
+	// (LANDING.md, "A red base").
+	BasePR(ctx context.Context, repo, sha string) (BasePR, bool, error)
+	// Runs is the repo's unfinished workflow runs (the newest RunsPage
+	// queued and the newest RunsPage in progress); CancelRun cancels one.
+	// The landing cancels the runs that gate no landing, so its own CI is
+	// never queued behind them (LANDING.md, "The landing's CI comes first").
+	Runs(ctx context.Context, repo string) ([]Run, error)
+	CancelRun(ctx context.Context, repo string, id int64) error
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on
@@ -445,8 +470,9 @@ func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, r
 			continue
 		}
 		nodes, pi := commit.StatusCheckRollup.Contexts.Nodes, commit.StatusCheckRollup.Contexts.PageInfo
+		partial := false
 		if pending, ok := settled_internal(commit.StatusCheckRollup.Contexts); ok && pi.HasNextPage {
-			pi = gqlPageInfo{} // the pages not read hold only green and pending checks
+			pi, partial = gqlPageInfo{}, true // the pages not read hold only green and pending checks
 			if pending {
 				nodes = append(slices.Clone(nodes), gqlNode{Typename: "CheckRun", Status: "IN_PROGRESS"})
 			}
@@ -458,7 +484,9 @@ func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, r
 			}
 			nodes, pi = append(nodes, more...), nextPI
 		}
-		out[sha] = classifyRollup_internal(sha, commit.StatusCheckRollup.State, nodes)
+		r := classifyRollup_internal(sha, commit.StatusCheckRollup.State, nodes)
+		r.RanPartial = partial
+		out[sha] = r
 	}
 	return out, nil
 }
@@ -505,6 +533,16 @@ func classifyNode_internal(n gqlNode) (CheckState, string, string) {
 	}
 }
 func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRollup {
+	r := classifyStates_internal(sha, rollupState, nodes)
+	for _, n := range nodes {
+		if _, name, _ := classifyNode_internal(n); name != "" && !slices.Contains(r.Ran, name) {
+			r.Ran = append(r.Ran, name)
+		}
+	}
+	return r
+}
+
+func classifyStates_internal(sha, rollupState string, nodes []gqlNode) CheckRollup {
 	var failing, faulted, redURLs []string
 	var firstRedURL, firstFaultURL string
 	pending := 0
@@ -729,6 +767,76 @@ func (c *Client) Failures(ctx context.Context, repo, sha string) ([]Failure, err
 		}
 		after = pi.EndCursor
 	}
+}
+
+// BasePR is the merged PR whose merge commit is sha (one gh api graphql
+// call): of the PRs GitHub associates with sha, the one merged with sha as
+// its merge commit, with whether its head's tree is sha's tree. None is
+// (BasePR{}, false, nil): sha was pushed, not merged from a PR.
+func (c *Client) BasePR(ctx context.Context, repo, sha string) (BasePR, bool, error) {
+	path, err := RepoPath(repo)
+	if err != nil {
+		return BasePR{}, false, err
+	}
+	owner, name, ok := strings.Cut(path, "/")
+	if !ok || !isFullSHA_internal(sha) {
+		return BasePR{}, false, fmt.Errorf("forge refused: BasePR requires an org/repo and a 40-hex sha")
+	}
+	q := fmt.Sprintf(`query { repository(owner: %q, name: %q) { c0: object(oid: %q) { ... on Commit { oid tree { oid } associatedPullRequests(first: 10) { nodes { number url merged headRefOid mergeCommit { oid } commits(last: 1) { nodes { commit { oid tree { oid } } } } } } } } } }`, owner, name, sha)
+	stdout, _, err := c.runGH_internal(ctx, "api", "graphql", "-f", "query="+q)
+	if err != nil {
+		return BasePR{}, false, err
+	}
+	return parseBasePR_internal(stdout, sha)
+}
+
+type gqlOID struct{ OID string }
+
+// parseBasePR_internal is BasePR's answer from gh's output.
+func parseBasePR_internal(raw, sha string) (BasePR, bool, error) {
+	var env struct {
+		Data struct {
+			Repository map[string]*struct {
+				OID                    string
+				Tree                   gqlOID
+				AssociatedPullRequests struct {
+					Nodes []struct {
+						Number      int
+						URL         string
+						Merged      bool
+						HeadRefOid  string
+						MergeCommit *gqlOID
+						Commits     struct {
+							Nodes []struct {
+								Commit struct {
+									OID  string
+									Tree gqlOID
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		return BasePR{}, false, fmt.Errorf("forge: decode gh api graphql base PR: %s", edge.ParseFailure(err, []byte(raw)))
+	}
+	commit := env.Data.Repository["c0"]
+	if commit == nil {
+		return BasePR{}, false, nil
+	}
+	for _, pr := range commit.AssociatedPullRequests.Nodes {
+		if !pr.Merged || pr.MergeCommit == nil || !strings.EqualFold(pr.MergeCommit.OID, sha) || !isFullSHA_internal(pr.HeadRefOid) {
+			continue
+		}
+		out := BasePR{Number: pr.Number, URL: pr.URL, HeadSHA: strings.ToLower(pr.HeadRefOid)}
+		if n := pr.Commits.Nodes; len(n) == 1 && strings.EqualFold(n[0].Commit.OID, pr.HeadRefOid) {
+			out.SameTree = commit.Tree.OID != "" && strings.EqualFold(n[0].Commit.Tree.OID, commit.Tree.OID)
+		}
+		return out, true, nil
+	}
+	return BasePR{}, false, nil
 }
 
 // FirstFailing is the first n lines of log that say error, fail or panic,

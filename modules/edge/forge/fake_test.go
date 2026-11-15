@@ -176,4 +176,22 @@ func (f *Fake) Failures(_ context.Context, repo, sha string) ([]Failure, error) 
 	return out, nil
 }
 
+// BasePR is none: the fake records no merged PRs.
+func (f *Fake) BasePR(context.Context, string, string) (BasePR, bool, error) {
+	f.call_internal("BasePR")
+	return BasePR{}, false, nil
+}
+
+// Runs is none: the fake runs no workflows.
+func (f *Fake) Runs(context.Context, string) ([]Run, error) {
+	f.call_internal("Runs")
+	return nil, nil
+}
+
+// CancelRun cancels nothing.
+func (f *Fake) CancelRun(context.Context, string, int64) error {
+	f.call_internal("CancelRun")
+	return nil
+}
+
 var _ Forge = (*Fake)(nil)

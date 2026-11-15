@@ -296,6 +296,22 @@ func (f *fakeForge) Failures(_ context.Context, _, sha string) ([]forge.Failure,
 	return nil, nil
 }
 
+func (f *fakeForge) Runs(_ context.Context, repo string) ([]forge.Run, error) {
+	f.log("Runs %s", repo)
+	return nil, nil
+}
+
+func (f *fakeForge) CancelRun(_ context.Context, _ string, id int64) error {
+	f.log("CancelRun %d", id)
+	return nil
+}
+
+func (f *fakeForge) BasePR(_ context.Context, _, sha string) (forge.BasePR, bool, error) {
+
+	f.log("BasePR %s", sha)
+	return forge.BasePR{}, false, nil
+}
+
 // storeSetup is up's store step through the binary. The binary's internal
 // mode prints no reason on failure (its JSON is the parent's), so a failure
 // is run once more in this process, the same function, for the reason.

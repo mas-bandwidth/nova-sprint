@@ -3,11 +3,17 @@ package verbs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
+	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -32,6 +38,106 @@ func (e *Engine) checkLandings(ctx context.Context, r *checkReport, snap store.S
 			e.checkLanding(ctx, r, snap, s, ids, heads[s.Name] != "", running)
 		}
 	}
+	e.checkMergeQueue(ctx, r, snap)
+}
+
+// checkMergeQueue is CHECK RED while any producer has been merging longer
+// than timeouts merging_nag (the run's merge-queue nag, steps.mergingNag;
+// Glenn 2026-11-15): how many, the oldest and its age, and the command that
+// clears it. Each card's merging since is read from the store's last
+// landLookback events of the epoch; one that went merging before them is
+// at least as old as the oldest event read, and said so. A history that
+// cannot be read is a red line of its own.
+func (e *Engine) checkMergeQueue(ctx context.Context, r *checkReport, snap store.Snapshot) {
+	limit := time.Duration(policy.DefaultMergingNag) * time.Second
+	if _, tm, err := e.rules(ctx, snap); err == nil && tm.MergingNag > 0 {
+		limit = time.Duration(tm.MergingNag) * time.Second
+	}
+	since, floor, err := e.mergingSince(ctx, snap)
+	if err != nil {
+		r.red(RefusalOr(err, refuse("merge queue: "+errText(err), "nova-sprint check again")))
+		return
+	}
+	now := e.Now()
+	n, oldest, age, atLeast := 0, "", time.Duration(0), false
+	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
+		c := snap.Cards[id]
+		if c.Kind != "producer" || c.State != "merging" {
+			continue
+		}
+		at, seen := since[id]
+		if !seen {
+			at = floor
+		}
+		if a := now.Sub(at); a > limit {
+			n++
+			if a > age {
+				oldest, age, atLeast = id, a, !seen
+			}
+		}
+	}
+	if n == 0 {
+		return
+	}
+	how := ""
+	if atLeast {
+		how = "at least "
+	}
+	fix := fmt.Sprintf("nova-sprint land %s --head %s --reason \"<why>\"", steps.ShellWord(oldest), snap.Cards[oldest].Head)
+	if j := openLand(snap, oldest); j != "" {
+		fix = orWord(strings.TrimSpace(snap.Judgements[j].Command), "nova-sprint show "+j)
+	}
+	r.red(refuse(fmt.Sprintf("merge queue: %d cards merging longer than %s (timeouts merging_nag); oldest %s merging %s%s", n, limit, oldest, how, age.Round(time.Second)), fix))
+}
+
+// mergingSince is when each producer last went merging in the store's last
+// landLookback events of snap's epoch, and the floor for one not seen go
+// (mergingSinceOf).
+func (e *Engine) mergingSince(ctx context.Context, snap store.Snapshot) (map[string]time.Time, time.Time, error) {
+	var evs []store.Event
+	for cursor := max(0, snap.Seq-landLookback); cursor < snap.Seq; {
+		batch, err := e.Store.Events(ctx, cursor, store.MaxEvents)
+		if err != nil {
+			return nil, time.Time{}, fmt.Errorf("reading the merging history after seq %d: %w", cursor, err)
+		}
+		if len(batch) == 0 {
+			break
+		}
+		evs = append(evs, batch...)
+		cursor = batch[len(batch)-1].Seq
+	}
+	since, floor := mergingSinceOf(evs, snap, e.Now())
+	return since, floor, nil
+}
+
+// mergingSinceOf is, over evs (in seq order, up to snap's seq), when each
+// producer last went merging in snap's epoch, and the time of the oldest
+// event read (now when none was): the floor for a producer not seen go.
+func mergingSinceOf(evs []store.Event, snap store.Snapshot, now time.Time) (map[string]time.Time, time.Time) {
+	out, floor := map[string]time.Time{}, now
+	for _, ev := range evs {
+		if ev.Seq > snap.Seq {
+			continue
+		}
+		if ev.At.Before(floor) {
+			floor = ev.At
+		}
+		if !ev.Accepted || ev.After == nil || ev.Epoch != snap.Epoch {
+			continue
+		}
+		for id, c := range ev.After.Cards {
+			if c.Kind != "producer" || c.State != "merging" {
+				continue
+			}
+			if ev.Before != nil {
+				if b, ok := ev.Before.Cards[id]; ok && b.State == "merging" {
+					continue
+				}
+			}
+			out[id] = ev.At
+		}
+	}
+	return out, floor
 }
 
 // checkLanding is one stream's landing and its wait.
@@ -63,7 +169,12 @@ func (e *Engine) checkLanding(ctx context.Context, r *checkReport, snap store.Sn
 	case onBase == len(ids):
 		r.ok("%s waits for %s's PR to main and its CI (run asks every %s)", what, s.Base, run.LandPoll)
 	default:
-		r.ok("%s %s", what, e.groupWait(ctx, s))
+		wait := e.groupWait(ctx, s)
+		if line, red := e.landingQueue(ctx, snap, s); red {
+			r.red(refuse(what+" "+line, "gh run list --repo "+s.Repo+" --status queued, then gh run cancel <id> --repo "+s.Repo+" for each merging card's run ahead of it (never a card still being worked)"))
+		} else {
+			r.ok("%s %s%s", what, wait, line)
+		}
 	}
 }
 
@@ -95,7 +206,67 @@ func (e *Engine) groupWait(_ context.Context, s store.Stream) string {
 	return fmt.Sprintf("waits for its landing PR's CI (rung 1 the card's branch, rung 2 %s; run asks every %s)", git.GroupBranch(s.Name), run.LandPoll)
 }
 
+// landingQueue is a github stream's landing PR's place in the repo's CI
+// queue (Glenn 2026-11-15: "the landing PR's CI must never wait behind card
+// CI"): its runs are the unfinished runs on the group branch (every landing
+// the tick asks is Fresh, so gated there), and the runs it waits behind are the queued
+// runs of other pull requests created before its oldest queued one. Red,
+// with "landing PR <n> has <q> runs queued behind <m> runs on other PRs",
+// once that oldest queued run has waited longer than timeouts merging_nag
+// (the merge-queue nag's own limit); else "" or that line as a note. A run
+// list that cannot be read is said, and is not red (the landing reads its
+// checks without it).
+func (e *Engine) landingQueue(ctx context.Context, snap store.Snapshot, s store.Stream) (string, bool) {
+	if s.Forge != "github" || e.Forge == nil {
+		return "", false
+	}
+	runs, err := e.Forge.Runs(ctx, s.Repo)
+	if err != nil {
+		return "; its CI queue could not be read: " + clipN(errText(err), 160), false
+	}
+	// the tick's landings are Fresh: every gate is on the group branch
+	mine := map[string]bool{git.GroupBranch(s.Name): true}
+	var queued []forge.Run
+	oldest, pr := time.Time{}, 0
+	for _, r := range runs {
+		if !mine[r.Branch] || r.Status != "queued" {
+			continue
+		}
+		queued = append(queued, r)
+		if oldest.IsZero() || r.Created.Before(oldest) {
+			oldest = r.Created
+			if len(r.PRs) > 0 {
+				pr = r.PRs[0]
+			}
+		}
+	}
+	if len(queued) == 0 {
+		return "", false
+	}
+	behind := 0
+	for _, r := range runs {
+		if !mine[r.Branch] && r.Status == "queued" && r.Event == "pull_request" && r.Created.Before(oldest) {
+			behind++
+		}
+	}
+	limit := time.Duration(policy.DefaultMergingNag) * time.Second
+	if _, tm, err := e.rules(ctx, snap); err == nil && tm.MergingNag > 0 {
+		limit = time.Duration(tm.MergingNag) * time.Second
+	}
+	name := "landing PR " + strconv.Itoa(pr)
+	if pr == 0 {
+		name = "landing PR (no number yet)"
+	}
+	age := e.Now().Sub(oldest)
+	line := fmt.Sprintf("%s has %d runs queued behind %d runs on other PRs, the oldest queued %s", name, len(queued), behind, age.Round(time.Second))
+	if age > limit {
+		return line + fmt.Sprintf(" (longer than %s, timeouts merging_nag)", limit), true
+	}
+	return "; " + line, false
+}
+
 // firstN is up to n names, then how many more.
+
 func firstN(names []string, n int) string {
 	s := strings.Join(names[:min(len(names), n)], ", ")
 	if more := len(names) - n; more > 0 {
