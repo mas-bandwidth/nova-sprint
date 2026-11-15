@@ -178,8 +178,11 @@ func (w *world) set(name, body string) int {
 
 // override is the default body with question q's def replaced by def; it
 // returns the body and the line of the new def.
-func override(q, def string) (string, int) {
-	lines := strings.Split(defaultBody, "\n")
+func override(q, def string) (string, int) { return overrideIn(defaultBody, q, def) }
+
+// overrideIn is override on body.
+func overrideIn(body, q, def string) (string, int) {
+	lines := strings.Split(body, "\n")
 	start := 0
 	for start < len(lines) && !strings.HasPrefix(lines[start], "def "+q+"(") {
 		start++

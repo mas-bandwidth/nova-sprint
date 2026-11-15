@@ -176,4 +176,10 @@ func (f *Fake) Failures(_ context.Context, repo, sha string) ([]Failure, error) 
 	return out, nil
 }
 
+// BasePR is none: the fake records no merged PRs.
+func (f *Fake) BasePR(context.Context, string, string) (BasePR, bool, error) {
+	f.call_internal("BasePR")
+	return BasePR{}, false, nil
+}
+
 var _ Forge = (*Fake)(nil)

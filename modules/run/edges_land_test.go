@@ -94,6 +94,19 @@ func TestLandItemRedBaseNamesBothSides(t *testing.T) {
 	}
 }
 
+// A landing on the base's own reds is landed, its reason naming the shared
+// checks, the base tip and how each was read red there, as a hand landing
+// records its why; a green landing has no reason.
+func TestLandItemOnSharedRedSaysWhy(t *testing.T) {
+	t.Parallel()
+	res := git.LandResult{Outcome: git.OutcomeLanded, MergeSHA: "m1", LandedHeads: []string{"h1"}, BaseTip: "b1", GatedSHA: "g1",
+		SharedRed: []string{"heavy"}, SharedProof: "heavy red on the base tip b1"}
+	it := landItem("land.s1.x", res, nil, time.Minute)
+	if it.Outcome != "landed" || it.Reason != "on the base's own reds (heavy) at base b1: heavy red on the base tip b1; gated g1" {
+		t.Fatalf("shared red item %+v", it)
+	}
+}
+
 // A stream that lands by hand (mode hand, or no forge) merges and pushes
 // nothing: it answers hand at once, which layer 3 opens as one judgement.
 func TestLandByHandStreamTouchesNothing(t *testing.T) {

@@ -230,18 +230,29 @@ func fraction(what string, v starlark.Value) (float64, string) {
 	return f, ""
 }
 
-// checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000, and
-// an optional "ci_wait": seconds, 1..86400 (absent is the engine's 600).
+// checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000, an
+// optional "ci_wait": seconds, 1..86400 (absent is the engine's 600), and
+// an optional "land_on_shared_red": True or False (absent is True).
 func checkLanding(v starlark.Value) (Landing, string) {
 	keys := []string{"backed_up", "flowing"}
 	if d, ok := v.(*starlark.Dict); ok {
-		if _, found, _ := d.Get(starlark.String("ci_wait")); found {
-			keys = append(keys, "ci_wait")
+		for _, k := range []string{"ci_wait", "land_on_shared_red"} {
+			if _, found, _ := d.Get(starlark.String(k)); found {
+				keys = append(keys, k)
+			}
 		}
 	}
 	d, msg := dictOf(v, keys...)
 	if msg != "" {
 		return Landing{}, msg
+	}
+	shared := true
+	if d["land_on_shared_red"] != nil {
+		b, ok := d["land_on_shared_red"].(starlark.Bool)
+		if !ok {
+			return Landing{}, refuse("land_on_shared_red is %s, not True or False", kind(d["land_on_shared_red"]))
+		}
+		shared = bool(b)
 	}
 	w := 0
 	if d["ci_wait"] != nil {
@@ -257,25 +268,26 @@ func checkLanding(v starlark.Value) (Landing, string) {
 	if msg != "" {
 		return Landing{}, msg + " (below backed_up)"
 	}
-	return Landing{BackedUp: b, Flowing: f, CIWait: w}, ""
+	return Landing{BackedUp: b, Flowing: f, CIWait: w, LandOnSharedRed: shared}, ""
 }
 
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the
 // withdraw silence at or above the gone one: no wait is ever unbounded.
-// ready_nag, ready_take and judgement_unseen are optional: the default
-// policy (default.star) names them, 1, 180 and 300, and a version stored
-// before them lacks them, so for it alone the same values are filled in
-// here and it still answers.
+// ready_nag, ready_take, judgement_unseen, merging_nag and
+// merging_nag_every are optional: the default policy (default.star) names
+// them, and a version stored before them lacks them, so for it alone the
+// defaults (1, 180, 300, 300 and 1) are filled in here and it still
+// answers.
 func checkTimeouts(v starlark.Value) (Timeouts, string) {
-	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take", "judgement_unseen")
+	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take", "judgement_unseen", "merging_nag", "merging_nag_every")
 	if msg != "" {
 		return Timeouts{}, msg
 	}
-	t := Timeouts{ReadyNag: 1, ReadyTake: 180, JudgementUnseen: DefaultJudgementUnseen}
+	t := Timeouts{ReadyNag: 1, ReadyTake: 180, JudgementUnseen: DefaultJudgementUnseen, MergingNag: DefaultMergingNag, MergingNagEvery: DefaultMergingNagEvery}
 	for _, f := range []struct {
 		key string
 		dst *int
-	}{{"ready_nag", &t.ReadyNag}, {"ready_take", &t.ReadyTake}, {"judgement_unseen", &t.JudgementUnseen}} {
+	}{{"ready_nag", &t.ReadyNag}, {"ready_take", &t.ReadyTake}, {"judgement_unseen", &t.JudgementUnseen}, {"merging_nag", &t.MergingNag}, {"merging_nag_every", &t.MergingNagEvery}} {
 		if d[f.key] != nil {
 			if *f.dst, msg = intIn(f.key, d[f.key], 1, maxSeconds); msg != "" {
 				return Timeouts{}, msg

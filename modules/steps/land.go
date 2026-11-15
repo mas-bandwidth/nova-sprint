@@ -33,6 +33,7 @@ func (t *tick) landResults() {
 			t.consume(it.ID)
 		case it.Outcome == "landed":
 			t.landGroup(it, req)
+		case it.Outcome == "conflict" && req.Kind == "land" && req.SharedRed && t.conflictFix(it, req):
 		default:
 			t.landJudge(it, req)
 			t.consume(it.ID)
@@ -66,7 +67,7 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 		if !ok || c.State != "merging" || !t.free(p) || c.Head != req.Heads[i] || !slices.Contains(it.Landed, got) {
 			continue
 		}
-		var e card.Event = card.Landed{Head: c.Head, Merge: it.Merge}
+		var e card.Event = card.Landed{Head: c.Head, Merge: it.Merge, Reason: it.Reason}
 		if req.Kind == "land" && !it.Main {
 			e = card.OnBase{Head: c.Head, Merge: it.Merge, Base: t.v.Streams[req.Stream].Base}
 		}
@@ -112,6 +113,34 @@ func (t *tick) landJudge(it InboxItem, req EdgeRequest) {
 		what := fmt.Sprintf("did not land: %s: %s", it.Outcome, cmp.Or(it.Reason, "no facts given"))
 		t.judge("land", p, fmt.Sprintf("card %s (stream %s onto %s at %s, branch %s, head %s) %s%s. land: you looked, merge it by hand; fix: back to its producer with your finding as the reason; retry: a new landing", p, req.Stream, onto, req.Base, req.Branches[i], c.Head, what, with))
 	}
+}
+
+// conflictFix sends the card whose head does not merge (it.Head, or the
+// request's one card) back to fix with the conflict as its finding, in a
+// group that consumes the item (land_on_shared_red; LANDING.md, "One
+// card's conflict"; tla/LandEdge.tla Tick): no judgement, and the group's
+// other cards are asked again without it. False when no card is named in
+// a group of several (GitHub said the group's PR conflicts), or the card
+// is no longer merging at the head: the judgement as before.
+func (t *tick) conflictFix(it InboxItem, req EdgeRequest) bool {
+	i := slices.Index(req.Heads, it.Head)
+	if i < 0 && len(req.Cards) == 1 {
+		i = 0
+	}
+	if i < 0 {
+		return false
+	}
+	p := req.Cards[i]
+	c, ok := t.v.Cards[p]
+	if !ok || c.State != "merging" || c.Head != req.Heads[i] || !t.free(p) {
+		return false
+	}
+	reason := fmt.Sprintf("conflict: head %s of branch %s does not merge onto %s at %s: %s; merge %s into the branch, resolve, and finish again",
+		c.Head, req.Branches[i], t.v.Streams[req.Stream].Base, req.Base, cmp.Or(it.Reason, "no facts given"), t.v.Streams[req.Stream].Base)
+	if g := t.group("land", p, t.producerMove(p, card.Red{Head: c.Head, Reason: reason})); g != nil {
+		g.key.Item = it.ID
+	}
+	return true
 }
 
 // judged is whether card p has a land judgement open, or opened this tick.
@@ -165,6 +194,7 @@ func (t *tick) landRequests() {
 			picks = picks[:1]
 		}
 		t.landRequest("land", s, picks, l.CIWait)
+		t.edges[len(t.edges)-1].SharedRed = !l.HoldSharedRed
 	}
 	t.unlanded()
 }

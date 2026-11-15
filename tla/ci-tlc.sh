@@ -214,6 +214,8 @@ run StepsBurst pass . StepsBurst.cfg Steps.tla 4
 run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run LandEdgeLive pass . LandEdgeLive.cfg LandEdge.tla 2
+run LandEdgeHeld pass . LandEdgeHeld.cfg LandEdge.tla 2
+run LandEdgeSharedLive pass . LandEdgeSharedLive.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 run RowAlive pass . RowAlive.cfg RowAlive.tla 2
 run VerbFence pass . VerbFence.cfg VerbFence.tla 2

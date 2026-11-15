@@ -36,7 +36,7 @@ TraceAction(k) ==
        [] a = "Pass"      -> Pass(x)
        [] a = "CIStep"    -> CIStep(x)
        [] a = "Late"      -> Late(x)
-       [] a = "BaseMoves" -> BaseMoves
+       [] a = "BaseMoves" -> \E b \in SUBSET Checks : BaseMoves(b)
        [] a = "Answer"    -> Answer(x, TraceLog[k].choice)
        [] OTHER           -> FALSE
 

@@ -76,6 +76,10 @@ type EdgeRequest struct {
 	Wait                   int
 	Row, Consumer          string
 	After                  string
+	// SharedRed lands a red gate whose every failing check is red on the
+	// base too (policy's landing(stream).land_on_shared_red; LANDING.md
+	// "A red base").
+	SharedRed bool
 }
 
 // RefusedOp is an op of the last tick that layer 1 refused: its groups (from

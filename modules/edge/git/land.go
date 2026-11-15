@@ -41,11 +41,15 @@ const (
 // LandRequest is one landing: the stream's heads (in landing order) and the
 // card branches they are the tips of. One head is rung 1, more is rung 2.
 // Gate is the gate the last pass of this request kept (LandResult.Kept;
-// zero: none).
+// zero: none). LandOnSharedRed (policy's landing(stream).land_on_shared_red)
+// merges a red gate whose every failing check is red on the base too
+// (LANDING.md, "A red base": sharedRed_internal); false makes every red a
+// judgement.
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base string
 	Heads, Branches             []string
 	Gate                        Gate
+	LandOnSharedRed             bool
 }
 
 // Gate is what a landing's CI gates: the PR's head branch, the sha, the
@@ -66,13 +70,17 @@ type Gate struct {
 // (killed, cancelled, timed out), apart from FailingCI, the ones that failed
 // on their own; Pending is how many checks were still running. Gate is
 // the gate the pass read; ConflictHead the head whose merge into the group
-// failed, when the group's merge conflicted.
+// failed, when the group's merge conflicted. SharedRed names the failing
+// checks a landing merged over because the base is red on each of them
+// too, and SharedProof how each was read red on the base (a landed result
+// only; LandRequest.LandOnSharedRed).
 type LandResult struct {
 	Outcome                                                               LandOutcome
 	Rung, Pending                                                         int
 	BaseTip, GroupTip, GatedSHA, MergeSHA, PR, CIURL, Reason              string
 	LandedHeads, Conflicts, FailingCI, FailingLines, BaseFailing, Stopped []string
-	ConflictHead                                                          string
+	SharedRed                                                             []string
+	ConflictHead, SharedProof                                             string
 	Gate                                                                  Gate
 }
 
@@ -445,6 +453,7 @@ func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, r
 			return true
 		}
 		verdict_internal(ctx, fg, req, res, r)
+		return len(res.SharedRed) == 0 // red only on the base's own reds: merged as a green one is
 	}
 	return true
 }
@@ -488,7 +497,121 @@ func verdict_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 	}
 	res.Outcome = OutcomeRed
 	res.FailingLines = failedLines_internal(ctx, fg, req.Repo, own[0].URL)
-	baseRed_internal(ctx, fg, req, res)
+	bc := baseRed_internal(ctx, fg, req, res)
+	switch {
+	case !req.LandOnSharedRed || res.Outcome != OutcomeRed:
+	case len(stopped) > 0:
+		res.Reason += "; not landed on the base's reds: a failing check of the head was stopped, not failed (no verdict about it)"
+	default:
+		sharedRed_internal(ctx, fg, req, res, own, bc)
+	}
+}
+
+// baseChecks_internal is the base tip's checks as baseRed_internal read
+// them: complete (every check completed and, when red, how each stopped
+// read), its own failures (failing: the stopped ones apart), every check
+// it read (ran), and partial when GitHub's counts settled it without every
+// page read (a check missing from ran may have run).
+type baseChecks_internal struct {
+	complete, partial bool
+	failing, ran      []string
+}
+
+// sharedRed_internal is the rule that lands a red gate without the
+// coordinator (LANDING.md, "A red base"; tla/LandEdge.tla SharedRedOnly):
+// every own failing check of the gate is red on the base it was gated on.
+// A check the base tip's own run read red is red on the base. A check the
+// base tip's run completed and did not read red (green, or stopped: no
+// verdict) is the card's own. A check the base tip's run never ran (one
+// that runs only on PRs) is red on the base only when the PR that merged
+// the base tip ran it red on a head whose tree is the base tip's tree:
+// that run ran the base's exact code. Anything else (the base still
+// running or unread, a check with no name, any read that fails, no such
+// PR, a head of another tree, that PR's checks not complete) is the
+// card's own red, said in the reason, and stays the coordinator's
+// judgement. A rate-limited read is forge_rested: asked again.
+func sharedRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult, own []forge.Failure, bc baseChecks_internal) {
+	no := func(why string) { res.Reason += "; not landed on the base's reds: " + why }
+	if !bc.complete {
+		no("the base tip's checks were not read complete")
+		return
+	}
+	var names, prOnly []string
+	for _, f := range own {
+		switch {
+		case f.Name == "":
+			no("a failing check has no name")
+			return
+		case slices.Contains(bc.failing, f.Name):
+		case slices.Contains(bc.ran, f.Name) || bc.partial:
+			no(f.Name + " is red on the card's head, not on the base tip " + res.BaseTip)
+			return
+		default:
+			prOnly = append(prOnly, f.Name)
+		}
+		names = append(names, f.Name)
+	}
+	proof := ""
+	if shared := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(prOnly, n) }); len(shared) > 0 {
+		proof = strings.Join(shared, ", ") + " red on the base tip " + res.BaseTip
+	}
+	if len(prOnly) > 0 {
+		on, why := prPathRed_internal(ctx, fg, req, res, prOnly)
+		if why != "" {
+			if res.Outcome == OutcomeRed {
+				no(why)
+			}
+			return
+		}
+		proof = strings.TrimPrefix(proof+"; "+on, "; ")
+	}
+	res.SharedRed, res.SharedProof = names, proof
+}
+
+// prPathRed_internal is how checks the base tip's own run never ran are
+// read red on the base (sharedRed_internal): on the PR that merged the
+// base tip, at a head with the tip's tree, every one of them failed on its
+// own. It is that proof, or why there is none ("" and res forge_rested
+// when GitHub rate-limited a read).
+func prPathRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult, checks []string) (string, string) {
+	which := strings.Join(checks, ", ")
+	pr, ok, err := fg.BasePR(ctx, req.Repo, res.BaseTip)
+	switch {
+	case err != nil && rested_internal(err, res):
+		return "", "rested"
+	case err != nil:
+		return "", "the PR that merged the base tip could not be read (" + edge.RedactN(err.Error(), edge.FailureMax) + "), and " + which + " never ran on the base tip itself"
+	case !ok:
+		return "", which + " never ran on the base tip " + res.BaseTip + ", and no PR merged it"
+	case !pr.SameTree:
+		return "", which + " never ran on the base tip " + res.BaseTip + ", and the head of PR " + cmp.Or(pr.URL, fmt.Sprint(pr.Number)) + " that merged it is not its tree"
+	}
+	at := cmp.Or(pr.URL, fmt.Sprintf("#%d", pr.Number))
+	rollups, err := fg.Checks(ctx, req.Repo, []string{pr.HeadSHA})
+	if err != nil {
+		if rested_internal(err, res) {
+			return "", "rested"
+		}
+		return "", "the checks of " + at + "'s head could not be read: " + edge.RedactN(err.Error(), edge.FailureMax)
+	}
+	r := rollups[pr.HeadSHA]
+	if r.State != forge.CheckRed || r.Waiting {
+		return "", which + " never ran on the base tip " + res.BaseTip + ", and " + at + " that merged it is not red with its checks complete (" + string(cmp.Or(r.State, forge.CheckAbsent)) + ")"
+	}
+	fails, err := fg.Failures(ctx, req.Repo, pr.HeadSHA)
+	if err != nil {
+		if rested_internal(err, res) {
+			return "", "rested"
+		}
+		return "", "how the checks of " + at + "'s head stopped was not read: " + edge.RedactN(err.Error(), edge.FailureMax)
+	}
+	red, _ := split_internal(fails, r)
+	for _, c := range checks {
+		if !slices.ContainsFunc(red, func(f forge.Failure) bool { return f.Name == c }) {
+			return "", c + " is red on the card's head; it runs only on PRs, and " + at + " that merged the base tip did not fail it"
+		}
+	}
+	return which + " red on " + at + " at " + pr.HeadSHA + ", the PR that merged the base tip, with its tree", ""
 }
 
 // split_internal is a sha's failures as its own (failed) and stopped ones;
@@ -522,11 +645,14 @@ func split_internal(fails []forge.Failure, r forge.CheckRollup) (own, stopped []
 // checks were all stopped is not red; a base whose checks still run is
 // said as such, with what is red so far, and never compared; one that
 // cannot be read is said in the reason.
-func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) {
+func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res *LandResult) baseChecks_internal {
 	base, err := fg.Checks(ctx, req.Repo, []string{res.BaseTip})
 	if err != nil {
+		if req.LandOnSharedRed && rested_internal(err, res) {
+			return baseChecks_internal{} // asked again: a rest is no fact about the base
+		}
 		res.Reason += "; the checks of the base tip " + res.BaseTip + " could not be read: " + edge.RedactN(err.Error(), edge.FailureMax)
-		return
+		return baseChecks_internal{}
 	}
 	b := base[res.BaseTip]
 	switch {
@@ -539,14 +665,19 @@ func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 		if len(red) > 0 {
 			res.Reason += " (" + strings.Join(red, ", ") + ")"
 		}
-		return
+		return baseChecks_internal{}
+	case b.State == forge.CheckGreen || b.State == forge.CheckAbsent:
+		return baseChecks_internal{complete: true, partial: b.RanPartial, ran: b.Ran}
 	case b.State != forge.CheckRed:
-		return
+		return baseChecks_internal{}
 	}
 	fails, err := fg.Failures(ctx, req.Repo, res.BaseTip)
 	if err != nil {
+		if req.LandOnSharedRed && rested_internal(err, res) {
+			return baseChecks_internal{}
+		}
 		res.Reason += "; the base tip " + res.BaseTip + " is red on " + strings.Join(b.Failing, ", ") + ", but how each stopped was not read, so it is not called red: " + edge.RedactN(err.Error(), edge.FailureMax)
-		return
+		return baseChecks_internal{}
 	}
 	own, stopped := split_internal(fails, b)
 	var names []string
@@ -564,6 +695,13 @@ func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 	case len(stopped) > 0:
 		res.Reason += "; on the base tip, stopped, not failed: " + strings.Join(names, ", ")
 	}
+	ran := slices.Clone(b.Ran)
+	for _, f := range fails { // a failure the rollup did not name still ran
+		if f.Name != "" && !slices.Contains(ran, f.Name) {
+			ran = append(ran, f.Name)
+		}
+	}
+	return baseChecks_internal{complete: true, partial: b.RanPartial, failing: res.BaseFailing, ran: ran}
 }
 
 // failedLines_internal is the first failing lines of the check at url; a

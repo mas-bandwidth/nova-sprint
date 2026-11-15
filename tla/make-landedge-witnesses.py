@@ -6,17 +6,28 @@ The same shape as make-steps-witnesses.py: each witness is LandEdge.tla with
 its module renamed, a header naming the fault, and exact text replacements;
 a replacement that does not match exactly once stops the script. The
 witness's target is the first INVARIANT of its cfg, or the first PROPERTY of
-a liveness witness's (LIVE, on LiveSpec) (ci-tlc.sh). Commit the generated
-files; CI runs them as they are.
+a liveness witness's (LIVE, on its spec) (ci-tlc.sh). A witness runs with
+land_on_shared_red on (SharedRed TRUE) unless it names its constants. The
+generated files are written at CI time (gen-witnesses.sh).
 """
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-INVARIANTS = ["TypeOK", "BaseNeverRed", "NothingLandsUnpassed", "MergingCovered",
-              "VerdictOnlyCompleted", "RedIsReal", "ConflictJudgesItsCard"]
-CONSTS = "CONSTANT K = 1\nCONSTANT BackedUp = 2\nCONSTANT MaxPass = 6\nSPECIFICATION Spec\n"
-LIVE_CONSTS = "CONSTANT K = 1\nCONSTANT BackedUp = 2\nCONSTANT MaxPass = 6\nSPECIFICATION LiveSpec\n"
+INVARIANTS = ["TypeOK", "BaseNeverRed", "SharedRedOnly", "SharedRedNeverJudged",
+              "NothingLandsUnpassed", "MergingCovered", "VerdictOnlyCompleted", "RedIsReal",
+              "ConflictJudgesItsCard", "ConflictNeverJudged"]
+
+
+def consts(spec, shared="TRUE", flaky="TRUE"):
+    return ("CONSTANT K = 1\nCONSTANT BackedUp = 2\nCONSTANT MaxPass = 6\n"
+            "CONSTANT SharedRed = %s\nCONSTANT Flaky = %s\nSPECIFICATION %s\n" % (shared, flaky, spec))
+
+
+CONSTS = consts("Spec")
+HELD_CONSTS = consts("Spec", shared="FALSE")
+LIVE_CONSTS = consts("LiveSpec")
+SHARED_LIVE_CONSTS = consts("SharedLiveSpec", flaky="FALSE")
 
 REACH = {
     "LandEdgeNeverRungTwo": "a pass gates the group branch (rung 2)",
@@ -28,27 +39,59 @@ REACH = {
     "LandEdgeNeverKeptMoved": "a gate whose CI runs is kept while base moves under it",
     "LandEdgeNeverOddAlone": "a group's conflict names one card of the group",
     "LandEdgeNeverSwitchInFlight": "stream set --base switches the base under a gate in flight",
+    "LandEdgeNeverSharedLand": "a gate red on the base's own reds lands with no human step",
+    "LandEdgeNeverPROnlyShared": "a check run only on PRs lands red on the proof of the base tip's PR",
+    "LandEdgeNeverConflictFix": "a conflict goes back to its card as fix with no human step",
 }
+
+# The red-gate branch of a pass (the text the shared-red witnesses replace).
+MERGEABLE = 'Mergeable(r) == r.res = "green" \\/ (r.res = "red" /\\ SharedRed /\\ SharedReds(r))'
 
 # A gate whose every failing check was stopped (the text the stopped-check
 # witness replaces).
 STOPPED = ("           \\/ /\\ r.ci = \"done\" /\\ r.res = \"stopped\"   \\* every failing check stopped: no verdict\n"
            "              /\\ Done(s, r, \"noverdict\")\n")
 
+CIOF = 'CIOf(t) == (IF Reds(t) # {} THEN {"red"} ELSE {"green"}) \\cup (IF Flaky THEN {"stopped"} ELSE {})'
+REDLANDS = 'CIOf(t) == {"green"} \\cup (IF Flaky THEN {"stopped"} ELSE {})   \\* FAULT: a red tree reads as green'
+
+# Each: name, target, fault, replacements, and (optional) the cfg's constants.
 WITNESSES = [
-    ("LandEdgeRedLands", "BaseNeverRed",
-     "The merge does not read the gate: a red tree is merged as green.",
-     [('CIOf(t) == IF Red(t.cards) THEN {"red", "stopped"} ELSE {"green", "stopped"}',
-       'CIOf(t) == {"green", "stopped"}   \\* FAULT: a red tree reads as green')]),
+    ("LandEdgeRedLands", "SharedRedOnly",
+     "The merge does not read the gate: a red tree is merged as green,\n"
+     "with reds the base it lands on does not have.",
+     [(CIOF, REDLANDS)]),
+    ("LandEdgeHeldRedLands", "BaseNeverRed",
+     "With land_on_shared_red off, the merge does not read the gate: a\n"
+     "red tree is merged as green.",
+     [(CIOF, REDLANDS)], HELD_CONSTS),
+    ("LandEdgeOwnRedLands", "SharedRedOnly",
+     "Any red gate lands: a card's own red, one the base it lands on is\n"
+     "not red on, is merged as if the base shared it.",
+     [(MERGEABLE, 'Mergeable(r) == r.res \\in {"green", "red"}   \\* FAULT: every red is taken as shared')]),
+    ("LandEdgeNotRunIsShared", "SharedRedOnly",
+     "A check the base tip's own run never ran (PR-only) is taken as red\n"
+     "on the base, with no proof from the PR that merged it.",
+     [("Known(i) == (Reds(base[i].tree) \\ PROnly) \\cup (base[i].proof \\cap PROnly)",
+       "Known(i) == (Reds(base[i].tree) \\ PROnly) \\cup PROnly   \\* FAULT: not run reads as red")]),
+    ("LandEdgeSharedRedJudged", "SharedRedNeverJudged",
+     "The old rule (v2.0.43): a red gate is judged even when every red is\n"
+     "the base's own; the coordinator is asked to land it by hand.",
+     [(MERGEABLE, 'Mergeable(r) == r.res = "green"   \\* FAULT: a shared red is judged')]),
+    ("LandEdgeConflictJudged", "ConflictNeverJudged",
+     "The old rule (v2.0.43): a conflict that names its card opens a\n"
+     "judgement for that card instead of sending it back to fix.",
+     [("FixedOf(s) == IF SharedRed /\\ req[s].out = \"conflict\" /\\ req[s].odd # {} THEN Moving(s) \\cap req[s].odd ELSE {}",
+       "FixedOf(s) == {}   \\* FAULT: a conflict waits for the coordinator")]),
     ("LandEdgeStaleGate", "NothingLandsUnpassed",
      "Base moves under the gate and the pass merges anyway: what lands is\n"
      "the heads on the new tip, not the tree CI passed.",
-     [("                 \\/ /\\ Tip.ext < K                    \\* base moved under the gate: let go, asked again\n"
-       "                    /\\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> \"ext\", gated |-> NoTree])\n"
+     [("                 \\/ /\\ Flaky /\\ Tip.ext < K           \\* base moved under the gate: let go, asked again\n"
+       "                    /\\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> \"ext\", gated |-> NoTree, proof |-> {}])\n"
        "                    /\\ req' = [req EXCEPT ![s] = LetGo(r)]\n",
-       "                 \\/ /\\ Tip.ext < K   \\* FAULT: base moved under the gate, merged anyway\n"
-       "                    /\\ base' = Append(Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> \"ext\", gated |-> NoTree]),\n"
-       "                                      [tree |-> [r.gate EXCEPT !.ext = @ + 1], how |-> \"auto\", gated |-> r.gate])\n"
+       "                 \\/ /\\ Flaky /\\ Tip.ext < K   \\* FAULT: base moved under the gate, merged anyway\n"
+       "                    /\\ base' = Append(Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> \"ext\", gated |-> NoTree, proof |-> {}]),\n"
+       "                                      [tree |-> [r.gate EXCEPT !.ext = @ + 1], how |-> \"auto\", gated |-> r.gate, proof |-> {}])\n"
        "                    /\\ Done(s, r, \"landed\")\n")]),
     ("LandEdgeRedWhileRunning", "VerdictOnlyCompleted",
      "The old rule (v2.0.36): a check that failed while others still run\n"
@@ -75,14 +118,20 @@ WITNESSES = [
        "JudgedOf(s) == Moving(s)   \\* FAULT: every card of the group is judged")]),
 ]
 
-# Liveness witnesses, on LiveSpec: the target is the cfg's first PROPERTY.
+# Liveness witnesses: the target is the cfg's first PROPERTY.
 LIVE = [
     ("LandEdgeRebuildsInFlight", "GateReachesVerdict",
      "The old rule (v2.0.36): a pass on a base that moved rebuilds the\n"
      "gate and pushes it again while its CI still runs, so that CI never\n"
      "reaches a verdict.",
      [("Kept(s) == req[s].ci # \"none\"",
-       "Kept(s) == req[s].ci # \"none\" /\\ req[s].gbase = Len(base)   \\* FAULT: rebuilt when base moved")]),
+       "Kept(s) == req[s].ci # \"none\" /\\ req[s].gbase = Len(base)   \\* FAULT: rebuilt when base moved")],
+     LIVE_CONSTS),
+    ("LandEdgeSharedRedWaits", "SharedRedLands",
+     "The old rule (v2.0.43): a gate red only on the base's own reds is\n"
+     "judged, and waits for a human who may never come.",
+     [(MERGEABLE, 'Mergeable(r) == r.res = "green"   \\* FAULT: a shared red waits for a human')],
+     SHARED_LIVE_CONSTS),
 ]
 
 
@@ -111,7 +160,8 @@ def main():
     first = base.split("\n", 1)
     if "MODULE LandEdge " not in first[0]:
         die("LandEdge.tla does not start with its module line")
-    for name, target, fault, reps in WITNESSES + LIVE:
+    for w in WITNESSES + LIVE:
+        name, target, fault, reps = w[:4]
         text = first[1]
         for old, new in reps:
             if text.count(old) != 1:
@@ -120,13 +170,14 @@ def main():
         line, box = header(name, fault, target)
         with open(os.path.join(HERE, "witnesses", name + ".tla"), "w") as f:
             f.write(line + "\n" + box + "\n" + text)
-        live = (name, target, fault, reps) in LIVE
-        order = [i for i in INVARIANTS if i != target]
+        live = w in LIVE
+        order = [i for i in (["TypeOK"] if live else INVARIANTS) if i != target]
         head = ("PROPERTY " if live else "INVARIANT ") + target + "\n"
         with open(os.path.join(HERE, "witnesses", name + ".cfg"), "w") as f:
             f.write("\\* Reversed witness: TLC must report " + target + " violated.\n"
-                    + (LIVE_CONSTS if live else CONSTS) + head
+                    + (w[4] if len(w) > 4 else CONSTS) + head
                     + "".join("INVARIANT " + i + "\n" for i in order))
+
     for name, what in REACH.items():
         inv = name.replace("LandEdge", "", 1)
         if "\n" + inv + " " not in base:

@@ -153,7 +153,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	var gate git.Gate // the gate the last pass kept: read to its verdict, never rebuilt meanwhile
 	pass := func() (git.LandResult, error) {
-		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate})
+		return git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches, Gate: gate, LandOnSharedRed: r.SharedRed})
 	}
 	if r.Kind == "promote" {
 		pass = func() (git.LandResult, error) {
@@ -235,7 +235,9 @@ func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration
 }
 
 // landItem is LandResult as layer 3 reads it (SEAMS 6): landed with the
-// heads and the merge sha, or the outcome and its facts for the
+// heads and the merge sha (and, landed on the base's own reds, which checks
+// and how each was read red on the base, the card's landed reason), or the
+// outcome and its facts for the
 // coordinator's judgement (an error is the outcome fault). A conflict of
 // the group's merge names, as Head, the head whose merge failed: that card
 // alone is the coordinator's.
@@ -247,6 +249,9 @@ func landItem(id string, res git.LandResult, err error, wait time.Duration) step
 		return it
 	case res.Outcome == git.OutcomeLanded:
 		it.Landed, it.Merge = res.LandedHeads, res.MergeSHA
+		if len(res.SharedRed) > 0 {
+			it.Reason = SharedRedReason(res)
+		}
 		return it
 	case res.Outcome == git.OutcomeAbsent:
 		it.Outcome = "no-ci"
@@ -259,6 +264,13 @@ func landItem(id string, res git.LandResult, err error, wait time.Duration) step
 	}
 	it.Reason = landFacts(res)
 	return it
+}
+
+// SharedRedReason is a landing on the base's own reds as the card's landed
+// reason records it, as a hand landing records its why: the shared checks,
+// the base tip they were gated against and how each was read red there.
+func SharedRedReason(res git.LandResult) string {
+	return fmt.Sprintf("on the base's own reds (%s) at base %s: %s; gated %s", strings.Join(res.SharedRed, ", "), res.BaseTip, res.SharedProof, res.GatedSHA)
 }
 
 // landFacts is a pass's facts as the judgement shows them: on a red base,

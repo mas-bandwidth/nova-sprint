@@ -99,3 +99,18 @@ func TestStepsAnswersCarryEveryLimit(t *testing.T) {
 	assert.Equal(t, [9]any{4, 5, 3, 7, 9, 2, 3, 6, 8}, [9]any{l.Bounces, l.Faults, l.SameFinding, l.ReportsPerTick, l.RouteRestWindow, l.RouteRestAfter, l.EscalateAfter, l.FrontierAfter, l.FlapLimit})
 	assert.Equal(t, [2]float64{0.25, 0.75}, [2]float64{l.IdleFloor, l.LandTarget})
 }
+
+// TestStepsAnswersCarryTheMergeQueueSwitches: land_on_shared_red and the
+// merge-queue nag's timeouts reach the tick as the policy answered them.
+func TestStepsAnswersCarryTheMergeQueueSwitches(t *testing.T) {
+	t.Parallel()
+	p := policy.Answers{Version: 2, Landing: map[string]policy.Landing{"on": {BackedUp: 2, Flowing: 1, LandOnSharedRed: true}, "off": {BackedUp: 2, Flowing: 1}},
+		Timeouts: policy.Timeouts{MergingNag: 300, MergingNagEvery: 1}}
+	a := stepsAnswers(p, nil)
+	if a.Landing["on"].HoldSharedRed || !a.Landing["off"].HoldSharedRed {
+		t.Fatalf("landing %+v", a.Landing)
+	}
+	if a.Timeouts.MergingNag != 300 || a.Timeouts.MergingNagEvery != 1 {
+		t.Fatalf("timeouts %+v", a.Timeouts)
+	}
+}

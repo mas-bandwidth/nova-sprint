@@ -113,7 +113,14 @@ type Limits struct {
 // Landing is the merging count at which a stream backs up (rung 2) and the
 // one at which it flows again, and CIWait the seconds a gated sha may go
 // with no CI before its landing is a judgement (0: the engine's default).
-type Landing struct{ BackedUp, Flowing, CIWait int }
+// LandOnSharedRed (optional, default true; Glenn 2026-11-15: "It should
+// be automatic") lands a red gate whose every failing check is red on the
+// base too, and sends a card whose head does not merge back to fix; false
+// makes both the coordinator's judgement (LANDING.md, "A red base").
+type Landing struct {
+	BackedUp, Flowing, CIWait int
+	LandOnSharedRed           bool
+}
 
 // Timeouts are seconds of running time; BaseRegate is a rising list. Tick
 // is run's budget for one tick (drift row 26); ReadyNag is how often run
@@ -126,6 +133,7 @@ type Landing struct{ BackedUp, Flowing, CIWait int }
 // worker reads it from the take receipt, never a Go literal).
 type Timeouts struct {
 	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick, ReadyNag, ReadyTake, JudgementUnseen int
+	MergingNag, MergingNagEvery                                                                                         int
 	BaseRegate                                                                                                          []int
 	Consumer                                                                                                            map[string]int
 }
@@ -135,6 +143,17 @@ type Timeouts struct {
 // 2026-11-08: 60 judgements sat an hour behind a hook whose pushes went to
 // a log file).
 const DefaultJudgementUnseen = 300
+
+// DefaultMergingNag and DefaultMergingNagEvery are timeouts merging_nag and
+// merging_nag_every for a policy that does not name them: once a card has
+// been merging (or under a land judgement) 300 s, the coordinator is
+// pushed one line every second until none is (Glenn 2026-11-15: "You
+// should be getting pested every 1s when cards are in the merge queue
+// longer than 5 minutes").
+const (
+	DefaultMergingNag      = 300
+	DefaultMergingNagEvery = 1
+)
 
 // Price is micro-dollars per million tokens of each class: uncached input,
 // cached input read, cache write and output (reasoning is billed as

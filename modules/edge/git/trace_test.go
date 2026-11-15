@@ -20,7 +20,11 @@ import (
 // variables and written as LandEdgeTraceLog.tla under NOVA_TRACE_DIR;
 // tla/check-trace.sh LandEdge checks every step is one of the model's.
 // The projection reads the trees themselves: a tree holds card c when it
-// holds c's file, and its ext is the count of outside commits' files.
+// holds c's file, its ext is the count of outside commits' files, and its
+// bad the checks an outside commit broke (bad_<check>.txt). CI is truthful
+// to the model's Reds, by name: test is red with c1 and c3 and runs on
+// base's own pushes too; lint is red with c2 and runs only on PRs; each
+// also red where bad says. The run asks with land_on_shared_red on.
 
 const (
 	walkK        = 2 // LandEdgeTrace.cfg's K
@@ -30,6 +34,7 @@ const (
 var (
 	walkCards   = []string{"c1", "c2", "c3"}
 	walkStreams = []string{"s1", "s2"}
+	walkChecks  = []string{"lint", "test"} // the model's Checks; lint is PROnly
 )
 
 func walkStream_internal(c string) string {
@@ -40,6 +45,15 @@ func walkStream_internal(c string) string {
 }
 
 type walkEntry_internal struct{ sha, how, gated string }
+
+// walkPR_internal is a PR that merged a base tip, as the forge has it: its
+// head (a key of the forge's own, CI truthful to its tree's reds) and
+// whether that head is the tip's very tree.
+type walkPR_internal struct {
+	head     string
+	reds     []string
+	sameTree bool
+}
 
 // walkReq_internal is a request as the model has it: its gate is the sha
 // LandPass gated (projected to its tree), gbase the length of base when it
@@ -65,7 +79,10 @@ type landWalk_internal struct {
 	t      *testing.T
 	rng    *rand.Rand
 	rest   *rand.Rand // the forge's rate-limit draws, a stream of their own so the walk's other draws keep their seeds
+	bad    *rand.Rand // what an outside commit breaks, a stream of its own too
 	rested int        // passes the forge's rate limit rested
+	shared []string   // the proofs of the landings on the base's own reds
+	prs    map[string]walkPR_internal
 	g      *Fake
 	ff     *walkForge_internal
 	heads  map[string]string
@@ -106,16 +123,26 @@ func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) 
 	}
 	out := make(map[string]forge.CheckRollup, len(shas))
 	for _, sha := range shas {
-		r := forge.CheckRollup{SHA: sha, State: forge.CheckGreen, Failing: []string{"test"}, URL: walkJob}
-		cards, _ := f.w.project_internal(sha)
-		red := slices.Contains(cards, "c1") && slices.Contains(cards, "c3")
-		ci, res := "done", map[bool]string{true: "red", false: "green"}[red]
+		if pr, ok := f.prHead_internal(sha); ok { // a merged PR's head: every check ran, completed
+			r := forge.CheckRollup{SHA: sha, State: forge.CheckGreen, Ran: walkChecks, URL: walkJob}
+			if len(pr.reds) > 0 {
+				r.State, r.Failing = forge.CheckRed, pr.reds
+			}
+			out[sha] = r
+			continue
+		}
 		base := slices.ContainsFunc(f.w.base, func(e walkEntry_internal) bool { return e.sha == sha })
+		reds := f.w.reds_internal(sha)
+		r := forge.CheckRollup{SHA: sha, State: forge.CheckGreen, Failing: failingOf_internal(reds), Ran: walkChecks, URL: walkJob}
+		ci, res := "done", map[bool]string{true: "red", false: "green"}[len(reds) > 0]
 		switch {
 		case sha == f.gate:
 			ci, res = f.ci, f.res
 		case !base:
 			ci, res = "running", "none" // a gate new to the request
+		default: // a base tip's own run: test alone, never lint
+			r.Ran, r.Failing = []string{"test"}, []string{"test"}
+			res = map[bool]string{true: "red", false: "green"}[slices.Contains(reds, "test")]
 		}
 		switch {
 		case f.absent && !base:
@@ -136,21 +163,106 @@ func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) 
 	return out, nil
 }
 
-// Failures is the gate's failing check, killed when its checks completed
-// stopped (never, on the old forge).
+// Failures is a sha's failing checks by name: a merged PR's head's reds;
+// a base tip's own run's test; the gate's reds (test, for a green tree's
+// stopped checks), killed when its checks completed stopped (never, on the
+// old forge).
 func (f *walkForge_internal) Failures(_ context.Context, _, sha string) ([]forge.Failure, error) {
 	f.call_internal("Failures")
+	if f.rested {
+		return nil, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, Reason: "HTTP 403: API rate limit exceeded"}
+	}
+	if pr, ok := f.prHead_internal(sha); ok {
+		var out []forge.Failure
+		for _, n := range pr.reds {
+			out = append(out, forge.Failure{Name: n, URL: walkJob})
+		}
+		return out, nil
+	}
+	if sha != f.gate {
+		return []forge.Failure{{Name: "test", URL: walkJob}}, nil
+	}
 	stop := ""
-	if sha == f.gate && f.res == "stopped" && !f.old {
+	if f.res == "stopped" && !f.old {
 		stop = "killed (exit code 137)"
 	}
-	return []forge.Failure{{Name: "test", URL: walkJob, Stop: stop}}, nil
+	var out []forge.Failure
+	for _, n := range failingOf_internal(f.w.reds_internal(sha)) {
+		out = append(out, forge.Failure{Name: n, URL: walkJob, Stop: stop})
+	}
+	return out, nil
+}
+
+// BasePR is the PR that merged base tip sha: a landing's gate, or a card
+// the coordinator landed by hand; an outside commit has none.
+func (f *walkForge_internal) BasePR(_ context.Context, _, sha string) (forge.BasePR, bool, error) {
+	f.call_internal("BasePR")
+	if f.rested {
+		return forge.BasePR{}, false, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, Reason: "HTTP 403: API rate limit exceeded"}
+	}
+	pr, ok := f.w.prs[sha]
+	if !ok {
+		return forge.BasePR{}, false, nil
+	}
+	return forge.BasePR{Number: 1, URL: "https://example.invalid/pull/1", HeadSHA: pr.head, SameTree: pr.sameTree}, true, nil
+}
+
+// prHead_internal is the merged PR whose head key is sha, if any.
+func (f *walkForge_internal) prHead_internal(sha string) (walkPR_internal, bool) {
+	for _, pr := range f.w.prs {
+		if pr.head == sha {
+			return pr, true
+		}
+	}
+	return walkPR_internal{}, false
+}
+
+// failingOf_internal is what CI names failing on a tree red on reds: its
+// reds, or test (a green tree's checks stopped).
+func failingOf_internal(reds []string) []string {
+	if len(reds) == 0 {
+		return []string{"test"}
+	}
+	return reds
+}
+
+// reds_internal is the model's Reds of sha's tree, by name.
+func (w *landWalk_internal) reds_internal(sha string) []string {
+	cards, _ := w.project_internal(sha)
+	var reds []string
+	for _, n := range walkChecks {
+		if n == "lint" && slices.Contains(cards, "c2") || n == "test" && slices.Contains(cards, "c1") && slices.Contains(cards, "c3") || slices.Contains(w.bad_internal(sha), n) {
+			reds = append(reds, n)
+		}
+	}
+	return reds
+}
+
+// bad_internal is the checks outside commits broke in sha's tree.
+func (w *landWalk_internal) bad_internal(sha string) []string {
+	w.g.world.mu.Lock()
+	defer w.g.world.mu.Unlock()
+	var bad []string
+	for _, n := range walkChecks {
+		if _, ok := w.g.world.commits[sha].Files["bad_"+n+".txt"]; ok {
+			bad = append(bad, n)
+		}
+	}
+	return bad
+}
+
+// addPR_internal is the PR that merged base tip tip, its head's tree head.
+func (w *landWalk_internal) addPR_internal(tip, head string) {
+	w.g.world.mu.Lock()
+	same := w.g.world.commits[tip].Tree == w.g.world.commits[head].Tree
+	w.g.world.mu.Unlock()
+	w.prs[tip] = walkPR_internal{head: fmt.Sprintf("pr-head-%d", len(w.prs)+1), reds: w.reds_internal(head), sameTree: same}
 }
 
 func newLandWalk_internal(t *testing.T, seed int64) *landWalk_internal {
 	g := NewFake(nil)
-	w := &landWalk_internal{t: t, rng: rand.New(rand.NewSource(seed)), rest: rand.New(rand.NewSource(seed + 200)), g: g, heads: map[string]string{},
-		cs: map[string]string{}, req: map[string]walkReq_internal{}, js: map[string]bool{}, held: map[string]bool{}}
+	w := &landWalk_internal{t: t, rng: rand.New(rand.NewSource(seed)), rest: rand.New(rand.NewSource(seed + 200)), bad: rand.New(rand.NewSource(seed + 300)), g: g, heads: map[string]string{},
+		cs: map[string]string{}, req: map[string]walkReq_internal{}, js: map[string]bool{}, held: map[string]bool{}, prs: map[string]walkPR_internal{}}
 	w.ff = &walkForge_internal{fakeForge_internal: newFakeForge_internal(), w: w}
 	init := g.AddCommit("", map[string]string{"README.md": "init\n", "shared.txt": "init\n"}, "main")
 	w.base = []walkEntry_internal{{sha: init, how: "init"}}
@@ -210,10 +322,15 @@ func (w *landWalk_internal) extCount_internal() int {
 	return ext
 }
 
-// extCommit_internal is an outside commit to base.
-func (w *landWalk_internal) extCommit_internal() {
+// extCommit_internal is an outside commit to base, breaking the checks
+// bad names.
+func (w *landWalk_internal) extCommit_internal(bad ...string) {
 	n := w.extCount_internal() + 1
-	sha := w.g.AddCommit(w.tip_internal(), map[string]string{fmt.Sprintf("ext_%d.txt", n): "ext\n"}, "main")
+	files := map[string]string{fmt.Sprintf("ext_%d.txt", n): "ext\n"}
+	for _, b := range bad {
+		files["bad_"+b+".txt"] = "broken\n"
+	}
+	sha := w.g.AddCommit(w.tip_internal(), files, "main")
 	w.base = append(w.base, walkEntry_internal{sha: sha, how: "ext"})
 }
 
@@ -239,12 +356,13 @@ func (w *landWalk_internal) handMerge_internal(c string) {
 	w.g.world.mu.Unlock()
 	w.g.SetOriginRef("refs/heads/main", sha)
 	w.base = append(w.base, walkEntry_internal{sha: sha, how: "hand"})
+	w.addPR_internal(sha, w.heads[c]) // the coordinator merged the card's PR
 }
 
 // tick_internal is the model's Tick: consume the finished requests (landed
-// moves the cards, a conflict that names its card judges that card, and
-// anything else opens a land judgement for each card still merging), then
-// ask for each stream that had none in flight.
+// moves the cards, a conflict that names its card sends that card to fix,
+// and anything else opens a land judgement for each card still merging),
+// then ask for each stream that had none in flight.
 func (w *landWalk_internal) tick_internal() {
 	busy := map[string]bool{}
 	for _, s := range walkStreams {
@@ -257,9 +375,12 @@ func (w *landWalk_internal) tick_internal() {
 			if w.cs[c] != "merging" || r.out == "conflict" && len(r.odd) > 0 && !slices.Contains(r.odd, c) && !w.oldJudge {
 				continue
 			}
-			if r.out == "landed" {
+			switch {
+			case r.out == "landed":
 				w.cs[c] = "landed"
-			} else {
+			case r.out == "conflict" && len(r.odd) > 0 && !w.oldJudge:
+				w.cs[c] = "fix" // land_on_shared_red: the conflict goes back to its card
+			default:
 				w.js[c] = true
 			}
 		}
@@ -300,7 +421,7 @@ func (w *landWalk_internal) pass_internal(s string) {
 // rate-limited (its checks read refused: forge_rested).
 func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, rested bool) {
 	r := w.req[s]
-	req := LandRequest{Repo: "o/r", Stream: s, Base: "main", Gate: r.pin}
+	req := LandRequest{Repo: "o/r", Stream: s, Base: "main", Gate: r.pin, LandOnSharedRed: true}
 	for _, c := range r.cards {
 		req.Heads = append(req.Heads, w.heads[c])
 		req.Branches = append(req.Branches, "sprint/"+s+"/"+c)
@@ -357,6 +478,10 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, re
 			w.t.Fatalf("LandPass %s: merged %s but base is at %s", s, res.MergeSHA, tip)
 		}
 		w.base = append(w.base, walkEntry_internal{sha: res.MergeSHA, how: "auto", gated: res.GatedSHA})
+		w.addPR_internal(res.MergeSHA, res.GatedSHA) // the gate's PR merged it
+	}
+	if res.Outcome == OutcomeLanded && len(res.SharedRed) > 0 {
+		w.shared = append(w.shared, res.SharedProof)
 	}
 	r.st, r.out, r.rung = "done", out, res.Rung
 	w.req[s] = r
@@ -366,9 +491,8 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, re
 // truthfully (red only on a red tree; any tree can be stopped).
 func (w *landWalk_internal) ciStep_internal(s string) {
 	r := w.req[s]
-	cards, _ := w.project_internal(r.gate)
 	done := []string{"green", "stopped"}
-	if slices.Contains(cards, "c1") && slices.Contains(cards, "c3") {
+	if len(w.reds_internal(r.gate)) > 0 {
 		done = []string{"red", "stopped"}
 	}
 	switch {
@@ -416,7 +540,7 @@ func (w *landWalk_internal) step_internal() walkMove_internal {
 			moves = append(moves, walkMove_internal{act: "Late", arg: s})
 		}
 	}
-	if w.extCount_internal() < walkK && w.rng.Intn(8) == 0 {
+	if w.extCount_internal() < walkK && w.rng.Intn(3) == 0 {
 		moves = append(moves, walkMove_internal{act: "BaseMoves"})
 	}
 	for _, c := range walkCards {
@@ -439,7 +563,13 @@ func (w *landWalk_internal) step_internal() walkMove_internal {
 		r.late = true
 		w.req[m.arg] = r
 	case "BaseMoves":
-		w.extCommit_internal()
+		var bad []string
+		for _, n := range walkChecks {
+			if w.bad.Intn(4) == 0 {
+				bad = append(bad, n)
+			}
+		}
+		w.extCommit_internal(bad...)
 	case "Answer":
 		w.answer_internal(m.arg, m.choice)
 	}
@@ -472,6 +602,12 @@ func walkLandEdge_internal(t *testing.T, seed int64) (string, []string) {
 	}
 	if w.rested > 0 {
 		acts = append(acts, "rested") // not an action: a Pass the forge's rate limit rested
+	}
+	for _, p := range w.shared {
+		acts = append(acts, "shared") // not an action: a landing on the base's own reds
+		if strings.Contains(p, "the PR that merged the base tip") {
+			acts = append(acts, "prproof")
+		}
 	}
 	return traceModule_internal(records), acts
 }
@@ -626,17 +762,26 @@ func tlaKeys_internal(m map[string]bool) string {
 
 func (w *landWalk_internal) tree_internal(sha string) string {
 	if sha == "" {
-		return "[cards |-> {}, ext |-> 0]"
+		return "[cards |-> {}, ext |-> 0, bad |-> {}]"
 	}
 	cards, ext := w.project_internal(sha)
-	return fmt.Sprintf("[cards |-> %s, ext |-> %d]", tlaSet_internal(cards), ext)
+	return fmt.Sprintf("[cards |-> %s, ext |-> %d, bad |-> %s]", tlaSet_internal(cards), ext, tlaSet_internal(w.bad_internal(sha)))
+}
+
+// proof_internal is the model's proof of a base tip: the reds of the PR
+// that merged it, when its head is the tip's very tree.
+func (w *landWalk_internal) proof_internal(sha string) []string {
+	if pr, ok := w.prs[sha]; ok && pr.sameTree {
+		return pr.reds
+	}
+	return nil
 }
 
 // record_internal is TraceLog record n: the move and the state after it.
 func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
 	base := make([]string, len(w.base))
 	for i, e := range w.base {
-		base[i] = fmt.Sprintf("[tree |-> %s, how |-> %q, gated |-> %s]", w.tree_internal(e.sha), e.how, w.tree_internal(e.gated))
+		base[i] = fmt.Sprintf("[tree |-> %s, how |-> %q, gated |-> %s, proof |-> %s]", w.tree_internal(e.sha), e.how, w.tree_internal(e.gated), tlaSet_internal(w.proof_internal(e.sha)))
 	}
 	cs := make([]string, len(walkCards))
 	for i, c := range walkCards {
@@ -653,13 +798,13 @@ func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
 		tlaKeys_internal(w.js), tlaKeys_internal(w.held), strings.ToUpper(fmt.Sprint(w.ticked)), w.passes)
 }
 
-// TestLandEdgeTraceRefinementWalk walks eight seeds to the end and, with
+// TestLandEdgeTraceRefinementWalk walks 32 seeds to the end and, with
 // NOVA_TRACE_DIR set, writes each one's trace for tla/check-trace.sh. It
 // fails when the walks together never reach a rung of the ladder.
 func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
 	seen := map[string]bool{}
-	for seed := int64(1); seed <= 8; seed++ {
+	for seed := int64(1); seed <= 32; seed++ {
 		text, acts := walkLandEdge_internal(t, seed)
 		for _, a := range acts {
 			seen[strings.SplitN(a, ":", 2)[0]] = true
@@ -670,6 +815,7 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 		seen["noverdict"] = seen["noverdict"] || strings.Contains(text, `out |-> "noverdict"`)
 		seen["red"] = seen["red"] || strings.Contains(text, `out |-> "red"`)
 		seen["odd"] = seen["odd"] || strings.Contains(text, `cards |-> {"c1", "c2"}, st |-> "done", out |-> "conflict"`) && strings.Contains(text, `odd |-> {"c2"}`)
+		seen["fix"] = seen["fix"] || strings.Contains(text, `"fix"`)
 		if dir := os.Getenv("NOVA_TRACE_DIR"); dir != "" {
 			sub := filepath.Join(dir, fmt.Sprintf("landedge-walk-%d", seed))
 			if err := os.MkdirAll(sub, 0o755); err != nil {
@@ -680,7 +826,8 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd", "rested"} {
+	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd", "rested", "shared", "prproof", "fix"} {
+
 		if !seen[want] {
 			t.Errorf("the walks never reached %s", want)
 		}

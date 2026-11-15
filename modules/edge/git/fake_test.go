@@ -18,10 +18,11 @@ type fakeForgeWorld_internal struct {
 	mu       sync.Mutex
 	checks   map[string]forge.CheckRollup
 	failures map[string][]forge.Failure
+	basePRs  map[string]forge.BasePR
 }
 
 func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
-	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{}}
+	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup), failures: map[string][]forge.Failure{}, basePRs: map[string]forge.BasePR{}}
 }
 
 type fakeForge_internal struct {
@@ -152,6 +153,25 @@ func (f *fakeForge_internal) Failures(_ context.Context, repo, sha string) ([]fo
 		out = append(out, forge.Failure{Name: n, URL: map[bool]string{true: r.URL}[i == 0]})
 	}
 	return out, nil
+}
+
+// BasePR is the PR SetBasePR named for sha, if any.
+func (f *fakeForge_internal) BasePR(_ context.Context, repo, sha string) (forge.BasePR, bool, error) {
+	f.call_internal("BasePR")
+	if f.world == nil {
+		return forge.BasePR{}, false, nil
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	pr, ok := f.world.basePRs[repo+"\x00"+sha]
+	return pr, ok, nil
+}
+
+// SetBasePR sets the merged PR whose merge commit is sha.
+func (f *fakeForge_internal) SetBasePR(repo, sha string, pr forge.BasePR) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.basePRs[repo+"\x00"+sha] = pr
 }
 
 // SetFailures sets what Failures answers for sha.

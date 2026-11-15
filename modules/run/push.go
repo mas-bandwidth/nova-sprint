@@ -145,8 +145,8 @@ func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int,
 		var sentNudges []string
 		for _, n := range p.nudges[r] {
 			key := n.Row + "\x00" + n.Card
-			if n.Every > 0 {
-				if last, ok := p.nudged[key]; ok && !now.IsZero() && now.Sub(last) < n.Every {
+			if n.Every > 0 { // half a tick early is on time: a nag every 1 s rides every 1 s tick, whatever the ticker's jitter
+				if last, ok := p.nudged[key]; ok && !now.IsZero() && now.Sub(last) < n.Every-TickEvery/2 {
 					continue
 				}
 			}
