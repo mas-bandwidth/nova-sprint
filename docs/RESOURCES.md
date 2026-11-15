@@ -353,6 +353,13 @@ Glenn: "the goal is, friends can run work and grab resources to do that work,
 as they see fit, across the entire fleet, even if they are kinda driving from
 studio (doing the session there)".
 
+Where a friend's session runs does not matter. What matters is where it
+chooses to do the work, because that is where the resources are acquired.
+
+Glenn: "a friend can run, and ACQUIRE resources to do work, from where it is
+running (doesn't matter much), what matters is where it chooses to do the
+work."
+
 So a friend is not tied to one machine, and it is the friend that grabs. Its
 session stays where it is. When it has work to run, it asks the fleet for the
 resources that work needs, gets a hold on a machine that has them, and runs
