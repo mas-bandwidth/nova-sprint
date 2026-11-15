@@ -46,6 +46,7 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | The user defines resources across the fleet: CPUs, memory, GPUs, or anything else | ❌ |
 | A card acquires the resources it needs to do its work, and releases them when it is done | ❌ |
 | Cards and GitHub runners carry resource tags that say what resources they need to run | ❌ |
+| A resource can have a number, and a card or a runner says how much of it it needs to run: RAM in GB, or cores in a unit that allows for cores of different power | ❌ |
 | complete | 0% |
 
 [Source data](roadmap.sexp)
