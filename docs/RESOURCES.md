@@ -218,20 +218,31 @@ higher level".
 
 1. **Machines** have tags and resources. This is configuration.
 2. **Holds** are resources acquired on a machine for a while, and released.
-3. **Whoever does the work** acquires holds: a friend, or a CI runner. Neither
-   is a machine. A friend chooses where its work runs. Glenn: "the AI picks and
-   chooses."
-4. **Cards** say what the work needs, as the coordinator judged it.
+3. **Whoever places the work** acquires holds. The dealer decides where a
+   card's work runs, using resources. A friend chooses where its own work
+   runs. Glenn: "the AI picks and chooses." A CI runner holds what its jobs
+   need.
+4. **Cards** say what the work needs, as the coordinator judged it. Cards are
+   the primary thing: Glenn: "the primary cards are the actual work being
+   done".
 
-There is no fleet worker. *Settled.* Glenn: "the fleet work, that entirely goes
-away." A fleet machine is not dealt cards and does not run a worker of its own.
-It provides tags and resources, and friends do all the work on it.
+Fleet work as its own kind of thing goes away. *Settled.* Glenn: "the fleet
+work, that entirely goes away.", "that is just, the dealer deciding where to
+run work using resources, and the fleet view now becomes effectively a resource
+view."
+
+Today the fleet is a set of rows, one per bench machine, each dealt cards up to
+its width. With resources a machine is not a row that takes cards. The work is
+the cards. For each one the dealer decides where it runs, by what it needs and
+what is free. The fleet view stops showing machines as workers and shows the
+fleet's resources: what each machine has, and what is held.
 
 ## What takes resources
 
-A friend working a consumer of a card (a work attempt or a read), and a GitHub
-runner's job. Both state what they require in the same names and units, and
-both draw on the same amounts of the machine the work runs on.
+A consumer of a card (each work attempt and each read), wherever the dealer or
+a friend runs it, and a GitHub runner's job. All state what they require in the
+same names and units, and all draw on the same amounts of the machine the work
+runs on.
 
 ## CI runners
 
@@ -359,10 +370,9 @@ machine serves is a tag it has.
 Glenn: "machine width in fleet definitely goes away and is replaced by cpu
 resource."
 
-The bench worker goes away with the width. *Settled.* Today a bench machine is
-a row of the roster: it is dealt cards and runs a harness session for each one.
-With resources a machine is never dealt to. Cards go to friends, and a friend
-uses the fleet's machines to do the work.
+The bench machine as a row that is dealt cards goes away with the width.
+*Settled.* The dealer places each piece of work on a machine by resources, and
+the fleet view becomes a resource view.
 
 A friend's work goes wherever in the fleet it needs to, by the card and its
 resources. *Settled as the aim.*
