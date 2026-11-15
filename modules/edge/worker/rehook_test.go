@@ -3,7 +3,12 @@ package worker
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
+	"time"
 )
 
 // rehookSprint is a sprint whose next says the row is not hooked in until a
@@ -79,5 +84,89 @@ func TestNextResponseReadsUnhooked(t *testing.T) {
 	}
 	if !resp.Unhooked {
 		t.Fatalf("unhooked not read: %+v", resp)
+	}
+}
+
+// startSprint refuses the start's first hooks, as the hook verb refuses a
+// machine nova-config does not name, then takes one and calls hooked.
+type startSprint struct {
+	probeSprint
+	refusals int
+	hooked   func()
+}
+
+func (s *startSprint) Hook(_ context.Context, row string) error {
+	s.hooks++
+	if s.refusals > 0 {
+		s.refusals--
+		return fmt.Errorf("%w: nova-sprint hook --as %s: exit 1: SPRINT REFUSED hook: %s is not in nova-config", ErrRefused, row, row)
+	}
+	s.hooked()
+	return nil
+}
+
+// A start whose hook is refused never exits (an exit would have the service
+// start it again and pay for the probe each time): it waits the probe's
+// backoff, 30 s doubling, and hooks again without probing again; once the
+// hook goes through it serves. One probe, three hooks, a clean stop.
+func TestServeRowWaitsOutARefusedHookWithOneProbe(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sp := &startSprint{probeSprint: probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}, refusals: 2, hooked: cancel}
+	probes := 0
+	wall := &fakeWall{runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
+		probes++
+		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
+		return WallRunResult{Elapsed: time.Second}, nil
+	}}
+	r := probeRunner_internal(t, sp, wall, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, allKeys_internal))
+	r.BusHook = func(context.Context, string) (WakeHook, error) { return newFakeWakeHook(), nil }
+	var waits []time.Duration
+	r.Sleep = func(d time.Duration) { waits = append(waits, d) }
+	var warned []string
+	r.Warn = func(s string) { warned = append(warned, s) }
+	if err := r.ServeRow(ctx, "b1", "opencode"); err != nil {
+		t.Fatalf("a refused hook must not end the start: %v", err)
+	}
+	if sp.hooks != 3 || probes != 1 {
+		t.Fatalf("hooks %d probes %d: want 3 hooks and the one probe", sp.hooks, probes)
+	}
+	if !slices.Equal(waits, []time.Duration{ProbeBackoff, 2 * ProbeBackoff}) {
+		t.Fatalf("waits %v, want the probe's backoff", waits)
+	}
+	if len(warned) != 2 || !strings.Contains(warned[0], "not in nova-config") {
+		t.Fatalf("warned %q", warned)
+	}
+}
+
+// The pass logs a hook refusal when it changes, never on every pass: the
+// first refusal, then the clearing; the same refusal again is not logged.
+func TestPassLogsAHookRefusalOnlyWhenItChanges(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	sprint := &rehookSprint{unhooked: true, refusals: 3}
+	root := t.TempDir()
+	r, err := NewRunner(Runner{Host: "amd-3", RootDir: root, StateDir: root, Sprint: sprint, Now: testClock_internal(), Sleep: noSleep_internal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		if err := r.StepRow(ctx, "amd-3"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(root, "nova-worker", "amd-3.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hookLines []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.Contains(l, " step=hook ") {
+			hookLines = append(hookLines, l)
+		}
+	}
+	if len(hookLines) != 3 || !strings.Contains(hookLines[0], "not in nova-config") || !strings.Contains(hookLines[1], "ok") || !strings.Contains(hookLines[2], "the refusal cleared") {
+		t.Fatalf("hook lines %q: want the refusal once, the hook, and the clearing", hookLines)
 	}
 }

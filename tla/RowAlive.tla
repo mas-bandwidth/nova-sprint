@@ -37,7 +37,10 @@
 (*     hooks again (modules/edge/worker/pass.go rehook_internal). The     *)
 (*     hook verb refuses a worker nova-config does not name on a read     *)
 (*     that is ok and not empty (verbs/hook.go), so Rehook needs it named *)
-(*     or the read bad. Rehook is the worker's own step: fair.            *)
+(*     or the read bad. Rehook is the worker's own step: fair. That holds *)
+(*     for bench rows, whose nova-worker hooks again by itself; a friend  *)
+(*     comes back when it next hooks in, prompted by next's hint (its     *)
+(*     model's step, which this fairness does not promise).               *)
 (*                                                                         *)
 (* Two stated exceptions to 1, both the code's on purpose:                *)
 (*  - A tick whose `nova-bus who` read failed is no evidence of silence:  *)
@@ -407,7 +410,10 @@ AutoRetire == \A r \in Rows :
 
 \* Requirement 4: a row nova-config names again, whose hook is alive, is
 \* eventually up and not retired, nothing done by anyone, unless
-\* nova-config stops naming it or its hook leaves first.
+\* nova-config stops naming it or its hook leaves first. Rehook's fairness is
+\* a bench's: its nova-worker hooks again on its own. A friend row comes back
+\* when the friend next hooks in, prompted by next's hint; the property
+\* promises nothing about when.
 ReNamedComesBack == \A r \in Rows :
   [](named[r] /\ bus[r] => <>((up[r] /\ ~retired[r]) \/ ~named[r] \/ ~bus[r]))
 

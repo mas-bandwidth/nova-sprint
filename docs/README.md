@@ -146,10 +146,14 @@ not yet trace-bound to the code (owed).
    heads kept) and the row is then in no read (show, check, next, the deal,
    the board) until nova-config names it and it hooks in again. A failed or
    empty roster read retires nothing, and a row hooked as the coordinator is
-   never retired. A row nova-config names again comes back by itself: its
-   running worker sees `next --json` say `"unhooked": true` and hooks again
-   on its next pass (the hook refuses a worker nova-config does not name,
-   and a failed or empty read refuses no hook). `nova-sprint retire` is the
+   never retired. A bench row nova-config names again comes back by itself:
+   its running worker sees `next --json` say `"unhooked": true` and hooks
+   again on its next pass, and at its start it waits out a refused hook
+   without probing again or exiting. A friend row comes back when the
+   friend next hooks in, prompted by next's hint (`nova-sprint hook`); the
+   model's `ReNamedComesBack` fairness is the bench worker's. The hook
+   refuses a worker nova-config does not name, and a failed or empty read
+   refuses no hook. `nova-sprint retire` is the
    worst case by hand. Held by `RowAlive.HandEmptyWhenRetired`,
    `RowAlive.NothingLost`, `RowAlive.NoRetireOnBadRead`,
    `RowAlive.AutoRetire` and `RowAlive.ReNamedComesBack` (witnesses
