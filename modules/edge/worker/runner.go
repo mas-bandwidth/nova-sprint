@@ -1338,12 +1338,14 @@ func dropBaseArgv_internal(dir string) []string {
 // applyRebased_internal checks the rebased head out in the job's tree,
 // inside the wall, before the done-when tests: Export from the worker's
 // clone, applyArgv_internal in the wall. Nothing to do with no rebase or
-// no tests. Every failure here is a fault: the worker's or the wall's (the
-// export, isInfraFault_internal, a checkout in the job's tree that did not
-// go through), never the card's. The head is not judged, and dealt again
-// the card continues from the head it pushed (2026-11-15: a fail here
-// spent nine attempts of one card on the AWS benches; tla/Runner.tla
-// GateNotRun).
+// no tests. Every failure here is a fault, taken for the worker's or the
+// wall's (the export, isInfraFault_internal, a checkout in the job's tree
+// that did not go through), never the card's fail: the gates did not run,
+// so the head is not judged, and dealt again the card continues from the
+// head it pushed (2026-11-15: as a fail it spent nine attempts of one card
+// on the AWS benches; tla/Runner.tla GateNotRun). No work fault counts
+// toward a limit, so a checkout that fails on every bench is dealt again
+// until the coordinator holds the card.
 func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) error {
 	if r.Wall == nil || !slices.ContainsFunc(slices.Concat(rec.DoneWhen, rec.StreamGates), func(c string) bool { return strings.TrimSpace(c) != "" }) {
 		return nil
