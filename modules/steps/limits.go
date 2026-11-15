@@ -51,6 +51,7 @@ func (t *tick) limits() {
 	}
 	t.routeHeld()
 	t.refutedHeld()
+	t.repeatHeld()
 	for _, n := range t.rowNames {
 		t.rowLimits(n)
 	}
@@ -92,6 +93,24 @@ func (t *tick) refutedHeld() {
 			continue // held by the refutation itself, never by a later hold of the coordinator's
 		}
 		t.judge("held", p, fmt.Sprintf("producer %s's attempt on row %s refuted its brief: %s; it waits, never dealt again by itself: drop it, replace it with a corrected brief (nova-sprint replace %s --by <card> --reason <why>), or unhold to deal it again", p, w.Holder, w.Reason, p))
+	}
+}
+
+// repeatHeld opens the held judgement of a producer whose attempt failed
+// the same way as its previous bounce (card.RepeatedFail): Broken left it
+// waiting held, never dealt again by itself, so escalation spends nothing
+// on a card the next attempt would fail the same way.
+func (t *tick) repeatHeld() {
+	for _, p := range t.v.Producers("waiting") {
+		var cons []card.Card
+		for _, x := range t.v.Consumers(p) {
+			cons = append(cons, card.FromStore(x))
+		}
+		prev, cur, held := card.RepeatHeld(card.FromStore(t.v.Cards[p]), cons)
+		if !held {
+			continue // held by the repeat itself, never by a later hold of the coordinator's
+		}
+		t.judge("held", p, fmt.Sprintf("producer %s failed the same way twice running, %s on row %s and %s on row %s: %s; it waits, never dealt again by itself: replace it with a corrected brief (nova-sprint replace %s --by <card> --reason <why>), drop it, or fix the cause (or edit the brief) and unhold it to deal it again", p, prev.ID, prev.Holder, cur.ID, cur.Holder, card.FailLine(cur.Reason), p))
 	}
 }
 

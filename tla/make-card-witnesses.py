@@ -21,7 +21,7 @@ INVARIANTS = [
     "ReaderNeverAuthor", "WidthKept", "DealIsTake", "NeedFailedTakesDependants",
     "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "PreemptOnBlockerRow",
     "ResultsByKind", "OneLiveReadPerRow", "IdsDistinct", "PlainWithdrawUnguarded",
-    "MergeParksResolved", "HeldNeverDealt", "RefutedNeverRedealt",
+    "MergeParksResolved", "HeldNeverDealt", "RefutedNeverRedealt", "RepeatNeverRedealt",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
@@ -44,6 +44,10 @@ SCENARIOS = {
     # life, sized for the one witness whose fault needs a third attempt
     # (CardWaiveRedWithoutRed); never a passing run.
     "redw":  {"Scenario": "life", "K": 6, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 2, "MaxEnv": 0},
+    # life with room for three attempts and two bounces: a fail repeated
+    # (held, RepeatNeverRedealt) or not (dealt a third time). No
+    # environment move: HoldCard and UnholdCard are card moves.
+    "repeat": {"Scenario": "life", "K": 3, "MaxHead": 1, "MaxAttempt": 3, "MaxBounce": 2, "MaxEnv": 0},
     # life with Merge: ops of up to three moves (MaxOp, read off the
     # scenario in CardMachine.tla), at small bounds.
     "merge": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
@@ -57,7 +61,7 @@ SCENARIOS = {
 
 # The passing runs: cfg name -> scenario.
 PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads", "CardMerge": "merge", "CardMergePre": "mergepre",
-           "CardMergeDeps": "mergedeps"}
+           "CardMergeDeps": "mergedeps", "CardRepeat": "repeat"}
 
 # Reachability checks on CardMachine.tla: name -> (scenario, what).
 REACH = {
@@ -70,6 +74,8 @@ REACH = {
     "NeverFaultRedealt": ("life", "a faulted work consumer's producer is started again"),
     "NeverRouteHeld": ("life", "a fault naming a missing route leaves its producer waiting on it"),
     "NeverRefutedHeld": ("life", "a fail refuting its brief leaves its producer waiting held on it"),
+    "NeverRepeatHeld": ("repeat", "a fail repeating the previous bounce leaves its producer waiting held on it"),
+    "NeverDifferentRedealt": ("repeat", "a fail with a different line from the previous bounce is dealt again"),
     "NeverRedToFix": ("life", "a red sends a merging producer to fix with the finding"),
     "NeverNeedFailed": ("deps", "NeedFailed takes a dependant"),
     "NeverRelinked": ("deps", "a failed need is relinked"),
@@ -162,9 +168,14 @@ WITNESSES = [
      "A fail that refutes its brief goes back to ready like any fail: the\n"
      "same brief is dealt again and refuted again, every attempt (live\n"
      "2026-11-09: one card refuted at w24, w25 and w26, dealt on to w27).",
-     [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"refuted\" THEN \"waiting\" ELSE Back,\n"
-       "                                         !.why = IF cs[c].res = \"refuted\" THEN \"held\" ELSE \"-\",\n",
-       "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = Back,   \\* FAULT: was waiting held on a refutation\n", 1)]),
+     [("  /\\ LET stop == cs[c].res = \"refuted\" \\/ Repeats(p, c) IN\n",
+       "  /\\ LET stop == Repeats(p, c)   \\* FAULT: was waiting held on a refutation too\n", 1)]),
+    ("CardRepeatRedealt", "RepeatNeverRedealt", "repeat",
+     "A fail repeating the previous bounce's first line goes back to ready\n"
+     "like any fail: the same brief is dealt a third time and fails again\n"
+     "(two audits, 2026-11-15: one merge conflict at w4, w5, w6 and w7).",
+     [("  /\\ LET stop == cs[c].res = \"refuted\" \\/ Repeats(p, c) IN\n",
+       "  /\\ LET stop == cs[c].res = \"refuted\"   \\* FAULT: was \\/ Repeats(p, c)\n", 1)]),
     ("CardHeldDealt", "HeldNeverDealt", "life",
      "Resolve does not refuse a held producer: the deal takes a card the\n"
      "coordinator holds, or one waiting on a missing route, as soon as its\n"
@@ -238,8 +249,8 @@ WITNESSES = [
     ("CardHeldStreamReady", "ParkedUnderHold", "life",
      "Broken returns the producer to ready even when its stream is held,\n"
      "instead of writing it parked in the same plan.",
-     [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"refuted\" THEN \"waiting\" ELSE Back,",
-       "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"refuted\" THEN \"waiting\" ELSE \"ready\",   \\* FAULT: was ELSE Back\n"
+     [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF stop THEN \"waiting\" ELSE Back,",
+       "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = IF stop THEN \"waiting\" ELSE \"ready\",   \\* FAULT: was ELSE Back\n"
        "                                        ", 1)]),
     ("CardWaiveRedWithoutRead", "WaiveRedNeedsPriorRead", "life",
      "WaiveRed does not require a done ok read of the previous review at\n"

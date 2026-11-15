@@ -582,7 +582,7 @@ only four event names (NeedFailed, Preempt, AskReads, InThisOp, for their
 reach checks), so states
 are not split by the move that reached them.
 
-## The instance: seven scenarios
+## The instance: eight scenarios
 
 | cfg | Scenario | producers | needs | K | heads | attempts | env moves |
 |---|---|---|---|---|---|---|---|
@@ -593,6 +593,7 @@ are not split by the move that reached them.
 | `CardMerge.cfg` | `merge` (life, ops of 3 moves) | p1, sentinel s | s needs p1 | 2 | 1 | 1 | 1 |
 | `CardMergePre.cfg` | `mergepre` (pre, ops of 2) | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 1 |
 | `CardMergeDeps.cfg` | `mergedeps` (deps, ops of 2) | as deps | as deps | 2 | 1 | 1 | 0 |
+| `CardRepeat.cfg` | `repeat` (life, two bounces) | p1, sentinel s | s needs p1 | 3 | 1 | 3 | 0 |
 | `witnesses/CardWaiveRedWithoutRed.cfg` only | `redw` (Scenario life) | p1, sentinel s | s needs p1 | 5 | 2 | 3 | 0 |
 
 - `life` carries the whole lifecycle: a fix, a Red with a yes after it, a
@@ -601,6 +602,9 @@ are not split by the move that reached them.
   Waive, Relink, their InThisOp forms and the cycle check, and Add of a
   second sentinel. One environment move: with two, Add's choices took it
   past 6M states.
+- `repeat` is life with room for three attempts and two bounces: a fail
+  repeating the previous bounce's first line is held (RepeatNeverRedealt),
+  one with a different line is dealt a third time (NeverDifferentRedealt).
 - `reads` has a third row, so AskReads has two rows that are not the author
   (with the third row in `deps` that run passed 24M states unfinished).
 - A Red is a CI result, so it spends the environment budget; as a free move,
@@ -755,7 +759,7 @@ Step invariants (each: the last step kept its rule):
 
 | Module | Scenario | Fault | Expected result |
 |---|---|---|---|
-| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` / `CardMerge` / `CardMergePre` / `CardMergeDeps` | life / deps / pre / reads / merge / mergepre / mergedeps | none | pass |
+| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` / `CardMerge` / `CardMergePre` / `CardMergeDeps` / `CardRepeat` | life / deps / pre / reads / merge / mergepre / mergedeps / repeat | none | pass |
 | `witnesses/CardLandedMoves` | life | Rescore has no final check | FinalNeverMoves |
 | `witnesses/CardAuthorReads` | life | AskRead does not refuse the author | ReaderNeverAuthor |
 | `witnesses/CardRedAdvances` | life | Red moves merging to landed | RedNeverAdvances |

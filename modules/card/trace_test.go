@@ -92,6 +92,9 @@ func TestTraceRefusesDivergence(t *testing.T) {
 // traceHeads is the walk's head table: the base is head 0.
 var traceHeads = []string{base, h1, h2, coldH3}
 
+// traceLines is the walk's fail line table: "" is line 0 (none).
+var traceLines = []string{"", "r", MissingRoute + " adb no device on this row"}
+
 // cardTrace is a recording in tla/CardMachineTrace.tla's shape.
 type cardTrace struct {
 	w      *world
@@ -115,7 +118,7 @@ func newCardTrace(w *world, on bool) *cardTrace {
 }
 
 func (tr *cardTrace) state() ModelState {
-	st, err := TraceState(tr.w.snap(), "s1", traceHeads, tr.w.width)
+	st, err := TraceState(tr.w.snap(), "s1", traceHeads, traceLines, tr.w.width)
 	require.NoError(tr.w.t, err)
 	for _, p := range st.Ps {
 		tr.bounds["K"] = max(tr.bounds["K"], p.Ncut)

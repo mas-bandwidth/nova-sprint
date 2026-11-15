@@ -85,7 +85,12 @@
 (* producer waiting with why "held" (the code's reason "held: <reason>"), *)
 (* one bounce spent, never re-dealt until the coordinator's UnholdCard    *)
 (* (live 2026-11-09: one card refuted at w24, w25 and w26;               *)
-(* RefutedNeverRedealt).                                                  *)
+(* RefutedNeverRedealt). So does a plain fail whose first reason line     *)
+(* (the consumer's line, card.FailLine) repeats the previous verdict's,   *)
+(* when both are bounces since the last unhold (card.RepeatedFail; two    *)
+(* audits, 2026-11-15: a merge conflict four times running;               *)
+(* RepeatNeverRedealt, checked in "repeat", life with room for three      *)
+(* attempts and two bounces).                                             *)
 (*                                                                         *)
 (* A card with a problem has no state of its own (Glenn, 2026-11-07:       *)
 (* "waiting is where stuff goes where it's having problems"): it is        *)
@@ -165,6 +170,11 @@ CStates == {"none", "ready", "working", "done", "fail"}
 CFinal  == {"done", "fail"}
 LiveSt  == {"ready", "working"}
 Results == {"-", "ok", "fix", "fail", "fault", "route", "refuted"}   \* route: a fault naming a missing route; refuted: a fail refuting the brief
+\* A fail's first reason line (card.FailLine), by number: 0 for none (an
+\* empty reason, and every result but fail), 1.. for distinct lines. One
+\* line is enough to tell the same from a different one (0 never repeats);
+\* the trace lifts it to the walk's lines (CardMachineTrace.cfg).
+Lines   == 0..1
 Prios   == {"normal", "blocker"}
 None    == "none"
 NoP     == "-"
@@ -173,7 +183,7 @@ NoC     == <<"-", 0>>
 Heads   == 1..MaxHead
 
 NoCons == [st |-> "none", kind |-> "-", row |-> NoR, att |-> 0, head |-> 0,
-           res |-> "-", author |-> None, review |-> 0, prior |-> 0, finding |-> "-"]
+           res |-> "-", author |-> None, review |-> 0, prior |-> 0, finding |-> "-", line |-> 0]
 \* finding: the reader's finding, written only by ReadFix (round 4: a fault
 \* never writes it, and Broken keeps it); Start copies it to the work
 \* consumer. red: a recorded Red (the producers-only card column red), set
@@ -186,7 +196,7 @@ NewProd(p) == [st |-> IF p \in Added THEN "absent" ELSE "waiting", att |-> 0, he
 
 VARIABLES
   ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding, red, why, base]
-  cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review, prior, finding]
+  cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review, prior, finding, line]
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
   last,  \* step monitor: [ev, bad]
@@ -403,7 +413,7 @@ Reached(p) ==
 StartCut(p, r) ==
   [st |-> "working", kind |-> "work", row |-> r, att |-> ps[p].att + 1, head |-> 0,
    res |-> "-", author |-> None, review |-> 0, prior |-> ps[p].head,
-   finding |-> ps[p].finding]
+   finding |-> ps[p].finding, line |-> 0]
 StartGuard(p, r) ==
   /\ p \in Prods
   /\ ps[p].st = "ready"
@@ -439,15 +449,38 @@ Finished(p, c) ==
 \* A pushed head is kept on the producer; a report with no head keeps p's.
 KeptHead(p, c) == IF cs[c].head # 0 THEN cs[c].head ELSE ps[p].head
 
-\* A fail that refutes the brief leaves the producer waiting held: the same
-\* brief dealt again is refuted again, so it waits for the coordinator.
+\* The work consumers of p before attempt a that reported a verdict on the
+\* brief (ok, fail or refuted): a fault, a missing route or a withdraw is
+\* passed over (card.lastReported).
+Verdicts(p, a) ==
+  {k \in ConsOf(p) : cs[k].kind = "work" /\ cs[k].st = "done" /\ cs[k].att < a
+                     /\ cs[k].res \in {"ok", "fail", "refuted"}}
+
+\* c's fail repeats p's previous bounce (card.RepeatedFail): c is a plain
+\* fail with a first line, p has bounced since its last unhold (an unhold
+\* is a fresh budget), and the latest earlier verdict is a plain fail with
+\* the same line (an ok between ends the run: the bounce after it was a
+\* read's fix, or none).
+SameAsPrev(p, c) ==
+  /\ cs[c].res = "fail" /\ cs[c].line # 0
+  /\ LET vs == Verdicts(p, cs[c].att) IN
+       /\ vs # {}
+       /\ LET k == CHOOSE k \in vs : \A j \in vs : cs[j].att <= cs[k].att IN
+            cs[k].res = "fail" /\ cs[k].line = cs[c].line
+Repeats(p, c) == SameAsPrev(p, c) /\ ps[p].bounces - ps[p].base >= 1
+
+\* A fail that refutes the brief, or that repeats the previous bounce,
+\* leaves the producer waiting held: the same brief dealt again fails again
+\* the same way, so it waits for the coordinator (two audits, 2026-11-15:
+\* one merge conflict four times running; RepeatNeverRedealt).
 Broken(p, c) ==
   /\ ps[p].st = "working"
   /\ IsCur(p, c)
   /\ cs[c].st = "done"
   /\ cs[c].res \in {"fail", "refuted"}
-  /\ PStep("Broken", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = "refuted" THEN "waiting" ELSE Back,
-                                         !.why = IF cs[c].res = "refuted" THEN "held" ELSE "-",
+  /\ LET stop == cs[c].res = "refuted" \/ Repeats(p, c) IN
+     PStep("Broken", p, c, [ps[p] EXCEPT !.st = IF stop THEN "waiting" ELSE Back,
+                                         !.why = IF stop THEN "held" ELSE "-",
                                          !.bounces = @ + 1,
                                          !.head = KeptHead(p, c)])
 
@@ -473,7 +506,7 @@ ReadRowOK(p, r) ==
 ReadCut(p, r) ==
   [st |-> "working", kind |-> "read", row |-> r, att |-> ps[p].att,
    head |-> ps[p].head, res |-> "-", author |-> ps[p].author,
-   review |-> ps[p].review, prior |-> 0, finding |-> "-"]
+   review |-> ps[p].review, prior |-> 0, finding |-> "-", line |-> 0]
 
 AskRead(p, r) ==
   /\ p \in Prods
@@ -745,7 +778,8 @@ Report(c, r, res, h) ==
   /\ cs[c].row = r
   /\ res \in ReportResults(c)
   /\ h \in ReportHeads(c, res)
-  /\ CStep("Report", c, r, [cs[c] EXCEPT !.st = "done", !.res = res, !.head = h])
+  /\ \E ln \in (IF res = "fail" THEN Lines ELSE {0}) :   \* a plain fail's first reason line
+       CStep("Report", c, r, [cs[c] EXCEPT !.st = "done", !.res = res, !.head = h, !.line = ln])
 
 \* Withdraw fails a live consumer, with its last pushed head h when it has
 \* one (0: none; a read is withdrawn without a head). Withdrawing the work
@@ -952,7 +986,7 @@ ProdRec == [st : PStates, att : 0..MaxAttempt, head : 0..MaxHead, author : Rows 
 ConsRec == [st : CStates, kind : {"-", "work", "read"}, row : Rows \cup {NoR},
             att : 0..MaxAttempt, head : 0..MaxHead, res : Results,
             author : Rows \cup {None}, review : 0..(MaxAttempt + MaxEnv), prior : 0..MaxHead,
-            finding : Findings]
+            finding : Findings, line : Lines]
 
 TypeOK ==
   /\ ps \in [P -> ProdRec]
@@ -1045,6 +1079,16 @@ HeldNeverDealt == \A p \in P : ps[p].why # "-" => ps[p].st = "waiting"
 RefutedNeverRedealt ==
   \A p \in Prods : \A c \in ConsOf(p) :
     (IsCur(p, c) /\ cs[c].res = "refuted" /\ ps[p].st = "ready") => ps[p].base = ps[p].bounces
+
+(* No third deal after two identical failures running (two audits,       *)
+(* 2026-11-15: 17-20% of failed attempts failed again with the identical  *)
+(* reason): a producer whose current work consumer's fail repeats the     *)
+(* previous verdict's line, both bounces since its last unhold, is never   *)
+(* ready (dealable): only an UnholdCard, which sets base to bounces, lets *)
+(* the deal take it again. Drop and replace leave it fail.                *)
+RepeatNeverRedealt ==
+  \A p \in Prods : \A c \in ConsOf(p) :
+    (IsCur(p, c) /\ SameAsPrev(p, c) /\ ps[p].bounces - ps[p].base >= 2) => ps[p].st # "ready"
 
 (* A live read consumer only in review, of the producer's current head    *)
 (* and review count.                                                      *)
@@ -1201,6 +1245,18 @@ NeverRouteHeld ==
 (* for the coordinator.                                                   *)
 NeverRefutedHeld ==
   ~\E p \in Prods : ps[p].st = "waiting" /\ ps[p].why = "held" /\ \E c \in ConsOf(p) : IsCur(p, c) /\ cs[c].res = "refuted"
+(* A work consumer's fail repeated its previous bounce and its producer    *)
+(* waits held for the coordinator.                                        *)
+NeverRepeatHeld ==
+  ~\E p \in Prods : ps[p].st = "waiting" /\ ps[p].why = "held" /\ \E c \in ConsOf(p) : IsCur(p, c) /\ SameAsPrev(p, c)
+(* A plain fail with a different line from the previous bounce is dealt   *)
+(* again: the rule holds only a repeat.                                   *)
+NeverDifferentRedealt ==
+  ~\E p \in Prods : \E i, j \in 1..K :
+     /\ i < j
+     /\ cs[<<p, i>>].kind = "work" /\ cs[<<p, i>>].res = "fail" /\ cs[<<p, i>>].line = 0
+     /\ cs[<<p, j>>].kind = "work" /\ cs[<<p, j>>].res = "fail" /\ cs[<<p, j>>].line = 1
+     /\ ps[p].st = "working" /\ ps[p].att > cs[<<p, j>>].att
 (* A red goes to fix with the finding (intent rule 30): only Red sets red, *)
 (* and only Red and ReadFix write a finding.                              *)
 NeverRedToFix ==
