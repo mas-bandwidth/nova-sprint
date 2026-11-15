@@ -127,10 +127,18 @@ func TestSiblingOriginIsTheStreamsOwn(t *testing.T) {
 // SIBLINGS ("" for none), whose sibling tag names tagSHA and whose checkouts
 // are at their own sha: init makes its directory.
 func sibFake_internal(file, tagSHA string) *edge.FakeExec {
+	return sibFakeTip_internal(file, tagSHA, "")
+}
+
+// sibFakeTip_internal is sibFake_internal whose work clone has tip as the
+// stream base main's tip ("" for none).
+func sibFakeTip_internal(file, tagSHA, tip string) *edge.FakeExec {
 	fx := edge.NewFakeExec()
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
 		args := c.Cmd.Argv[gitArg0_internal:]
 		switch {
+		case args[0] == "for-each-ref" && args[len(args)-1] == "refs/remotes/origin/main" && tip != "":
+			return edge.FakeOutcome{Stdout: tip + "\n"}
 		case args[0] == "init":
 			_ = os.MkdirAll(args[len(args)-1], 0o755)
 		case args[0] == "remote" && args[1] == "get-url":
@@ -264,6 +272,45 @@ func TestStageWorktreeStagesTheSiblingsFileAtTheBase(t *testing.T) {
 	}
 	if got, err := os.Readlink(filepath.Join(j2.JobDir, "serialize.rs")); err != nil || got != tree {
 		t.Fatalf("the second job links to %q (%v)", got, err)
+	}
+}
+
+// A read carries no base sha: its siblings are read at the tip of the
+// stream's base in the work clone, staged and linked as a work job's are, so
+// the reviewer's gates build against the stream's pins.
+func TestStageWorktreeReadStagesTheSiblingsAtTheStreamTip(t *testing.T) {
+	t.Parallel()
+	const tip = "7777777777777777777777777777777777777777"
+	fx := sibFakeTip_internal(sibLine+"\n", sibSHA, tip)
+	g, j, roots := sibJob_internal(t, fx)
+	j.Kind, j.BaseSHA, j.Branch, j.Head = "read", "", "", jobSHA40
+	if _, err := g.StageWorktree(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	argv, dirs, _ := stageCalls_internal(fx)
+	i := slices.IndexFunc(argv, func(a string) bool { return strings.HasPrefix(a, "ls-tree") })
+	if i < 0 || argv[i] != "ls-tree "+tip+" -- SIBLINGS" || dirs[i] != filepath.Join(roots, "clones", "r") {
+		t.Fatalf("the read's SIBLINGS was read by %q, want at the stream tip %s in the work clone", argv, tip)
+	}
+	tree, err := filepath.EvalSymlinks(filepath.Join(roots, "nova-bench", "siblings", "serialize.rs", sibSHA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(filepath.Join(j.JobDir, "serialize.rs")); err != nil || got != tree {
+		t.Fatalf("the read's ../serialize.rs links to %q (%v), want %s", got, err, tree)
+	}
+
+	// no tip for the stream's base: nothing is read, staged or linked
+	fx2 := sibFakeTip_internal(sibLine+"\n", sibSHA, "")
+	g.Exec = fx2
+	j2 := j
+	j2.Consumer, j2.JobDir, j2.WorktreeDir = "c2", filepath.Join(roots, "jobs", "c2"), filepath.Join(roots, "jobs", "c2", "repo")
+	if _, err := g.StageWorktree(context.Background(), j2); err != nil {
+		t.Fatal(err)
+	}
+	argv2, _, _ := stageCalls_internal(fx2)
+	if slices.ContainsFunc(argv2, func(a string) bool { return strings.HasPrefix(a, "ls-tree") || strings.HasPrefix(a, "cat-file") }) {
+		t.Fatalf("a read with no stream tip read SIBLINGS: %q", argv2)
 	}
 }
 
