@@ -334,6 +334,11 @@ footer a:hover { color: var(--text); }
 .fleet .row, .friends .row { --name-cap: 15rem; }
 .streams .row { --name-cap: 27.75rem; }
 .name { overflow: hidden; text-overflow: ellipsis; }
+/* Fleet and Friends names wrap, never ellipsized: rows named alike ("aws-schema-bench-1" to -4)
+   differ only at the end (Glenn 2026-11-14: they showed as "aws-schema-benc" and could not be
+   told apart). The column keeps its width and the shared status edge; a long name takes a
+   second line, breaking at a hyphen first. */
+.fleet .name, .friends .name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .alt { display: none; }
 /* Providers (SPEC.md, the owner 8:03 and 8:18 AM): provider | status | balance | spend/hour | note, the
    status column on the shared status edge */
