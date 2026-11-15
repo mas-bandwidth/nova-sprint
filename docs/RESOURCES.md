@@ -324,12 +324,20 @@ machine serves is a tag it has.
 Glenn: "machine width in fleet definitely goes away and is replaced by cpu
 resource."
 
-A friend keeps its width for now. *Settled.* A friend's work still acquires
-resources to run.
+A friend's work is placed like any other work: by the card and its resources,
+on whichever machine in the fleet has what it needs. *Settled as the aim.*
 
-Glenn: "leave friend width the same for now, but yes, friends work will acquire
-resources to do work, and maybe, they have a tag [codex] that ties to
-particular machine or whatever."
+Glenn: "my ideal would be that friend work can be done across the fleet,
+wherever it needs to do its work, based on the card and resources."
+
+So a friend is not tied to one machine. The card says what the work needs, the
+fleet says where that is free, and the friend does the work there, reaching the
+machine over ssh.
+
+A friend keeps its width for now. *Settled.* It is the friend's own limit: how
+many pieces of work it takes on at once. It says nothing about where they run.
+
+Glenn: "leave friend width the same for now".
 
 ## Not settled
 
@@ -343,13 +351,11 @@ These are Glenn's to decide before this layer is built.
    work's is not chosen. Nor is what a card holds when it does not name `cpu`
    or `memory` at all. Rowan's reading of "a number omitted assume 1" is that
    it then holds 1 of each, so no card is refused for leaving them out.
-3. **Where a friend's work acquires.** Two ways are on the table. In one, a
-   friend carries a tag (such as `codex`) that ties its work to a particular
-   machine. In the other, resources place a friend's work exactly as they
-   place a bench's: the work acquires on whichever machine has what it needs,
-   and the friend reaches that machine over ssh. Glenn: "or we can use
-   resources fully to distribute friend work across the machine, eg. the
-   friend ssh's there". The second needs no friend width at all.
+3. **How a friend works on a machine it is sent to.** The aim is settled; the
+   means is not designed. A friend today works where its own session runs. To
+   work anywhere in the fleet it has to be told which machine holds its
+   resources, reach it (Glenn: "eg. the friend ssh's there"), and run its
+   commands there under that hold.
 4. **When a runner holds its resources.** GitHub picks the runner for a job,
    not the fleet, so a runner cannot be moved to where there is room. Either a
    runner holds what it requires all the time, busy or idle, or it acquires
