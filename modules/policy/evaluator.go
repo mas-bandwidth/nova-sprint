@@ -31,15 +31,30 @@ import (
 // running fails. The next request starts a new child. No goroutine or core
 // is left running past a tick. The in-process path (newLocal) is the unit
 // tests' and the child's own.
+//
+// The parent charges a version only for the child's own run (2026-11-15):
+// the budget it sends is counted before its wait for another request on the
+// same child, and its deadline-plus-evalGrace timer starts when the child says it
+// has begun (it has decoded the request and starts its clock), not when the
+// request was written. Decoding a large snapshot on a loaded host took more
+// than evalGrace on the studio, and the parent killed a 2 ms policy for it,
+// failing every version at once ("the policy evaluator was stopped"). Until
+// the child begins, the wait is the transfer's, bounded by evalBegin.
 
 const (
 	// EvalArg is the child's verb: layer 6's main calls ServeMain when its
 	// first argument is EvalArg, as the tests' TestMain does.
 	EvalArg = "policy-eval"
 	// evalGrace is how long past a tick's deadline the parent waits for its
-	// child's answer before it kills it: the gob round trip of a 5,000-card
-	// snapshot and its answers (a guess, about ten times a measured 9 ms).
+	// child's answer before it kills it: the gob encoding of the answers
+	// and their trip back (a guess, about ten times a measured 9 ms round
+	// trip of a 5,000-card snapshot and its answers).
 	evalGrace = 100 * time.Millisecond * raceSlowdown
+	// evalBegin is how long the parent waits for its child to begin a
+	// request (to read and decode it) before it kills the child: a guess,
+	// well above the seconds-long ticks of a loaded studio, and below the
+	// tick's own 10 s budget.
+	evalBegin = 5 * time.Second * raceSlowdown
 )
 
 // request is one call into the child: a tick (Versions), a check (Src) or a
@@ -62,6 +77,10 @@ type wireSource struct {
 	Stored      bool
 }
 
+// begun is the child's first word on a request: it has decoded it and its
+// clock has started.
+type begun struct{ Begun bool }
+
 // reply is the child's answer. Live is true when a run it abandoned at the
 // deadline is still running: the parent kills the child.
 type reply struct {
@@ -82,12 +101,15 @@ type wireFailure struct {
 // evaluator is a process engine's child, started on first use.
 type evaluator struct {
 	mu     sync.Mutex
-	cmd    *exec.Cmd
+	kill   func() // ends the running child and waits for it; nil when none runs
 	in     io.WriteCloser
 	enc    *gob.Encoder
 	dec    *gob.Decoder
 	error  *capped
 	memory int // the child's cap in bytes; 0 is EvalMemory (a test sets a small one)
+	// spawn, when set, starts a child in place of this binary (the unit
+	// tests' seam): its stdin, its stdout and how to kill it.
+	spawn func() (in io.WriteCloser, out io.Reader, kill func(), err error)
 }
 
 // NewEngine is an engine that runs every version in its own child process
@@ -103,6 +125,7 @@ func NewEngine(clock Clock) *Engine {
 // remote is req answered by e's child, the deadline counted from start on
 // e's clock; failing lists the sources failed when the child is killed.
 func (e *Engine) remote(ctx context.Context, start time.Time, req request, failing []source) (Answers, []Failure) {
+	// The budget is counted before the lock: a wait for another request is not the policy's.
 	req.Builtin, req.Budget, req.Snap = e.builtin, e.budget-e.clock.Now().Sub(start), unworded(req.Snap)
 	if ctx.Err() != nil { // the caller's deadline has passed: every version tried fails
 		return killed(failing, overTime()+" building the tick's inputs")
@@ -110,10 +133,24 @@ func (e *Engine) remote(ctx context.Context, start time.Time, req request, faili
 	ev := e.proc
 	ev.mu.Lock()
 	defer ev.mu.Unlock()
+	started := make(chan struct{}, 1)
 	got := make(chan reply, 1)
 	errc := make(chan error, 1)
-	if err := ev.send(req, got, errc); err != nil {
+	if err := ev.send(req, started, got, errc); err != nil {
+		ev.stop()
 		return killed(failing, err.Error())
+	}
+	select { // the transfer: the child reads and decodes the request, its clock not yet started
+	case <-started:
+	case err := <-errc:
+		ev.stop()
+		return killed(failing, "the policy evaluator failed: "+err.Error()+ev.error.first())
+	case <-e.clock.After(evalBegin):
+		ev.stop()
+		return killed(failing, fmt.Sprintf("the policy evaluator did not begin the request within %s: it was stopped", evalBegin))
+	case <-ctx.Done():
+		ev.stop()
+		return killed(failing, "the caller's deadline passed before the policy evaluator began: it was stopped")
 	}
 	select {
 	case rep := <-got:
@@ -169,16 +206,23 @@ func killed(failing []source, msg string) (Answers, []Failure) {
 	return Answers{Version: -1}, fs
 }
 
-// send starts the child if none runs, writes req and reads its reply on a
-// goroutine of its own into got, or the error into errc.
-func (ev *evaluator) send(req request, got chan<- reply, errc chan<- error) error {
-	if ev.cmd == nil {
+// send starts the child if none runs, writes req and reads, on a goroutine
+// of its own, the child's begun into started and then its reply into got,
+// or the error into errc.
+func (ev *evaluator) send(req request, started chan<- struct{}, got chan<- reply, errc chan<- error) error {
+	if ev.kill == nil {
 		if err := ev.startChild(); err != nil {
 			return err
 		}
 	}
 	dec := ev.dec
 	go func() {
+		var b begun
+		if err := dec.Decode(&b); err != nil {
+			errc <- err
+			return
+		}
+		started <- struct{}{}
 		var rep reply
 		if err := dec.Decode(&rep); err != nil {
 			errc <- err
@@ -190,6 +234,15 @@ func (ev *evaluator) send(req request, got chan<- reply, errc chan<- error) erro
 }
 
 func (ev *evaluator) startChild() error {
+	ev.error = &capped{}
+	if ev.spawn != nil {
+		in, out, kill, err := ev.spawn()
+		if err != nil {
+			return err
+		}
+		ev.kill, ev.in, ev.enc, ev.dec = kill, in, gob.NewEncoder(in), gob.NewDecoder(out)
+		return nil
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("cannot find the policy evaluator: %w", err)
@@ -200,7 +253,6 @@ func (ev *evaluator) startChild() error {
 		limit = ev.memory
 	}
 	cmd.Env = append(os.Environ(), evalMemoryEnv+"="+strconv.Itoa(limit))
-	ev.error = &capped{}
 	cmd.Stderr = ev.error
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -213,7 +265,11 @@ func (ev *evaluator) startChild() error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("cannot start the policy evaluator: %w", err)
 	}
-	ev.cmd, ev.in, ev.enc, ev.dec = cmd, in, gob.NewEncoder(in), gob.NewDecoder(out)
+	kill := func() {
+		_ = cmd.Process.Kill() // ignored: it may have exited already
+		_ = cmd.Wait()         // ignored: a killed child's status is the kill
+	}
+	ev.kill, ev.in, ev.enc, ev.dec = kill, in, gob.NewEncoder(in), gob.NewDecoder(out)
 	return nil
 }
 
@@ -227,13 +283,12 @@ func (ev *evaluator) release() {
 
 // stop kills the child, if any; the next request starts another.
 func (ev *evaluator) stop() {
-	if ev.cmd == nil {
+	if ev.kill == nil {
 		return
 	}
-	_ = ev.in.Close()         // ignored: the kill below ends it either way
-	_ = ev.cmd.Process.Kill() // ignored: it may have exited already
-	_ = ev.cmd.Wait()         // ignored: a killed child's status is the kill
-	ev.cmd = nil
+	_ = ev.in.Close() // ignored: the kill below ends it either way
+	ev.kill()
+	ev.kill = nil
 }
 
 // capped keeps the first maxQuestion bytes a child writes to stderr.
@@ -291,7 +346,8 @@ func ServeMain() int {
 }
 
 // ServeEval answers each request read from r on w, until r ends, on an
-// in-process engine of its own on the wall clock.
+// in-process engine of its own on the wall clock: for each request, begun
+// once it is decoded (the parent's timer starts there), then the reply.
 func ServeEval(r io.Reader, w io.Writer) error {
 	e := newLocal(RealClock{})
 	dec, enc := gob.NewDecoder(r), gob.NewEncoder(w)
@@ -300,6 +356,9 @@ func ServeEval(r io.Reader, w io.Writer) error {
 		if err := dec.Decode(&req); errors.Is(err, io.EOF) {
 			return nil
 		} else if err != nil {
+			return err
+		}
+		if err := enc.Encode(begun{Begun: true}); err != nil {
 			return err
 		}
 		if err := enc.Encode(e.serve(req)); err != nil {
