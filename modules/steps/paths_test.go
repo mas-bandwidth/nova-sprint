@@ -245,7 +245,7 @@ func TestTickHoldAtLimit(t *testing.T) {
 	s.run(2)
 	for i := 1; i < Engine.Limits.Bounces; i++ {
 		s.take(fmt.Sprintf("p1.w%d", i))
-		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", "broke")
+		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", fmt.Sprintf("broke %d", i)) // a different failure each time: only the bounce limit holds it
 		s.tick()
 		s.requireState("p1", "working")
 	}
@@ -283,7 +283,7 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 		n++
 		s.requireState("p1", "working")
 		s.take(fmt.Sprintf("p1.w%d", n))
-		s.report(fmt.Sprintf("p1.w%d", n), "fail", sha(n), "broke") // each pushes a head: progress, so only the bounce limit holds it
+		s.report(fmt.Sprintf("p1.w%d", n), "fail", sha(n), fmt.Sprintf("broke %d", n)) // each pushes a head and fails differently, so only the bounce limit holds it
 		s.tick()
 	}
 	for range limit {
@@ -328,14 +328,14 @@ func TestTickNoProgressHolds(t *testing.T) {
 		s.tick()
 	}
 	end("p1.w1", "fail", "", "make failed")
-	end("p1.w2", "fail", "", "make failed") // two running, below the top rank: escalated, not held
+	end("p1.w2", "fail", "", "make failed again") // two running, below the top rank: escalated, not held
 	end("p1.w3", "fail", sha(7), "pushed a partial fix")
 	end("p1.w4", "fail", sha(8), "pushed more") // progress; 4 bounces: the top rank from here
 	end("p1.w5", "fail", "", "tests still red")
 	end("p1.w6", "fault", "", "exit 137") // a fault spends nothing and breaks nothing
 	s.requireState("p1", "working")
 	assert.Empty(t, s.openJudgements("held"))
-	end("p1.w7", "fail", "", "tests still red")
+	end("p1.w7", "fail", "", "tests red again")
 	s.requireState("p1", "waiting")
 	assert.Equal(t, fmt.Sprintf("held: failed %d top-rank attempts running with no new head on the same brief, the limit is %d", n, n), s.snap().Cards["p1"].Reason)
 	js := s.openJudgements("held")
@@ -349,7 +349,7 @@ func TestTickNoProgressHolds(t *testing.T) {
 	assert.Empty(t, s.openJudgements("held"), "an unhold is a fresh run: the same fails do not hold it again")
 	end("p1.w8", "fail", "", "still red")
 	assert.Empty(t, s.openJudgements("held"), "one fail since the unhold")
-	end("p1.w9", "fail", "", "still red")
+	end("p1.w9", "fail", "", "red once more")
 	s.requireState("p1", "waiting")
 	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
 }
@@ -379,12 +379,12 @@ func TestTickNoProgressFromTheStart(t *testing.T) {
 	for i := 1; i < at; i++ {
 		s.requireState("p1", "working")
 		s.take(fmt.Sprintf("p1.w%d", i))
-		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", "red")
+		s.report(fmt.Sprintf("p1.w%d", i), "fail", "", fmt.Sprintf("red %d", i))
 		s.tick()
 		assert.Empty(t, s.openJudgements("held"), "w%d: one top-rank fail at most", i)
 	}
 	s.take(fmt.Sprintf("p1.w%d", at))
-	s.report(fmt.Sprintf("p1.w%d", at), "fail", "", "red")
+	s.report(fmt.Sprintf("p1.w%d", at), "fail", "", fmt.Sprintf("red %d", at))
 	s.tick()
 	s.requireState("p1", "waiting")
 	assert.Equal(t, at, s.snap().Cards["p1"].Bounces)
@@ -399,7 +399,7 @@ func TestTickNoProgressEditedBrief(t *testing.T) {
 	end := func(c, head string) {
 		s.requireState("p1", "working")
 		s.take(c)
-		s.report(c, "fail", head, "red")
+		s.report(c, "fail", head, "red at "+c)
 		s.tick()
 	}
 	for i := 1; i <= Engine.Limits.FrontierAfter; i++ {

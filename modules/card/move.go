@@ -541,6 +541,18 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 		m.head(m.p.ID, m.p.Head, c.Head)
 		return nil
 	}
+	if prev, again := RepeatedFail(m.p, m.cons, c); bounce && again {
+		// A fail with the class and first reason line of the card's
+		// previous bounce leaves the producer waiting held the same way,
+		// one bounce spent: the same brief dealt again fails the same way
+		// (RepeatedFail; tla/CardMachine.tla RepeatNeverRedealt). Layer 3
+		// opens the held judgement naming both attempts.
+		m.state(m.p.ID, Waiting)
+		m.reason(m.p.ID, m.p.Reason, RepeatReason(prev, c))
+		m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
+		m.head(m.p.ID, m.p.Head, c.Head)
+		return nil
+	}
 	if r := m.back(); r != nil {
 		return r
 	}

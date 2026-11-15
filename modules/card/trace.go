@@ -34,6 +34,10 @@ import (
 //     gives (heads[0] is the base); a head not in it is an error.
 //   - finding: text in the code, "-" or "fix" in the model (whether a read
 //     asked for a fix): any non-empty finding is "fix".
+//   - line: a plain fail's first reason line (FailLine; failClass) by its
+//     place in a table the walk gives (lines[0] is "", no line); 0 for every
+//     other consumer. A line not in the table is an error. The model's lines
+//     are 0..1; the trace's cfg lifts them to the table's (TLines).
 //   - A fault whose reason names a missing route (RouteFault) is the
 //     model's result "route", and a fail whose reason refutes the brief
 //     (Refuted) its result "refuted". A waiting producer's reason that holds
@@ -46,7 +50,7 @@ import (
 //   - flaps: carried as the count; the model stops Gone at 1, a bound the
 //     trace module lifts (CardMachineTrace.tla, GoneAt).
 //   - Left out because no rule of the model reads them (as the model says):
-//     branch, base_sha, the reason's text, brief, prose, paths, done_when, cost, priced,
+//     branch, base_sha, the reason's text but a fail's first line, brief, prose, paths, done_when, cost, priced,
 //     pr, tier (every card and row of a walk is pro), gen, the row's tiers,
 //     kind, session and labels, the stream's name, repo and position.
 //   - Producers live in one stream (the walk's); TraceState projects that
@@ -81,6 +85,7 @@ type ModelProd struct {
 type ModelCons struct {
 	St, Kind, Row, Res, Author, Finding string
 	Att, Head, Review, Prior            int
+	Line                                int // a plain fail's first reason line (FailLine) by its place in the line table; 0 for none
 }
 
 // ModelRow is CardMachine.tla's row record.
@@ -94,8 +99,9 @@ type ModelRow struct {
 // stream projected onto CardMachine.tla's ps, cs, rs and held. heads is the
 // head table: heads[0] is the base (head 0), heads[i] is head i.
 // widths is each row's width, read from the roster (round 22: the store
-// keeps none).
-func TraceState(s store.Snapshot, stream string, heads []string, widths map[string]int) (ModelState, error) {
+// keeps none). lines is the line table: lines[0] is "" (no line), lines[i]
+// is line i, a plain fail's first reason line (FailLine).
+func TraceState(s store.Snapshot, stream string, heads, lines []string, widths map[string]int) (ModelState, error) {
 	m := ModelState{Ps: map[string]ModelProd{}, Cs: map[Slot]ModelCons{}, Rs: map[string]ModelRow{}, Held: s.Streams[stream].Held}
 	head := func(h string) (int, error) {
 		if h == "" {
@@ -110,7 +116,7 @@ func TraceState(s store.Snapshot, stream string, heads []string, widths map[stri
 	for _, c := range s.Cards {
 		var err error
 		if consumer(c.Kind) {
-			m.Cs[slots[c.ID]], err = traceCons(c, head)
+			m.Cs[slots[c.ID]], err = traceCons(c, head, lines)
 		} else {
 			m.Ps[c.ID], err = traceProd(c, len(traceConsumers(s, c.ID)), head)
 		}
@@ -158,15 +164,21 @@ func TraceResult(kind, result, reason string) string {
 	return result
 }
 
-func traceCons(c store.Card, head func(string) (int, error)) (ModelCons, error) {
+func traceCons(c store.Card, head func(string) (int, error), lines []string) (ModelCons, error) {
 	h, err := head(c.Head)
 	if err != nil {
 		return ModelCons{}, err
 	}
+	line := 0
+	if failClass(FromStore(c)) {
+		if line = slices.Index(lines, FailLine(c.Reason)); line < 0 {
+			return ModelCons{}, fmt.Errorf("card: trace: fail line %q of %s is not in the line table", FailLine(c.Reason), c.ID)
+		}
+	}
 	prior, err := head(c.Prior)
 	res := TraceResult(c.Kind, cmp.Or(c.Result, "-"), c.Reason)
 	return ModelCons{St: c.State, Kind: c.Kind, Row: c.Holder, Att: c.Attempt, Head: h, Res: res,
-		Author: cmp.Or(c.Author, "none"), Review: c.Review, Prior: prior, Finding: fixOrNone(c.Finding)}, err
+		Author: cmp.Or(c.Author, "none"), Review: c.Review, Prior: prior, Finding: fixOrNone(c.Finding), Line: line}, err
 }
 
 func fixOrNone(f string) string {

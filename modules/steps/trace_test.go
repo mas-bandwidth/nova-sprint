@@ -321,7 +321,11 @@ func (w *traceWalk) reportOne() {
 			head = Sha(c.Attempt)
 		}
 	}
-	pl, r := w.reportPlan(id, res, head, res+" by the walk")
+	// Each reason names its consumer: Steps.tla leaves reasons out, so the
+	// walk never repeats a fail's first line, which would hold the card
+	// (card.RepeatedFail, modelled in tla/CardMachine.tla and bound by the
+	// card walk's trace, not here).
+	pl, r := w.reportPlan(id, res, head, res+" by the walk at "+id)
 	if r != nil || !w.apply("report", pl.Expect, pl.Writes...).Accepted {
 		return
 	}

@@ -11,6 +11,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -19,10 +20,11 @@ import (
 // and the counts every question shares, computed once.
 type index struct {
 	snap    store.Snapshot
-	rows    []rostered          // the snapshot's rows the roster names, by name, byte order
-	facts   map[string]rostered // the same, by name
-	load    map[string][2]int   // row -> working, ready consumers it holds
-	reads   map[string][]string // producer -> its done reads of its current review and head, by id
+	rows    []rostered             // the snapshot's rows the roster names, by name, byte order
+	facts   map[string]rostered    // the same, by name
+	load    map[string][2]int      // row -> working, ready consumers it holds
+	reads   map[string][]string    // producer -> its done reads of its current review and head, by id
+	cons    map[string][]card.Card // producer -> its consumers, for last_bounce
 	streams map[string]*streamCount
 	sets    map[string]*candidateSet // by the deal's list; with none, by tier, kind and (for a read) author
 }
@@ -64,7 +66,7 @@ type streamCount struct{ merging, review, cards, landed int }
 // newIndex indexes snap with ro: a row the roster does not name is in no
 // question (Judgements reports it).
 func newIndex(snap store.Snapshot, ro roster.Roster) *index {
-	ix := &index{snap: snap, facts: map[string]rostered{}, load: map[string][2]int{}, reads: map[string][]string{}, streams: map[string]*streamCount{}, sets: map[string]*candidateSet{}}
+	ix := &index{snap: snap, facts: map[string]rostered{}, load: map[string][2]int{}, reads: map[string][]string{}, cons: map[string][]card.Card{}, streams: map[string]*streamCount{}, sets: map[string]*candidateSet{}}
 	for _, r := range snap.Rows {
 		if f, ok := rosterOf(ro, r); ok {
 			ix.rows, ix.facts[r.Name] = append(ix.rows, f), f
@@ -90,6 +92,7 @@ func (ix *index) count(c store.Card) {
 		l[0] += b2i(c.State == "working")
 		l[1] += b2i(c.State == "ready")
 		ix.load[c.Holder] = l
+		ix.cons[c.Of] = append(ix.cons[c.Of], card.FromStore(c))
 		if p, ok := ix.snap.Cards[c.Of]; ok && c.Kind == "read" && c.State == "done" && c.Review == p.Review && c.Head == p.Head {
 			ix.reads[c.Of] = append(ix.reads[c.Of], c.ID)
 		}
@@ -193,8 +196,10 @@ func orderCard(c store.Card) starlark.Value {
 }
 
 // card is the subject of rows, reads and verdict: id, stream, tier (its
-// minimum), attempt, bounces, priority and writer_rank (the rank of the row
-// that wrote the head; the card's tier when that row is unknown). Never the
+// minimum), attempt, bounces, priority, writer_rank (the rank of the row
+// that wrote the head; the card's tier when that row is unknown) and
+// last_bounce (what last sent it back: "fail" from a work fail, "fix" from a
+// read that said fix, "" for neither; card.LastBounce). Never the
 // prose (rowan2's ruling 4 and 5): a brief of any size would enter every
 // input and the answer cache's key, so the inputs would grow with the briefs
 // and not with the card count.
@@ -204,7 +209,8 @@ func (ix *index) card(c store.Card) starlark.Value {
 		writer = Rank(r.tiers)
 	}
 	return newStruct("id", c.ID, "stream", c.Stream, "tier", c.Tier, "attempt", c.Attempt,
-		"bounces", c.Bounces, "priority", cmp.Or(c.Priority, "normal"), "writer_rank", writer)
+		"bounces", c.Bounces, "priority", cmp.Or(c.Priority, "normal"), "writer_rank", writer,
+		"last_bounce", card.LastBounce(card.FromStore(c), ix.cons[c.ID]))
 }
 
 // candidate is one row offered to rows: name, tiers, rank, model, harness,
