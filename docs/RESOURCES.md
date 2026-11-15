@@ -211,6 +211,18 @@ short, 'what resources do you want for this work, as coordinator?'"
 A read needs less than the work it reads. Work that compiles and runs tests
 needs more than work that edits a page.
 
+## Levels
+
+A friend is at a higher level than the machines. Glenn: "so the friend is
+higher level".
+
+1. **Machines** have tags and resources. This is configuration.
+2. **Holds** are resources acquired on a machine for a while, and released.
+3. **Whoever does the work** acquires holds: a friend, a bench worker, a CI
+   runner. None of them is a machine. Each chooses, or is told, where its work
+   runs.
+4. **Cards** say what the work needs, as the coordinator judged it.
+
 ## What takes resources
 
 A consumer of a card (each work attempt and each read), a GitHub runner's job,
