@@ -162,6 +162,24 @@ and releases all of it when it ends, however it ends.
 | `memory 8` | holds 8 GB |
 | `ps5 1` | holds the machine's PS5 |
 
+### How a card states it
+
+A card describes what it needs as tags and numbers, and a number left out
+means 1. *Settled.*
+
+Glenn: "card describes the resources it needs via tags and numbers (a number
+omitted assume 1)".
+
+A card that needs four CPU units, eight gigabytes, a Mac with Metal and the
+PS5 says:
+
+    cpu 4, memory 8, mac, metal, ps5
+
+`cpu 4` and `memory 8` are amounts. `ps5` has no number, so it is `ps5 1`.
+`mac` and `metal` are tags. The card's writer does not have to know which
+names are tags and which are resources: the fleet's configuration says what
+each name is, and a name with no number reads correctly either way.
+
 ### Who says what work requires
 
 The coordinator, by judgement, for each piece of work. *Settled.* There is no
@@ -320,11 +338,11 @@ These are Glenn's to decide before this layer is built.
 1. **The speed that makes a core fast.** `fast-core` needs one line: the
    one-thread score a core must reach. It is set after the fleet has been
    measured, from the numbers, and not before.
-2. **How a card states its resources.** The coordinator decides them for each
-   piece of work. Where they are written (a line of the brief, as tier and
-   routes are today), whether a card's reads are stated apart from its work,
-   and whether a card that states no `cpu` or `memory` is refused when it is
-   added are not chosen.
+2. **A card's reads, and a card that names no CPU.** A read is cheaper than the
+   work it reads, so whether a card states its reads' needs apart from its
+   work's is not chosen. Nor is what a card holds when it does not name `cpu`
+   or `memory` at all. Rowan's reading of "a number omitted assume 1" is that
+   it then holds 1 of each, so no card is refused for leaving them out.
 3. **Where a friend's work acquires.** Two ways are on the table. In one, a
    friend carries a tag (such as `codex`) that ties its work to a particular
    machine. In the other, resources place a friend's work exactly as they
