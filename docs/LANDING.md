@@ -89,7 +89,18 @@ It is let go only when:
   still the tip it was gated on, as before);
 - GitHub says its PR conflicts with a base that moved: it is built again
   in the same pass, and a merge that fails is the conflict (below);
-- its branch is no longer at it on origin: built again in the same pass.
+- its branch is no longer at it on origin: built again in the same pass;
+- the base moved since it was built and no runner has taken its CI yet
+  (2026-11-15). That means a run is queued at the gate's sha and none is
+  in progress, read with the forge's `Runs`. The gate is rebuilt on the new
+  tip and pushed in the same pass, and the replaced head's runs are
+  cancelled. A gate whose CI a runner has taken is still read to its
+  verdict, so a base that moves faster than one CI run never restarts it
+  for ever. A run list that cannot be read keeps the gate.
+  (`keeps_internal`, `queuedOnly_internal`; `tla/LandEdge.tla`
+  `MovedQueued`, liveness `MovedQueuedLetsGo` on `LandEdgeQueuedLive.cfg`,
+  with CI that may never start; reversed witness `LandEdgeKeptOnMovedBase`.)
+
 
 A red or a no verdict is judged on the gate as built, with its base tip
 named. One group is in flight per stream: layer 3 asks a stream's next

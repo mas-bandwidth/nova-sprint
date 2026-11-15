@@ -34,6 +34,7 @@ TraceAction(k) ==
       x == TraceLog[k].arg
   IN CASE a = "Tick"      -> Tick
        [] a = "Pass"      -> Pass(x)
+       [] a = "CIStarts"  -> CIStarts(x)
        [] a = "CIStep"    -> CIStep(x)
        [] a = "Late"      -> Late(x)
        [] a = "BaseMoves" -> \E b \in SUBSET Checks : BaseMoves(b)

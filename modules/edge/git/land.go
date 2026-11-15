@@ -157,7 +157,7 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 	if moved_internal(req, tips, &res) {
 		return res, nil
 	}
-	kept, err := keeps_internal(ctx, g, req)
+	kept, err := keeps_internal(ctx, g, fg, req, baseTip)
 	if err != nil {
 		return res, err
 	}
@@ -166,6 +166,7 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 		if err != nil || out.Outcome != OutcomeConflict || req.Gate.Base == baseTip {
 			return out, err
 		}
+
 	}
 	prHead, gated, done, err := gatedHead_internal(ctx, g, req, baseTip, &res)
 	if err != nil || done {
@@ -248,17 +249,48 @@ func moved_internal(req LandRequest, tips []string, res *LandResult) bool {
 }
 
 // keeps_internal is whether the request's kept gate is still the one to
-// read: its branch is still at it (the card's branch at its one head; the
-// group branch, read on origin).
-func keeps_internal(ctx context.Context, g Git, req LandRequest) (bool, error) {
+// read: its branch still at it (the card's branch at its one head; the
+// group branch, read on origin), and, when the base moved since it was
+// built, its CI already started. A gate on a moved base whose CI has not
+// started (a run queued at its sha, none in progress) is let go
+// (Glenn 2026-11-15: a base move lets the in-flight group go): the pass
+// rebuilds it on the new tip and pushes it, and quietRuns_internal cancels
+// the replaced head's runs. A gate whose CI a runner has taken is read to
+// its verdict, as before: rebuilding it on every move never lets CI finish
+// (live 2026-11-10). A run list that cannot be read keeps the gate
+// (LANDING.md "A group in flight"; tla/LandEdge.tla Gate1).
+func keeps_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseTip string) (bool, error) {
 	switch {
 	case req.Gate.SHA == "":
 		return false, nil
+	case req.Gate.Base != baseTip && queuedOnly_internal(ctx, fg, req):
+		return false, nil
+
 	case req.Gate.Branch != GroupBranch(req.Stream):
 		return len(req.Heads) == 1 && req.Gate.SHA == req.Heads[0] && req.Gate.Branch == req.Branches[0], nil
 	}
 	tip, _, err := g.LsRemote(ctx, req.RepoDir, GroupRef(req.Stream))
 	return err == nil && tip == req.Gate.SHA, err
+}
+
+// queuedOnly_internal is whether the kept gate's CI has not started: a run
+// is queued at its sha on its branch and none is in progress there.
+func queuedOnly_internal(ctx context.Context, fg forge.Forge, req LandRequest) bool {
+	runs, err := fg.Runs(ctx, req.Repo)
+	if err != nil {
+		return false
+	}
+	queued := false
+	for _, r := range runs {
+		if r.Branch != req.Gate.Branch || !strings.EqualFold(r.HeadSHA, req.Gate.SHA) {
+			continue
+		}
+		if r.Status != "queued" {
+			return false
+		}
+		queued = true
+	}
+	return queued
 }
 
 // keptResult_internal is res for a pass that reads the kept gate: its

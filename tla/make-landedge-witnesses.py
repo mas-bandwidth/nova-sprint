@@ -28,6 +28,7 @@ CONSTS = consts("Spec")
 HELD_CONSTS = consts("Spec", shared="FALSE")
 LIVE_CONSTS = consts("LiveSpec")
 SHARED_LIVE_CONSTS = consts("SharedLiveSpec", flaky="FALSE")
+QUEUED_LIVE_CONSTS = consts("QueuedLiveSpec", flaky="FALSE")
 
 REACH = {
     "LandEdgeNeverRungTwo": "a pass gates the group branch (rung 2)",
@@ -132,7 +133,15 @@ LIVE = [
      "judged, and waits for a human who may never come.",
      [(MERGEABLE, 'Mergeable(r) == r.res = "green"   \\* FAULT: a shared red waits for a human')],
      SHARED_LIVE_CONSTS),
+    ("LandEdgeKeptOnMovedBase", "MovedQueuedLetsGo",
+     "The old rule (v2.0.47): a gate kept in flight is read whatever the\n"
+     "base did, its CI still queued on a base that is gone: if no runner\n"
+     "takes it, it waits for ever (schema group PR 3520, 2026-11-15).",
+     [("KeepsGate(s) == Kept(s) /\\ ~MovedQueued(s)",
+       "KeepsGate(s) == Kept(s)   \\* FAULT: kept on a moved base while queued")],
+     QUEUED_LIVE_CONSTS),
 ]
+
 
 
 def die(msg):

@@ -13,10 +13,12 @@ func group_internal(c1, c2 string) LandRequest {
 }
 
 // C: a gate kept by the caller (LandRequest.Gate) is read as it is while
-// its CI has no verdict: a base that moved meanwhile neither rebuilds nor
-// pushes it. Green on a moved base lets it go (base_moved, nothing kept),
-// and the next pass builds the group on the new tip.
-func TestLandKeptGateIsNotRebuiltWhileCIRuns(t *testing.T) {
+// its CI has no verdict and the base has not moved. A base that moved
+// while the gate's CI is only queued lets it go (Glenn 2026-11-15): the
+// same pass rebuilds the group on the new tip, pushes it, and cancels the
+// replaced head's runs. Once a runner took it (a run in progress), it is
+// read to its verdict on the base it was built on (live 2026-11-10).
+func TestLandKeptGateIsRebuiltWhenTheBaseMoves(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	gf, ff, root, c1, c2 := landWorld_internal()
@@ -27,41 +29,46 @@ func TestLandKeptGateIsNotRebuiltWhileCIRuns(t *testing.T) {
 		t.Fatalf("pass 1 = %+v (kept %+v) err=%v, want the group gated and kept", res, res.Kept(), err)
 	}
 	ff.SetCheck("o/r", g1, forge.CheckRollup{State: forge.CheckPending, Pending: 4})
-	moved := gf.AddCommit(root, map[string]string{"m.go": "package m\n"}, "v2")
 	req.Gate = res.Kept()
 	res, err = LandPass(ctx, gf, ff, req)
 	if err != nil || res.Outcome != OutcomePending || res.GatedSHA != g1 || gf.OriginRef(GroupRef("s1")) != g1 || res.BaseTip != root || res.Kept() != req.Gate {
 		t.Fatalf("pass 2 = %+v err=%v, want pending on the kept gate %s built on %s, nothing pushed", res, err, g1, root)
 	}
-	ff.SetCheck("o/r", g1, forge.CheckRollup{State: forge.CheckGreen})
-	res, err = LandPass(ctx, gf, ff, req)
-	if err != nil || res.Outcome != OutcomeBaseMoved || res.Kept() != (Gate{}) || gf.OriginRef("v2") != moved {
-		t.Fatalf("pass 3 = %+v err=%v, want base_moved, the gate let go and nothing merged", res, err)
+	moved := gf.AddCommit(root, map[string]string{"m.go": "package m\n"}, "v2")
+	ff.SetRuns(forge.Run{ID: 8, Branch: GroupBranch("s1"), HeadSHA: g1, Status: "queued"}, forge.Run{ID: 9, Branch: GroupBranch("s1"), HeadSHA: g1, Status: "in_progress"})
+	if res, err = LandPass(ctx, gf, ff, req); err != nil || res.Outcome != OutcomePending || res.GatedSHA != g1 || res.BaseTip != root || len(ff.Cancelled()) != 0 {
+		t.Fatalf("started = %+v err=%v, want the started gate %s read on %s, nothing cancelled", res, err, g1, root)
 	}
-	req.Gate = res.Kept()
+	ff.SetRuns(forge.Run{ID: 9, Branch: GroupBranch("s1"), HeadSHA: g1, Status: "queued"})
 	res, err = LandPass(ctx, gf, ff, req)
-	if err != nil || res.GatedSHA == g1 || res.BaseTip != moved {
-		t.Fatalf("pass 4 = %+v err=%v, want the group rebuilt on %s", res, err, moved)
+	if err != nil || res.GatedSHA == g1 || res.BaseTip != moved || gf.OriginRef(GroupRef("s1")) != res.GatedSHA || res.Kept().Base != moved {
+		t.Fatalf("pass 3 = %+v err=%v, want the group rebuilt on %s and pushed", res, err, moved)
 	}
 	if ok, _ := gf.IsAncestor(ctx, "", moved, res.GatedSHA); !ok {
 		t.Fatal("the rebuilt group does not contain the moved base")
 	}
+	if !slices.Equal(ff.Cancelled(), []int64{9}) {
+		t.Fatalf("cancelled %v, want the replaced head's run 9", ff.Cancelled())
+	}
 }
 
-// C: a kept rung-1 gate (the card's own branch) is read to its verdict on
-// the base it was gated on, never moved to the group because base moved.
-func TestLandKeptRungOneGateIsJudgedOnItsBase(t *testing.T) {
+// C: a kept rung-1 gate (the card's own branch, a hand landing's) whose CI
+// is only queued on a base that moved is let go too: its head no longer
+// contains the tip, so the pass gates the group built on the new tip.
+func TestLandKeptRungOneGateLetGoWhenTheBaseMoves(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	gf, ff, root, c1, _ := landWorld_internal()
 	req := one_internal(c1)
 	res, _ := LandPass(ctx, gf, ff, req)
-	gf.AddCommit(root, map[string]string{"m.go": "package m\n"}, "v2")
+	moved := gf.AddCommit(root, map[string]string{"m.go": "package m\n"}, "v2")
 	ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckRed, Failing: []string{"unit"}, URL: "https://github.com/o/r/actions/runs/1/job/2"})
 	req.Gate = res.Kept()
+	ff.SetRuns(forge.Run{ID: 7, Branch: "sprint/s1/c1", HeadSHA: c1, Status: "queued"})
 	res, err := LandPass(ctx, gf, ff, req)
-	if err != nil || res.Outcome != OutcomeRed || res.Rung != 1 || res.GatedSHA != c1 || res.BaseTip != root || gf.OriginRef(GroupRef("s1")) != "" {
-		t.Fatalf("pass = %+v err=%v, want ci_red at rung 1 on %s, no group", res, err, root)
+	if err != nil || res.Rung != 2 || res.GatedSHA == c1 || res.BaseTip != moved || gf.OriginRef(GroupRef("s1")) != res.GatedSHA {
+
+		t.Fatalf("pass = %+v err=%v, want the group gated on %s", res, err, moved)
 	}
 }
 

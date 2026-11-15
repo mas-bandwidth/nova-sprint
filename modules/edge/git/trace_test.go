@@ -110,8 +110,24 @@ type landWalk_internal struct {
 type walkForge_internal struct {
 	*fakeForge_internal
 	w                         *landWalk_internal
-	gate, ci, res             string
+	gate, gateBranch, ci, res string
 	absent, move, old, rested bool
+}
+
+// Runs is the kept gate's unfinished run as the model's ci says it: queued
+// before CIStarts, in progress while its checks run; none otherwise.
+func (f *walkForge_internal) Runs(context.Context, string) ([]forge.Run, error) {
+	f.call_internal("Runs")
+	if f.rested {
+		return nil, &forge.FaultError{Kind: forge.FaultRateLimit, Identity: forge.HostLogin, Reason: "HTTP 403: API rate limit exceeded"}
+	}
+	switch f.ci {
+	case "queued":
+		return []forge.Run{{ID: 1, Branch: f.gateBranch, HeadSHA: f.gate, Status: "queued"}}, nil
+	case "running", "partial":
+		return []forge.Run{{ID: 1, Branch: f.gateBranch, HeadSHA: f.gate, Status: "in_progress"}}, nil
+	}
+	return nil, nil
 }
 
 const walkJob = "https://example.invalid/actions/runs/1/job/2"
@@ -139,7 +155,7 @@ func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) 
 		case sha == f.gate:
 			ci, res = f.ci, f.res
 		case !base:
-			ci, res = "running", "none" // a gate new to the request
+			ci, res = "queued", "none" // a gate new to the request
 		default: // a base tip's own run: test alone, never lint
 			r.Ran, r.Failing = []string{"test"}, []string{"test"}
 			ci, res = "done", map[bool]string{true: "red", false: "green"}[slices.Contains(reds, "test")]
@@ -148,7 +164,7 @@ func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) 
 		switch {
 		case f.absent && !base:
 			r.State = forge.CheckAbsent
-		case ci == "running":
+		case ci == "running" || ci == "queued":
 			r.State = forge.CheckPending
 		case ci == "partial":
 			r.State, r.Waiting, r.Pending = forge.CheckRed, !f.old, 1
@@ -427,7 +443,7 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, re
 		req.Heads = append(req.Heads, w.heads[c])
 		req.Branches = append(req.Branches, "sprint/"+s+"/"+c)
 	}
-	w.ff.gate, w.ff.ci, w.ff.res = r.gate, r.ci, r.res
+	w.ff.gate, w.ff.gateBranch, w.ff.ci, w.ff.res = r.gate, r.pin.Branch, r.ci, r.res
 	w.ff.absent, w.ff.move, w.ff.rested = absent, move, rested
 	w.ff.OnMerge = func(sha string) (string, error) {
 		if refuse {
@@ -442,7 +458,7 @@ func (w *landWalk_internal) passWith_internal(s string, absent, move, refuse, re
 		w.t.Fatalf("LandPass %s: %v", s, err)
 	}
 	if res.GatedSHA != "" && (res.GatedSHA != r.gate || r.ci == "none") { // a gate new to the request: its CI starts
-		r.gate, r.gbase, r.rung, r.ci, r.res, r.late = res.GatedSHA, w.baseIndex_internal(res.BaseTip), res.Rung, "running", "none", false
+		r.gate, r.gbase, r.rung, r.ci, r.res, r.late = res.GatedSHA, w.baseIndex_internal(res.BaseTip), res.Rung, "queued", "none", false
 	}
 	r.pin = res.Kept() // the run keeps the gate while its CI has no verdict (edges.land)
 	switch res.Outcome {
@@ -534,6 +550,11 @@ func (w *landWalk_internal) step_internal() walkMove_internal {
 			continue
 		}
 		moves = append(moves, walkMove_internal{act: "Pass", arg: s}, walkMove_internal{act: "Pass", arg: s})
+		if r.ci == "queued" {
+			for range 6 {
+				moves = append(moves, walkMove_internal{act: "CIStarts", arg: s})
+			}
+		}
 		if r.ci == "running" || r.ci == "partial" {
 			moves = append(moves, walkMove_internal{act: "CIStep", arg: s}, walkMove_internal{act: "CIStep", arg: s})
 		}
@@ -557,8 +578,13 @@ func (w *landWalk_internal) step_internal() walkMove_internal {
 		return m
 	case "Pass":
 		w.pass_internal(m.arg)
+	case "CIStarts":
+		r := w.req[m.arg]
+		r.ci = "running"
+		w.req[m.arg] = r
 	case "CIStep":
 		w.ciStep_internal(m.arg)
+
 	case "Late":
 		r := w.req[m.arg]
 		r.late = true
@@ -799,13 +825,13 @@ func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
 		tlaKeys_internal(w.js), tlaKeys_internal(w.held), strings.ToUpper(fmt.Sprint(w.ticked)), w.passes)
 }
 
-// TestLandEdgeTraceRefinementWalk walks 32 seeds to the end and, with
+// TestLandEdgeTraceRefinementWalk walks 64 seeds to the end and, with
 // NOVA_TRACE_DIR set, writes each one's trace for tla/check-trace.sh. It
 // fails when the walks together never reach a rung of the ladder.
 func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
 	seen := map[string]bool{}
-	for seed := int64(1); seed <= 32; seed++ {
+	for seed := int64(1); seed <= 64; seed++ {
 		text, acts := walkLandEdge_internal(t, seed)
 		for _, a := range acts {
 			seen[strings.SplitN(a, ":", 2)[0]] = true
@@ -827,7 +853,7 @@ func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"Tick", "Pass", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd", "rested", "shared", "prproof", "fix"} {
+	for _, want := range []string{"Tick", "Pass", "CIStarts", "CIStep", "Late", "Answer", "BaseMoves", "rung1", "rung2", "hand", "noverdict", "red", "odd", "rested", "shared", "prproof", "fix"} {
 
 		if !seen[want] {
 			t.Errorf("the walks never reached %s", want)
