@@ -169,13 +169,13 @@ WITNESSES = [
      "same brief is dealt again and refuted again, every attempt (live\n"
      "2026-11-09: one card refuted at w24, w25 and w26, dealt on to w27).",
      [("  /\\ LET stop == cs[c].res = \"refuted\" \\/ Repeats(p, c) IN\n",
-       "  /\\ LET stop == Repeats(p, c)   \\* FAULT: was waiting held on a refutation too\n", 1)]),
+       "  /\\ LET stop == Repeats(p, c) IN   \\* FAULT: was waiting held on a refutation too\n", 1)]),
     ("CardRepeatRedealt", "RepeatNeverRedealt", "repeat",
      "A fail repeating the previous bounce's first line goes back to ready\n"
      "like any fail: the same brief is dealt a third time and fails again\n"
      "(two audits, 2026-11-15: one merge conflict at w4, w5, w6 and w7).",
      [("  /\\ LET stop == cs[c].res = \"refuted\" \\/ Repeats(p, c) IN\n",
-       "  /\\ LET stop == cs[c].res = \"refuted\"   \\* FAULT: was \\/ Repeats(p, c)\n", 1)]),
+       "  /\\ LET stop == cs[c].res = \"refuted\" IN   \\* FAULT: was \\/ Repeats(p, c)\n", 1)]),
     ("CardHeldDealt", "HeldNeverDealt", "life",
      "Resolve does not refuse a held producer: the deal takes a card the\n"
      "coordinator holds, or one waiting on a missing route, as soon as its\n"

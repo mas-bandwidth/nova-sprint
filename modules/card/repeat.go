@@ -50,7 +50,10 @@ func lastReported(p string, cons []Card, below int) (Card, bool) {
 // fresh budget: what it was held for never counts again), and the latest
 // earlier attempt that reported is a plain fail with the same first line.
 // An ok between them ends the run (the bounce after it was a read's fix, or
-// none), and so does an unhold.
+// none), and so does an unhold. A pushed head, the rank it was dealt at and
+// an edited brief do not: unlike same_finding (steps' noProgress), the same
+// first line twice is the stop, whatever the attempts pushed (the audits'
+// repeats pushed heads, so a run that restarts on a head never held them).
 func RepeatedFail(p Card, cons []Card, cur Card) (Card, bool) {
 	line := FailLine(cur.Reason)
 	if !failClass(cur) || cur.Of != p.ID || line == "" || p.Bounces-p.BounceBase < 1 {
@@ -74,7 +77,9 @@ func RepeatReason(prev, cur Card) string {
 // failed, "fix" when that attempt finished ok and a read of p's current
 // review said fix (the ReadFix bounce), "" otherwise (no attempt reported,
 // or none bounced since its latest ok; a card in review has not been sent
-// back since). Only the result: no reason or finding text.
+// back since; after a Red, whose review rose, ""). "fix" reads the done fix
+// read, not the ReadFix move: a card held from review over a fix read and
+// unheld is "fix" too. Only the result: no reason or finding text.
 func LastBounce(p Card, cons []Card) string {
 	w, ok := lastReported(p.ID, cons, p.Attempt+1)
 	switch {
