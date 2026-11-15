@@ -42,6 +42,10 @@
 #                       kept hand, refused at that record
 #   runner-breaker      the same test: a restart that kept its hand to resume it, refused
 #                       at its Restart record (all three written here, not committed)
+#   runner-walk-gate-not-run  TestRunnerTraceRefinementWalk: a done-when with no network for
+#                       it, at an unfinished prior head, a fault (GateNotRun)
+#   runner-breaker-gate-fails  the same walk with the old code's fail that bounces there,
+#                       refused at that record (both written here, not committed)
 #   landedge-breaker-<old behaviour>   modules/edge/git/trace_test.go
 #                       TestLandEdgeTraceRefusesOldBehaviours: the old landing's judgements, its
 #                       gate rebuilt in flight, its whole-group conflict (committed fixtures, refused at their last record)
@@ -64,7 +68,7 @@ on() {
         { [ "$1" = steps ] && [ "${GROUP#steps-}" != "$GROUP" ]; }
 }
 
-find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' -o -name 'runner-breaker' -o -name 'runner-breaker-refused' -o -name 'runner-restart' -o -name 'hook-walk-*' -o -name 'verbfence-walk-*' -o -name 'basered-walk-*' -o -name 'answeredquiet-walk-*' -o -name 'mergenag-walk-*' \) -exec rm -rf {} +
+find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' -o -name 'runner-breaker' -o -name 'runner-breaker-*' -o -name 'runner-restart' -o -name 'hook-walk-*' -o -name 'verbfence-walk-*' -o -name 'basered-walk-*' -o -name 'answeredquiet-walk-*' -o -name 'mergenag-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
 # The walks write disjoint trace dirs, so they run in parallel; each one's
 # exit code is kept and any failure fails the script after all have ended.

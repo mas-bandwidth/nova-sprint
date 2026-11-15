@@ -103,6 +103,10 @@ WITNESSES = [
      "A retry is staged on its bare prior head, the stream's tip not merged in (the code before 2026-11-15): it meets the last attempt's conflict again after it.",
      [("![c].stale = FALSE]   \\* a retry's prior head has the stream tip merged in",
        "![c].stale = (jobDir[c].prior # \"none\")]   \\* FAULT: the bare prior head")]),
+    ("RunnerGateNotRunFails", "GateNotRunIsAFault",
+     "A done-when gate that did not run (its toolchain or the network missing in the wall) fails the card (the code before 2026-11-15).",
+     [("![c].notRun = TRUE, ![c].outcome = \"fault\", ![c].bounced = FALSE]",
+       "![c].notRun = TRUE, ![c].outcome = \"fail\", ![c].bounced = TRUE]")]),
 ]
 
 

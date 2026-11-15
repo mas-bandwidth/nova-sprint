@@ -48,6 +48,7 @@ TraceAction(k) ==
        [] a = "Rebase"    -> Rebase(c)
        [] a = "NothingNew" -> NothingNew(c)
        [] a = "Conflict"  -> Conflict(c)
+       [] a = "GateNotRun" -> GateNotRun(c)
        [] a = "Push"      -> Push(c)
        [] a = "Report"    -> Report(c)
        [] a = "ReplyLost" -> ReplyLost(c)
