@@ -805,11 +805,13 @@ func (h *runnerWalkHarness_internal) atPriorStep_internal(t *testing.T, c string
 
 // gateNotRunStep_internal is the step after an ok harvest whose done-when
 // cannot run on this bench (Runner.tla GateNotRun), taken by the worker's
-// own rebaseAndTestStep_internal: the wall's run of the gate says no host
-// name resolved (missingRoute_internal's network). The action is named by
+// own rebaseAndTestStep_internal. cause "network": the wall's run of the
+// gate says no host name resolved (missingRoute_internal's network);
+// "checkout": the job's tree could not be put at the head for it
+// (applyRebased_internal's reset, at a prior head). The action is named by
 // that cause; the outcome, and the bounce a fail spends, are the code's,
 // so TLC refuses a code that fails the card for a gate that did not run.
-func (h *runnerWalkHarness_internal) gateNotRunStep_internal(t *testing.T, c string) string {
+func (h *runnerWalkHarness_internal) gateNotRunStep_internal(t *testing.T, c, cause string) string {
 	t.Helper()
 	h.stepN++
 	dir := h.jobDirPath_internal(c)
@@ -818,15 +820,34 @@ func (h *runnerWalkHarness_internal) gateNotRunStep_internal(t *testing.T, c str
 		t.Fatal(err)
 	}
 	h.wall.mu.Lock()
-	h.wall.testFn = func(Job, string) (WallRunResult, error) {
-		return WallRunResult{ExitCode: 128, Output: []byte("fatal: unable to access 'https://forge.invalid/r.git/': Could not resolve host: forge.invalid")}, nil
+	switch cause {
+	case "network":
+		h.wall.testFn = func(Job, string) (WallRunResult, error) {
+			return WallRunResult{ExitCode: 128, Output: []byte("fatal: unable to access 'https://forge.invalid/r.git/': Could not resolve host: forge.invalid")}, nil
+		}
+	case "checkout":
+		if rec.Outcome.Head != rec.PriorHead {
+			t.Fatalf("a failed checkout is walked at the prior head, where the step resets the tree: %s is at %q", c, rec.Outcome.Head)
+		}
+		h.wall.failStep = "reset"
+	default:
+		t.Fatalf("no cause %q", cause)
 	}
 	h.wall.mu.Unlock()
-	if err := h.runner.rebaseAndTestStep_internal(context.Background(), dir, &rec); err != nil {
+	err = h.runner.rebaseAndTestStep_internal(context.Background(), dir, &rec)
+	h.wall.mu.Lock()
+	h.wall.failStep = ""
+	h.wall.mu.Unlock()
+	if err != nil {
 		t.Fatalf("the stream-and-test step of %s: %v", c, err)
 	}
-	if rec.Outcome.Result != "fault" || card.RouteName(rec.Outcome.Reason) != "network" {
-		t.Errorf("a done-when with no network for it left %+v, want the network's route fault", rec.Outcome) // TLC refuses the trace too
+	switch { // TLC refuses the trace too
+	case rec.Outcome.Result != "fault":
+		t.Errorf("a done-when that did not run (%s) left %+v, want a fault", cause, rec.Outcome)
+	case cause == "network" && card.RouteName(rec.Outcome.Reason) != "network":
+		t.Errorf("a done-when with no network for it left %+v, want the network's route fault", rec.Outcome)
+	case cause == "checkout" && !strings.HasPrefix(rec.Outcome.Reason, "the rebased head could not be checked out"):
+		t.Errorf("a failed checkout of the head left %+v, want the checkout's fault", rec.Outcome)
 	}
 	h.bounced[c], h.notRun[c] = rec.Outcome.Result == "fail", true
 	rec.State = JobRebased
@@ -868,19 +889,19 @@ func walkPriorHead_internal(t *testing.T, prior string) []runnerTraceStep_intern
 	return append(steps, refinementRunnerState_internal(t, h, "Done", "none"))
 }
 
-// walkGateNotRun_internal is a scripted walk of a gate the bench cannot
-// run: c1, at an unfinished prior head, its done-when with no network for
-// it (gateNotRunStep_internal), then pushed, reported and cleaned; c2 a
-// first attempt. breaker is the walk to that step with the outcome the
-// code before 2026-11-15 left there, a fail that bounces.
-func walkGateNotRun_internal(t *testing.T) (steps, breaker []runnerTraceStep_internal) {
+// walkGateNotRun_internal is a scripted walk of a gate the step cannot
+// run: c1, at an unfinished prior head, its done-when not run for cause
+// (gateNotRunStep_internal), then pushed, reported and cleaned; c2 a first
+// attempt. breaker is the walk to that step with the outcome the code
+// before 2026-11-15 left there, a fail that bounces.
+func walkGateNotRun_internal(t *testing.T, cause string) (steps, breaker []runnerTraceStep_internal) {
 	t.Helper()
 	h := newRunnerWalkHarness_internal(t)
 	h.prior["c1"], h.atPriorAlways = "unfinished", true
 	steps = []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
 	do := func(act, c string) {
 		if act == "GateNotRun" {
-			act = h.gateNotRunStep_internal(t, c)
+			act = h.gateNotRunStep_internal(t, c, cause)
 		} else {
 			h.applyStep_internal(t, act, c)
 		}
@@ -979,7 +1000,7 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 		return h.atPriorStep_internal(t, m.arg, rng.Intn(4) == 0), m.arg
 	}
 	if m.act == "GateNotRun" { // the code's outcome
-		return h.gateNotRunStep_internal(t, m.arg), m.arg
+		return h.gateNotRunStep_internal(t, m.arg, "network"), m.arg
 	}
 	h.applyStep_internal(t, m.act, m.arg)
 	return m.act, m.arg
@@ -1181,13 +1202,17 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 	// A gate the bench cannot run, at an unfinished prior head, walked by
 	// script; and its breaker, the same walk with the code that failed the
 	// card for it (before 2026-11-15), which TLC must refuse at that step.
-	gate, breaker := walkGateNotRun_internal(t)
-	for _, s := range gate {
-		seen[s.action]++
-	}
-	if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
-		writeRunnerTrace_internal(t, filepath.Join(traceDir, "runner-walk-gate-not-run"), gate, 0)
-		writeRunnerTrace_internal(t, filepath.Join(traceDir, "runner-breaker-gate-fails"), breaker, len(breaker))
+	// Two causes: no network for the done-when, and a checkout of the
+	// head that did not go through.
+	for _, cause := range []string{"network", "checkout"} {
+		gate, breaker := walkGateNotRun_internal(t, cause)
+		for _, s := range gate {
+			seen[s.action]++
+		}
+		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" {
+			writeRunnerTrace_internal(t, filepath.Join(traceDir, "runner-walk-gate-not-run-"+cause), gate, 0)
+			writeRunnerTrace_internal(t, filepath.Join(traceDir, "runner-breaker-gate-fails-"+cause), breaker, len(breaker))
+		}
 	}
 	// The two prior-head paths, each walked once by script.
 	for _, prior := range []string{"finished", "unfinished"} {

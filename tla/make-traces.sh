@@ -42,9 +42,10 @@
 #                       kept hand, refused at that record
 #   runner-breaker      the same test: a restart that kept its hand to resume it, refused
 #                       at its Restart record (all three written here, not committed)
-#   runner-walk-gate-not-run  TestRunnerTraceRefinementWalk: a done-when with no network for
-#                       it, at an unfinished prior head, a fault (GateNotRun)
-#   runner-breaker-gate-fails  the same walk with the old code's fail that bounces there,
+#   runner-walk-gate-not-run-<cause>  TestRunnerTraceRefinementWalk: a done-when not run,
+#                       at an unfinished prior head, a fault (GateNotRun); network: no
+#                       network for it; checkout: the tree not reset to the head for it
+#   runner-breaker-gate-fails-<cause>  the same walk with the old code's fail that bounces there,
 #                       refused at that record (both written here, not committed)
 #   landedge-breaker-<old behaviour>   modules/edge/git/trace_test.go
 #                       TestLandEdgeTraceRefusesOldBehaviours: the old landing's judgements, its
