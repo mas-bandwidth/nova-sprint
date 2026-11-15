@@ -67,4 +67,32 @@ func TestFunctionalRestoreLostRows(t *testing.T) {
 	err = validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "differs from the snapshot in rows")
+
+	// A row retired in the table but live in the log is not lost either: it is
+	// left, not brought back, and the check names rows.
+	_, err = connect(t, dsn).Exec(ctx, "UPDATE sprint.rows SET flaps = 0, retired = true WHERE name = 'lost'")
+	require.NoError(t, err)
+	names, err = p.RestoreLostRows(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, names)
+	var retired bool
+	require.NoError(t, connect(t, dsn).QueryRow(ctx, "SELECT retired FROM sprint.rows WHERE name = 'lost'").Scan(&retired))
+	assert.True(t, retired, "the retired row is left as it is")
+	err = validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "differs from the snapshot in rows")
+
+	// An epoch the log does not reach: no row is lost in it, nothing is
+	// written, and the check names the epoch.
+	_, err = connect(t, dsn).Exec(ctx, "UPDATE sprint.rows SET retired = false WHERE name = 'lost'; DELETE FROM sprint.rows WHERE name = 'lost'; UPDATE sprint.epoch SET n = n + 1")
+	require.NoError(t, err)
+	names, err = p.RestoreLostRows(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, names)
+	var rows int
+	require.NoError(t, connect(t, dsn).QueryRow(ctx, "SELECT count(*) FROM sprint.rows WHERE name = 'lost'").Scan(&rows))
+	assert.Zero(t, rows, "nothing is put back across an epoch mismatch")
+	err = validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "epoch")
 }

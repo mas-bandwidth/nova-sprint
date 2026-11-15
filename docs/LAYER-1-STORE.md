@@ -978,8 +978,9 @@ No store write removes a row: a row nova-config no longer names is retired
 (round 32) and stays in `sprint.rows`. A `DELETE` run on the table by hand
 leaves a log that rebuilds to a row the table lacks, so `check --integrity`
 and the first backup's restore verification refuse the store "in rows", and
-`up` cannot start. On the live store, 2026-11-15, it was `space3`, a held,
-unhooked row, deleted by hand after its last event (an unhook).
+`up` cannot start. On the live store it was `space3`, a held, unhooked
+row, deleted by hand on 2026-11-12 after its last event (an unhook) and
+found on 2026-11-15.
 
 - `PG.RestoreLostRows` puts back every row of the current epoch the log
   holds and the table lacks, as the log's last after-image has it (gen,
@@ -991,9 +992,14 @@ unhooked row, deleted by hand after its last event (an unhook).
   lost row: it is left, and the integrity check still names it. The check
   itself is unchanged.
 - `up`'s store setup (install) runs it after the schema is current and
-  before the first backup, printing each row it put back on stderr. A put
-  back row nova-config does not name is then retired by the tick as any
-  other.
+  before the first backup. The child names each row it put back in its
+  result (`{"ready":true,"restored":["space3"]}`), since its stderr is shown
+  only when it fails, and `PGSetupStore.Install` prints one line per row:
+  `UP store: row space3 was missing from sprint.rows; put back from the log`.
+  A put back row nova-config does not name is then retired by the tick as
+  any other.
 - `TestFunctionalRestoreLostRows` reproduces it: a held row hooked, beat and
   unhooked, deleted by hand, the check refusing "in rows", the repair, the
-  check passing and the snapshot as before.
+  check passing and the snapshot as before; and the two rows it leaves, one
+  retired in the table but live in the log and an epoch mismatch.
+  `TestSetupStoreSetupPrintsRestoredRows` checks the parent prints them.

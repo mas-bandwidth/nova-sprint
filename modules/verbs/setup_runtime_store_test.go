@@ -76,3 +76,35 @@ func TestSetupStoreReadyChecksTheRolePasswordFirst(t *testing.T) {
 		t.Fatal("role refusal:", ok, err, modes)
 	}
 }
+
+// The store setup child's stderr is shown only when it fails, so the rows it
+// put back from the log come back in its result and the parent names each
+// on Out; a result with none prints nothing.
+func TestSetupStoreSetupPrintsRestoredRows(t *testing.T) {
+	t.Parallel()
+	secrets := NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}
+	answer := `{"ready":true,"restored":["space3","w9"]}`
+	var mode string
+	var out strings.Builder
+	p := PGSetupStore{Binary: "/bin/nova-sprint", Secrets: secrets, Out: &out, Command: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		mode = args[len(args)-1]
+		return []byte(answer), nil
+	}}
+	if err := p.storeSetup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := "UP store: row space3 was missing from sprint.rows; put back from the log\nUP store: row w9 was missing from sprint.rows; put back from the log\n"
+	if mode != "--internal-store-setup" || out.String() != want {
+		t.Fatalf("mode %q, printed %q", mode, out.String())
+	}
+	answer = `{"ready":true}`
+	out.Reset()
+	if err := p.storeSetup(context.Background()); err != nil || out.String() != "" {
+		t.Fatal(err, out.String())
+	}
+	answer = `{"ready":false,"restored":["space3"]}`
+	out.Reset()
+	if err := p.storeSetup(context.Background()); err == nil || !strings.Contains(out.String(), "row space3") {
+		t.Fatal("not ready still names the restored row and fails:", err, out.String())
+	}
+}
