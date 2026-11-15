@@ -97,6 +97,16 @@
 (* OkAtPriorOnlyUnfinished, NothingNewOnlyFinished; witness                *)
 (* RunnerPriorHeadOnlyFails (the old rule); reach check                    *)
 (* NeverOkAtUnfinishedPrior.                                               *)
+(*                                                                         *)
+(* A retry starts on the base (2026-11-15): jobDir[c].stale is that the    *)
+(* job's tree is a prior head without the stream's current tip merged in.  *)
+(* A retry staged on the bare prior head met the conflict the stream step  *)
+(* found after the last attempt again, every attempt (sm-a1-c-unnamed-     *)
+(* record-check, four fails on mini-m5). Stage merges the tip in           *)
+(* (runner.go preMergeTip_internal): clean, the harness starts on the      *)
+(* merge; conflicted, on the merge committed with its markers, which the   *)
+(* prompt tells it to resolve. NoHarnessOnAStaleRetry; witness             *)
+(* RunnerRetryStartsStale. A merge staging cannot make is StageFail.       *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -143,7 +153,7 @@ Init ==
   /\ width = Width
   /\ \E d \in Deals :
        jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE, keepsPrior |-> TRUE,
-                                      prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE, tree |-> FALSE]]
+                                      prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE, tree |-> FALSE, stale |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, returned |-> {}, restarted |-> FALSE, tries |-> 0, refusals |-> 0]
@@ -177,7 +187,7 @@ Stage(c) ==
   /\ jobState[c] = "taken"
   /\ ~jobDir[c].exists   \* refuse existing job directory (never reused)
   /\ jobDir[c].creates = 0
-  /\ jobDir' = [jobDir EXCEPT ![c].exists = TRUE, ![c].creates = @ + 1]
+  /\ jobDir' = [jobDir EXCEPT ![c].exists = TRUE, ![c].creates = @ + 1, ![c].stale = FALSE]   \* a retry's prior head has the stream tip merged in
   /\ jobState' = [jobState EXCEPT ![c] = "staged"]
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
 
@@ -533,8 +543,9 @@ TypeOK ==
                                known : {"none", "job"}, from : {"unset", "none", "job"}]]
   /\ \A c \in Consumers :
        /\ jobDir[c].prior \in PriorKinds
-       /\ jobDir[c].atPrior \in BOOLEAN /\ jobDir[c].nothingNew \in BOOLEAN
+       /\ jobDir[c].atPrior \in BOOLEAN /\ jobDir[c].nothingNew \in BOOLEAN /\ jobDir[c].stale \in BOOLEAN
        /\ jobDir[c].atPrior => jobDir[c].prior # "none"
+       /\ jobDir[c].stale => jobDir[c].prior # "none"
 
 \* No process of a job runs once its harness has ended: not after a wall
 \* command, not after the row lets the job go (a retire of a returned or
@@ -647,6 +658,12 @@ OkAtPriorOnlyUnfinished ==
 \* every attempt: the card could only fail.)
 NothingNewOnlyFinished ==
   \A c \in Consumers : jobDir[c].nothingNew => jobDir[c].prior = "finished"
+
+\* 2026-11-15: no harness runs on a retry's prior head without the stream's
+\* tip merged in, so the conflict the stream step met after the last
+\* attempt is in front of this one, not after it again.
+NoHarnessOnAStaleRetry ==
+  \A c \in Consumers : harnessAlive[c] = 1 => ~jobDir[c].stale
 
 \* Reach checks (each must be violated: the state is reachable).
 NeverOkAtUnfinishedPrior ==

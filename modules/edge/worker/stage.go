@@ -144,14 +144,22 @@ func (g *OSGitOps) fetchHops_internal(ctx context.Context, hops []stageHop_inter
 
 // mergePairs_internal are the (base, tip) pairs that must share a commit in
 // the work clone: each job's base with its prior head, its head and its
-// stream's tip, so the rebase onto the stream and a reader's diff find it.
+// stream's tip, so the rebase onto the stream and a reader's diff find it;
+// and a work retry's prior head with its stream's tip, which staging merges
+// (preMerge_internal) with no remote to deepen from.
 func mergePairs_internal(js []Job, tips map[string]string) [][2]string {
 	var out [][2]string
+	add := func(p [2]string) {
+		if p[0] != "" && p[1] != "" && p[0] != p[1] && !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
 	for _, j := range js {
 		for _, t := range []string{j.PriorHead, j.Head, tips[j.Base]} {
-			if p := [2]string{j.BaseSHA, t}; j.BaseSHA != "" && t != "" && t != j.BaseSHA && !slices.Contains(out, p) {
-				out = append(out, p)
-			}
+			add([2]string{j.BaseSHA, t})
+		}
+		if preMergeWanted_internal(j) {
+			add([2]string{j.PriorHead, tips[j.Base]})
 		}
 	}
 	return out

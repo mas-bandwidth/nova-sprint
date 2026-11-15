@@ -42,6 +42,9 @@ type runnerJobDirState_internal struct {
 	// tree: a process the job started is still running; read back from
 	// the walk's job process table, which only the worker's KillJob empties.
 	tree bool
+	// stale: the job was staged on a prior head with no merge of the
+	// stream's tip; read from the record the worker's stage step left.
+	stale bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -119,6 +122,7 @@ type runnerWalkHarness_internal struct {
 	prior      map[string]string // the deal: each consumer's prior head by kind, chosen by the walk's seed
 	atPrior    map[string]bool   // the harvest found no new head
 	nothingNew map[string]bool
+	stale      map[string]bool        // staged on a prior head with no merge of the stream tip
 	trees      *walkJobTrees_internal // the processes each job left running
 	rng        *rand.Rand             // the walk's: a harvest at the prior head, red done-whens there
 	// atPriorAlways: every harvest of a job with a prior head finds no new
@@ -154,6 +158,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		t.Fatalf("seed runner walk: err=%v rec=%+v", err, rec)
 	}
 	root, git := t.TempDir(), newFakeGit_internal()
+	git.baseTip = testRebSHA // the stream moved on since every prior head: a retry's stage merges it in
 	wall := &stepWall_internal{fakeWall: &fakeWall{}, steps: &[][]string{}}
 	procs := &fakeProcTable{alive: map[string]bool{}}
 	sc := &StoreSprintClient{Store: st, Hooked: map[string]string{"vision.ds": "worker"}, Now: func() time.Time { return t0 }}
@@ -186,7 +191,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		from:     map[string]string{},
 		took:     map[string]bool{},
 		prior:    map[string]string{"c1": "none", "c2": "none"},
-		atPrior:  map[string]bool{}, nothingNew: map[string]bool{},
+		atPrior:  map[string]bool{}, nothingNew: map[string]bool{}, stale: map[string]bool{},
 	}
 }
 
@@ -368,7 +373,8 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 
 		keepsPrior: !h.dropped[c],
 		prior:      h.prior[c], atPrior: h.atPrior[c], nothingNew: h.nothingNew[c],
-		tree: h.trees.has_internal(dir),
+		tree:  h.trees.has_internal(dir),
+		stale: h.stale[c],
 	}
 }
 
@@ -424,6 +430,15 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 			h.git.mu.Unlock()
 		}
 		writeStagedRecord_internal(t, dir, rec)
+		// The worker's own stage step, on the walk's git whose stream (main)
+		// moved on to testRebSHA: stale is read from the record it left, a
+		// prior head it staged with no merge of the stream's tip.
+		job := Job{Consumer: c, Kind: "work", Row: rec.Row, Base: "main", Branch: rec.Branch, BaseSHA: rec.BaseSHA, PriorHead: rec.PriorHead,
+			JobDir: dir, WorktreeDir: filepath.Join(dir, "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
+		if err := h.runner.stageStep_internal(ctx, &job, &rec); err != nil {
+			t.Fatalf("Stage %s: %v", c, err)
+		}
+		h.stale[c] = rec.PriorHead != "" && rec.PreMerge == nil
 	case "Run":
 		rec, err := ReadJobRecord(dir)
 		if err != nil {
@@ -974,9 +989,9 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s, prior |-> %q, atPrior |-> %s, nothingNew |-> %s, tree |-> %s]",
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s, prior |-> %q, atPrior |-> %s, nothingNew |-> %s, tree |-> %s, stale |-> %s]",
 		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed), tlaBool_internal(d.keepsPrior),
-		d.prior, tlaBool_internal(d.atPrior), tlaBool_internal(d.nothingNew), tlaBool_internal(d.tree))
+		d.prior, tlaBool_internal(d.atPrior), tlaBool_internal(d.nothingNew), tlaBool_internal(d.tree), tlaBool_internal(d.stale))
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {

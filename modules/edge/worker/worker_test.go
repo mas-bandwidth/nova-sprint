@@ -30,6 +30,7 @@ const (
 	testRebSHA    = "3333333333333333333333333333333333333333"
 	testPriorSHA  = "4444444444444444444444444444444444444444"
 	testCommitSHA = "5555555555555555555555555555555555555555"
+	testMergeSHA  = "7777777777777777777777777777777777777777" // staging's merge of the stream into a retry (fakeGit.StageWorktree)
 )
 
 func noSleep_internal(time.Duration) {}
@@ -46,25 +47,31 @@ func testClock_internal() func() time.Time {
 }
 
 type fakeGit struct {
-	mu          sync.Mutex
-	stageErr    error
-	headByWT    map[string]string
-	rebasedSHA  string
-	rebaseErr   error
-	pushed      map[string]string
-	originHeads map[string]string
-	dirtyByWT   map[string]bool
-	pushErr     error
-	removedWTs  []string
-	stagedJobs  []Job
-	commits     []string
-	fetches     map[string]int // per repo
-	fetchedJobs map[string]int // per repo: the jobs its fetches were for
-	fetchErr    error
-	pushLog     []fakePush
-	checkouts   []string // every CheckOut's sha
-	streamTip   string   // StreamTip's answer: the stream tip the last merge used
-	tipErr      error
+	mu                sync.Mutex
+	stageErr          error
+	headByWT          map[string]string
+	rebasedSHA        string
+	rebaseErr         error
+	pushed            map[string]string
+	originHeads       map[string]string
+	dirtyByWT         map[string]bool
+	pushErr           error
+	removedWTs        []string
+	stagedJobs        []Job
+	commits           []string
+	fetches           map[string]int // per repo
+	fetchedJobs       map[string]int // per repo: the jobs its fetches were for
+	fetchErr          error
+	pushLog           []fakePush
+	checkouts         []string // every CheckOut's sha
+	streamTip         string   // StreamTip's answer: the stream tip the last merge used
+	tipErr            error
+	baseTip           string   // the stream's tip for staging's merge of a work retry (StageWorktree); "": none fetched
+	preMergeConflicts []string // the files that merge conflicts in
+	collected         []Sealed // every Collect's argument
+	markersLeft       []string // ConflictMarkers' answer
+	markersErr        error
+	markerReads       []string // every ConflictMarkers call: "<head> <paths>"
 }
 
 // CheckOut checks sha out in the worker's clone.
@@ -101,18 +108,27 @@ func (g *fakeGit) Fetch(_ context.Context, js ...Job) error {
 	return g.fetchErr
 }
 
-func (g *fakeGit) StageWorktree(_ context.Context, j Job) (string, error) {
+// StageWorktree stages j at its prior head or base. With baseTip set (the
+// stream's tip as a pass fetched it), staging's own decision
+// (preMergeTip_internal) merges it into a work retry, as OSGitOps does: the
+// tree is at testMergeSHA, conflicted in preMergeConflicts.
+func (g *fakeGit) StageWorktree(_ context.Context, j Job) (Staged, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.stageErr != nil {
-		return "", g.stageErr
+		return Staged{}, g.stageErr
 	}
 	g.stagedJobs = append(g.stagedJobs, j)
 	_ = os.MkdirAll(j.WorktreeDir, 0o755)
+	var merge *PreMerge
+	if tip := preMergeTip_internal(j, g.baseTip); tip != "" {
+		merge = &PreMerge{Tip: tip, Head: testMergeSHA, Conflicts: slices.Clone(g.preMergeConflicts)}
+		g.headByWT[j.WorktreeDir] = testMergeSHA
+	}
 	if g.headByWT[j.WorktreeDir] == "" {
 		g.headByWT[j.WorktreeDir] = cmp.Or(j.PriorHead, j.BaseSHA)
 	}
-	return g.headByWT[j.WorktreeDir], nil
+	return Staged{Head: g.headByWT[j.WorktreeDir], Merge: merge}, nil
 }
 
 func (g *fakeGit) BranchTip(_ context.Context, j Job) (string, error) {
@@ -126,6 +142,7 @@ func (g *fakeGit) BranchTip(_ context.Context, j Job) (string, error) {
 func (g *fakeGit) Collect(_ context.Context, sl Sealed) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.collected = append(g.collected, sl)
 	wt := filepath.Join(sl.JobDir, "repo")
 	if g.dirtyByWT[wt] {
 		g.dirtyByWT[wt] = false
@@ -137,6 +154,14 @@ func (g *fakeGit) Collect(_ context.Context, sl Sealed) (string, error) {
 }
 
 func (g *fakeGit) Export(context.Context, string, string, string) error { return nil }
+
+// ConflictMarkers answers markersLeft (and markersErr) for every head.
+func (g *fakeGit) ConflictMarkers(_ context.Context, _, head string, paths []string) ([]string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.markerReads = append(g.markerReads, head+" "+strings.Join(paths, ","))
+	return slices.Clone(g.markersLeft), g.markersErr
+}
 
 // Push records every push (branch, sha, lease) and keeps git's lease: the
 // branch on origin must be at expect ("" : absent).

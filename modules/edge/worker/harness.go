@@ -404,6 +404,9 @@ func buildPrompt_internal(j Job) string {
 			b.WriteString(kv[0] + kv[1] + "\n")
 		}
 	}
+	if note := preMergeNote_internal(j); note != "" {
+		b.WriteString("\n" + note + "\n")
+	}
 	if body := cmp.Or(j.Prose, j.Brief); body != "" {
 		b.WriteString("\n" + body + "\n")
 	}

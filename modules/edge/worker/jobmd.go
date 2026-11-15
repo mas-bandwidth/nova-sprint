@@ -35,6 +35,9 @@ func writeJobMD_internal(j Job) error {
 			fmt.Fprintf(&b, "%s: %s\n", kv[0], kv[1])
 		}
 	}
+	if note := preMergeNote_internal(j); note != "" {
+		fmt.Fprintf(&b, "\n%s\n", note)
+	}
 	for _, d := range j.DoneWhen {
 		fmt.Fprintf(&b, "done-when: %s\n", d)
 	}
@@ -49,6 +52,30 @@ func writeJobMD_internal(j Job) error {
 		return fmt.Errorf("write %s for %s: %w", JobMDName, j.Consumer, err)
 	}
 	return nil
+}
+
+// preMergeNote_internal is what staging's merge of the stream tip into the
+// prior head (j.PreMerge) means for the harness, word for word the same in
+// JOB.md and the prompt; "" when staging made none. Conflicted, the
+// harness must resolve the markers committed in the merge before anything
+// else.
+func preMergeNote_internal(j Job) string {
+	pm := j.PreMerge
+	if pm == nil {
+		return ""
+	}
+	base := cmp.Or(j.Base, "the base")
+	if len(pm.Conflicts)+len(pm.Unmarked) == 0 {
+		return "The worker merged " + base + " at " + pm.Tip + " into the prior head before you started: the checkout is at that merge, " + pm.Head + ". Continue from it."
+	}
+	note := "The worker merged " + base + " at " + pm.Tip + " into the prior head before you started, and the merge conflicted: the checkout is at that merge, " + pm.Head + ", committed with its conflicts unresolved.\n"
+	if len(pm.Conflicts) > 0 {
+		note += "These files hold conflict markers (<<<<<<<, =======, >>>>>>>):\n  " + strings.Join(pm.Conflicts, "\n  ") + "\n"
+	}
+	if len(pm.Unmarked) > 0 {
+		note += "These conflicted with no marker (a binary file, or one deleted on one side), and are as the prior head had them: compare each with " + base + "'s (git show " + pm.Tip + ":<path>) and take what the card needs:\n  " + strings.Join(pm.Unmarked, "\n  ") + "\n"
+	}
+	return note + "You must resolve every one of them first, keeping the card's intent and the base's changes, and commit the resolution: the worker fails a head that still holds a conflict marker in these files. Never hand-merge a file under generated/: resolve its sources, then regenerate it with the repo's generator."
 }
 
 // finishRules_internal is how j finishes on a bench, word for word the

@@ -50,7 +50,7 @@ DROPPED["RunnerRestartResumes"] = ["RestartReturnsHand", "KeptHandNeverRuns"]
 # name, target invariant, fault, exact replacement pairs
 WITNESSES = [
     ("RunnerReusedJobDir", "JobDirNeverReused", "A job directory is created twice.",
-     [("![c].exists = TRUE, ![c].creates = @ + 1]\n", "![c].exists = TRUE, ![c].creates = 2]\n")]),
+     [("![c].exists = TRUE, ![c].creates = @ + 1, ![c].stale = FALSE]", "![c].exists = TRUE, ![c].creates = 2, ![c].stale = FALSE]")]),
     ("RunnerSlotFreedEarly", "HarnessInsideSlot", "A harvest frees a slot it did not take.",
      [("slotsInUse' = slotsInUse - 1   \\* slot freed only when harness ends", "slotsInUse' = slotsInUse")]),
     ("RunnerDieClassifiedFail", "FaultSpendsNoAttemptOrBounce", "A harness death is a fail that bounces.",
@@ -99,6 +99,10 @@ WITNESSES = [
      "An ok at the prior head is failed whatever the deal (the rule before 2026-11-11): an attempt that found its work pushed by one that died can only fail.",
      [("  /\\ ~(jobDir[c].atPrior /\\ jobDir[c].prior = \"finished\")   \\* nothing new over a finished head is NothingNew\n", "  /\\ ~jobDir[c].atPrior\n"),
       ("  /\\ jobDir[c].atPrior /\\ jobDir[c].prior = \"finished\"   \\* only at a finished head\n", "  /\\ jobDir[c].atPrior\n")]),
+    ("RunnerRetryStartsStale", "NoHarnessOnAStaleRetry",
+     "A retry is staged on its bare prior head, the stream's tip not merged in (the code before 2026-11-15): it meets the last attempt's conflict again after it.",
+     [("![c].stale = FALSE]   \\* a retry's prior head has the stream tip merged in",
+       "![c].stale = (jobDir[c].prior # \"none\")]   \\* FAULT: the bare prior head")]),
 ]
 
 

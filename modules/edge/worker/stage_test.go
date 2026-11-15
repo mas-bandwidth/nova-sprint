@@ -107,6 +107,7 @@ func TestFetchIsShallowAndTargeted(t *testing.T) {
 		"update-ref -d refs/remotes/origin/sprint/s/p2",
 		"merge-base " + shaBase + " " + shaPrior,
 		"merge-base " + shaBase + " " + shaTip,
+		"merge-base " + shaPrior + " " + shaTip, // the work retry's: staging merges the tip into its prior head
 		"merge-base " + shaBase + " " + shaHead,
 	}
 	argv, dirs, remote := stageCalls_internal(f.fx)

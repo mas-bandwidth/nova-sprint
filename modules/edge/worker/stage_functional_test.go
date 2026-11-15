@@ -68,9 +68,13 @@ func TestFunctionalShallowStage(t *testing.T) {
 			j := Job{Repo: origin, Kind: "work", Base: "main", Branch: "sprint/s1/p1", BaseSHA: base, PriorHead: prior, Consumer: "p1.w2",
 				JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
 			require.NoError(t, g.Fetch(ctx, j))
-			head, err := g.StageWorktree(ctx, j)
+			staged, err := g.StageWorktree(ctx, j)
 			require.NoError(t, err)
-			require.Equal(t, prior, head, "the job continues from its prior head")
+			require.NotNil(t, staged.Merge, "the retry has main's tip merged into its prior head")
+			require.Equal(t, PreMerge{Tip: base, Head: staged.Head}, *staged.Merge, "a clean merge")
+			runGitCmd_internal(t, j.WorktreeDir, "merge-base", "--is-ancestor", prior, staged.Head)
+			runGitCmd_internal(t, j.WorktreeDir, "merge-base", "--is-ancestor", base, staged.Head)
+			require.Equal(t, base, runGitCmd_internal(t, j.WorktreeDir, "merge-base", base, "HEAD"), "the tree the harness starts on holds main's tip")
 			tip, err := g.BranchTip(ctx, j)
 			require.NoError(t, err)
 			require.Equal(t, prior, tip)
@@ -87,7 +91,7 @@ func TestFunctionalShallowStage(t *testing.T) {
 				require.NoFileExists(t, filepath.Join(work, ".git", "shallow"))
 			}
 			wt := j.WorktreeDir
-			require.Equal(t, runGitCmd_internal(t, seed, "merge-base", base, prior), runGitCmd_internal(t, wt, "merge-base", base, "HEAD"), "the job's tree finds the fork point")
+			require.Equal(t, runGitCmd_internal(t, seed, "merge-base", base, prior), runGitCmd_internal(t, wt, "merge-base", base, prior), "the job's tree finds the fork point")
 
 			// The harness's commit, the seal step and the collect.
 			require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work\n"), 0o644))
@@ -114,7 +118,7 @@ func TestFunctionalShallowStage(t *testing.T) {
 			runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", newMain, rebased)
 			require.Equal(t, "card.txt\nlate.txt\nmain.txt\nwork.txt", runGitCmd_internal(t, clone, "ls-tree", "--name-only", rebased))
 			runGitCmd_internal(t, clone, "merge-base", "--is-ancestor", collected, rebased)
-			require.Equal(t, "3", runGitCmd_internal(t, clone, "rev-list", "--count", newMain+".."+rebased), "the card's commits and the merge of main")
+			require.Equal(t, "4", runGitCmd_internal(t, clone, "rev-list", "--count", newMain+".."+rebased), "the card's commits, staging's merge of main and the stream step's")
 
 			// The done-when apply: the rebased head, back in the job's tree.
 			bundle := filepath.Join(t.TempDir(), "rebased.bundle")
