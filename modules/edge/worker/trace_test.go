@@ -45,6 +45,9 @@ type runnerJobDirState_internal struct {
 	// stale: the job was staged on a prior head with no merge of the
 	// stream's tip; read from the record the worker's stage step left.
 	stale bool
+	// notRun: the stream-and-test step met a gate it could not run (a
+	// missing toolchain or network); its outcome is the code's.
+	notRun bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -123,6 +126,7 @@ type runnerWalkHarness_internal struct {
 	atPrior    map[string]bool   // the harvest found no new head
 	nothingNew map[string]bool
 	stale      map[string]bool        // staged on a prior head with no merge of the stream tip
+	notRun     map[string]bool        // a gate of the stream-and-test step did not run
 	trees      *walkJobTrees_internal // the processes each job left running
 	rng        *rand.Rand             // the walk's: a harvest at the prior head, red done-whens there
 	// atPriorAlways: every harvest of a job with a prior head finds no new
@@ -191,7 +195,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		from:     map[string]string{},
 		took:     map[string]bool{},
 		prior:    map[string]string{"c1": "none", "c2": "none"},
-		atPrior:  map[string]bool{}, nothingNew: map[string]bool{}, stale: map[string]bool{},
+		atPrior:  map[string]bool{}, nothingNew: map[string]bool{}, stale: map[string]bool{}, notRun: map[string]bool{},
 	}
 }
 
@@ -373,8 +377,9 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 
 		keepsPrior: !h.dropped[c],
 		prior:      h.prior[c], atPrior: h.atPrior[c], nothingNew: h.nothingNew[c],
-		tree:  h.trees.has_internal(dir),
-		stale: h.stale[c],
+		tree:   h.trees.has_internal(dir),
+		stale:  h.stale[c],
+		notRun: h.notRun[c],
 	}
 }
 
@@ -797,6 +802,37 @@ func (h *runnerWalkHarness_internal) atPriorStep_internal(t *testing.T, c string
 	return act
 }
 
+// gateNotRunStep_internal is the step after an ok harvest whose done-when
+// cannot run on this bench (Runner.tla GateNotRun), taken by the worker's
+// own rebaseAndTestStep_internal: the wall's run of the gate says no host
+// name resolved (missingRoute_internal's network). The action is named by
+// that cause; the outcome, and the bounce a fail spends, are the code's,
+// so TLC refuses a code that fails the card for a gate that did not run.
+func (h *runnerWalkHarness_internal) gateNotRunStep_internal(t *testing.T, c string) string {
+	t.Helper()
+	h.stepN++
+	dir := h.jobDirPath_internal(c)
+	rec, err := ReadJobRecord(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.wall.mu.Lock()
+	h.wall.testFn = func(Job, string) (WallRunResult, error) {
+		return WallRunResult{ExitCode: 128, Output: []byte("fatal: unable to access 'https://forge.invalid/r.git/': Could not resolve host: forge.invalid")}, nil
+	}
+	h.wall.mu.Unlock()
+	if err := h.runner.rebaseAndTestStep_internal(context.Background(), dir, &rec); err != nil {
+		t.Fatalf("the stream-and-test step of %s: %v", c, err)
+	}
+	h.bounced[c], h.notRun[c] = rec.Outcome.Result == "fail", true
+	rec.State = JobRebased
+	if err := WriteJobRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	h.jobState[c] = JobRebased
+	return "GateNotRun"
+}
+
 // walkPriorHead_internal is a scripted walk of one of the two prior-head
 // paths, c1's. finished: an attempt finished at its prior head (the
 // receipt says so), and nothing new over it is its fail. unfinished: an
@@ -879,6 +915,9 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 	if m.act == "AtPrior" { // the code picks the model's action
 		return h.atPriorStep_internal(t, m.arg, rng.Intn(4) == 0), m.arg
 	}
+	if m.act == "GateNotRun" { // the code's outcome
+		return h.gateNotRunStep_internal(t, m.arg), m.arg
+	}
 	h.applyStep_internal(t, m.act, m.arg)
 	return m.act, m.arg
 }
@@ -917,6 +956,9 @@ func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_
 			moves = append(moves, runnerMove_internal{"Rebase", c}, runnerMove_internal{"Conflict", c})
 		} else {
 			moves = append(moves, runnerMove_internal{"Push", c})
+		}
+		if st.jobDir[c].outcome == "ok" && !(st.jobDir[c].atPrior && st.jobDir[c].prior == "finished") {
+			moves = append(moves, runnerMove_internal{"GateNotRun", c}) // a done-when this bench cannot run
 		}
 	case JobRebased:
 		moves = append(moves, runnerMove_internal{"Push", c})
@@ -989,9 +1031,9 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s, prior |-> %q, atPrior |-> %s, nothingNew |-> %s, tree |-> %s, stale |-> %s]",
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s, sealed |-> %s, keepsPrior |-> %s, prior |-> %q, atPrior |-> %s, nothingNew |-> %s, tree |-> %s, stale |-> %s, notRun |-> %s]",
 		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped), tlaBool_internal(d.sealed), tlaBool_internal(d.keepsPrior),
-		d.prior, tlaBool_internal(d.atPrior), tlaBool_internal(d.nothingNew), tlaBool_internal(d.tree), tlaBool_internal(d.stale))
+		d.prior, tlaBool_internal(d.atPrior), tlaBool_internal(d.nothingNew), tlaBool_internal(d.tree), tlaBool_internal(d.stale), tlaBool_internal(d.notRun))
 }
 
 func formatRunnerBranchTLA_internal(b runnerBranch_internal) string {
@@ -1093,7 +1135,7 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 	// defect 78's withdraw, retire and holder's push, and the restart's
 	// return of the hand and its refused unhooks, among them (the kill of a
 	// harness the old session left is TestRunnerTraceRefusesAResume's, walked every time).
-	for _, a := range []string{"Rebase", "NothingNew", "Conflict", "Push", "Report", "Clean", "Stop", "Crash", "UnhookRefused", "Exit", "Restart", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
+	for _, a := range []string{"Rebase", "NothingNew", "Conflict", "GateNotRun", "Push", "Report", "Clean", "Stop", "Crash", "UnhookRefused", "Exit", "Restart", "Withdraw", "Retire", "HolderTake", "HolderPush"} {
 		if seen[a] == 0 {
 			t.Errorf("no seed walks %s: the trace binding does not cover it (walked: %v)", a, seen)
 		}

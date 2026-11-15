@@ -107,6 +107,14 @@
 (* merge; conflicted, on the merge committed with its markers, which the   *)
 (* prompt tells it to resolve. NoHarnessOnAStaleRetry; witness             *)
 (* RunnerRetryStartsStale. A merge staging cannot make is StageFail.       *)
+(*                                                                         *)
+(* A gate that did not run is a fault (2026-11-15): GateNotRun is the      *)
+(* stream-and-test step finding a done-when gate it could not run on this  *)
+(* bench: the wall lacks its toolchain or the network (a route fault,      *)
+(* card.MissingRoute, that leaves the card waiting for the coordinator),   *)
+(* or the head could not be checked out for it. jobDir[c].notRun is that   *)
+(* cause; the head is not judged, so it is never the card's fail and       *)
+(* spends no bounce. GateNotRunIsAFault; witness RunnerGateNotRunFails.    *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -153,7 +161,7 @@ Init ==
   /\ width = Width
   /\ \E d \in Deals :
        jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE, stopped |-> FALSE, sealed |-> FALSE, keepsPrior |-> TRUE,
-                                      prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE, tree |-> FALSE, stale |-> FALSE]]
+                                      prior |-> d[c], atPrior |-> FALSE, nothingNew |-> FALSE, tree |-> FALSE, stale |-> FALSE, notRun |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE, returned |-> {}, restarted |-> FALSE, tries |-> 0, refusals |-> 0]
@@ -283,6 +291,20 @@ Conflict(c) ==
   /\ jobState[c] = "harvested"
   /\ jobDir[c].outcome = "ok"
   /\ jobDir' = [jobDir EXCEPT ![c].outcome = "fail", ![c].bounced = TRUE]
+  /\ jobState' = [jobState EXCEPT ![c] = "rebased"]
+  /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
+
+\* A done-when gate the step could not run: its toolchain or the network
+\* missing in the wall (a route fault), or the head not checked out for it.
+\* The head is not judged: a fault, no bounce (runner.go doneWhen_internal,
+\* applyRebased_internal).
+GateNotRun(c) ==
+  /\ ~env.crashed
+  /\ storeState[c] = "working"   \* a withdrawn job moves only to Retire
+  /\ jobState[c] = "harvested"
+  /\ jobDir[c].outcome = "ok"
+  /\ ~(jobDir[c].atPrior /\ jobDir[c].prior = "finished")   \* nothing new over a finished head runs no gate
+  /\ jobDir' = [jobDir EXCEPT ![c].outcome = "fault", ![c].bounced = FALSE, ![c].notRun = TRUE]
   /\ jobState' = [jobState EXCEPT ![c] = "rebased"]
   /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env, pass, branch>>
 
@@ -495,6 +517,7 @@ Next ==
        \/ Rebase(c)
        \/ NothingNew(c)
        \/ Conflict(c)
+       \/ GateNotRun(c)
        \/ Push(c)
        \/ Report(c)
        \/ ReplyLost(c)
@@ -543,7 +566,7 @@ TypeOK ==
                                known : {"none", "job"}, from : {"unset", "none", "job"}]]
   /\ \A c \in Consumers :
        /\ jobDir[c].prior \in PriorKinds
-       /\ jobDir[c].atPrior \in BOOLEAN /\ jobDir[c].nothingNew \in BOOLEAN /\ jobDir[c].stale \in BOOLEAN
+       /\ jobDir[c].atPrior \in BOOLEAN /\ jobDir[c].nothingNew \in BOOLEAN /\ jobDir[c].stale \in BOOLEAN /\ jobDir[c].notRun \in BOOLEAN
        /\ jobDir[c].atPrior => jobDir[c].prior # "none"
        /\ jobDir[c].stale => jobDir[c].prior # "none"
 
@@ -664,6 +687,13 @@ NothingNewOnlyFinished ==
 \* attempt is in front of this one, not after it again.
 NoHarnessOnAStaleRetry ==
   \A c \in Consumers : harnessAlive[c] = 1 => ~jobDir[c].stale
+
+\* 2026-11-15: a gate that did not run judged nothing: the job is a fault
+\* that spends no bounce, never the card's fail (a missing toolchain or
+\* network failed cards on every bench that lacked it, and a failed
+\* checkout of the head failed one nine times).
+GateNotRunIsAFault ==
+  \A c \in Consumers : jobDir[c].notRun => jobDir[c].outcome = "fault" /\ ~jobDir[c].bounced
 
 \* Reach checks (each must be violated: the state is reachable).
 NeverOkAtUnfinishedPrior ==

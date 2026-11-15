@@ -332,7 +332,7 @@ func TestIsInfraFaultIgnoresExitZeroTranscriptNoise(t *testing.T) {
 	if fault, why := isInfraFault_internal(noisy, nil); fault {
 		t.Fatalf("exit-0 run classified as infra fault: %s", why)
 	}
-	if fault, why := isMissingTestToolchain_internal(noisy); fault {
+	if route, why := missingRoute_internal(noisy); route != "" {
 		t.Fatalf("exit-0 run classified as missing toolchain: %s", why)
 	}
 }

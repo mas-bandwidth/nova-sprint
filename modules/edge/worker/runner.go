@@ -685,17 +685,73 @@ func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
 	}
 	return false, ""
 }
-func isMissingTestToolchain_internal(res WallRunResult) (bool, string) {
-	if res.ExitCode == 0 {
-		return false, ""
-	}
+
+// missingRouteSignatures are the outputs that say a gate's run lacked
+// something of the bench's, not that the head is red: route is the
+// card.MissingRoute name of what is missing, "" for the shell's own
+// missing command, named from its line (missingCommand_internal); shell:
+// the line is only a missing tool when make or the shell printed it. The
+// rest were measured on the benches on 2026-11-15: rustc's linker and std
+// target, Go's module lookup with no proxy, and a host name no resolver
+// answered.
+var missingRouteSignatures = []struct {
+	needle, route string
+	shell         bool
+}{
+	{"command not found", "", true},
+	{": not found", "", true},
+	{"No such file or directory: 'elixir'", "elixir", true},
+	{"No such file or directory: 'luau'", "luau", true},
+	{"No such file or directory: 'sbcl'", "sbcl", true},
+	{"No such file or directory: 'dart'", "dart", true},
+	{"No such file or directory: 'dotnet'", "dotnet", true},
+	{"could not exec the linker", "linker", false},
+	{"target may not be installed", "rust-target", false},
+	{"target not installed", "rust-target", false},
+	{"can't find crate for `std`", "rust-target", false},
+	{"module lookup disabled", "network", false},
+	{"Could not resolve host", "network", false},
+}
+
+// missingRoute_internal is the route a gate's red run says the bench
+// lacks (missingRouteSignatures), and why, its output's end; route "" when
+// it says none. A run the wall refused is the wall's (isInfraFault_internal),
+// whatever its output names.
+func missingRoute_internal(res WallRunResult) (route, why string) {
 	out := string(res.Output)
-	for _, needle := range []string{"command not found", ": not found", "No such file or directory: 'elixir'", "No such file or directory: 'luau'", "No such file or directory: 'sbcl'", "No such file or directory: 'dart'", "No such file or directory: 'dotnet'"} {
-		if strings.Contains(out, needle) && (strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")) {
-			return true, fmt.Sprintf("test toolchain missing in wall (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
-		}
+	if res.ExitCode == 0 || strings.Contains(out, "SANDBOX REFUSED") {
+		return "", ""
 	}
-	return false, ""
+	shell := strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")
+	for _, sig := range missingRouteSignatures {
+		if !strings.Contains(out, sig.needle) || sig.shell && !shell {
+			continue
+		}
+		route = cmp.Or(sig.route, missingCommand_internal(out, sig.needle), "toolchain")
+		return route, fmt.Sprintf("%s missing in the wall (exit %d): %s", route, res.ExitCode, TailBytes(res.Output, 512))
+	}
+	return "", ""
+}
+
+// missingCommand_internal is the command the shell's line holding needle
+// says it did not find: "/bin/sh: elixir: command not found", "sh: 1:
+// luau: not found" and "make: dotnet: command not found" name the word
+// before needle; "" when that is no command's name.
+func missingCommand_internal(out, needle string) string {
+	i := strings.Index(out, needle)
+	line := out[:i]
+	if j := strings.LastIndexByte(line, '\n'); j >= 0 {
+		line = line[j+1:]
+	}
+	parts := strings.Split(strings.TrimSuffix(strings.TrimSpace(line), ":"), ":")
+	name := filepath.Base(strings.TrimSpace(parts[len(parts)-1]))
+	letter := strings.IndexFunc(name, func(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' }) >= 0
+	if !letter || strings.IndexFunc(name, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._+-", r))
+	}) >= 0 {
+		return ""
+	}
+	return name
 }
 func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobRecord, res WallRunResult, runErr error) error {
 	h, err := r.harnessFor_internal(job.HarnessName)
@@ -1047,8 +1103,11 @@ func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound, left time.Duratio
 // fail's bounce reaches the bounce limit where a fault is dealt again for
 // ever. A gate not started because the deadline has passed, a wall that
 // could not run it (a setup step that failed or timed out, the SDK
-// environment's among them) and a missing toolchain are faults: that gate
-// did not run. A gate killed by a signal (exit above 128, an OOM kill's
+// environment's among them) and a missing toolchain or network are faults:
+// that gate did not run. The last is a route fault, its reason starting
+// card.MissingRoute and the route (missingRoute_internal), so the card waits
+// for the coordinator instead of being dealt to a bench that lacks the same.
+// A gate killed by a signal (exit above 128, an OOM kill's
 // 137 among them) is a fail that says so. testsRed: it ran and exited
 // non-zero by itself (1 to 124, or 128), the one red a stream gate's run at the
 // base can excuse (streamGates_internal).
@@ -1075,10 +1134,16 @@ func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, ki
 		return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("%s (%s) timed out after %s, %s: %s",
 			kind.name, cmd, bound.Round(time.Second), what, cmp.Or(GateTail(tres.Output, MaxReasonBytes), "no output"))}, true, false
 	}
-	if fault, why := isInfraFault_internal(tres, err); fault {
-		return notRun(why)
+	if route, why := missingRoute_internal(tres); err == nil && route != "" {
+		// Before the wall's exit codes: a shell's missing command exits 127.
+		// The reason starts with the route, so the card waits for the
+		// coordinator (card.RouteFault) and is not dealt again by itself:
+		// a bench of the same kind would lack it too (tla/Runner.tla
+		// GateNotRun).
+		head := card.MissingRoute + " " + route + " "
+		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: head + TailBytes([]byte(fmt.Sprintf("%s (%s) did not run: %s", kind.name, cmd, why)), MaxReasonBytes-len(head))}, true, false
 	}
-	if fault, why := isMissingTestToolchain_internal(tres); fault {
+	if fault, why := isInfraFault_internal(tres, err); fault {
 		return notRun(why)
 	}
 	if tres.ExitCode < 0 || tres.ExitCode > 128 {
