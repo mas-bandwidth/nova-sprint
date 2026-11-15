@@ -20,8 +20,9 @@ import (
 // A repository's SIBLINGS file names the checkouts its build reads beside
 // it, one per line: `<path> <clone-url> <tag> <40-hex-sha>`, the path
 // `../<name>`; blank lines and whole-line `#` comments are allowed, and no
-// file is no siblings. Staging reads it at the stream's base in the worker's
-// own work clone (never at a card's head), checks every line before any
+// file is no siblings. Staging reads it at the job's base in the worker's
+// own work clone (never at a card's head; a read, which carries no base, at
+// the stream base's tip there), checks every line before any
 // fetch, and stages each sibling: its tag fetched into the bench's bare
 // mirror <MirrorRoot>/<name>.git from the forge with the worker's one
 // credential (on the stream's own origin only), its tree made once per sha
@@ -169,7 +170,16 @@ func validTag_internal(tag string) bool {
 // sibling; a malformed file stages none.
 func (g *OSGitOps) stageSiblings_internal(ctx context.Context, j Job, url, name, work string, lock *sync.RWMutex) error {
 	lock.RLock()
-	sibs, err := g.readSiblings_internal(ctx, j.BaseSHA, url, name, work)
+	base, err := j.BaseSHA, error(nil)
+	if base == "" && j.Base != "" {
+		// a read carries no base sha: its siblings are the stream's, at the tip
+		// of the stream's base in the work clone, never the head under review
+		base, err = g.branchTipIn_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), work, j.Base)
+	}
+	var sibs []sibling_internal
+	if err == nil {
+		sibs, err = g.readSiblings_internal(ctx, base, url, name, work)
+	}
 	lock.RUnlock()
 	if err != nil {
 		return err

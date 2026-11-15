@@ -1,9 +1,9 @@
 ; docs/roadmap.sexp: the data the tables in ROADMAP.md are generated from (nova-roadmap render).
 (:schema 1
  :root "goal"
- :page (:roadmaps ("future"))
+ :page (:roadmaps ("future" "resources"))
  :nodes
- ((:id "goal" :type :work-set :children ("future"))
+ ((:id "goal" :type :work-set :children ("future" "resources"))
   (:id "future" :type :roadmap :title "Future work"
    :rows (
      ("admission-refuses-functional-done-when" "add refuses a DONE-WHEN that runs functional tests, which cannot run inside the wall")
@@ -60,6 +60,20 @@
      ("base-repair-lands-on-its-own-gates" "done" "t-base-repair-lands-on-its-own-gates")
      ("bench-verdict-from-the-pushed-head" "done" "t-bench-verdict-from-the-pushed-head")
      ))
+  (:id "resources" :type :roadmap :title "Resources"
+   :rows (
+     ("resources-defined-across-the-fleet" "The user defines resources across the fleet: CPUs, memory, GPUs, or anything else")
+     ("cards-acquire-and-release-resources" "A card acquires the resources it needs to do its work, and releases them when it is done")
+     ("resource-tags-on-cards-and-runners" "Cards and GitHub runners carry resource tags that say what resources they need to run")
+     ("resource-amounts" "A resource can have a number, and a card or a runner says how much of it it needs to run: RAM in GB, or cores in a unit that allows for cores of different power")
+     )
+   :columns (("done" "done"))
+   :cells (
+     ("resources-defined-across-the-fleet" "done" "t-resources-defined-across-the-fleet")
+     ("cards-acquire-and-release-resources" "done" "t-cards-acquire-and-release-resources")
+     ("resource-tags-on-cards-and-runners" "done" "t-resource-tags-on-cards-and-runners")
+     ("resource-amounts" "done" "t-resource-amounts")
+     ))
   (:id "t-admission-refuses-functional-done-when" :type :task :title "add refuses a DONE-WHEN that runs functional tests, which cannot run inside the wall" :state :todo)
   (:id "t-deal-skips-old-binary-rows" :type :task :title "The dealer never deals to a row whose advertised binary is older than the run's version" :state :todo)
   (:id "t-missing-toolchain-refuses" :type :task :title "A missing toolchain inside the wall is a refusal at admission or a fault, never a bounce" :state :todo)
@@ -84,4 +98,8 @@
   (:id "t-taken-over-notice-survives-restart" :type :task :title "TAKEN OVER survives a failed send and a restart: a durable pending-notice marker for the coordinator a take-over unhooked (LAYER-6-RUN, Taking the seat: a restart before it is sent does not send it)" :state :todo :note "found 2026-11-10 on PR #778: CatchUp's replay floor (modules/run/push.go) is the lowest cursor of the rows hooked in, so once they are pushed past the take-over its event is never replayed for the unhooked row. Weighed: the floor at every push cursor (5 lines, but a long-gone row's cursor drags every restart back without bound, and a coordinator with no cursor is still missed); a marker the take-over op writes (new durable state shared by verbs and run); holding other cursors below an unsent take-over notice (a cursor protocol change, outside Run.tla's fixed recipients)")
   (:id "t-coordinator-verbs-fenced-on-the-seat" :type :task :title "Every coordinator verb checks at commit that the caller still holds the seat: judge, land, hold, drop, policy, add, clear and unhook <row> check it only on the read, so after a take-over the old coordinator's op in flight commits; stream add, stop, start and identity are fenced (UnchangedSince Hooks)" :state :todo :note "found 2026-11-10 on PR #778 (a take-over needs nothing from the old coordinator, so it can be mid-verb); the record fences on the cards and judgements still hold, only the authority is stale; also unhold, priority, relink, replace and stream set (moves.go commits steps.Verb's op, which checks the coordinator on the snapshot, steps/request.go); TestCoordinatorVerbsFencedOnTheirHook states the intent for the fenced three")
   (:id "t-base-repair-lands-on-its-own-gates" :type :task :title "A card that repairs a red base lands on its own gates: when main is red, a card whose stream exists to make it green is gated on its own DONE-WHENs and its CI checks that were green at the base or that it names, never refused because the base is red" :state :todo :note "found 2026-11-10: schema main red on 116 checks; the 35 schema-main cards written to fix them each landed ci_red 'the base itself is red' and waited for a hand landing (land.<card> answered land), a deadlock the coordinator breaks one card at a time. Proposed: a stream marked as base repair (or every stream when the base is red) gates a landing on the checks red at the head and green at the base, plus the card's own named checks")
-  (:id "t-bench-verdict-from-the-pushed-head" :type :task :title "A bench run's verdict comes from the pushed head and the DONE-WHENs the worker runs, as in v1, never from a result.json the model must write; bench ok% near 100% on a real board is the release bar" :state :todo :note "found 2026-11-10: epoch 3 benches 2 ok of 54 (friends 100%); nearly every failure is 'the harness exited 1 without writing result.json' (modules/edge/worker/harness.go, ClassifyJob and classifyExitAndTail_internal) with the model mid-work in the tail. Restore v1's bench path from the history before the v2 rewrite; record opencode's own exit cause so a provider or context failure is a fault; the hetzner2 worker log stopped writing at 02:57Z, look at why")))
+  (:id "t-bench-verdict-from-the-pushed-head" :type :task :title "A bench run's verdict comes from the pushed head and the DONE-WHENs the worker runs, as in v1, never from a result.json the model must write; bench ok% near 100% on a real board is the release bar" :state :todo :note "found 2026-11-10: epoch 3 benches 2 ok of 54 (friends 100%); nearly every failure is 'the harness exited 1 without writing result.json' (modules/edge/worker/harness.go, ClassifyJob and classifyExitAndTail_internal) with the model mid-work in the tail. Restore v1's bench path from the history before the v2 rewrite; record opencode's own exit cause so a provider or context failure is a fault; the hetzner2 worker log stopped writing at 02:57Z, look at why")
+  (:id "t-resources-defined-across-the-fleet" :type :task :title "The user defines resources across the fleet: CPUs, memory, GPUs, or anything else" :state :todo :note "the owner, 2026-11-15: 'Here the user will define resources, it might be, CPUs, it might be, memory, GPU ... whatever, across the fleet.' An idea, not designed: what a resource is, where it is declared and how much of it each machine has are the owner's to settle")
+  (:id "t-cards-acquire-and-release-resources" :type :task :title "A card acquires the resources it needs to do its work, and releases them when it is done" :state :todo :note "the owner, 2026-11-15: 'cards will need to acquire and release resources to do their work.' Today a bench's nova-reserve slots are the only limit on work in flight")
+  (:id "t-resource-tags-on-cards-and-runners" :type :task :title "Cards and GitHub runners carry resource tags that say what resources they need to run" :state :todo :note "the owner, 2026-11-15: 'cards and github runners will have resource tags, and these resource tags will say what resources they need to run.' His example: 'a machine might have a ps5 toolchain and a ps5 attached to run. ok, that's a ps5 tag. etc.' So a tag can name a thing a machine has (a toolchain and a device), not only a quantity")
+  (:id "t-resource-amounts" :type :task :title "A resource can have a number, and a card or a runner says how much of it it needs to run: RAM in GB, or cores in a unit that allows for cores of different power" :state :todo :note "the owner, 2026-11-15: 'a resource can also have a number', 'and cards/runners can specify how much of something they need to run', 'eg. ram in gb', 'or cores (in some unit that makes sense, given different cores have different power)'. The unit for cores is not chosen")))

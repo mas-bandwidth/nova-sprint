@@ -769,7 +769,7 @@ a repair for an ordinary refused command.
 | `relink` | Redirect a dependant's failed need to another producer. | `nova-sprint help relink` |
 | `stream set` | Change a stream's landing mode, forge, gates (`--gate <command>`: every card of the stream passes it at its finished head) or base branch (`--base <branch>`: a stream branch it lands into from now on). | `nova-sprint help stream set` |
 | `stream remove` | Remove a stream no card of the epoch names, in any state, with a reason; it then shows nowhere until `stream add` puts it back. | `nova-sprint help stream remove` |
-| `stats reset` | Count the dashboard's Fleet and Friends done, ok, failed and ok% again from now, with a reason, so a change's effect shows at once; their heads then say `since <time>`. Tokens and cost are not reset. | `nova-sprint help stats reset` |
+| `stats reset` | Count the dashboard's Fleet and Friends done, ok, failed and ok% again from now, with a reason, so a change's effect shows at once. Tokens and cost are not reset. | `nova-sprint help stats reset` |
 | `wake` | Consume a bus message on stdin and acknowledge each dealt card before printing its receipt or refusal. | `nova-sprint help wake` |
 
 For a Monitor-based bus hook that acknowledges deals before waking the session,

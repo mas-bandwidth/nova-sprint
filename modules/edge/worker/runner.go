@@ -685,17 +685,96 @@ func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
 	}
 	return false, ""
 }
-func isMissingTestToolchain_internal(res WallRunResult) (bool, string) {
-	if res.ExitCode == 0 {
-		return false, ""
+
+// missingRouteSignatures are the lines that say a gate's run lacked
+// something of the bench's, not that the head is red: each is matched on
+// its own line, with the prefix of the tool that printed it, so a test's
+// log that quotes such text is not taken for one. route is the
+// card.MissingRoute name of what is missing; "" names it from the
+// line's first group, a command run by its bare name (one with a path is
+// a file of the head's, and its absence the card's). Measured: the shell's,
+// a script's and make's own lines for a missing command (dash, bash, sh,
+// GNU make 3.81 and 4.4; not make's for a makefile the head lacks), the
+// wall's for a gate's program on no PATH entry,
+// a launcher's for five toolchains; and on the benches, 2026-11-15,
+// rustc's linker and std target, Go's module lookup with no proxy, and a
+// host name no resolver answered.
+var missingRouteSignatures = []struct {
+	re    *regexp.Regexp
+	route string
+}{
+	{regexp.MustCompile(`(?m)^(?:/bin/|/usr/bin/)?(?:sh|bash|dash)(?:: line \d+)?(?:: \d+)?: ([^\s:/]+): (?:command )?not found\s*$`), ""},
+	{regexp.MustCompile(`(?m)^[^\s:]+: (?:line )?\d+: ([^\s:/]+): (?:command )?not found\s*$`), ""}, // a script's own line: ./t.sh: line 2: x, ./t.sh: 2: x
+	{regexp.MustCompile(`(?m)^zsh: command not found: ([^\s:/]+)\s*$`), ""},
+	{regexp.MustCompile(`(?m)^g?make(?:\[\d+\])?: ([^\s:/]+): (?:No such file or directory|Command not found)\s*$`), ""},
+	{regexp.MustCompile(`(?m)^SANDBOX REFUSED reason=not_found: ([^\s:/]+) is on no PATH entry`), ""},
+	{regexp.MustCompile(`No such file or directory: '(elixir|luau|sbcl|dart|dotnet)'`), ""},
+	{regexp.MustCompile("(?m)could not exec the linker|^error: linker `[^`]+` not found"), "linker"},
+	{regexp.MustCompile("can't find crate for `std`|target may not be installed|(?m)^error: .*target not installed"), "rust-target"},
+	{regexp.MustCompile(`module lookup disabled by GOPROXY=off`), "network"},
+	{regexp.MustCompile(`(?m)^(?:fatal: unable to access '[^']*': |curl: \(\d+\) |ssh: )Could not resolve host`), "network"},
+}
+
+// missingRoute_internal is the route a gate's red run says the bench
+// lacks (missingRouteSignatures, the last such line in its output), and
+// why, its output's end; route "" when it says none. Only a run that
+// exited by itself (1 to 128, 127 among them: a shell's missing command)
+// says it: the wall's own exits (125, 126) and a kill (above 128) are not
+// the gate's word. A run the wall refused is the wall's whatever its
+// output names, but for the refusal that names the gate's program on no
+// PATH entry; so is a command of the wall's own (nova-*).
+func missingRoute_internal(res WallRunResult) (route, why string) {
+	if res.ExitCode <= 0 || res.ExitCode > 128 || res.ExitCode == 125 || res.ExitCode == 126 {
+		return "", ""
 	}
 	out := string(res.Output)
-	for _, needle := range []string{"command not found", ": not found", "No such file or directory: 'elixir'", "No such file or directory: 'luau'", "No such file or directory: 'sbcl'", "No such file or directory: 'dart'", "No such file or directory: 'dotnet'"} {
-		if strings.Contains(out, needle) && (strings.Contains(out, "make:") || strings.Contains(out, "/bin/sh:")) {
-			return true, fmt.Sprintf("test toolchain missing in wall (exit %d): %s", res.ExitCode, TailBytes(res.Output, 512))
+	refused := strings.Contains(out, "SANDBOX REFUSED")
+	last := -1
+	for _, sig := range missingRouteSignatures {
+		if refused && !strings.HasPrefix(sig.re.String(), "(?m)^SANDBOX REFUSED") {
+			continue
 		}
+		all := sig.re.FindAllStringSubmatchIndex(out, -1)
+		if len(all) == 0 || all[len(all)-1][1] <= last {
+			continue
+		}
+		m := all[len(all)-1]
+		name := sig.route
+		if name == "" && len(m) >= 4 && m[2] >= 0 {
+			name = routeWord_internal(out[m[2]:m[3]])
+		}
+		if name == "" || strings.Contains(out, "target '"+name+"'") || strings.Contains(out, "target `"+name+"'") {
+			continue // make's line for a makefile the head lacks names a file, not a tool: "No rule to make target 'ci.mk'"
+		}
+		route, last = name, m[1]
 	}
-	return false, ""
+	if route == "" {
+		return "", ""
+	}
+	return route, fmt.Sprintf("%s missing in the wall (exit %d): %s", route, res.ExitCode, TailBytes(res.Output, 512))
+}
+
+// routeWord_internal is name as a route's name, as a brief declares one
+// (card.RouteField: 1 to 128 of a-z A-Z 0-9 . _ -), with a letter in it;
+// "" when it is none, or a command of the wall's own (nova-*): that one
+// missing is the wall's fault, not a route the bench lacks.
+func routeWord_internal(name string) string {
+	letter := strings.IndexFunc(name, func(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' }) >= 0
+	other := strings.IndexFunc(name, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-", r))
+	}) >= 0
+	if !letter || other || len(name) > 128 || strings.HasPrefix(name, "nova-") {
+		return ""
+	}
+	return name
+}
+
+// routeReason_internal is a route fault's reason: card.MissingRoute and
+// route, then what, its end kept within MaxReasonBytes (the start is the
+// fault's kind, and TailBytes alone would cut it).
+func routeReason_internal(route, what string) string {
+	head := card.MissingRoute + " " + route + " "
+	return head + TailBytes([]byte(what), MaxReasonBytes-len(head))
 }
 func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobRecord, res WallRunResult, runErr error) error {
 	h, err := r.harnessFor_internal(job.HarnessName)
@@ -955,11 +1034,8 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		}
 	}
 	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, Repo: rec.Repo, Forge: rec.Forge, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
-	if fault, err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
-		rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
-		if fault {
-			rec.Outcome.Result = "fault"
-		}
+	if err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
+		rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
 		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 		return nil
 	}
@@ -1047,8 +1123,11 @@ func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound, left time.Duratio
 // fail's bounce reaches the bounce limit where a fault is dealt again for
 // ever. A gate not started because the deadline has passed, a wall that
 // could not run it (a setup step that failed or timed out, the SDK
-// environment's among them) and a missing toolchain are faults: that gate
-// did not run. A gate killed by a signal (exit above 128, an OOM kill's
+// environment's among them) and a missing toolchain or network are faults:
+// that gate did not run. The last is a route fault, its reason starting
+// card.MissingRoute and the route (missingRoute_internal), so the card waits
+// for the coordinator instead of being dealt to a bench that lacks the same.
+// A gate killed by a signal (exit above 128, an OOM kill's
 // 137 among them) is a fail that says so. testsRed: it ran and exited
 // non-zero by itself (1 to 124, or 128), the one red a stream gate's run at the
 // base can excuse (streamGates_internal).
@@ -1075,10 +1154,15 @@ func (r *Runner) doneWhen_internal(ctx context.Context, j Job, rec JobRecord, ki
 		return Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("%s (%s) timed out after %s, %s: %s",
 			kind.name, cmd, bound.Round(time.Second), what, cmp.Or(GateTail(tres.Output, MaxReasonBytes), "no output"))}, true, false
 	}
-	if fault, why := isInfraFault_internal(tres, err); fault {
-		return notRun(why)
+	if route, why := missingRoute_internal(tres); err == nil && route != "" {
+		// Before the wall's exit codes: a shell's missing command exits 127.
+		// The reason starts with the route, so the card waits for the
+		// coordinator (card.RouteFault) and is not dealt again by itself:
+		// a bench of the same kind would lack it too (tla/Runner.tla
+		// GateNotRun).
+		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: routeReason_internal(route, fmt.Sprintf("%s (%s) did not run: %s", kind.name, cmd, why))}, true, false
 	}
-	if fault, why := isMissingTestToolchain_internal(tres); fault {
+	if fault, why := isInfraFault_internal(tres, err); fault {
 		return notRun(why)
 	}
 	if tres.ExitCode < 0 || tres.ExitCode > 128 {
@@ -1106,7 +1190,8 @@ var (
 // and green at the base fails the attempt as a red DONE-WHEN does; so does
 // a stream gate that timed out, was killed or did not run, at the head,
 // whatever the base. One red at the head that the worker could not judge
-// at the base is a fault: the worker's failing, not the card's.
+// at the base is a fault: the worker's failing, not the card's; a route
+// fault when its run at the base lacked a route (missingRoute_internal).
 func (r *Runner) streamGates_internal(ctx context.Context, j Job, rec JobRecord) (out Outcome, red bool, note string) {
 	if r.Wall == nil {
 		return Outcome{}, false, ""
@@ -1139,6 +1224,13 @@ func (r *Runner) streamGates_internal(ctx context.Context, j Job, rec JobRecord)
 		default:
 			notes = append(notes, fmt.Sprintf("stream gate %s is red at base %s", cmd, base))
 		}
+	}
+	if what, ok := card.RouteFault(why); len(unjudged) > 0 && ok && card.RouteName(why) != "" {
+		// The base's run lacked a route this bench lacks: judged nowhere of
+		// its kind, so the card waits for the coordinator, as at the head.
+		route := card.RouteName(why)
+		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: routeReason_internal(route, fmt.Sprintf("stream gate (%s) is red at the head and could not be judged at the base %s: %s",
+			strings.Join(unjudged, "; "), cmp.Or(base, "(unknown)"), strings.TrimSpace(strings.TrimPrefix(what, route))))}, true, ""
 	}
 	if len(unjudged) > 0 {
 		return Outcome{Result: "fault", Head: rec.PushedHead, Reason: TailBytes([]byte(fmt.Sprintf("stream gate (%s) is red at the head and was not judged at the base %s: %s",
@@ -1207,7 +1299,10 @@ func (r *Runner) baseGateRed_internal(ctx context.Context, j Job, rec JobRecord,
 	var whys []string
 	for _, cmd := range ask {
 		o, isRed, testsRed := r.doneWhen_internal(ctx, bJob, rec, streamGate, cmd)
-		if isRed && !testsRed {
+		if _, route := card.RouteFault(o.Reason); isRed && !testsRed && route {
+			whys = append([]string{o.Reason}, whys...) // first: the base's route fault is the step's (streamGates_internal)
+			continue
+		} else if isRed && !testsRed {
 			whys = append(whys, o.Reason) // not judged at the base: nothing kept
 			continue
 		}
@@ -1243,11 +1338,17 @@ func dropBaseArgv_internal(dir string) []string {
 // applyRebased_internal checks the rebased head out in the job's tree,
 // inside the wall, before the done-when tests: Export from the worker's
 // clone, applyArgv_internal in the wall. Nothing to do with no rebase or
-// no tests. fault: the failure is the worker's or the wall's (the export,
-// or isInfraFault_internal), not the card's.
-func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) (bool, error) {
+// no tests. Every failure here is a fault, taken for the worker's or the
+// wall's (the export, isInfraFault_internal, a checkout in the job's tree
+// that did not go through), never the card's fail: the gates did not run,
+// so the head is not judged, and dealt again the card continues from the
+// head it pushed (2026-11-15: as a fail it spent nine attempts of one card
+// on the AWS benches; tla/Runner.tla GateNotRun). No work fault counts
+// toward a limit, so a checkout that fails on every bench is dealt again
+// until the coordinator holds the card.
+func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord) error {
 	if r.Wall == nil || !slices.ContainsFunc(slices.Concat(rec.DoneWhen, rec.StreamGates), func(c string) bool { return strings.TrimSpace(c) != "" }) {
-		return false, nil
+		return nil
 	}
 	start := cmp.Or(rec.PriorHead, rec.BaseSHA)
 	var argv []string
@@ -1259,22 +1360,22 @@ func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord
 		// them, and the gates must not pass on that.
 		argv = resetArgv_internal(start)
 	case r.Git == nil || rec.StreamRef == "":
-		return false, nil
+		return nil
 	default:
 		bundle := filepath.Join(j.JobDir, RebasedBundle)
 		if err := r.Git.Export(ctx, r.clonePath_internal(rec.Consumer), start, bundle); err != nil {
-			return true, err
+			return err
 		}
 		argv = applyArgv_internal(bundle)
 	}
 	res, err := r.Wall.RunStep(ctx, j, argv, r.Timeouts.RebaseAndTest)
 	if fault, why := isInfraFault_internal(res, err); fault {
-		return true, errors.New(why)
+		return errors.New(why)
 	}
 	if res.ExitCode != 0 {
-		return false, fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
+		return fmt.Errorf("exit %d: %s", res.ExitCode, TailBytes(res.Output, 512))
 	}
-	return false, nil
+	return nil
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	rec.State = JobReporting

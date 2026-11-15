@@ -422,14 +422,22 @@ func TestBenchVerdictIsTheNewHeadAndItsDoneWhens(t *testing.T) {
 	}
 }
 
-// stepWall_internal records the argv of every RunStep.
+// stepWall_internal records the argv of every RunStep. A step named
+// failStep (argv[3]: "reset", "apply") exits 1 as a checkout in the job's
+// tree that did not go through.
 type stepWall_internal struct {
 	*fakeWall
-	steps *[][]string
+	steps    *[][]string
+	failStep string
 }
 
 func (w *stepWall_internal) RunStep(_ context.Context, _ Job, argv []string, _ time.Duration) (WallRunResult, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	*w.steps = append(*w.steps, argv)
+	if w.failStep != "" && len(argv) > 3 && argv[3] == w.failStep {
+		return WallRunResult{ExitCode: 1, Output: []byte("error: unable to unlink old 'go.sum': Permission denied")}, nil
+	}
 	return WallRunResult{}, nil
 }
 

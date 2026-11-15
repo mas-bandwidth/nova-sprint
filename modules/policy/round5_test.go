@@ -92,7 +92,7 @@ func TestFunctionalEvaluator(t *testing.T) {
 	require.NotEmpty(t, fs)
 	assert.Contains(t, fs[0].Msg, "over the tick's time budget")
 	e.proc.mu.Lock()
-	gone := e.proc.cmd == nil
+	gone := e.proc.kill == nil
 	e.proc.mu.Unlock()
 	assert.True(t, gone, "the child with an abandoned run is killed")
 	a, fs = e.Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
@@ -201,7 +201,7 @@ func TestFunctionalEvaluatorReleaseMidAnswer(t *testing.T) {
 	require.NotEmpty(t, <-done)
 	<-released
 	e.proc.mu.Lock()
-	gone := e.proc.cmd == nil
+	gone := e.proc.kill == nil
 	e.proc.mu.Unlock()
 	assert.True(t, gone)
 }

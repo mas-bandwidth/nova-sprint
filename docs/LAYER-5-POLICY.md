@@ -853,6 +853,15 @@ round 5 API, as its header lists, and one line, below):
    memory limit is set in the child (round 3's RLIMIT_DATA is not carried):
    a child that allocates without bound is still killed at the deadline.
    Concurrent ticks on one process engine are served one at a time.
+   *Fixed 2026-11-15:* the parent's deadline-plus-`evalGrace` timer
+   started when the request was written, but the child's clock starts
+   after it has decoded the request, and gob decodes a message only once
+   it is read whole; on the loaded studio the decode of the snapshot
+   outran `evalGrace`, and the parent killed a 2 ms policy, failing every
+   version at once ("the policy evaluator was stopped"). The child now
+   says `begun` once it has decoded the request and the parent's timer
+   starts there; the transfer has its own bound, `evalBegin` (5 s, a
+   guess). `modules/policy/evaluator_begun_test.go`.
 2. `TestColdread3DefectJointCheckIgnoresReadCount`: as rowan2's 7. The
    probe's first line required `a.Rows` to hold v2's answer `["b"]`, which
    no passing run allows once v2 is refused (the built-in answers); it now

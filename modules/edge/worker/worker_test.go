@@ -71,6 +71,7 @@ type fakeGit struct {
 	collected         []Sealed // every Collect's argument
 	markersLeft       []string // ConflictMarkers' answer
 	markersErr        error
+	exportErr         error    // Export's answer
 	markerReads       []string // every ConflictMarkers call: "<head> <paths>"
 }
 
@@ -153,7 +154,11 @@ func (g *fakeGit) Collect(_ context.Context, sl Sealed) (string, error) {
 	return cmp.Or(g.headByWT[wt], sl.Base), nil
 }
 
-func (g *fakeGit) Export(context.Context, string, string, string) error { return nil }
+func (g *fakeGit) Export(context.Context, string, string, string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.exportErr
+}
 
 // ConflictMarkers answers markersLeft (and markersErr) for every head.
 func (g *fakeGit) ConflictMarkers(_ context.Context, _, head string, paths []string) ([]string, error) {
