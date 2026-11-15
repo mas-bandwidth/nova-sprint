@@ -65,8 +65,9 @@ func stageRetry_internal(t *testing.T, origin, base, prior string) (Job, *OSGitO
 // sealCollectRebase_internal is the worker's steps after the harness, on
 // real git: the seal step in the job's tree (PATHS f.txt and work.txt),
 // the collect into the worker's own clone, and the stream step's merge of
-// main. The rebased head, or the stream step's error.
-func sealCollectRebase_internal(t *testing.T, g *OSGitOps, j Job, origin string, merged string) (string, error) {
+// main. The worker's clone and the rebased head, or the stream step's
+// error.
+func sealCollectRebase_internal(t *testing.T, g *OSGitOps, j Job, origin string, merged string) (string, string, error) {
 	t.Helper()
 	ctx := context.Background()
 	seal := sealArgv_internal(j.JobDir, j.PriorHead, testCommitName, testCommitEmail, "seal\n", []string{"f.txt", "work.txt"})
@@ -77,7 +78,8 @@ func sealCollectRebase_internal(t *testing.T, g *OSGitOps, j Job, origin string,
 	clone := filepath.Join(t.TempDir(), "clone")
 	_, err = g.Collect(ctx, Sealed{JobDir: j.JobDir, Clone: clone, Remote: origin, Base: j.PriorHead, Name: testCommitName, Email: testCommitEmail, Merged: merged})
 	require.NoError(t, err)
-	return g.RebaseOntoStream(ctx, clone, origin, "main")
+	head, err := g.RebaseOntoStream(ctx, clone, origin, "main")
+	return clone, head, err
 }
 
 // TestFunctionalRetryStagesWithTheBaseMerged (functional tier: real git on
@@ -102,7 +104,7 @@ func TestFunctionalRetryStagesWithTheBaseMerged(t *testing.T) {
 	require.Equal(t, testCommitEmail, runGitCmd_internal(t, wt, "log", "-1", "--format=%ae"), "the merge carries the sprint's identity")
 
 	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work\n"), 0o644)) // the harness's work, left for the seal
-	rebased, err := sealCollectRebase_internal(t, g, j, origin, staged.Merge.Tip)
+	_, rebased, err := sealCollectRebase_internal(t, g, j, origin, staged.Merge.Tip)
 	require.NoError(t, err)
 	require.NotEmpty(t, rebased)
 }
@@ -135,16 +137,21 @@ func TestFunctionalRetryStagesAConflictForTheHarness(t *testing.T) {
 
 	// The harness resolves the markers and leaves the resolution for the seal.
 	require.NoError(t, os.WriteFile(filepath.Join(wt, "f.txt"), []byte("card and main\n"), 0o644))
-	rebased, err := sealCollectRebase_internal(t, g, j, origin, staged.Merge.Tip)
+	clone, rebased, err := sealCollectRebase_internal(t, g, j, origin, staged.Merge.Tip)
 	require.NoError(t, err, "the resolution stands: main is already merged")
-	require.NotEmpty(t, rebased)
+	left, err := g.ConflictMarkers(context.Background(), clone, rebased, staged.Merge.Conflicts)
+	require.NoError(t, err)
+	require.Empty(t, left, "resolved: no marker left")
+	left, err = g.ConflictMarkers(context.Background(), clone, staged.Head, append(staged.Merge.Conflicts, "gone.txt"))
+	require.NoError(t, err)
+	require.Equal(t, []string{"f.txt"}, left, "staging's merge holds the markers; a path absent there holds none")
 
 	// The same resolution on the bare prior head (the code before the fix)
 	// meets the conflict again in the stream step.
 	j2, g2, _ := stageRetry_internal(t, origin, base, prior)
 	runGitCmd_internal(t, j2.WorktreeDir, "reset", "-q", "--hard", prior)
 	require.NoError(t, os.WriteFile(filepath.Join(j2.WorktreeDir, "f.txt"), []byte("card and main\n"), 0o644))
-	_, err = sealCollectRebase_internal(t, g2, j2, origin, "")
+	_, _, err = sealCollectRebase_internal(t, g2, j2, origin, "")
 	var ce *ConflictError
 	require.ErrorAs(t, err, &ce, "without the merge at staging the conflict comes back")
 	require.Equal(t, []string{"f.txt"}, ce.Files)
@@ -235,4 +242,41 @@ func readFile_internal(t *testing.T, path string) string {
 	b, err := os.ReadFile(path)
 	require.NoError(t, err)
 	return string(b)
+}
+
+// TestFunctionalRetryStagesAnUnmarkedConflict (functional tier: real git):
+// a binary file both sides changed conflicts with no marker for the
+// harness to find. Staging commits it as the prior head had it and names
+// it apart (Unmarked), so the prompt tells the harness to compare it with
+// main's.
+func TestFunctionalRetryStagesAnUnmarkedConflict(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	origin, seed := filepath.Join(root, "origin.git"), filepath.Join(root, "seed")
+	runGitCmd_internal(t, root, "init", "-q", "--bare", origin)
+	runGitCmd_internal(t, root, "init", "-q", "-b", "main", seed)
+	commit := func(body string) {
+		require.NoError(t, os.WriteFile(filepath.Join(seed, "bin.dat"), []byte(body), 0o644))
+		runGitCmd_internal(t, seed, "add", "bin.dat")
+		runGitCmd_internal(t, seed, "commit", "-q", "-m", "bin")
+	}
+	commit("base\x00\x01")
+	base := runGitCmd_internal(t, seed, "rev-parse", "HEAD")
+	runGitCmd_internal(t, seed, "checkout", "-q", "-b", "card")
+	commit("card\x00\x02")
+	prior := runGitCmd_internal(t, seed, "rev-parse", "HEAD")
+	runGitCmd_internal(t, seed, "checkout", "-q", "main")
+	commit("main\x00\x03")
+	runGitCmd_internal(t, seed, "remote", "add", "origin", origin)
+	runGitCmd_internal(t, seed, "push", "-q", "origin", "main", "card:refs/heads/sprint/s1/p1")
+
+	j, _, staged := stageRetry_internal(t, origin, base, prior)
+	require.NotNil(t, staged.Merge)
+	require.Empty(t, staged.Merge.Conflicts)
+	require.Equal(t, []string{"bin.dat"}, staged.Merge.Unmarked)
+	require.Equal(t, "card\x00\x02", readFile_internal(t, filepath.Join(j.WorktreeDir, "bin.dat")), "as the prior head had it")
+	require.Empty(t, runGitCmd_internal(t, j.WorktreeDir, "status", "--porcelain"))
+	j.PreMerge = staged.Merge
+	require.Contains(t, preMergeNote_internal(j), "bin.dat")
+	require.Contains(t, preMergeNote_internal(j), "conflicted with no marker")
 }

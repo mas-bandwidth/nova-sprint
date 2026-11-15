@@ -16,8 +16,6 @@ import (
 // is real git (premerge_functional_test.go); these are the worker's
 // decisions around it.
 
-const testMergeSHA = "7777777777777777777777777777777777777777"
-
 // Only a work retry, from a prior head that is not its base, onto a known
 // stream tip it does not hold, is merged; everything else stages as before.
 func TestPreMergeTipOnlyForAWorkRetry(t *testing.T) {
@@ -173,7 +171,7 @@ func TestStageStepRecordsThePreMerge(t *testing.T) {
 	t.Parallel()
 	for _, prior := range []string{testPriorSHA, ""} {
 		g := newFakeGit_internal()
-		g.preMerge = &PreMerge{Tip: testRebSHA, Head: testMergeSHA, Conflicts: []string{"f.go"}}
+		g.baseTip, g.preMergeConflicts = testRebSHA, []string{"f.go"}
 		r, err := NewRunner(Runner{Now: (&gateClock_internal{sec: 1600}).now, Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: &cr2Sprint{}, Wall: &gateWall_internal{}, Git: g, DefaultHarness: &ScriptHarness{}, Warn: func(string) {}})
 		if err != nil {
 			t.Fatal(err)
@@ -198,12 +196,92 @@ func TestStageStepRecordsThePreMerge(t *testing.T) {
 			}
 			continue
 		}
-		if kept.PreMerge == nil || !slices.Equal(kept.PreMerge.Conflicts, g.preMerge.Conflicts) || kept.PreMerge.Head != testMergeSHA || j.PreMerge == nil {
+		if kept.PreMerge == nil || !slices.Equal(kept.PreMerge.Conflicts, []string{"f.go"}) || kept.PreMerge.Tip != testRebSHA || kept.PreMerge.Head != testMergeSHA || j.PreMerge == nil {
 			t.Fatalf("recorded %+v, job %+v: want staging's merge in both", kept.PreMerge, j.PreMerge)
 		}
 		b, err := os.ReadFile(filepath.Join(jobDir, JobMDName))
 		if err != nil || !strings.Contains(string(b), "You must resolve every one of them") {
 			t.Errorf("JOB.md (%v) does not carry the conflict:\n%s", err, b)
+		}
+	}
+}
+
+// A wanted merge with no stream tip in the work clone is staging's fault,
+// never a retry staged on its bare prior head.
+func TestPreMergeWithNoTipIsAStagingFault(t *testing.T) {
+	t.Parallel()
+	roots := t.TempDir()
+	f := newStageFake_internal("", nil, 0) // for-each-ref finds no refs/remotes/origin/main
+	g := &OSGitOps{WorkRoot: filepath.Join(roots, "clones"), Exec: f.fx}
+	jobDir := filepath.Join(t.TempDir(), "p1.w3")
+	j := Job{Repo: "o/r", Forge: "github", Kind: "work", Base: "main", Branch: "sprint/s/p1", BaseSHA: shaBase, PriorHead: shaPrior,
+		JobDir: jobDir, WorktreeDir: filepath.Join(jobDir, "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
+	_, err := g.StageWorktree(context.Background(), j)
+	if err == nil || !strings.Contains(err.Error(), "the stream's base main has no tip in the work clone") {
+		t.Fatalf("err = %v, want staging's fault naming the missing tip", err)
+	}
+	argv, _, _ := stageCalls_internal(f.fx)
+	for _, a := range argv {
+		if strings.HasPrefix(a, "checkout") {
+			t.Fatalf("staging checked out %q with no tip to merge", a)
+		}
+	}
+}
+
+// The marker lines git's merge writes, in every conflict style, and not
+// text that only looks like one.
+func TestHasConflictMarker(t *testing.T) {
+	t.Parallel()
+	for body, want := range map[string]bool{
+		"a\n<<<<<<< HEAD\nx\n=======\ny\n>>>>>>> 3333\n": true,
+		"<<<<<<< HEAD\n":       true,
+		"x\n>>>>>>> main\n":    true,
+		"x\n=======\ny\n":      true,
+		"||||||| base\n":       true,
+		"// <<<<<<< in text\n": false,
+		"========\n":           false,
+		"a\nb\n":               false,
+		"<<<<<<<<\n":           false,
+	} {
+		if got := hasConflictMarker_internal([]byte(body)); got != want {
+			t.Errorf("hasConflictMarker_internal(%q) = %v, want %v", body, got, want)
+		}
+	}
+}
+
+// A head over a conflicted staging merge is read for the markers it
+// committed: one left is the work's fail, a read that fails is a fault,
+// none lets the gates decide. At the prior head nothing is read.
+func TestConflictMarkersLeftFailTheHead(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, want, reason string
+		left               []string
+		err                error
+		atPrior            bool
+	}{
+		{name: "left", left: []string{"f.go"}, want: "fail", reason: "conflict markers staging's merge of " + testRebSHA + " committed are still in the head: f.go"},
+		{name: "unreadable", err: os.ErrPermission, want: "fault", reason: "could not be read for the conflict markers"},
+		{name: "resolved", want: "ok"},
+		{name: "at the prior head", left: []string{"f.go"}, want: "ok", atPrior: true},
+	} {
+		g := newFakeGit_internal()
+		g.markersLeft, g.markersErr = c.left, c.err
+		r, j, rec := premergeRunner_internal(t, g, false)
+		rec.PreMerge.Conflicts = []string{"f.go"}
+		head := testCommitSHA
+		if c.atPrior {
+			head = testPriorSHA
+		}
+		rec.Outcome, rec.State, rec.PushedHead = Outcome{Result: "ok", Head: head}, JobHarvested, head
+		if err := r.rebaseAndTestStep_internal(context.Background(), j.JobDir, &rec); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Outcome.Result != c.want || !strings.Contains(rec.Outcome.Reason, c.reason) {
+			t.Errorf("%s: outcome %+v, want %s saying %q", c.name, rec.Outcome, c.want, c.reason)
+		}
+		if reads := len(g.markerReads); (reads == 0) != c.atPrior {
+			t.Errorf("%s: %d marker reads %v", c.name, reads, g.markerReads)
 		}
 	}
 }

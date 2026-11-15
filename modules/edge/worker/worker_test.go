@@ -30,6 +30,7 @@ const (
 	testRebSHA    = "3333333333333333333333333333333333333333"
 	testPriorSHA  = "4444444444444444444444444444444444444444"
 	testCommitSHA = "5555555555555555555555555555555555555555"
+	testMergeSHA  = "7777777777777777777777777777777777777777" // staging's merge of the stream into a retry (fakeGit.StageWorktree)
 )
 
 func noSleep_internal(time.Duration) {}
@@ -46,27 +47,31 @@ func testClock_internal() func() time.Time {
 }
 
 type fakeGit struct {
-	mu          sync.Mutex
-	stageErr    error
-	headByWT    map[string]string
-	rebasedSHA  string
-	rebaseErr   error
-	pushed      map[string]string
-	originHeads map[string]string
-	dirtyByWT   map[string]bool
-	pushErr     error
-	removedWTs  []string
-	stagedJobs  []Job
-	commits     []string
-	fetches     map[string]int // per repo
-	fetchedJobs map[string]int // per repo: the jobs its fetches were for
-	fetchErr    error
-	pushLog     []fakePush
-	checkouts   []string // every CheckOut's sha
-	streamTip   string   // StreamTip's answer: the stream tip the last merge used
-	tipErr      error
-	preMerge    *PreMerge // staging's merge of a work retry (StageWorktree); nil: none
-	collected   []Sealed  // every Collect's argument
+	mu                sync.Mutex
+	stageErr          error
+	headByWT          map[string]string
+	rebasedSHA        string
+	rebaseErr         error
+	pushed            map[string]string
+	originHeads       map[string]string
+	dirtyByWT         map[string]bool
+	pushErr           error
+	removedWTs        []string
+	stagedJobs        []Job
+	commits           []string
+	fetches           map[string]int // per repo
+	fetchedJobs       map[string]int // per repo: the jobs its fetches were for
+	fetchErr          error
+	pushLog           []fakePush
+	checkouts         []string // every CheckOut's sha
+	streamTip         string   // StreamTip's answer: the stream tip the last merge used
+	tipErr            error
+	baseTip           string   // the stream's tip for staging's merge of a work retry (StageWorktree); "": none fetched
+	preMergeConflicts []string // the files that merge conflicts in
+	collected         []Sealed // every Collect's argument
+	markersLeft       []string // ConflictMarkers' answer
+	markersErr        error
+	markerReads       []string // every ConflictMarkers call: "<head> <paths>"
 }
 
 // CheckOut checks sha out in the worker's clone.
@@ -103,8 +108,10 @@ func (g *fakeGit) Fetch(_ context.Context, js ...Job) error {
 	return g.fetchErr
 }
 
-// StageWorktree stages j at its prior head or base; with preMerge set, a
-// work retry's tree is at preMerge's head (the merge OSGitOps makes).
+// StageWorktree stages j at its prior head or base. With baseTip set (the
+// stream's tip as a pass fetched it), staging's own decision
+// (preMergeTip_internal) merges it into a work retry, as OSGitOps does: the
+// tree is at testMergeSHA, conflicted in preMergeConflicts.
 func (g *fakeGit) StageWorktree(_ context.Context, j Job) (Staged, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -114,9 +121,9 @@ func (g *fakeGit) StageWorktree(_ context.Context, j Job) (Staged, error) {
 	g.stagedJobs = append(g.stagedJobs, j)
 	_ = os.MkdirAll(j.WorktreeDir, 0o755)
 	var merge *PreMerge
-	if g.preMerge != nil && preMergeWanted_internal(j) {
-		m := *g.preMerge
-		merge, g.headByWT[j.WorktreeDir] = &m, m.Head
+	if tip := preMergeTip_internal(j, g.baseTip); tip != "" {
+		merge = &PreMerge{Tip: tip, Head: testMergeSHA, Conflicts: slices.Clone(g.preMergeConflicts)}
+		g.headByWT[j.WorktreeDir] = testMergeSHA
 	}
 	if g.headByWT[j.WorktreeDir] == "" {
 		g.headByWT[j.WorktreeDir] = cmp.Or(j.PriorHead, j.BaseSHA)
@@ -147,6 +154,14 @@ func (g *fakeGit) Collect(_ context.Context, sl Sealed) (string, error) {
 }
 
 func (g *fakeGit) Export(context.Context, string, string, string) error { return nil }
+
+// ConflictMarkers answers markersLeft (and markersErr) for every head.
+func (g *fakeGit) ConflictMarkers(_ context.Context, _, head string, paths []string) ([]string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.markerReads = append(g.markerReads, head+" "+strings.Join(paths, ","))
+	return slices.Clone(g.markersLeft), g.markersErr
+}
 
 // Push records every push (branch, sha, lease) and keeps git's lease: the
 // branch on origin must be at expect ("" : absent).

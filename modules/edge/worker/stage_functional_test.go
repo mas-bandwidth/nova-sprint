@@ -74,6 +74,7 @@ func TestFunctionalShallowStage(t *testing.T) {
 			require.Equal(t, PreMerge{Tip: base, Head: staged.Head}, *staged.Merge, "a clean merge")
 			runGitCmd_internal(t, j.WorktreeDir, "merge-base", "--is-ancestor", prior, staged.Head)
 			runGitCmd_internal(t, j.WorktreeDir, "merge-base", "--is-ancestor", base, staged.Head)
+			require.Equal(t, base, runGitCmd_internal(t, j.WorktreeDir, "merge-base", base, "HEAD"), "the tree the harness starts on holds main's tip")
 			tip, err := g.BranchTip(ctx, j)
 			require.NoError(t, err)
 			require.Equal(t, prior, tip)

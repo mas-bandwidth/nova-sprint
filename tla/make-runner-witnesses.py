@@ -50,7 +50,7 @@ DROPPED["RunnerRestartResumes"] = ["RestartReturnsHand", "KeptHandNeverRuns"]
 # name, target invariant, fault, exact replacement pairs
 WITNESSES = [
     ("RunnerReusedJobDir", "JobDirNeverReused", "A job directory is created twice.",
-     [("![c].exists = TRUE, ![c].creates = @ + 1]\n", "![c].exists = TRUE, ![c].creates = 2]\n")]),
+     [("![c].exists = TRUE, ![c].creates = @ + 1, ![c].stale = FALSE]", "![c].exists = TRUE, ![c].creates = 2, ![c].stale = FALSE]")]),
     ("RunnerSlotFreedEarly", "HarnessInsideSlot", "A harvest frees a slot it did not take.",
      [("slotsInUse' = slotsInUse - 1   \\* slot freed only when harness ends", "slotsInUse' = slotsInUse")]),
     ("RunnerDieClassifiedFail", "FaultSpendsNoAttemptOrBounce", "A harness death is a fail that bounces.",

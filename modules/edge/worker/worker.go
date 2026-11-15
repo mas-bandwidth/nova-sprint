@@ -85,11 +85,14 @@ type (
 	// (2026-11-15: sm-a1-c-unnamed-record-check, four on mini-m5). Head is the
 	// merge commit the harness starts on; Conflicts, when the merge did not
 	// go clean, are the files it left with conflict markers, committed in
-	// Head for the harness to resolve. Model: tla/Runner.tla Stage, stale.
+	// Head for the harness to resolve; Unmarked, the conflicted files git
+	// left no marker in (a binary file, one deleted on one side), committed
+	// as the prior head has them. Model: tla/Runner.tla Stage, stale.
 	PreMerge struct {
 		Tip       string
 		Head      string
 		Conflicts []string `json:",omitempty"`
+		Unmarked  []string `json:",omitempty"`
 	}
 	// Staged is what StageWorktree made: the head the harness starts on and
 	// staging's merge of the stream tip, nil when none was made.

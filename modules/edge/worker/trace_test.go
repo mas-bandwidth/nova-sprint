@@ -43,7 +43,7 @@ type runnerJobDirState_internal struct {
 	// the walk's job process table, which only the worker's KillJob empties.
 	tree bool
 	// stale: the job was staged on a prior head with no merge of the
-	// stream's tip; read from preMergeTip_internal, staging's decision.
+	// stream's tip; read from the record the worker's stage step left.
 	stale bool
 }
 
@@ -158,6 +158,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		t.Fatalf("seed runner walk: err=%v rec=%+v", err, rec)
 	}
 	root, git := t.TempDir(), newFakeGit_internal()
+	git.baseTip = testRebSHA // the stream moved on since every prior head: a retry's stage merges it in
 	wall := &stepWall_internal{fakeWall: &fakeWall{}, steps: &[][]string{}}
 	procs := &fakeProcTable{alive: map[string]bool{}}
 	sc := &StoreSprintClient{Store: st, Hooked: map[string]string{"vision.ds": "worker"}, Now: func() time.Time { return t0 }}
@@ -427,11 +428,17 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 			h.git.mu.Lock()
 			h.git.originHeads[rec.Branch] = testPriorSHA
 			h.git.mu.Unlock()
-			// Staging's decision: the stream (main, moved on to testRebSHA)
-			// merged into the prior head, or the tree left at the bare head.
-			h.stale[c] = preMergeTip_internal(Job{Kind: "work", Base: "main", BaseSHA: rec.BaseSHA, PriorHead: rec.PriorHead}, testRebSHA) == ""
 		}
 		writeStagedRecord_internal(t, dir, rec)
+		// The worker's own stage step, on the walk's git whose stream (main)
+		// moved on to testRebSHA: stale is read from the record it left, a
+		// prior head it staged with no merge of the stream's tip.
+		job := Job{Consumer: c, Kind: "work", Row: rec.Row, Base: "main", Branch: rec.Branch, BaseSHA: rec.BaseSHA, PriorHead: rec.PriorHead,
+			JobDir: dir, WorktreeDir: filepath.Join(dir, "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
+		if err := h.runner.stageStep_internal(ctx, &job, &rec); err != nil {
+			t.Fatalf("Stage %s: %v", c, err)
+		}
+		h.stale[c] = rec.PriorHead != "" && rec.PreMerge == nil
 	case "Run":
 		rec, err := ReadJobRecord(dir)
 		if err != nil {

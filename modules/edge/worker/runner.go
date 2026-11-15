@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -88,6 +89,11 @@ type (
 		// merged in clone (its FETCH_HEAD): the base a stream gate red at
 		// the merged head is judged against (baseGateRed_internal).
 		StreamTip(ctx context.Context, clone string) (string, error)
+		// ConflictMarkers are the paths, of paths, whose file at head in
+		// clone still holds a line git's merge writes around a conflict
+		// (staging's conflicted merge, PreMerge); a path absent at head
+		// holds none.
+		ConflictMarkers(ctx context.Context, clone, head string, paths []string) ([]string, error)
 		OriginHasHead(ctx context.Context, clone, remote, branch, sha string) (bool, error)
 		RemoveWorktree(ctx context.Context, worktree string) error
 	}
@@ -932,6 +938,22 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		}
 		rec.Outcome.Head = cmp.Or(newSHA, rec.Outcome.Head)
 	}
+	if pm := rec.PreMerge; r.Git != nil && !atPrior && pm != nil && len(pm.Conflicts) > 0 {
+		// Staging committed its merge's conflicts for the harness to
+		// resolve: a head that still holds one of their markers is the
+		// work's fail, whatever its gates say of it.
+		left, err := r.Git.ConflictMarkers(ctx, clone, rec.Outcome.Head, pm.Conflicts)
+		switch {
+		case err != nil:
+			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "the head could not be read for the conflict markers staging's merge left: " + err.Error()}
+		case len(left) > 0:
+			rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "the conflict markers staging's merge of " + pm.Tip + " committed are still in the head: " + strings.Join(left, ", ") + "; resolve them"}
+		}
+		if err != nil || len(left) > 0 {
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
+			return nil
+		}
+	}
 	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, Repo: rec.Repo, Forge: rec.Forge, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
 	if fault, err := r.applyRebased_internal(ctx, tJob, *rec); err != nil {
 		rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "the rebased head could not be checked out for the done-when tests: " + err.Error()}
@@ -1498,7 +1520,9 @@ func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (Staged, error) {
 	err = g.sharedClone_internal(ctx, to, work, j.WorktreeDir)
 	tip := ""
 	if err == nil && preMergeWanted_internal(j) {
-		tip, err = g.branchTipIn_internal(ctx, to, work, j.Base)
+		if tip, err = g.branchTipIn_internal(ctx, to, work, j.Base); err == nil && tip == "" {
+			err = fmt.Errorf("the stream's base %s has no tip in the work clone, and a retry starts with it merged in", j.Base)
+		}
 	}
 	lock.RUnlock()
 	if err != nil {
@@ -1586,40 +1610,68 @@ func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j
 }
 
 // preMerge_internal merges tip, the stream's tip, into the prior head j's
-// tree is at, before the harness, merged in and never rebased, as the
-// stream step does (RebaseOntoStream). Clean, the merge commit is the
-// harness's start. Conflicted, the merge is committed with its conflict
-// markers, Conflicts naming the files, and the prompt tells the harness to
-// resolve them: committed, so the seal step (whose reset ends a merge in
-// progress) keeps the stream as the head's parent, and the stream step
-// after the harness finds it merged. nil: tip is already in the prior head.
-// Any other failure is staging's fault, the tree as git left it.
+// tree is at, before the harness: a merge commit (never a fast-forward, so
+// Head is always the merge), merged in and never rebased, as the stream
+// step does (RebaseOntoStream). Clean, the merge commit is the harness's
+// start. Conflicted, the merge is committed with its conflict markers,
+// Conflicts naming the files, and the prompt tells the harness to resolve
+// them: committed, so the seal step (whose reset ends a merge in progress)
+// keeps the stream as the head's parent, and the stream step after the
+// harness finds it merged. A conflicted file git left no marker in (a
+// binary file, one deleted on one side) is committed as the prior head
+// has it, and Unmarked names it for the harness. nil: tip is already in
+// the prior head. Any other failure is staging's fault.
 func (g *OSGitOps) preMerge_internal(ctx context.Context, to time.Duration, j Job, tip string) (*PreMerge, error) {
 	wt := j.WorktreeDir
 	before, err := g.headSHA_internal(ctx, wt, "HEAD")
 	if err != nil {
 		return nil, err
 	}
+	if _, err := g.runGit_internal(ctx, to, wt, "merge-base", "--is-ancestor", tip, before); err == nil {
+		return nil, nil // the prior head holds the tip already
+	}
 	msg := "Merge " + j.Base + " at " + tip + " into the card before the attempt\n\nnova-worker merged the stream's tip into the prior head before the harness ran, so the attempt starts on the base the stream step merges after it.\n"
-	_, mergeErr := g.runGit_internal(ctx, to, wt, "merge", "--no-edit", "--no-verify", "-m", msg, tip)
-	var conflicts []string
+	_, mergeErr := g.runGit_internal(ctx, to, wt, "merge", "--no-ff", "--no-edit", "--no-verify", "-m", msg, tip)
+	pm := &PreMerge{Tip: tip}
 	if mergeErr != nil {
-		out, err := g.runGit_internal(ctx, to, wt, "diff", "--name-only", "--diff-filter=U")
-		if conflicts = strings.Fields(out); err != nil || len(conflicts) == 0 {
+		out, err := g.runGit_internal(ctx, to, wt, "diff", "--name-only", "-z", "--diff-filter=U")
+		for _, f := range strings.Split(out, "\x00") {
+			if f == "" {
+				continue
+			}
+			if b, rerr := os.ReadFile(filepath.Join(wt, f)); rerr == nil && hasConflictMarker_internal(b) {
+				pm.Conflicts = append(pm.Conflicts, f)
+			} else {
+				pm.Unmarked = append(pm.Unmarked, f)
+			}
+		}
+		if err != nil || len(pm.Conflicts)+len(pm.Unmarked) == 0 {
 			return nil, fmt.Errorf("stage: merge %s at %s into the prior head %s: %w", j.Base, tip, before, errors.Join(mergeErr, err))
 		}
-		msg = "Merge " + j.Base + " at " + tip + " into the card before the attempt, with conflicts\n\nnova-worker merged the stream's tip into the prior head before the harness ran; the merge conflicted, and the attempt resolves the conflict markers committed here in:\n  " + strings.Join(conflicts, "\n  ") + "\n"
+		msg = "Merge " + j.Base + " at " + tip + " into the card before the attempt, with conflicts\n\nnova-worker merged the stream's tip into the prior head before the harness ran; the merge conflicted, and the attempt resolves the conflicts committed here in:\n  " + strings.Join(slices.Concat(pm.Conflicts, pm.Unmarked), "\n  ") + "\n"
 		for _, args := range [][]string{{"add", "-A", "--", "."}, {"commit", "-q", "--no-verify", "-m", msg}} {
 			if _, err := g.runGit_internal(ctx, to, wt, args...); err != nil {
 				return nil, fmt.Errorf("stage: commit the conflicted merge of %s at %s: %w", j.Base, tip, err)
 			}
 		}
 	}
-	head, err := g.headSHA_internal(ctx, wt, "HEAD")
-	if err != nil || head == before {
+	if pm.Head, err = g.headSHA_internal(ctx, wt, "HEAD"); err != nil {
 		return nil, err
 	}
-	return &PreMerge{Tip: tip, Head: head, Conflicts: conflicts}, nil
+	if pm.Head == before {
+		return nil, fmt.Errorf("stage: the merge of %s at %s made no commit over the prior head %s", j.Base, tip, before)
+	}
+	return pm, nil
+}
+
+// conflictMarkerRE is a line git's merge writes around a conflict, in any
+// conflict style: the start, the separator, the end, diff3's base.
+var conflictMarkerRE = regexp.MustCompile(`(?m)^(<{7} |={7}$|>{7} |\|{7} )`)
+
+// hasConflictMarker_internal: b holds a line git's merge writes around a
+// conflict.
+func hasConflictMarker_internal(b []byte) bool {
+	return conflictMarkerRE.Match(b)
 }
 
 // BranchTip reads j's branch from the work clone's remote-tracking refs
@@ -1925,6 +1977,25 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, clone, remote, streamRe
 
 func (g *OSGitOps) StreamTip(ctx context.Context, clone string) (string, error) {
 	return g.headSHA_internal(ctx, clone, "FETCH_HEAD^{commit}")
+}
+
+// ConflictMarkers: see GitOps.
+func (g *OSGitOps) ConflictMarkers(ctx context.Context, clone, head string, paths []string) ([]string, error) {
+	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	var left []string
+	for _, p := range paths {
+		if _, err := g.runGit_internal(ctx, to, clone, "cat-file", "-e", head+":"+p); err != nil {
+			continue // deleted at head: no marker
+		}
+		body, err := g.runGit_internal(ctx, to, clone, "cat-file", "blob", head+":"+p)
+		if err != nil {
+			return nil, fmt.Errorf("read %s at %s: %w", p, head, err)
+		}
+		if hasConflictMarker_internal([]byte(body)) {
+			left = append(left, p)
+		}
+	}
+	return left, nil
 }
 
 // deepenForMerge_internal deepens the worker's clone while it is shallow
