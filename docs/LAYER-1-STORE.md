@@ -755,6 +755,27 @@ model and harness wherever they are named).
   project an op with SetStreamGates, as for SetStreamForge. Tests:
   `TestRound30Hash`, the conformance case `stream gates`,
   `TestFunctionalMigrateRound30`.
+- A retired row (round 32, 2026-11-15; Glenn: "the nova-sprint system and
+  dash follows the set of machines defined automatically in nova-config"):
+  `Row` gains `Retired`, a column of `sprint.rows` (`boolean NOT NULL
+  DEFAULT false`). `RetireRow{Row, Reason}` unhooks the row, puts it down,
+  not held, its heartbeat cleared and the reason kept, and retires it;
+  refused when the row does not exist or is retired, and while it holds a
+  live (ready or working) consumer (`row w1 holds card u1; return its hand
+  before it is retired`), so a card dealt between a retire's plan and its
+  commit refuses the retire rather than being stranded. A retired row is in
+  no read (`Snapshot`, `Read`; `Fold` and `Rebuild` drop it on its
+  after-image), every write and condition but `PutRow` refuses it as absent
+  (`row w1 is retired: nova-config no longer names it; it comes back when
+  it hooks in again`), so no deal adds a card to it, and a clear does not
+  carry it. `PutRow` brings it back as a new row (down, not held, no flaps
+  or heartbeat), its gen going on. The record stays because the epoch's
+  consumers still name it as their holder (the foreign key). A round-31
+  store is upgraded in place (round31Hash, testdata/schema-round31.sql).
+  The trace projection does not project RetireRow, as for SetRowLoad
+  (Store.tla leaves it out); the row and hand rules are
+  `tla/RowAlive.tla` Retire. Tests: `TestRound31Hash`, the conformance
+  case `retire row`, `TestFunctionalMigrateRound31`.
 - A policy version read by its name (2026-11-11, no schema change):
   `Store.PoliciesNamed(kind, name, max)`, the newest max versions of a kind
   under a name, newest first, read from `sprint.policy`, which grows with

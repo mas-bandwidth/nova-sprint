@@ -46,6 +46,8 @@ import (
 //   - Row load, cores, slots and advertised tiers (the heartbeat,
 //     SetRowLoad): a write TraceOp refuses; it moves no gen and no store
 //     rule reads it (the roster reads slots and tiers, outside the store).
+//   - A row's retire (RetireRow, round 32): TraceOp refuses it; the row and
+//     hand rules are tla/RowAlive.tla Retire, and a walk never retires.
 //   - Row flaps and reason, and the write on them (SetRowFlaps): TraceOp
 //     refuses it. A row's session and role (the hook, PutRow) are projected
 //     as sess and role; a walk's sessions are the model's (x, y).

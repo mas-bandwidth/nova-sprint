@@ -490,6 +490,14 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    --width <n> --tiers <a,b>`); the sprint's own row state (session, role, held) is written only by
    `hook`, `unhook`, `hold` and `unhold`. Change a width or a tier in nova-config; the sprint sees it
    on the next tick.
+   To take a machine or a friend out of the sprint, remove it from nova-config (`nova-config
+   machine remove <name>` or `nova-config friend remove <name>`): the run retires its row on the
+   next tick, its hand back to the queue with branches and heads kept, and the row shows nowhere
+   (show, check, next, the deal, the board) until nova-config names it and it hooks in again
+   (Glenn, 2026-11-15). Nothing is retired while nova-config cannot be read or names nothing, and a
+   row hooked as the coordinator is never retired. `nova-sprint retire <row> --reason "<why>"` does
+   the same by hand, the worst case; `nova-sprint check` names any store row nova-config does not
+   name (none after a tick).
 2. To bring a row up: a bench whose worker is down comes back with `nova-sprint up --as <you>`,
    which re-verifies every bench's worker (setup step 9) and restarts the ones that fail. Its steps
    2 and 3 run nova-fleet's plays on every bench first, so a bench nova-fleet cannot reach stops
