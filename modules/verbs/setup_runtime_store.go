@@ -135,6 +135,15 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 	if err != nil || !ok {
 		return false, err
 	}
+	if install { // before the first backup, whose restore verification refuses a store with a lost row
+		lost, err := pg.RestoreLostRows(ctx)
+		if err != nil {
+			return false, cause("restoring the rows lost from the table", err)
+		}
+		for _, name := range lost {
+			fmt.Fprintf(os.Stderr, "nova-sprint: store: row %s was missing from sprint.rows (removed outside the store); put back as the log has it\n", name)
+		}
+	}
 	archive := PGBackups{DSN: dsn, Password: password, Directory: dir, Version: version, Loader: PGSQLLoader{}}
 	ok, _, err = verifiedFirstBackup(ctx, pg, archive, dir)
 	if err != nil {
