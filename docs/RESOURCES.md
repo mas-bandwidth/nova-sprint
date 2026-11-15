@@ -13,19 +13,21 @@ Work requires resources, and can run anywhere those resources are provided.
 Glenn: "The actual pattern is that cards require resources, and can run anywhere
 those resources are provided. Be it CPU, memory, GPU, dev tools whatever..."
 
+The purpose is to spread work across the fleet better than a count of cards per
+machine can. Glenn: "basically, we want to distribute work better."
+
 ## What a resource is
 
 A resource is a name and a whole number. *Settled.*
 
-There is one kind of resource. CPU, memory, a GPU, a toolchain and an attached
-device are all the same record: a name and an integer. Amounts are never
-fractions.
+There is one kind of resource. CPU, memory, a GPU and an attached device are
+all the same record: a name and an integer amount. Amounts are never fractions.
 
 | Resource | Unit | Example on a machine |
 | --- | --- | --- |
 | `cpu` | CPU units | `cpu 16` |
 | `memory` | gigabytes | `memory 64` |
-| a thing the machine has or does not have | 0 or 1 | `ps5 1` |
+| a thing the machine has or does not have | amount 1 | `ps5 1` |
 
 ### CPU units
 
@@ -70,48 +72,65 @@ Memory is in whole gigabytes. *Settled.*
 
 ### Things
 
-A thing with no count is a resource whose number is 0 or 1: the machine has it
-or it does not. *Settled.*
+A thing is a resource with amount 1. It cannot be split: work has it or does
+not. *Settled.*
 
-Glenn: "for a thing that has no counts, just give it 0, eg. 0/1 -- have or not
-have. boolean."
+Glenn: "the resource would be defined as having amount=1, so you can't split it
+up, you have it or not."
+
+Work that needs a PS5 requires `ps5 1` and holds the whole of it while it runs.
+Work that does not need one does not name it at all.
 
 ## Machines provide
 
-Each machine provides a set of resources: for each name, a capacity. A resource
-a machine does not list has capacity 0 there.
+Each machine provides a set of resources: for each name, an amount. A machine
+that does not list a resource does not have it.
+
+The fleet's resources are kept in nova-config, beside its machines. *Settled.*
+
+The link runs both ways. *Settled.* From a resource, the fleet can be asked
+which machines have it. From a machine, it can be asked which resources it has.
+
+Glenn: "resources point to machines that have them in fleet. machines can also
+walk to the resources tehy have. bidirectional."
 
 At any moment each resource on a machine also has an amount in use: the sum of
-what the work running there has taken.
+what the work running there holds.
+
+## A uniform fleet
+
+The default set of tools is installed on every machine with ansible, so the
+fleet is as uniform as it can be made. *Settled.*
+
+Glenn: "the default set of stuff done with ansible. we try to push the fleet to
+be as uniform as we can, for flexibility."
+
+So a resource is not a list of what is installed. Work can assume the default
+set anywhere. A resource names what is counted (CPU, memory) or what only some
+machines have (a GPU, a console and its toolchain).
 
 ## Work requires
 
-Each piece of work requires a set of resources: for each name, an amount.
+Each piece of work requires a set of resources: for each name, an amount of at
+least 1.
 
-Work fits on a machine when, for every resource it requires:
-
-1. the machine provides it (capacity of at least 1), and
-2. the amount in use plus the amount required is at most the capacity.
+Work fits on a machine when, for every resource it requires, the amount in use
+plus the amount required is at most what the machine provides.
 
 Work acquires everything it requires before it starts, holds it while it runs,
 and releases all of it when it ends, however it ends.
 
-A requirement of 0 means the work needs the resource to be there but takes none
-of it. Many pieces of work can share it. A requirement of 1 against a capacity
-of 1 means one at a time.
-
-| Requirement | Meaning | Example |
-| --- | --- | --- |
-| `cpu 4` | takes 4 of the machine's CPU units | a build |
-| `memory 8` | takes 8 GB | a build |
-| `ps5 0` | needs the toolchain present, takes nothing | compiling for the device |
-| `ps5 1` | takes the device itself | running on the one attached devkit |
+| Requirement | Meaning |
+| --- | --- |
+| `cpu 4` | holds 4 of the machine's CPU units |
+| `memory 8` | holds 8 GB |
+| `ps5 1` | holds the machine's PS5 |
 
 ## What takes resources
 
-A consumer of a card (each work attempt and each read) and a GitHub runner's
-job. Both state what they require in the same names and units, and both draw on
-the same capacity of the machine they run on.
+A consumer of a card (each work attempt and each read), a GitHub runner's job,
+and a friend's work. All state what they require in the same names and units,
+and all draw on the same amounts of the machine they run on.
 
 ## What this replaces
 
@@ -119,36 +138,50 @@ Today a bench has a width: its core count, at most `fleet_width_cap`, and at
 most its `nova-reserve` slots. Every working consumer takes one of the width,
 whatever it does. A consumer can state a tier and routes and nothing else.
 
-With resources there is no width. How many consumers a machine works at once
-follows from what each one requires and what the machine has left.
-`fleet_width_cap` has nothing to bound. A route a machine serves is a thing it
-has.
+A machine's width goes away, replaced by its `cpu` resource. *Settled.* How
+many consumers a machine works at once follows from what each one requires and
+what the machine has left. `fleet_width_cap` has nothing to bound. A route a
+machine serves is a thing it has.
+
+Glenn: "machine width in fleet definitely goes away and is replaced by cpu
+resource."
+
+A friend keeps its width for now. *Settled.* A friend's work still acquires
+resources to run.
+
+Glenn: "leave friend width the same for now, but yes, friends work will acquire
+resources to do work, and maybe, they have a tag [codex] that ties to
+particular machine or whatever."
 
 ## Not settled
 
 These are Glenn's to decide before this layer is built.
 
-0. **What one CPU unit is worth, and how a machine is scored.** The numbers on
+1. **What one CPU unit is worth, and how a machine is scored.** The numbers on
    machines and on cards need a shared anchor, so that `cpu 4` means the same
    amount to everyone who writes it. A benchmark would define it: one CPU unit
    is a fixed score. Which benchmark, where it lives (nova-tools is the likely
    home), and whether a machine's number can also be set by hand are not
    chosen.
-1. **Where a machine's resources are declared.** nova-config holds machines and
-   their core counts today, so it is the likely home. That is a change in
-   nova-tools, under this layer.
-2. **Requirement 0.** The rule above (present, takes nothing) is Rowan's
-   reading of "0/1". The other reading is that a thing is always taken.
-3. **Work that states nothing.** What a consumer requires when its card names
-   no resources.
-4. **Friends.** A friend's width is how many sessions it runs at once, not a
-   core count. It either stays a width or becomes a resource like any other.
+2. **From CPU units to cores.** A machine turns the CPU units a piece of work
+   holds into a number of its own cores, which is also the work's parallel job
+   count. The likely rule is the machine's cores times the units held, divided
+   by the machine's CPU units, rounded up.
+3. **CPU and memory for work that names none.** The default tools need no
+   naming, but every piece of work uses some CPU and memory. What a consumer
+   holds when its card states no `cpu` or `memory` is not chosen.
+4. **Where a friend's work acquires.** Two ways are on the table. In one, a
+   friend carries a tag (such as `codex`) that ties its work to a particular
+   machine. In the other, resources place a friend's work exactly as they
+   place a bench's: the work acquires on whichever machine has what it needs,
+   and the friend reaches that machine over ssh. Glenn: "or we can use
+   resources fully to distribute friend work across the machine, eg. the
+   friend ssh's there". The second needs no friend width at all.
 5. **The machine-local reservation.** `nova-reserve` has one capacity per
    machine, in slots, shared with people and CI. It either learns named
    resources or gives way to the accounting here.
-6. **From CPU units to cores.** A machine turns the CPU units a piece of work
-   holds into a number of its own cores, which is also the work's parallel job
-   count. The likely rule is the machine's cores times the units held, divided
-   by the machine's CPU units, rounded up. It is not settled.
+6. **A thing several can use at once.** A thing has amount 1, so one piece of
+   work holds it at a time. If some thing outside the default set can serve
+   several at once, whether it is given a higher amount is not decided.
 7. **Single-threaded work.** A CPU unit measures a machine's total. Work that
    cannot be split runs slower on weak cores however many units it holds.
