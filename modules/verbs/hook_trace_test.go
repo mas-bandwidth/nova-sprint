@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 )
 
 // The walk tla/HookTrace.tla checks against tla/Hook.tla (tla/make-traces.sh,
@@ -48,6 +50,7 @@ func newHookWalk(t *testing.T) *hookWalk {
 		s.Rows[n] = r
 	}
 	h := &hookWalk{t: t, w: worldFrom(t, s), starts: map[string]int{}}
+	h.w.e.Policy = policy.NewEngine(stillClock{})
 	h.w.bus.present, h.w.bus.session = map[string]bool{}, map[string]string{}
 	h.record("Init", "-", "-", true)
 	return h
@@ -107,13 +110,13 @@ func (h *hookWalk) hook(n, role string) bool {
 }
 func (h *hookWalk) unhook(n string) bool { return h.run("Unhook", n, "-", "unhook") }
 
-// verb is an acting verb that writes nothing: a worker's (queue) or the
-// coordinator's (a dry-run hold).
+// verb is an acting verb that writes nothing: a worker's (policy show default)
+// or the coordinator's (a dry-run hold).
 func (h *hookWalk) verb(n, need string) bool {
 	if need == "coordinator" {
 		return h.run("Verb", n, need, "hold", "dave", "--reason", "r", "--dry-run")
 	}
-	return h.run("Verb", n, need, "queue")
+	return h.run("Verb", n, need, "policy", "show", "default")
 }
 
 func (h *hookWalk) tla() string {

@@ -216,14 +216,18 @@ func (t *tick) streamFacts(s string) StreamFacts {
 }
 
 // candidates is the rows policy may name for c: open (up, not held), on the
-// bus (present; Steps.tla Eligible and ServingOpen), serving c's tier, not
-// claimed by a row move when the list is built, and for a read not c's
-// author and not holding a live read of c's head. Room is the engine's check
-// at the deal. The work list is built once per tier per tick, by questions()
-// before the rest, so it is what policy was asked; serving drops the resting
-// rows. A read's is filtered from it.
+// bus (present; Steps.tla Eligible and ServingOpen), serving c's tier (and
+// for work every route c's brief declares; reads review the diff without
+// running gates or touching devices), not claimed by a row move when the list
+// is built, and for a read not c's author and not holding a live read of c's
+// head. Room is the engine's check at the deal. The tier+routes list is built
+// once per key per tick, by questions() before the rest, so it is what policy
+// was asked; serving drops the resting rows.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
-	routes := card.NeedsRoutes(c.Brief) // only rows serving every route the card declares
+	var routes []string
+	if kind != "read" {
+		routes = card.NeedsRoutes(c.Brief) // only work runs gates or touches devices (#835)
+	}
 	key := c.Tier + "\x00" + strings.Join(routes, ",")
 	work, ok := t.candCache[key]
 	if !ok {
@@ -241,7 +245,7 @@ func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	}
 	var out []RowFacts
 	for _, f := range work {
-		if f.Name != c.Author && !t.readingOn(c, f.Name) {
+		if f.Name != c.Author && !t.readingOn(c, f.Name) && t.unclaimed(f.Name) {
 			out = append(out, f)
 		}
 	}

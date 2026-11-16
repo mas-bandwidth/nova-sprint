@@ -22,7 +22,9 @@ func TestNewBusSessionHooksInBeforeItActs(t *testing.T) {
 	w.bus.session = map[string]string{"carol": "bus-2"}
 	hookIn := "hook in first: nova-sprint hook --as carol --role coordinator"
 	want(t, w.do("carol", "hold", "alice", "--reason", "r"), 1, "SPRINT REFUSED hold: "+hookIn)
-	want(t, w.do("carol", "queue"), 1, "SPRINT REFUSED queue: "+hookIn)
+	want(t, w.do("carol", "beat", "--load1", "0", "--cores", "1", "--slots-used", "0", "--slots-total", "1"), 1, "SPRINT REFUSED beat: "+hookIn)
+	want(t, w.do("carol", "queue"), 0, "p1 stream=s")
+	want(t, w.do("carol", "show", "p1"), 0, `"id": "p1"`)
 	want(t, w.do("carol", "next"), 0, "carol is not hooked in to the sprint", "next: nova-sprint hook --as carol --role coordinator")
 	if s := w.snap(t); s.Rows["alice"].Held || s.Rows["carol"].Session != "s-carol" {
 		t.Fatalf("a refused verb wrote: %+v", s.Rows)

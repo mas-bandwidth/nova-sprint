@@ -2,6 +2,7 @@ package steps
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,13 +96,24 @@ func (t *tick) broken() map[string]bool {
 }
 
 // judgeAt opens episode n of kind about about once: a count that only grows
-// (a row's flaps) names its own episode.
+// (a row's flaps) names its own episode, expiring any older open episode of
+// the same (kind, about) in the same op so at most one is open at a time.
 func (t *tick) judgeAt(kind, about string, n int, question string) {
-	if j, exists := t.v.Judgements[fmt.Sprintf("%s.%s.%d", kind, about, n)]; exists || t.pending(kind, about) {
-		if exists && j.State == "open" {
-			t.held(kind, about)
-		}
+	t.detect(kind, about)
+	id := fmt.Sprintf("%s.%s.%d", kind, about, n)
+	if _, exists := t.v.Judgements[id]; exists || t.pending(kind, about) {
 		return
+	}
+	for _, oldID := range sortedKeys(t.v.Judgements) {
+		j := t.v.Judgements[oldID]
+		if j.Kind != kind || j.About != about || j.State != "open" {
+			continue
+		}
+		if episodeOf(j) < n {
+			t.expires[oldID] = fmt.Sprintf("reopened at %d as %s", n, id)
+		} else {
+			return
+		}
 	}
 	t.addJudge(judgement{kind: kind, about: about, question: question, episode: n})
 }
@@ -164,14 +176,28 @@ type judgedIndex struct {
 	episodes map[string]int
 }
 
+func episodeOf(j store.Judgement) int {
+	rest, ok := strings.CutPrefix(j.ID, j.Kind+"."+j.About+".")
+	if !ok {
+		return 0
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
 func (t *tick) jindex() judgedIndex {
 	if t.jidx.open != nil {
 		return t.jidx
 	}
 	t.jidx = judgedIndex{open: set{}, episodes: map[string]int{}}
+	counts := map[string]int{}
 	for _, j := range t.v.Judgements {
 		k := jkey(j.Kind, j.About)
-		t.jidx.episodes[k]++
+		counts[k]++
+		t.jidx.episodes[k] = max(t.jidx.episodes[k], counts[k], episodeOf(j))
 		if j.State == "open" {
 			t.jidx.open[k] = struct{}{}
 		}
@@ -287,10 +313,8 @@ func (t *tick) cleared(j store.Judgement) string {
 		if !ok || t.owed(c) <= 0 {
 			return j.About + " no longer waits for a read"
 		}
-		for _, r := range t.serving(c) {
-			if r != c.Author {
-				return "row " + r + " may read " + j.About
-			}
+		if rows := t.servingKind(c, "read"); len(rows) > 0 {
+			return "row " + rows[0] + " may read " + j.About
 		}
 	case "held":
 		if c, ok := t.v.Cards[j.About]; !ok || c.State != card.Waiting || !card.HeldReason(c.Reason) {
