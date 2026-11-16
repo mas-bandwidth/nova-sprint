@@ -357,7 +357,7 @@ type tracePolicy struct{ r *runTrace }
 
 func (p tracePolicy) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, _ roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
 	out := policy.Answers{Version: 1, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
-		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 100, RouteRestWindow: 10, RouteRestAfter: 3, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
+		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 100, RouteRestWindow: 10, RouteRestAfter: 3, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
 		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyNag: 86400, ReadyTake: 86400, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
 		out.Order[id] = []any{int64(0), id}
@@ -433,8 +433,8 @@ func tracePush(proc, stage string, lo, hi int) string {
 // --- the walk's actions --------------------------------------------------
 
 var traceRoster = roster.Roster{Workers: map[string]roster.Worker{
-	"r1": {Name: "r1", Width: 3, Tiers: []string{"pro"}}, // w0 and two jobs: the deal is the take
-	"r2": {Name: "r2", Width: 1, Tiers: []string{"flash"}},
+	"r1": {Name: "r1", Resources: map[string]int{"cpu": 3, "memory": 6}, Tiers: []string{"pro"}}, // w0 and two jobs: the deal is the take
+	"r2": {Name: "r2", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: []string{"flash"}},
 }}
 
 func (r *runTrace) outside(id string, ws ...store.Write) store.Receipt {

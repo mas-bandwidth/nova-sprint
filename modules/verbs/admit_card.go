@@ -147,12 +147,27 @@ func cardLint(f cardFacts, ro roster.Roster) error {
 		if perr != nil {
 			return RefusalOr(perr, refuse(fmt.Sprintf("card %s: RESOURCES %q is malformed: %v", f.ID, raw, perr), "fix the RESOURCES line (e.g. RESOURCES: cpu 4, memory 8, mac), then add the card again"))
 		}
+		knownTags, knownResources := rosterVocabulary(ro)
+		for k, v := range parsed.Amounts {
+			if k != "cpu" && k != "memory" && knownTags[k] {
+				return refuse(fmt.Sprintf("card %s: RESOURCES %q gives tag %q an amount (%d)", f.ID, raw, k, v), "remove the number after tag "+k+", or configure "+k+" as a resource in nova-config, then add the card again")
+			}
+		}
+		var tags []string
+		for _, t := range parsed.Tags {
+			if knownResources[t] {
+				parsed.Amounts[t] = 1
+			} else {
+				tags = append(tags, t)
+			}
+		}
+		parsed.Tags = tags
 		needs = parsed
 	}
 	if !admitServed(ro, f.Tier, needs) {
 		if needs.Amounts["cpu"] <= 1 && needs.Amounts["memory"] <= 1 && len(needs.Tags) == 0 && len(needs.Amounts) <= 2 {
 			return refuse(fmt.Sprintf("card %s: no row in nova-config serves tier %s", f.ID, f.Tier),
-				"give a friend the tier (nova-config friend set <name> --tiers ...,"+f.Tier+"), give a bench cores, or change the brief's tier line, then add the card again")
+				"give a friend the tier (nova-config friend set <name> --tiers ...,"+f.Tier+"), measure a bench's resources (nova-config machine set <bench> --cpu-units <n> --memory-gb <g>), or change the brief's tier line, then add the card again")
 		}
 		return refuse(fmt.Sprintf("card %s: no row in nova-config serves tier %s with resources %s", f.ID, f.Tier, formatNeeds(needs)),
 			"give a bench that fits the tier (nova-config machine set <bench> --roles bench,...), configure tags and resources (nova-config machine set <bench> --tags ... --cpu-units ... --memory-gb ...), or adjust the card's RESOURCES line, then add the card again")
@@ -169,11 +184,24 @@ func cardLint(f cardFacts, ro roster.Roster) error {
 	return nil
 }
 
+func rosterVocabulary(ro roster.Roster) (tags, resources map[string]bool) {
+	tags, resources = map[string]bool{}, map[string]bool{}
+	for _, w := range ro.Workers {
+		for _, t := range w.Tags {
+			tags[t] = true
+		}
+		for r := range w.Resources {
+			resources[r] = true
+		}
+	}
+	return tags, resources
+}
+
 // admitServed checks joint (tier, tags, resources) fit (R12) on at least one
-// configured bench, or tier on an enabled friend + (tags, resources) fit on a machine.
+// configured bench, or tier on an enabled friend + (tags, resources) fit on a bench.
 func admitServed(ro roster.Roster, tier string, needs card.Needs) bool {
 	for _, w := range ro.Workers {
-		if w.Held == "" && slices.Contains(w.Tiers, tier) && workerFits(w, needs) {
+		if w.Held == "" && slices.Contains(w.Tiers, tier) && w.FitsMax(needs) {
 			return true
 		}
 	}
@@ -185,74 +213,16 @@ func admitServed(ro roster.Roster, tier string, needs card.Needs) bool {
 		}
 	}
 	if friendHasTier {
-		if len(ro.Machines) == 0 {
-			for _, w := range ro.Workers {
-				if workerFits(w, needs) {
-					return true
-				}
-			}
-			if len(needs.Tags) == 0 && needs.Amounts["cpu"] <= 1 && needs.Amounts["memory"] <= 1 && len(needs.Amounts) <= 2 {
+		for _, w := range ro.Workers {
+			if w.Held == "" && w.FitsMax(needs) {
 				return true
 			}
-		} else {
-			for _, m := range ro.Machines {
-				if machineFitsNeeds(m, needs) {
-					return true
-				}
-			}
+		}
+		if len(ro.Workers) == 0 && len(needs.Tags) == 0 && needs.Amounts["cpu"] <= 1 && needs.Amounts["memory"] <= 1 && len(needs.Amounts) <= 2 {
+			return true
 		}
 	}
 	return false
-}
-
-func workerFits(w roster.Worker, needs card.Needs) bool {
-	if len(w.Tags) > 0 || len(w.Resources) > 0 {
-		return w.FitsMax(needs)
-	}
-	if len(needs.Tags) > 0 {
-		return false
-	}
-	for k, v := range needs.Amounts {
-		if k == "cpu" && w.Width > 0 && w.Width < v {
-			return false
-		}
-		if k != "cpu" && k != "memory" {
-			return false
-		}
-	}
-	return w.Width > 0
-}
-
-func machineFitsNeeds(m roster.Machine, needs card.Needs) bool {
-	effOS := m.OS
-	if effOS == "darwin" {
-		effOS = "mac"
-	}
-	tags := slices.Clone(m.Tags)
-	if effOS != "" && !slices.Contains(tags, effOS) {
-		tags = append(tags, effOS)
-	}
-	if m.Arch != "" && !slices.Contains(tags, m.Arch) {
-		tags = append(tags, m.Arch)
-	}
-	for _, tag := range needs.Tags {
-		if !slices.Contains(tags, tag) {
-			return false
-		}
-	}
-	res := maps.Clone(m.Resources)
-	if res == nil {
-		res = map[string]int{}
-	}
-	if m.Cores > 0 && res["cpu"] == 0 {
-		res["cpu"] = m.Cores
-	}
-	for k, v := range needs.Amounts {
-		if res[k] < v {
-			return false
-		}
-	}
-	return true
 }
 
 func formatNeeds(n card.Needs) string {

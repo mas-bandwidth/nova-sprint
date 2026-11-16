@@ -49,7 +49,7 @@ func TestFreshStoreTicksNothingUntilStart(t *testing.T) {
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
 	must(t, f, "policy", activePolicy()...)
-	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"flash", "pro", "heavy", "frontier"}}}}
+	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: []string{"flash", "pro", "heavy", "frontier"}}}}
 	p := &answering{}
 	tk, err := NewTicker(context.Background(), f, &healthy{}, p, t0)
 	if err != nil {
@@ -105,7 +105,7 @@ func TestStoppedTickRaisesHookedRow(t *testing.T) {
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
 	must(t, f, "policy", activePolicy()...)
-	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"flash", "pro", "heavy", "frontier"}}}}
+	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: []string{"flash", "pro", "heavy", "frontier"}}}}
 	p := &answering{}
 	tk, err := NewTicker(context.Background(), f, &healthy{}, p, t0)
 	if err != nil {

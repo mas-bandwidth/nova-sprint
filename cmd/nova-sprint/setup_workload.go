@@ -283,12 +283,21 @@ type benchState struct {
 	name, row string // row: the store row's state, "no row" when absent
 	hooked    bool   // its name is on the bus
 	cores     *int
+	cpuUnits  *int
+	memoryGB  *int
 	beat      string // the build its worker process last beat
 	behind    bool   // up, its process an older build than this one
 	unbeaten  bool   // up, its process not yet beaten since it hooked
 }
 
 func (b benchState) up() bool { return b.hooked && b.row == "up" }
+
+func (b benchState) measured() bool {
+	if b.cpuUnits != nil || b.memoryGB != nil {
+		return b.cpuUnits != nil && *b.cpuUnits >= 1 && b.memoryGB != nil && *b.memoryGB >= 1
+	}
+	return b.cores != nil && *b.cores >= 1
+}
 
 // behind is a worker row up whose process beat a release older than this
 // build's (roster.Behind, as the run and check compare it): the worker
@@ -319,9 +328,9 @@ func (w productionWorkload) benchStates(ctx context.Context) ([]benchState, erro
 	if err != nil {
 		return nil, err
 	}
-	cores := map[string]*int{}
+	byName := map[string]verbs.FleetMachine{}
 	for _, m := range machines {
-		cores[m.Name] = m.Cores
+		byName[m.Name] = m
 	}
 	var states []benchState
 	for _, bench := range verbs.WorkerBenches(machines) {
@@ -330,7 +339,8 @@ func (w productionWorkload) benchStates(ctx context.Context) ([]benchState, erro
 		if ok {
 			row = r.State
 		}
-		states = append(states, benchState{name: bench, row: row, hooked: present[bench], cores: cores[bench], beat: r.Version, behind: w.behind(r), unbeaten: w.unbeaten(r)})
+		m := byName[bench]
+		states = append(states, benchState{name: bench, row: row, hooked: present[bench], cores: m.Cores, cpuUnits: m.CPUUnits, memoryGB: m.MemoryGB, beat: r.Version, behind: w.behind(r), unbeaten: w.unbeaten(r)})
 	}
 	return states, nil
 }
@@ -467,7 +477,7 @@ func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 			why = append(why, fmt.Sprintf("%s is not hooked and up (store row %s)", b.name, b.row))
 		case b.behind || b.unbeaten:
 			why = append(why, b.name+"'s worker process is not this build ("+cmp.Or(b.beat, "not beaten yet")+")")
-		case b.cores == nil || *b.cores < 1:
+		case !b.measured():
 			why = append(why, b.name+" has "+roster.UnmeasuredResources)
 			fix = "nova-config machine set " + b.name + " --cpu-units <n> --memory-gb <g> --actor <you> --reason <why> (each bench named), then nova-sprint up again"
 		}

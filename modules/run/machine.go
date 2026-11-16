@@ -47,6 +47,28 @@ func ResolveMachine(env, hostname string, machines []string) (string, error) {
 func (r *ConfigRoster) MachineNames(ctx context.Context) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.pool != nil {
+		rows, err := r.pool.Query(ctx, `SELECT name FROM config.machines ORDER BY name`)
+		if err != nil {
+			return nil, fmt.Errorf("run: query config.machines names: %w", err)
+		}
+		defer rows.Close()
+		var names []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return nil, fmt.Errorf("run: scan config.machines name: %w", err)
+			}
+			names = append(names, name)
+		}
+		if rows.Err() != nil {
+			return nil, rows.Err()
+		}
+		return names, nil
+	}
+	if r.reader == nil {
+		return nil, fmt.Errorf("run: no config roster reader configured")
+	}
 	snapshot, err := r.reader.Snapshot(ctx)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 
@@ -13,15 +14,16 @@ import (
 // roster.Source calls. The caller invokes Snapshot and handles its errors;
 // the config library owns its read-only transaction. This function performs
 // no I/O and does not read or retain a config connection.
-// An unknown core count maps to zero, which roster.Load rejects for benches.
+// An unknown core count maps to unmeasured resources, which roster.Load holds.
 func ConfigRosterSource(snapshot config.Snapshot) roster.Source {
 	s := rosterSnapshotSource{}
 	for _, m := range snapshot.Machines {
-		cores := 0
-		if m.Cores != nil {
-			cores = *m.Cores
+		res := map[string]int{}
+		if m.Cores != nil && *m.Cores >= 1 {
+			res["cpu"] = *m.Cores
+			res["memory"] = 1
 		}
-		s.machines = append(s.machines, roster.Machine{Name: m.Name, Roles: configList(m.Roles), Cores: cores, OS: m.OS, Arch: m.Arch})
+		s.machines = append(s.machines, roster.Machine{Name: m.Name, Roles: configList(m.Roles), OS: m.OS, Arch: m.Arch, Resources: res})
 	}
 	for _, f := range snapshot.Friends {
 		s.friends = append(s.friends, roster.Friend{Name: f.Name, Harness: f.Harness, Model: f.Model, Width: f.Width, Tiers: configList(f.Tiers), Pronouns: f.Pronouns, Enabled: f.Enabled})
@@ -48,6 +50,8 @@ func (s rosterSnapshotSource) Machines(ctx context.Context) ([]roster.Machine, e
 	out := slices.Clone(s.machines)
 	for i := range out {
 		out[i].Roles = slices.Clone(out[i].Roles)
+		out[i].Tags = slices.Clone(out[i].Tags)
+		out[i].Resources = maps.Clone(out[i].Resources)
 	}
 	return out, nil
 }

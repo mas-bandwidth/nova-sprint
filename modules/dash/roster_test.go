@@ -10,7 +10,9 @@ import (
 // and width are the roster's, never the store's).
 var testRoster = func() roster.Roster {
 	r := roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{}}
-	worker := func(name string, width int) { r.Workers[name] = roster.Worker{Name: name, Width: width} }
+	worker := func(name string, cpu int) {
+		r.Workers[name] = roster.Worker{Name: name, Resources: map[string]int{"cpu": cpu, "memory": cpu * 2}}
+	}
 	kin := func(name string, width int) { r.Kin[name] = roster.Kin{Name: name, Width: width} }
 	worker("amd-1", 4000)
 	kin("stella", 4000)

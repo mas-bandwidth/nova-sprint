@@ -63,17 +63,30 @@ func TestCardAdmission(t *testing.T) {
 	}
 	tree := func(_ *testing.T, w *world) { w.origin.tree = []string{"README.md", "b/x.go", "b/c/y.go"} }
 	noPro := func(_ *testing.T, w *world) {
-		w.roster.ro = roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"flash"}}}}
+		w.roster.ro = roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Resources: map[string]int{"cpu": 4, "memory": 8}, Tiers: []string{"flash"}}}}
 	}
 	runCases(t, []tcase{
 		{name: "an unserved tier", as: "carol", args: b("u1", ""), exit: 1, prep: noPro, want: []string{"card u1: no row in nova-config serves tier pro", "nova-config friend set"}},
 		{name: "retired NEEDS-ROUTE", as: "carol", args: b("u2", "NEEDS-ROUTE: ipad\n"), exit: 1, want: []string{"card u2: NEEDS-ROUTE is retired in v3.0.0; use RESOURCES instead", "replace NEEDS-ROUTE: <route> with RESOURCES:"}},
+		{name: "an unserved resource tag", as: "carol", args: b("u2b", "RESOURCES: cpu 1, memory 1, ipad\n"), exit: 1, want: []string{"card u2b: no row in nova-config serves tier pro with resources cpu 1, memory 1, ipad", "nova-config machine set"}},
 		{name: "a served resource tag", as: "carol", args: b("u3", "RESOURCES: cpu 1, memory 1, ipad\n"), exit: 0,
 			prep: func(_ *testing.T, w *world) {
 				a := w.roster.ro.Workers["alice"]
 				a.Tags = []string{"ipad"}
 				w.roster.ro.Workers["alice"] = a
 			}, want: []string{"ADDED 1 cards"}},
+		{name: "a served bare custom resource", as: "carol", args: b("u4", "RESOURCES: ps5\n"), exit: 0,
+			prep: func(_ *testing.T, w *world) {
+				a := w.roster.ro.Workers["alice"]
+				a.Resources = map[string]int{"cpu": 4, "memory": 8, "ps5": 1}
+				w.roster.ro.Workers["alice"] = a
+			}, want: []string{"ADDED 1 cards"}},
+		{name: "a tag given an amount", as: "carol", args: b("u5", "RESOURCES: ipad 2\n"), exit: 1,
+			prep: func(_ *testing.T, w *world) {
+				a := w.roster.ro.Workers["alice"]
+				a.Tags = []string{"ipad"}
+				w.roster.ro.Workers["alice"] = a
+			}, want: []string{`gives tag "ipad" an amount`}},
 		{name: "a missing directory", as: "carol", args: paths("p3", "z/q.go"), exit: 1, prep: tree, want: []string{"card p3: PATHS z/q.go: neither it nor its directory z/ is there", "ending in /"}},
 		{name: "a new file in a directory", as: "carol", args: paths("p4", "b/new.go, b/c/y.go"), exit: 0, prep: tree, want: []string{"ADDED 1 cards"}},
 		{name: "a declared new directory", as: "carol", args: paths("p5", "b/d/, b/d/n.go"), exit: 0, prep: tree, want: []string{"ADDED 1 cards"}},
@@ -181,7 +194,7 @@ func TestGateFixSaysShC(t *testing.T) {
 	if f := classify(err); !strings.Contains(f.Fix, "sh -c '...'") || !strings.Contains(f.What, "a backquote is shell syntax") {
 		t.Fatalf("%+v", f)
 	}
-	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}
+	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Resources: map[string]int{"cpu": 4, "memory": 8}, Tiers: []string{"pro"}}}}
 	f := cardFacts{ID: "c1", Tier: "pro", Brief: "tier: pro\n", DoneWhen: []string{"go test ./...", "Tests must all pass"}}
 	err = cardLint(f, ro)
 	if g := classify(err); !strings.Contains(g.What, "card c1: DONE-WHEN Tests must all pass is not one command") || !strings.Contains(g.Fix, "sh -c '...'") {

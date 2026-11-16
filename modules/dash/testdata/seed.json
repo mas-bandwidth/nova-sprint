@@ -49,7 +49,7 @@
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 4000
           },
           "critical_working": "0",
           "done": "0",
@@ -57,7 +57,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 8000
           },
           "ok": "0",
           "okpct": "-",
@@ -66,14 +66,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "4000",
+          "width": "0",
           "working": "0"
         },
         "m00": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -81,7 +81,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -90,14 +90,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m01": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -105,7 +105,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -114,14 +114,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m02": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -129,7 +129,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -138,14 +138,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m03": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -153,7 +153,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -162,14 +162,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m04": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -177,7 +177,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -186,14 +186,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m05": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -201,7 +201,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -210,14 +210,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m06": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -225,7 +225,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -234,14 +234,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m07": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -249,7 +249,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -258,14 +258,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m08": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -273,7 +273,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -282,14 +282,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m09": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -297,7 +297,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -306,14 +306,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m10": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -321,7 +321,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -330,14 +330,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m11": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -345,7 +345,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -354,14 +354,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "r": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 8
           },
           "critical_working": "0",
           "done": "0",
@@ -369,7 +369,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "ok": "0",
           "okpct": "-",
@@ -378,14 +378,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "8",
+          "width": "0",
           "working": "0"
         },
         "w": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 2
           },
           "critical_working": "0",
           "done": "0",
@@ -393,7 +393,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 4
           },
           "ok": "0",
           "okpct": "-",
@@ -402,7 +402,7 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "2",
+          "width": "0",
           "working": "0"
         }
       },
@@ -529,7 +529,7 @@
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 4000
           },
           "critical_working": "0",
           "done": "0",
@@ -537,7 +537,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 8000
           },
           "ok": "0",
           "okpct": "-",
@@ -546,14 +546,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "4000",
+          "width": "0",
           "working": "0"
         },
         "m00": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -561,7 +561,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -570,14 +570,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m01": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -585,7 +585,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -594,14 +594,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m02": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -609,7 +609,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -618,14 +618,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m03": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -633,7 +633,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -642,14 +642,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m04": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -657,7 +657,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -666,14 +666,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m05": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -681,7 +681,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -690,14 +690,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m06": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -705,7 +705,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -714,14 +714,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m07": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -729,7 +729,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -738,14 +738,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m08": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -753,7 +753,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -762,14 +762,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m09": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -777,7 +777,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -786,14 +786,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m10": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -801,7 +801,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -810,14 +810,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "m11": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "critical_working": "0",
           "done": "0",
@@ -825,7 +825,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 32
           },
           "ok": "0",
           "okpct": "-",
@@ -834,14 +834,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "16",
+          "width": "0",
           "working": "0"
         },
         "r": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 8
           },
           "critical_working": "0",
           "done": "0",
@@ -849,7 +849,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 16
           },
           "ok": "0",
           "okpct": "-",
@@ -858,14 +858,14 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "8",
+          "width": "0",
           "working": "0"
         },
         "w": {
           "blocker_working": "0",
           "cpu": {
             "held": 0,
-            "total": 0
+            "total": 2
           },
           "critical_working": "0",
           "done": "0",
@@ -873,7 +873,7 @@
           "fix_working": "0",
           "memory": {
             "held": 0,
-            "total": 0
+            "total": 4
           },
           "ok": "0",
           "okpct": "-",
@@ -882,7 +882,7 @@
           "status": "down",
           "tokens": "0",
           "tokens_n": "0",
-          "width": "2",
+          "width": "0",
           "working": "0"
         }
       },

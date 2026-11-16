@@ -189,7 +189,7 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 	for n, w := range ros.Workers {
 		tags := append([]string(nil), w.Tags...)
 		cpu, mem := buildResourceMetrics(store.Row{}, w)
-		fleet[n] = &fleetRow{Status: "down", Width: w.Width, Tags: tags, CPU: cpu, Memory: mem}
+		fleet[n] = &fleetRow{Status: "down", Tags: tags, CPU: cpu, Memory: mem}
 	}
 	for n, k := range ros.Kin {
 		friends[n] = &fleetRow{Status: "down", Width: k.Width}

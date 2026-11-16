@@ -12,14 +12,14 @@ import (
 
 func TestStoppedAndRosterProjection(t *testing.T) {
 	t.Parallel()
-	ros := roster.Roster{Workers: map[string]roster.Worker{"worker": {Name: "worker", Width: 8}}, Kin: map[string]roster.Kin{"friend": {Name: "friend", Width: 2}}}
+	ros := roster.Roster{Workers: map[string]roster.Worker{"worker": {Name: "worker", Resources: map[string]int{"cpu": 8, "memory": 16}}}, Kin: map[string]roster.Kin{"friend": {Name: "friend", Width: 2}}}
 	snap := store.Snapshot{Epoch: 1, Stopped: true, StopReason: "Scheduled maintenance", Rows: map[string]store.Row{
 		"worker": {Name: "worker", State: "up"}, "friend": {Name: "friend", State: "up", Held: true}, "removed": {Name: "removed", State: "up", Held: true},
 	}}
 	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	fleet := d.Tables["fleet"].(map[string]*fleetRow)
 	friends := d.Tables["friends"].(map[string]*fleetRow)
-	if fleet["worker"].Status != "up" || fleet["worker"].Width != 8 || friends["friend"].Status != "held" || friends["friend"].Width != 2 {
+	if fleet["worker"].Status != "up" || fleet["worker"].CPU.Total != 8 || friends["friend"].Status != "held" || friends["friend"].Width != 2 {
 		t.Fatalf("configured rows: fleet=%+v friends=%+v", fleet, friends)
 	}
 	if fleet["removed"] != nil || friends["removed"] != nil { // Glenn, 2026-11-15: removed machines must not show in the fleet

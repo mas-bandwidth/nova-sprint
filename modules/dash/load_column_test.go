@@ -71,7 +71,7 @@ func TestFleetAndFriendsTablesEndInTheLoadColumn(t *testing.T) {
 // "load is only for fleet machines").
 func TestFleetRowsCarryTheCPUPeakFriendsNone(t *testing.T) {
 	t.Parallel()
-	ros := roster.Roster{Workers: map[string]roster.Worker{"w": {Name: "w", Width: 4}}, Kin: map[string]roster.Kin{"k": {Name: "k", Width: 2}}}
+	ros := roster.Roster{Workers: map[string]roster.Worker{"w": {Name: "w", Resources: map[string]int{"cpu": 4, "memory": 8}}}, Kin: map[string]roster.Kin{"k": {Name: "k", Width: 2}}}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
 		"w": {Name: "w", State: "up", Load1Centi: 900, CPUPeakDeci: 412, Cores: 8},
 		"k": {Name: "k", State: "up", Load1Centi: 900, CPUPeakDeci: 1000, Cores: 4},

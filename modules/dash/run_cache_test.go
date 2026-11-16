@@ -62,17 +62,17 @@ func TestRunFeedRosterFailureIsNotAnOldRoster(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(1000, 0)
 	snap := store.Snapshot{Epoch: 1, Seq: 2, Stopped: true, StopReason: "x", Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}}}
-	ro := roster.Roster{Workers: map[string]roster.Worker{"amd-1": {Name: "amd-1", Width: 8, Tiers: store.Tiers}}}
+	ro := roster.Roster{Workers: map[string]roster.Worker{"amd-1": {Name: "amd-1", Resources: map[string]int{"cpu": 8, "memory": 16}, Tiers: store.Tiers}}}
 	c := NewFromFeed(Feed{Snap: snap, Roster: ro, At: now}, func() time.Time { return now })
-	if w := c.view.Tables["fleet"].(map[string]*fleetRow)["amd-1"].Width; w != 8 {
-		t.Fatalf("width %d, want the roster's 8", w)
+	if cpu := c.view.Tables["fleet"].(map[string]*fleetRow)["amd-1"].CPU.Total; cpu != 8 {
+		t.Fatalf("cpu total %d, want the roster's 8", cpu)
 	}
 	snap.Seq = 3
 	if err := c.Publish(Feed{Snap: snap, Roster: ro, RosterErr: errors.New("nova-config down"), At: now}); err != nil {
 		t.Fatal(err)
 	}
-	if w := c.view.Tables["fleet"].(map[string]*fleetRow)["amd-1"].Width; w != 0 || !strings.Contains(c.rosterNote.last, "nova-config down") || !strings.Contains(c.view.Error, "nova-config down") {
-		t.Fatalf("width %d said %q error %q: an old roster shown as current", w, c.rosterNote.last, c.view.Error)
+	if cpu := c.view.Tables["fleet"].(map[string]*fleetRow)["amd-1"].CPU.Total; cpu != 0 || !strings.Contains(c.rosterNote.last, "nova-config down") || !strings.Contains(c.view.Error, "nova-config down") {
+		t.Fatalf("cpu total %d said %q error %q: an old roster shown as current", cpu, c.rosterNote.last, c.view.Error)
 	}
 	if c.view.Machine != "machine: STOPPED x" {
 		t.Fatalf("store line not fresh: %q", c.view.Machine)

@@ -117,6 +117,20 @@ func TestParseNeeds(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unknown tag or resource")
 	})
+
+	t.Run("SyntaxOnlyNilMaps", func(t *testing.T) {
+		t.Parallel()
+		n, err := ParseNeeds("cpu 4, memory 8, ipad, ps5 2", nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"ipad"}, n.Tags)
+		assert.Equal(t, map[string]int{"cpu": 4, "memory": 8, "ps5": 2}, n.Amounts)
+
+		_, err = ParseNeeds("123", nil, nil)
+		require.Error(t, err)
+
+		_, err = ParseNeeds("two words here", nil, nil)
+		require.Error(t, err)
+	})
 }
 
 func TestCardNeeds(t *testing.T) {

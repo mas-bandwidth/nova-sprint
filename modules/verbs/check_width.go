@@ -68,13 +68,21 @@ func widthOf(snap store.Snapshot, ro roster.Roster, now time.Time) widthFacts {
 		if !v.Open(row) {
 			continue
 		}
-		_, width, tiers, _ := ro.Row(name)
+		kind, width, tiers, _ := ro.Row(name)
+		openCap := width
+		if kind == roster.KindWorker {
+			w := ro.Workers[name]
+			if w.Held == "" && !row.Resources.AnyPaused {
+				cpuTotal := max(row.Resources.Total["cpu"], w.Resources["cpu"])
+				openCap = max(0, cpuTotal-row.Resources.HeldOther["cpu"])
+			}
+		}
 		f.rows++
-		f.open += width
+		f.open += openCap
 		f.working += v.Working(name)
 		f.dealt += len(v.Live(name))
 		for _, t := range tiers {
-			f.serves[t] = width > 0 || f.serves[t]
+			f.serves[t] = openCap > 0 || f.serves[t]
 		}
 	}
 	for _, id := range v.Producers("ready") {

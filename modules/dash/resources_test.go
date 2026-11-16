@@ -226,17 +226,15 @@ func sampleResourcesSnapshot() (store.Snapshot, roster.Roster) {
 		Workers: map[string]roster.Worker{
 			"bench-1": {
 				Name:      "bench-1",
-				Width:     16,
 				Tags:      []string{"linux", "amd64", "gpu"},
 				Resources: map[string]int{"cpu": 16, "memory": 64},
 			},
 			"bench-2": {
 				Name:      "bench-2",
-				Width:     8,
 				Tags:      []string{"linux", "arm64", "metal"},
 				Resources: map[string]int{"cpu": 8, "memory": 32},
 			},
-			"bench-unmeasured": {Name: "bench-unmeasured", Width: 4},
+			"bench-unmeasured": {Name: "bench-unmeasured"},
 		},
 		Kin: map[string]roster.Kin{
 			"friend-1": {Name: "friend-1", Width: 4},
@@ -272,7 +270,7 @@ func sampleResourcesSnapshot() (store.Snapshot, roster.Roster) {
 				},
 			},
 			"bench-unmeasured": {Name: "bench-unmeasured", State: "down"},
-			"friend-1":        {Name: "friend-1", State: "up"},
+			"friend-1":         {Name: "friend-1", State: "up"},
 		},
 	}
 	return snap, ros

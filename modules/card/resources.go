@@ -58,10 +58,13 @@ func ParseBriefNeeds(brief string) (raw string, count int, err error) {
 // ParseNeeds parses a raw resources specification (e.g. "cpu 4, memory 8, mac, ps5")
 // per R9/R10. cpu and memory default to 1 if not specified. Bare known resources get
 // amount 1; bare known tags are added to Tags. Unknown names, non-positive amounts,
-// and tags with amounts return descriptive errors.
+// and tags with amounts return descriptive errors. When both knownTags and
+// knownResources are nil, ParseNeeds validates syntax only (identifier tokens and
+// positive whole-number amounts).
 func ParseNeeds(raw string, knownTags map[string]bool, knownResources map[string]bool) (Needs, error) {
 	amounts := map[string]int{"cpu": 1, "memory": 1}
 	var tags []string
+	syntaxOnly := knownTags == nil && knownResources == nil
 
 	trimmedRaw := strings.TrimSpace(raw)
 	if trimmedRaw == "" {
@@ -83,7 +86,7 @@ func ParseNeeds(raw string, knownTags map[string]bool, knownResources map[string
 				amounts[name] = 1
 			case knownResources != nil && knownResources[name]:
 				amounts[name] = 1
-			case knownTags != nil && knownTags[name]:
+			case (knownTags != nil && knownTags[name]) || (syntaxOnly && validNeedsName(name)):
 				if !slices.Contains(tags, name) {
 					tags = append(tags, name)
 				}
@@ -103,7 +106,7 @@ func ParseNeeds(raw string, knownTags map[string]bool, knownResources map[string
 			if knownTags != nil && knownTags[name] {
 				return Needs{}, fmt.Errorf("tag %q cannot have an amount (%d specified)", name, val)
 			}
-			if name == "cpu" || name == "memory" || (knownResources != nil && knownResources[name]) {
+			if name == "cpu" || name == "memory" || (knownResources != nil && knownResources[name]) || (syntaxOnly && validNeedsName(name)) {
 				amounts[name] = val
 			} else {
 				return Needs{}, fmt.Errorf("unknown resource %q in %s", name, raw)
@@ -114,6 +117,22 @@ func ParseNeeds(raw string, knownTags map[string]bool, knownResources map[string
 	}
 	slices.Sort(tags)
 	return Needs{Tags: tags, Amounts: amounts}, nil
+}
+
+func validNeedsName(s string) bool {
+	if s == "" || len(s) > 128 {
+		return false
+	}
+	letter := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' {
+			letter = true
+		} else if !(c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return letter
 }
 
 // CardNeeds is a lenient reader for already-admitted cards in the store.

@@ -322,7 +322,7 @@ func TestSmokeReadyNeedsEveryWorkerDealable(t *testing.T) {
 	if ok || !errors.As(err, &nr) || nr.Why != "not every worker row is dealable: amd-2 has "+roster.UnmeasuredResources || !strings.HasPrefix(nr.Fix, "nova-config machine set amd-2 --cpu-units <n>") {
 		t.Fatal(ok, err)
 	}
-	f.machines = strings.Replace(workloadMachines, `"roles":"bench"}`, `"roles":"bench","cores":4}`, 1)
+	f.machines = strings.Replace(workloadMachines, `"roles":"bench"}`, `"roles":"bench","cpu_units":4,"memory_gb":8}`, 1)
 	if ok, err = testWorkload(f, rows, present).SmokeReady(context.Background()); !ok || err != nil {
 		t.Fatal(ok, err)
 	}

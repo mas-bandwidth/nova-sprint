@@ -271,17 +271,17 @@ func TestNextJSONIsTheInventory(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.Output), &v); err != nil {
 		t.Fatal(err)
 	}
-	if v.Width != 1 || len(v.Working) != 1 || v.Working[0].ID != "p1.w1" || v.Ready == nil || v.Final == nil || v.Judgements == nil {
+	if v.Width != 0 || len(v.Working) != 1 || v.Working[0].ID != "p1.w1" || v.Ready == nil || v.Final == nil || v.Judgements == nil {
 		t.Fatalf("%+v", v)
 	}
 	// A bench's model by tier is the one the deal names, the catalog's bench
 	// model in provider/model form (the probe's input); a friend's, its own.
-	if got := v.TierModels["pro"]; !slices.Equal(got, []string{"inception/mercury-3"}) || len(v.TierModels) != 4 || !slices.Equal(v.TierModels["heavy"], []string{"deepseek/deepseek-flash"}) {
+	if got := v.TierModels["pro"]; !slices.Equal(got, []string{"inception/mercury-3"}) || len(v.TierModels) != 4 || !slices.Equal(got, []string{"inception/mercury-3"}) || !slices.Equal(v.TierModels["heavy"], []string{"deepseek/deepseek-flash"}) {
 		t.Fatalf("tier_models %v", v.TierModels)
 	}
-	want(t, w.do("carol", "next", "--json"), 0, `"tier_models":{"flash":["m-carol"]`)
+	want(t, w.do("carol", "next", "--json"), 0, `"width":1`, `"tier_models":{"flash":["m-carol"]`)
 	w.roster.err = errors.New("nova-config down")
-	want(t, w.do("alice", "next", "--json"), 0, `"width":0`, "roster_error", `"tier_models":{}`)
+	want(t, w.do("carol", "next", "--json"), 0, `"width":0`, "roster_error", `"tier_models":{}`)
 }
 
 func withJudgement(id, group, kind, about, choices string) func(*store.Snapshot) {

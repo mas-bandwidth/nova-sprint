@@ -23,7 +23,7 @@ func TestFleetAndFriendsLongNamesShowInFull(t *testing.T) {
 	ros := roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{kin: {Name: kin, Width: 2}}}
 	rows := map[string]store.Row{kin: {Name: kin, State: "up"}}
 	for _, n := range names {
-		ros.Workers[n] = roster.Worker{Name: n, Width: 4}
+		ros.Workers[n] = roster.Worker{Name: n, Resources: map[string]int{"cpu": 4, "memory": 8}}
 		rows[n] = store.Row{Name: n, State: "up"}
 	}
 	d := mapSnapshot(store.Snapshot{Epoch: 1, Rows: rows}, ros, time.Time{}, nil)

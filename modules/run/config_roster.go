@@ -62,11 +62,7 @@ func (r *ConfigRoster) ReadRosterAt(ctx context.Context, widthCap ...int) (roste
 		if err != nil {
 			return roster.Roster{}, err
 		}
-		cap := r.cap
-		if len(widthCap) > 0 && widthCap[0] > 0 {
-			cap = widthCap[0]
-		}
-		return roster.Load(ctx, ConfigRosterSource(snapshot), cap)
+		return roster.Load(ctx, ConfigRosterSource(snapshot))
 	}
 	return roster.Roster{}, fmt.Errorf("run: no config roster reader configured")
 }
@@ -116,9 +112,7 @@ func (r *ConfigRoster) readPGX(ctx context.Context) (roster.Roster, error) {
 			if res == nil {
 				res = make(map[string]int)
 			}
-			cores := 0
 			if cpuUnits != nil {
-				cores = *cpuUnits
 				res["cpu"] = *cpuUnits
 			}
 			if memoryGB != nil {
@@ -146,7 +140,6 @@ func (r *ConfigRoster) readPGX(ctx context.Context) (roster.Roster, error) {
 			machines = append(machines, roster.Machine{
 				Name:      name,
 				Roles:     configList(roles),
-				Cores:     cores,
 				OS:        osName,
 				Arch:      arch,
 				Tags:      tagList,
@@ -170,10 +163,8 @@ func (r *ConfigRoster) readPGX(ctx context.Context) (roster.Roster, error) {
 			if err := rows.Scan(&name, &roles, &osName, &arch, &cores); err != nil {
 				return roster.Roster{}, fmt.Errorf("run: scan config.machines: %w", err)
 			}
-			c := 0
 			res := make(map[string]int)
-			if cores != nil {
-				c = *cores
+			if cores != nil && *cores >= 1 {
 				res["cpu"] = *cores
 				res["memory"] = 1
 			}
@@ -193,7 +184,6 @@ func (r *ConfigRoster) readPGX(ctx context.Context) (roster.Roster, error) {
 			machines = append(machines, roster.Machine{
 				Name:      name,
 				Roles:     configList(roles),
-				Cores:     c,
 				OS:        osName,
 				Arch:      arch,
 				Tags:      tagList,

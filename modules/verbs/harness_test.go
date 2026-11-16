@@ -179,8 +179,11 @@ type fakeRoster struct {
 func newRoster() *fakeRoster {
 	all := []string{"flash", "pro", "heavy", "frontier"}
 	return &fakeRoster{ro: roster.Roster{
-		Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all, Harness: roster.WorkerHarness}, "bob": {Name: "bob", Width: 2, Tiers: all, Harness: roster.WorkerHarness}},
-		Kin:     map[string]roster.Kin{"carol": {Name: "carol", Model: "m-carol", Width: 1, Tiers: all, Harness: "claude"}, "dave": {Name: "dave", Model: "m-dave", Width: 1, Tiers: all, Harness: "codex"}},
+		Workers: map[string]roster.Worker{
+			"alice": {Name: "alice", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: all, Harness: roster.WorkerHarness},
+			"bob":   {Name: "bob", Resources: map[string]int{"cpu": 2, "memory": 4}, Tiers: all, Harness: roster.WorkerHarness},
+		},
+		Kin: map[string]roster.Kin{"carol": {Name: "carol", Model: "m-carol", Width: 1, Tiers: all, Harness: "claude"}, "dave": {Name: "dave", Model: "m-dave", Width: 1, Tiers: all, Harness: "codex"}},
 	}}
 }
 
@@ -190,7 +193,7 @@ func (r *fakeRoster) ReadRosterAt(context.Context, int) (roster.Roster, error) {
 type fakeAnswers struct{ prices map[string]policy.Price }
 
 func (f fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
-	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8, ChainLimit: 3}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}},
+	return policy.Answers{Limits: policy.Limits{ChainLimit: 3}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}},
 		Catalog: policy.Catalog{Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-v4-pro"}}, Prices: f.prices}, nil
 }
 

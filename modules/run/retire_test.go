@@ -39,7 +39,7 @@ func TestTickRetiresARowTheRosterNoLongerNames(t *testing.T) {
 		t.Fatalf("want one card dealt to alice first, got %v", got)
 	}
 	must(t, f, "bob", store.PutRow{Name: "bob", Session: "sess-3", Role: "worker"}, store.SetRowState{Row: "bob", State: "up"})
-	gone := roster.Roster{Workers: map[string]roster.Worker{"bob": {Name: "bob", Width: 1, Tiers: ro.Workers["alice"].Tiers}}}
+	gone := roster.Roster{Workers: map[string]roster.Worker{"bob": {Name: "bob", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: ro.Workers["alice"].Tiers}}}
 	for i := range 3 {
 		now := t0.Add(time.Duration(10+i) * time.Second)
 		if _, err := tk.Tick(context.Background(), Observed{Now: now, Present: []string{"alice", "bob"}, Roster: gone, Heads: map[string]string{"s": strings.Repeat("a", 40)}}); err != nil {

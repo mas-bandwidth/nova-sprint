@@ -156,7 +156,7 @@ func TestTakeRefusals(t *testing.T) {
 			prep: func(_ *testing.T, w *world) { delete(w.roster.ro.Workers, "alice") }, want: []string{"row alice is not in nova-config"}},
 		{name: "a tier not served", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1,
 			prep: func(_ *testing.T, w *world) {
-				w.roster.ro.Workers["alice"] = roster.Worker{Name: "alice", Width: 1, Tiers: []string{"flash"}}
+				w.roster.ro.Workers["alice"] = roster.Worker{Name: "alice", Resources: map[string]int{"cpu": 4, "memory": 8}, Tiers: []string{"flash"}}
 			},
 			want: []string{"row alice does not serve tier pro", "nova-sprint release p1.w1@1 --as alice"}},
 		{name: "another row's acknowledgement", as: "bob", args: []string{"take", "p1.w1@1"}, exit: 1, prep: takeW1, want: []string{"p1.w1 is not dealt to this row", "nova-sprint next --as bob"}},

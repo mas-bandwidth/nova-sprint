@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
 )
 
@@ -77,7 +78,7 @@ func TestFunctionalConfigRosterReadGrantsAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Workers) != 1 || got.Workers["bench-a"].Width != 8 || len(got.Workers["bench-a"].Tiers) != 4 || len(got.Kin) != 1 || got.Kin["friend"].Width != 3 || got.Kin["friend"].Model != "fixture-model" || got.Kin["friend"].Harness != "codex" {
+	if len(got.Workers) != 1 || got.Workers["bench-a"].Resources["cpu"] != 12 || len(got.Workers["bench-a"].Tiers) != 4 || len(got.Kin) != 1 || got.Kin["friend"].Width != 3 || got.Kin["friend"].Model != "fixture-model" || got.Kin["friend"].Harness != "codex" {
 		t.Fatalf("roster %+v", got)
 	}
 	if _, err = conn.Conn().Exec(ctx, `INSERT INTO config.friends(name) VALUES ('forbidden')`); err == nil {
@@ -97,5 +98,38 @@ func TestFunctionalConfigRosterReadGrantsAndClose(t *testing.T) {
 	}
 	if _, err = reader.ReadRoster(ctx); err == nil {
 		t.Fatal("read succeeded after close")
+	}
+
+	// Verify NewPGXConfigRoster + MachineNames on both pre-v3 and v3 config.machines schemas.
+	pool, err := pgxpool.New(ctx, u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pgxReader := NewPGXConfigRoster(pool)
+	defer pgxReader.Close()
+
+	names, err := pgxReader.MachineNames(ctx)
+	if err != nil || len(names) != 2 || names[0] != "bench-a" || names[1] != "service" {
+		t.Fatalf("MachineNames = %v, %v", names, err)
+	}
+	gotPreV3, err := pgxReader.ReadRoster(ctx)
+	if err != nil || gotPreV3.Workers["bench-a"].Resources["cpu"] != 12 {
+		t.Fatalf("pgx pre-v3 roster = %+v, %v", gotPreV3, err)
+	}
+
+	configExec(t, ctx, admin, `
+		ALTER TABLE config.machines ADD COLUMN IF NOT EXISTS cpu_units integer;
+		ALTER TABLE config.machines ADD COLUMN IF NOT EXISTS memory_gb integer;
+		ALTER TABLE config.machines ADD COLUMN IF NOT EXISTS tags text NOT NULL DEFAULT '';
+		ALTER TABLE config.machines ADD COLUMN IF NOT EXISTS resources jsonb NOT NULL DEFAULT '{}'::jsonb;
+		UPDATE config.machines SET cpu_units = 16, memory_gb = 64, tags = 'gpu', resources = '{"ps5": 1}'::jsonb WHERE name = 'bench-a';
+	`)
+	gotV3, err := pgxReader.ReadRoster(ctx)
+	if err != nil {
+		t.Fatalf("pgx v3 ReadRoster: %v", err)
+	}
+	w := gotV3.Workers["bench-a"]
+	if w.Held != "" || w.Resources["cpu"] != 16 || w.Resources["memory"] != 64 || w.Resources["ps5"] != 1 {
+		t.Fatalf("pgx v3 bench-a = %+v", w)
 	}
 }

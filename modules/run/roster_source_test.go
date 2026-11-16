@@ -27,16 +27,17 @@ func TestConfigRosterSourceSnapshotIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if machines[0].Name != "bench-a" || machines[0].Cores != 12 || !reflect.DeepEqual(machines[0].Roles, []string{"bench", "runner"}) || friends[0].Tiers[0] != "flash" {
+	if machines[0].Name != "bench-a" || machines[0].Resources["cpu"] != 12 || !reflect.DeepEqual(machines[0].Roles, []string{"bench", "runner"}) || friends[0].Tiers[0] != "flash" {
 		t.Fatal(machines, friends)
 	}
 	machines[0].Roles[0] = "changed"
+	machines[0].Resources["cpu"] = 99
 	friends[0].Tiers[0] = "changed"
-	r, err := roster.Load(ctx, src, 8)
+	r, err := roster.Load(ctx, src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Workers["bench-a"].Width != 8 || r.Workers["bench-a"].Harness != roster.WorkerHarness || r.Kin["friend"].Width != 3 || r.Kin["friend"].Model != "m" || len(r.Kin) != 1 {
+	if r.Workers["bench-a"].Resources["cpu"] != 12 || r.Workers["bench-a"].Harness != roster.WorkerHarness || r.Kin["friend"].Width != 3 || r.Kin["friend"].Model != "m" || len(r.Kin) != 1 {
 		t.Fatal(r)
 	}
 }
@@ -44,8 +45,8 @@ func TestConfigRosterSourceSnapshotIsolation(t *testing.T) {
 func TestConfigRosterSourceUnknownCoresAndCancellation(t *testing.T) {
 	t.Parallel()
 	src := ConfigRosterSource(config.Snapshot{Machines: []config.Machine{{Name: "bench", Roles: "bench"}}})
-	if r, err := roster.Load(context.Background(), src, 8); err != nil || len(r.Refused) != 0 || r.Workers["bench"].Width != 0 || r.Workers["bench"].Held != roster.NoCores {
-		t.Fatalf("unknown cores: want bench held at width 0, got %+v %v", r, err)
+	if r, err := roster.Load(context.Background(), src); err != nil || len(r.Refused) != 0 || r.Workers["bench"].Held != roster.UnmeasuredResources {
+		t.Fatalf("unknown cores: want bench held unmeasured, got %+v %v", r, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

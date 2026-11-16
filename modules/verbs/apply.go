@@ -180,13 +180,13 @@ func tierModels(ro roster.Roster, row string, cat policy.Catalog) map[string][]s
 	return out
 }
 
-// roster is nova-config's roster at the active policy's width cap, with
-// each worker's width and tiers as its row advertised (roster.Advertised).
-func (e *Engine) roster(ctx context.Context, lim policy.Limits, snap store.Snapshot) (roster.Roster, error) {
+// roster is nova-config's roster, with each worker's tiers as its row
+// advertised (roster.Advertised).
+func (e *Engine) roster(ctx context.Context, _ policy.Limits, snap store.Snapshot) (roster.Roster, error) {
 	if e.Roster == nil {
 		return roster.Roster{}, broken("nova-config is not configured", "nova-sprint check")
 	}
-	ro, err := e.Roster.ReadRosterAt(ctx, max(1, lim.FleetWidthCap))
+	ro, err := e.Roster.ReadRosterAt(ctx, 1)
 	if err != nil {
 		return ro, RefusalOr(err, broken("nova-config's roster cannot be read ("+errText(err)+")", "nova-config check, then nova-sprint check"))
 	}

@@ -38,7 +38,7 @@ func (a *answering) AnswerContext(_ context.Context, _ policy.Versions, snap sto
 	names := slices.Sorted(maps.Keys(ro.Workers))
 	names = append(names, slices.Sorted(maps.Keys(ro.Kin))...)
 	out := policy.Answers{Version: snap.Policy, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
-		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 3, ReportsPerTick: 100, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
+		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 3, ReportsPerTick: 100, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
 		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyNag: testReadyNag, ReadyTake: 180, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
 		out.Order[id] = []any{int64(0), id}
@@ -94,7 +94,7 @@ func seeded(t *testing.T) (*store.Fake, roster.Roster) {
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "up", store.SetRowState{Row: "alice", State: "up"})
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
-	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"flash", "pro", "heavy", "frontier"}}}}
+	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: []string{"flash", "pro", "heavy", "frontier"}}}}
 	return f, ro
 }
 
@@ -157,7 +157,10 @@ func TestTickRaisesSeenForAHookedRow(t *testing.T) {
 	must(t, f, "row2", store.PutRow{Name: "bob", Session: "sess-2", Role: "worker"})
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
 	all := []string{"flash", "pro", "heavy", "frontier"}
-	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all}, "bob": {Name: "bob", Width: 1, Tiers: all}}}
+	ro := roster.Roster{Workers: map[string]roster.Worker{
+		"alice": {Name: "alice", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: all},
+		"bob":   {Name: "bob", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: all},
+	}}
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +604,7 @@ func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
 			if c.stored {
 				must(t, f, "policy", store.PutPolicy{Kind: "script", Name: "p.star", Body: "# stored, never activated"})
 			}
-			ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}
+			ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: []string{"pro"}}}}
 			tk, err := NewTicker(context.Background(), f, &healthy{}, c.policy, t0)
 			if err != nil {
 				t.Fatal(err)

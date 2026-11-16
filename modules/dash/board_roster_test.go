@@ -19,9 +19,13 @@ import (
 func TestBoardListsTheWholeRoster(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{
-		Workers: map[string]roster.Worker{"b-bench": {Name: "b-bench", Width: 8}, "a-bench": {Name: "a-bench", Width: 4}, "c-bench": {Name: "c-bench", Width: 2}},
-		Kin:     map[string]roster.Kin{"zed": {Name: "zed", Width: 3}, "amy": {Name: "amy", Width: 2}},
-		Listed:  map[string]bool{"studio": true},
+		Workers: map[string]roster.Worker{
+			"b-bench": {Name: "b-bench", Resources: map[string]int{"cpu": 8, "memory": 16}},
+			"a-bench": {Name: "a-bench", Resources: map[string]int{"cpu": 4, "memory": 8}},
+			"c-bench": {Name: "c-bench", Resources: map[string]int{"cpu": 2, "memory": 4}},
+		},
+		Kin:    map[string]roster.Kin{"zed": {Name: "zed", Width: 3}, "amy": {Name: "amy", Width: 2}},
+		Listed: map[string]bool{"studio": true},
 	}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
 		"a-bench": {Name: "a-bench", State: "up"}, "amy": {Name: "amy", State: "up", Held: true},
@@ -30,15 +34,18 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	fleet := d.Tables["fleet"].(map[string]*fleetRow)
 	friends := d.Tables["friends"].(map[string]*fleetRow)
-	want := map[string]fleetRow{
-		"a-bench": {Status: "up", Width: 4}, "b-bench": {Status: "down", Width: 8}, "c-bench": {Status: "down", Width: 2},
-		"studio": {Status: "down"},
+	want := map[string]struct {
+		status string
+		cpu    int
+	}{
+		"a-bench": {status: "up", cpu: 4}, "b-bench": {status: "down", cpu: 8}, "c-bench": {status: "down", cpu: 2},
+		"studio": {status: "down", cpu: 0},
 	}
 	if len(fleet) != len(want) {
 		t.Fatalf("fleet = %d rows, want %d: %+v", len(fleet), len(want), fleet)
 	}
 	for n, w := range want {
-		if g := fleet[n]; g == nil || g.Status != w.Status || g.Width != w.Width {
+		if g := fleet[n]; g == nil || g.Status != w.status || g.CPU == nil || g.CPU.Total != w.cpu {
 			t.Errorf("fleet[%s] = %+v, want %+v", n, g, w)
 		}
 	}
@@ -63,8 +70,11 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{
-		Workers: map[string]roster.Worker{"amd-1": {Name: "amd-1", Width: 8}, "new-bench": {Name: "new-bench", Width: 4}},
-		Kin:     map[string]roster.Kin{"stella": {Name: "stella", Width: 2}},
+		Workers: map[string]roster.Worker{
+			"amd-1":     {Name: "amd-1", Resources: map[string]int{"cpu": 8, "memory": 16}},
+			"new-bench": {Name: "new-bench", Resources: map[string]int{"cpu": 4, "memory": 8}},
+		},
+		Kin: map[string]roster.Kin{"stella": {Name: "stella", Width: 2}},
 	}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
 		"amd-1": {Name: "amd-1", State: "up"}, "stella": {Name: "stella", State: "up"},
@@ -81,8 +91,8 @@ func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 			t.Errorf("%s is on the board: fleet %+v friends %+v", n, fleet[n], friends[n])
 		}
 	}
-	if g := fleet["new-bench"]; g == nil || g.Status != "down" || g.Width != 4 {
-		t.Errorf("new-bench = %+v, want down at width 4", g)
+	if g := fleet["new-bench"]; g == nil || g.Status != "down" || g.CPU == nil || g.CPU.Total != 4 {
+		t.Errorf("new-bench = %+v, want down with cpu total 4", g)
 	}
 	if g := fleet["rowan"]; g == nil {
 		t.Errorf("the hooked coordinator nova-config does not name is never retired (steps.Retirable), so it stays on the board")
@@ -148,7 +158,11 @@ func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 // slots in its title; a row that is down, or has never beaten, has none.
 func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 	t.Parallel()
-	ros := roster.Roster{Workers: map[string]roster.Worker{"a": {Name: "a", Width: 4}, "b": {Name: "b", Width: 4}, "c": {Name: "c", Width: 4}}}
+	ros := roster.Roster{Workers: map[string]roster.Worker{
+		"a": {Name: "a", Resources: map[string]int{"cpu": 4, "memory": 8}},
+		"b": {Name: "b", Resources: map[string]int{"cpu": 4, "memory": 8}},
+		"c": {Name: "c", Resources: map[string]int{"cpu": 4, "memory": 8}},
+	}}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
 		"a": {Name: "a", State: "up", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
 		"b": {Name: "b", State: "down", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},

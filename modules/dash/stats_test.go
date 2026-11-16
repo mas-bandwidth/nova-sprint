@@ -18,7 +18,7 @@ import (
 // counts are the epoch's.
 func TestFleetStatsCountOnlyWhatFinishedAfterTheMark(t *testing.T) {
 	t.Parallel()
-	ros := roster.Roster{Workers: map[string]roster.Worker{"bench": {Name: "bench", Width: 4}}, Kin: map[string]roster.Kin{"amy": {Name: "amy", Width: 2}}}
+	ros := roster.Roster{Workers: map[string]roster.Worker{"bench": {Name: "bench", Resources: map[string]int{"cpu": 4, "memory": 8}}}, Kin: map[string]roster.Kin{"amy": {Name: "amy", Width: 2}}}
 	card := func(id, kind, holder, result string) store.Card {
 		return store.Card{ID: id, Kind: kind, Of: "p", Stream: "s", Holder: holder, State: "done", Result: result, Tier: "pro", Priced: true, Cost: 1_000_000,
 			Usage: "input=10 billing=api"}
@@ -79,7 +79,7 @@ func TestPageHeadsShowNoStatsMark(t *testing.T) {
 // The run feed's mark reaches the board.
 func TestFeedCarriesTheStatsMark(t *testing.T) {
 	t.Parallel()
-	ros := roster.Roster{Workers: map[string]roster.Worker{"bench": {Name: "bench", Width: 1}}}
+	ros := roster.Roster{Workers: map[string]roster.Worker{"bench": {Name: "bench", Resources: map[string]int{"cpu": 1, "memory": 2}}}}
 	snap := store.Snapshot{Seq: 50, Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Rows: map[string]store.Row{"bench": {Name: "bench", State: "up"}}, Cards: map[string]store.Card{
 		"a": {ID: "a", Kind: "work", Of: "p", Stream: "s", Holder: "bench", State: "done", Result: "ok", Tier: "pro"},
 		"b": {ID: "b", Kind: "work", Of: "p", Stream: "s", Holder: "bench", State: "done", Result: "ok", Tier: "pro"},

@@ -53,7 +53,7 @@ func TestConfigRosterReadsOneSnapshotAndCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := r.ReadRoster(context.Background())
-	if err != nil || f.calls != 1 || got.Workers["bench"].Width != 8 {
+	if err != nil || f.calls != 1 || got.Workers["bench"].Resources["cpu"] != 12 {
 		t.Fatalf("got=%+v calls=%d err=%v", got, f.calls, err)
 	}
 	f.err = errors.New("offline")

@@ -17,6 +17,8 @@ type FleetMachine struct {
 	Name, Address, Public string
 	Roles                 []string
 	Cores                 *int
+	CPUUnits              *int
+	MemoryGB              *int
 }
 type configMachines struct {
 	Result struct {
@@ -33,6 +35,8 @@ type configMachines struct {
 			Name, Address, Roles string
 			Public               string `json:"public"`
 			Cores                *int
+			CPUUnits             *int `json:"cpu_units"`
+			MemoryGB             *int `json:"memory_gb"`
 		} `json:"fields"`
 	} `json:"items"`
 }
@@ -68,7 +72,7 @@ func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 				roles = append(roles, role)
 			}
 		}
-		result = append(result, FleetMachine{Name: v.Name, Address: v.Address, Public: strings.TrimSpace(v.Public), Roles: roles, Cores: v.Cores})
+		result = append(result, FleetMachine{Name: v.Name, Address: v.Address, Public: strings.TrimSpace(v.Public), Roles: roles, Cores: v.Cores, CPUUnits: v.CPUUnits, MemoryGB: v.MemoryGB})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result, nil

@@ -57,7 +57,7 @@ func rowSeeded(t *testing.T, kind string) (*store.Fake, roster.Roster, *Ticker) 
 		if kind == roster.KindKin {
 			ro.Kin[n] = roster.Kin{Name: n, Model: "kin/model", Width: 2, Tiers: tiers}
 		} else {
-			ro.Workers[n] = roster.Worker{Name: n, Width: 2, Tiers: tiers, Harness: roster.WorkerHarness}
+			ro.Workers[n] = roster.Worker{Name: n, Resources: map[string]int{"cpu": 2, "memory": 4}, Tiers: tiers, Harness: roster.WorkerHarness}
 		}
 	}
 	rowMust(t, f, "p1", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
