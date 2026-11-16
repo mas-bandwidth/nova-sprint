@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
@@ -16,7 +17,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
-	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
 )
 
 // credentials are the store's: NOVA_PG_DSN without a password, its user
@@ -239,14 +239,18 @@ func (l *lazyRoster) open(ctx context.Context, widthCap int) (*run.ConfigRoster,
 	}
 	openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	conn, err := config.Open(openCtx, dsn, l.creds.password)
+	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
 	}
-	if l.reader, err = run.NewConfigRoster(conn, widthCap); err != nil {
-		conn.Close()
+	if l.creds.password != "" {
+		cfg.ConnConfig.Password = l.creds.password
+	}
+	pool, err := pgxpool.NewWithConfig(openCtx, cfg)
+	if err != nil {
 		return nil, err
 	}
+	l.reader = run.NewPGXConfigRoster(pool)
 	return l.reader, nil
 }
 

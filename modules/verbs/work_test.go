@@ -119,7 +119,7 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.Output), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "main" {
+	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "main" || got.Resources != "cpu 1, memory 1" {
 		t.Fatalf("%+v", got)
 	}
 	// The model is the one the deal named, carried by the consumer (defect

@@ -58,7 +58,7 @@ type Ticker struct {
 }
 
 // Limits and Timeouts are the last answered tick's (the active policy's):
-// run reads the roster at Limits.FleetWidthCap and bounds a tick by
+// run reads the roster and bounds a tick by
 // Timeouts.Tick. Before the first answer they are zero; Serve seeds them.
 func (t *Ticker) Limits() policy.Limits     { return t.limits }
 func (t *Ticker) Timeouts() policy.Timeouts { return t.timeouts }

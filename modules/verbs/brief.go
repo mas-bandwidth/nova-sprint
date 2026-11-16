@@ -85,6 +85,8 @@ func lintAt(id string, line int, field string) error {
 		rule = "must contain a valid DONE-WHEN section (one command: a program and its arguments, no shell syntax outside quotes)"
 	case card.RouteField:
 		rule = "must contain a valid " + card.RouteField + " section (one route name per line, 1 to 128 of a-z A-Z 0-9 . _ -)"
+	case card.ResourcesField:
+		rule = "must contain a valid RESOURCES section (e.g. cpu 4, memory 8, mac)"
 	}
 	return &BriefLintError{Brief: id, Line: line, Rule: rule}
 }
@@ -99,7 +101,7 @@ func (p *briefParts) line(line string) string {
 	switch strings.ToUpper(key) {
 	case "DEPENDS-ON", "DEPENDENCIES", "NEED":
 		return "NEEDS"
-	case "PATHS", "NEEDS", "AFTER", "PRIORITY", "TEST", "DONE-WHEN", card.RouteField:
+	case "PATHS", "NEEDS", "AFTER", "PRIORITY", "TEST", "DONE-WHEN", card.RouteField, card.ResourcesField:
 		if key != strings.ToUpper(key) || value == "" || (p.seen[key] && !repeatable[key]) {
 			return strings.ToUpper(key)
 		}
@@ -140,6 +142,10 @@ func (p *briefParts) field(key, value string) string {
 	case card.RouteField:
 		if !validName(value) {
 			return card.RouteField
+		}
+	case card.ResourcesField:
+		if _, err := card.ParseNeeds(value, nil, nil); err != nil {
+			return card.ResourcesField
 		}
 	}
 	return ""

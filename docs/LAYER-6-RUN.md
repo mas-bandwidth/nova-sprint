@@ -947,3 +947,9 @@ github.com credential is always gh as the host's login (no switch on
   `TestCheckQuietWithoutWaits`, `TestAddReportsTheLongestChain`,
   `TestChainTime`, `TestLandingsCountsEachLandingOnce`, `TestReadTakesCost`,
   `TestSetupVerifiesActionsAndRestarts` (the advice line).
+
+## Built: v3 direct pgx config read and removal of FleetWidthCap (v3.0.0, SEAM-CONTRACT 2.5)
+
+- `modules/run/config_roster.go`: reads `config.machines` (`name, roles, os, arch, cpu_units, memory_gb, tags, resources` — supporting both pre-migration and v3 schemas cleanly via pgx) and `config.friends` directly via pgx inside one `REPEATABLE READ` transaction, removing the dependency on `nova-tools/v2/config/lib`.
+- `fleet_width_cap` is removed (R46): benches have no width to cap; a bench's row carries its tags and whole-number resources (`cpu`, `memory`, exclusive devices) from `nova-config`. Friends keep their width (R47).
+- Preserves all 4 Hard Requirements (`RowAlive`, retirement, friend isolation).

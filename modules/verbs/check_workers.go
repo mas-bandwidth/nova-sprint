@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -104,7 +105,8 @@ type rowView struct {
 	Worker *workerView `json:"worker,omitempty"`
 	// RosterUnread is why nova-config's roster could not be read: show
 	// cannot tell a friend from a bench then, so it applies no bench check.
-	RosterUnread string `json:"roster_unread,omitempty"`
+	RosterUnread string   `json:"roster_unread,omitempty"`
+	OKPercent    *float64 `json:"ok_percent,omitempty"`
 }
 
 // workerView is a bench's unit with check's red line for it, when any.
@@ -121,18 +123,19 @@ func (e *Engine) showRow(ctx context.Context, row store.Row, snap store.Snapshot
 	if e.Doctor == nil {
 		return row
 	}
+	okPct := e.calcOKPercent(row.Name, snap)
 	// Bench-only checks never judge a friend row (docs/README.md "Hard
 	// requirements" 3): a friend is the row alone, and with the roster
 	// unreadable no row is read as a bench.
 	if friend, err := e.isFriend(ctx, row.Name); err != nil {
-		return rowView{Row: row, RosterUnread: errText(err)}
+		return rowView{Row: row, RosterUnread: errText(err), OKPercent: okPct}
 	} else if friend {
 		return row
 	}
 	u, isBench, err := e.Doctor.Worker(ctx, row.Name)
 	switch {
 	case err != nil:
-		return rowView{Row: row, Worker: &workerView{WorkerUnit: WorkerUnit{Machine: row.Name, Unread: errText(err)}}}
+		return rowView{Row: row, Worker: &workerView{WorkerUnit: WorkerUnit{Machine: row.Name, Unread: errText(err)}}, OKPercent: okPct}
 	case !isBench:
 		return row
 	}
@@ -144,7 +147,26 @@ func (e *Engine) showRow(ctx context.Context, row store.Row, snap store.Snapshot
 	if f := workerFact(u, snap, who); f != nil {
 		view.Problem, view.Fix = f.What, f.Fix
 	}
-	return rowView{Row: row, Worker: view}
+	return rowView{Row: row, Worker: view, OKPercent: okPct}
+}
+
+// calcOKPercent computes the coordinator's internal ok% metric for a machine.
+func (e *Engine) calcOKPercent(row string, snap store.Snapshot) *float64 {
+	ok, failed := 0, 0
+	for _, c := range snap.Cards {
+		if (c.Author == row || c.Holder == row) && c.State == card.Done {
+			if c.Result == "ok" {
+				ok++
+			} else if c.Result == "fix" || c.Result == "fail" {
+				failed++
+			}
+		}
+	}
+	if ok+failed > 0 {
+		pct := (float64(ok) / float64(ok+failed)) * 100.0
+		return &pct
+	}
+	return nil
 }
 
 // isFriend says whether nova-config's roster names row a friend, and the

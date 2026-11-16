@@ -195,6 +195,8 @@ type Runner struct {
 	// (endJobTree_internal; OSKillJob in the binary) before the worker lets
 	// the job go: the clean, a retire, a quarantine. nil: none.
 	KillJob                   func(jobDir string) (int, error)
+	pauseTracker              *PauseTracker
+	beatWake                  chan struct{}
 	mu                        *sync.Mutex
 	gone                      map[string]int  // per consumer: its jobs of a lower gen hold no branch (holds_internal)
 	jobs                      *sync.WaitGroup // every detached job, waited for when the wake loop ends
@@ -231,6 +233,22 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	}
 	if cfg.Logger == nil && cfg.StateDir != "" {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
+	}
+	cfg.pauseTracker = NewPauseTracker()
+	cfg.beatWake = make(chan struct{}, 1)
+	if w, ok := cfg.Wall.(*OSReserveWall); ok && w != nil {
+		if w.PauseTracker == nil {
+			w.PauseTracker = cfg.pauseTracker
+		}
+	}
+	if m, ok := cfg.Meter.(OSMeter); ok {
+		if m.PauseTracker == nil {
+			m.PauseTracker = cfg.pauseTracker
+		}
+		if m.OnStateChange == nil {
+			m.OnStateChange = (&cfg).TriggerBeat
+		}
+		cfg.Meter = m
 	}
 	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
 	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
@@ -562,6 +580,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		StreamRef: info.StreamRef, Branch: info.Branch, BaseSHA: info.BaseSHA,
 		PriorHead: info.PriorHead, Head: info.Head, Tier: info.Tier,
 		Model: info.Model, HarnessName: rowInfo.Harness, Brief: info.Brief,
+		Resources: info.Resources, Priority: info.Priority,
 		Prose: info.Prose, Finding: info.Finding, Paths: info.Paths,
 		DoneWhen: info.DoneWhen, StreamGates: info.StreamGates, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
@@ -576,6 +595,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: resultID_internal(epoch, info.Consumer, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
 		PriorFinished: info.PriorFinished, Harness: rowInfo.Harness,
+		Resources: info.Resources, Priority: info.Priority,
 	}
 	return job, rec
 }
@@ -946,7 +966,7 @@ func (r *Runner) sealAndCollect_internal(ctx context.Context, job Job, rec JobRe
 	}
 	base := cmp.Or(rec.PriorHead, rec.BaseSHA)
 	msg := rec.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness left its changes uncommitted; the worker's seal step committed those inside the card's PATHS.\n"
-	res, err := r.Wall.RunStep(ctx, job, sealArgv_internal(job.JobDir, base, job.CommitName, job.CommitEmail, msg, job.Paths), r.Timeouts.RebaseAndTest)
+	res, err := r.Wall.RunStep(ctx, job, sealArgv_internal(job.JobDir, base, job.CommitName, job.CommitEmail, msg, job.Paths), r.rebaseTimeout_internal(job.Consumer))
 	r.logStep_internal(rec.Row, rec.Consumer, "seal", strings.TrimSpace(fmt.Sprintf("exit=%d %s %s", res.ExitCode, leftoversNote_internal(res), sealNote_internal(res.Output))), res.Elapsed)
 	r.report("killing what the seal step of "+rec.Consumer+" left running", res.LeftoverErr)
 	if err == nil && res.ExitCode != 0 {
@@ -1106,11 +1126,29 @@ func nothingNew_internal() Outcome {
 // is a guess, not measured. Zero or less: no gate starts. A record with no
 // deadline (written before they were recorded) keeps the step bound, so no
 // gate runs unbounded.
+func (r *Runner) rebaseTimeout_internal(consumer string) time.Duration {
+	base := r.Timeouts.RebaseAndTest
+	if r.pauseTracker != nil && consumer != "" {
+		pausedMs := r.pauseTracker.TotalMillis(consumer, r.Now())
+		if pausedMs > 0 {
+			base += time.Duration(pausedMs) * time.Millisecond
+		}
+	}
+	return base
+}
+
 func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound, left time.Duration, what string) {
 	if rec.DeadlineAt <= 0 {
-		return r.Timeouts.RebaseAndTest, r.Timeouts.RebaseAndTest, "the worker's step bound (the job record carries no deadline)"
+		to := r.rebaseTimeout_internal(rec.Consumer)
+		return to, to, "the worker's step bound (the job record carries no deadline)"
 	}
 	left = time.Unix(rec.DeadlineAt, 0).Sub(r.Now())
+	if r.pauseTracker != nil {
+		pausedMs := r.pauseTracker.TotalMillis(rec.Consumer, r.Now())
+		if delta := pausedMs - rec.PausedMillis; delta > 0 {
+			left += time.Duration(delta) * time.Millisecond
+		}
+	}
 	return left - r.Timeouts.Push, left, fmt.Sprintf("what was left of the card's deadline less the %s kept for the push and the report", r.Timeouts.Push)
 }
 
@@ -1284,9 +1322,9 @@ func (r *Runner) baseGateRed_internal(ctx context.Context, j Job, rec JobRecord,
 	}
 	bJob := j
 	bJob.WorktreeDir = filepath.Join(j.JobDir, BaseTreeDir)
-	res, err := r.Wall.RunStep(ctx, j, baseArgv_internal(base, bJob.WorktreeDir), r.Timeouts.RebaseAndTest)
+	res, err := r.Wall.RunStep(ctx, j, baseArgv_internal(base, bJob.WorktreeDir), r.rebaseTimeout_internal(j.Consumer))
 	defer func() { // the base's tree goes on every path: the job's tree stays at the head
-		res, err := r.Wall.RunStep(context.WithoutCancel(ctx), j, dropBaseArgv_internal(bJob.WorktreeDir), r.Timeouts.RebaseAndTest)
+		res, err := r.Wall.RunStep(context.WithoutCancel(ctx), j, dropBaseArgv_internal(bJob.WorktreeDir), r.rebaseTimeout_internal(j.Consumer))
 		if fault, w := isInfraFault_internal(res, err); fault || res.ExitCode != 0 {
 			r.logStep_internal(rec.Row, rec.Consumer, "stream gates at base", strings.TrimSpace(fmt.Sprintf("base tree %s not removed: exit=%d %s %s", bJob.WorktreeDir, res.ExitCode, w, TailBytes(res.Output, 512))), res.Elapsed)
 		}
@@ -1368,7 +1406,7 @@ func (r *Runner) applyRebased_internal(ctx context.Context, j Job, rec JobRecord
 		}
 		argv = applyArgv_internal(bundle)
 	}
-	res, err := r.Wall.RunStep(ctx, j, argv, r.Timeouts.RebaseAndTest)
+	res, err := r.Wall.RunStep(ctx, j, argv, r.rebaseTimeout_internal(j.Consumer))
 	if fault, why := isInfraFault_internal(res, err); fault {
 		return errors.New(why)
 	}
@@ -2200,7 +2238,8 @@ type OSReserveWall struct {
 	// KillJob ends every process of the job at a job directory (OSKillJob
 	// in the binary), after every wall command: the command's own group is
 	// nova-reserve's child's, not the one KillGroup reaches. nil: none.
-	KillJob func(jobDir string) (int, error)
+	KillJob      func(jobDir string) (int, error)
+	PauseTracker *PauseTracker
 }
 
 // OSKillGroup kills process group pgid (a wall command's, whose leader has
@@ -2283,10 +2322,41 @@ func cargoLinkerEnv_internal(goos, goarch string, lookPath func(string) (string,
 	return "CARGO_TARGET_" + triple + "_UNKNOWN_LINUX_GNU_LINKER=" + cc
 }
 
-// gateJobs_internal is a gate's build parallelism: one nova-reserve slot,
-// which at nova-reserve's default capacity (CPU/4 slots) is 4 cores, or
-// the bench's cores when it has fewer.
-func gateJobs_internal() int { return max(1, min(4, runtime.NumCPU())) }
+// gateJobs_internal is a gate's build parallelism: derived from NOVA_RESERVE_CPUS
+// (or GOMAXPROCS, CARGO_BUILD_JOBS, RAYON_NUM_THREADS, CMAKE_BUILD_PARALLEL_LEVEL),
+// falling back to one nova-reserve slot (up to 4 cores) or NumCPU.
+func gateJobs_internal(env ...[]string) int {
+	var envList []string
+	if len(env) > 0 {
+		envList = env[0]
+	}
+	check := func(k, v string) (int, bool) {
+		for _, name := range []string{"NOVA_RESERVE_CPUS", "GOMAXPROCS", "CARGO_BUILD_JOBS", "RAYON_NUM_THREADS", "CMAKE_BUILD_PARALLEL_LEVEL"} {
+			if k == name {
+				if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+					return n, true
+				}
+			}
+		}
+		return 0, false
+	}
+	for _, kv := range envList {
+		k, v, ok := strings.Cut(kv, "=")
+		if ok {
+			if n, match := check(k, v); match {
+				return n
+			}
+		}
+	}
+	for _, name := range []string{"NOVA_RESERVE_CPUS", "GOMAXPROCS", "CARGO_BUILD_JOBS", "RAYON_NUM_THREADS", "CMAKE_BUILD_PARALLEL_LEVEL"} {
+		if v := os.Getenv(name); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+				return n
+			}
+		}
+	}
+	return max(1, min(4, runtime.NumCPU()))
+}
 
 // gateJobserver_internal is env with CARGO_MAKEFLAGS naming a FIFO
 // jobserver in jobDir (a --write path of the wall), made and held open
@@ -2328,7 +2398,8 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 	if err == nil && st.Mode&syscall.S_IFMT != syscall.S_IFIFO {
 		err = errors.New("not a FIFO")
 	}
-	tokens := []byte(strings.Repeat("+", gateJobs_internal()-1))
+	jobs := gateJobs_internal(env)
+	tokens := []byte(strings.Repeat("+", jobs-1))
 	if n := 0; err == nil && len(tokens) > 0 {
 		if n, err = syscall.Write(fd, tokens); err == nil && n != len(tokens) {
 			err = fmt.Errorf("wrote %d of %d tokens", n, len(tokens))
@@ -2339,7 +2410,7 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 		return env, nil, fmt.Errorf("worker: seeding the gate's jobserver FIFO %s: %w", fifo, err)
 	}
 	env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(strings.ToUpper(kv), "CARGO_MAKEFLAGS=") })
-	return append(env, fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", gateJobs_internal(), fifo)), release, nil
+	return append(env, fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", jobs, fifo)), release, nil
 }
 
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
@@ -2436,14 +2507,26 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	}
 	env = append(env, "NOVA_WORKER_NONCE="+nonce)
 	argv := BuildWallArgv(cfg, j, env, cmdArgv)
-	// The wait for a slot and the command's run are timed apart: the
-	// whole of nova-reserve run is bounded by the wait plus timeout, so a
-	// command held at the last moment of its wait still has all of timeout
-	// (11-11: a gate held late was killed seconds in and failed "timed
-	// out", the card blamed for the bench's queue).
-	wait := cmp.Or(cfg.ReserveWait, 5*time.Second)
+	// In v3, when cfg.ReserveWait is unset/0, we wait in line in nova-reserve (R51).
+	// Bounded by timeout plus remaining deadline or configured ReserveWait.
+	stepTimeout := timeout
+	var wait time.Duration
+	if cfg.ReserveWait > 0 {
+		wait = cfg.ReserveWait
+	} else if j.Deadline > 0 {
+		wait = j.Deadline
+	} else {
+		wait = 30 * time.Minute
+	}
+	if w.PauseTracker != nil {
+		pausedMs := w.PauseTracker.TotalMillis(j.Consumer, time.Now())
+		if pausedMs > 0 {
+			stepTimeout += time.Duration(pausedMs) * time.Millisecond
+		}
+		w.PauseTracker.StartLineWait(j.Consumer, time.Now())
+	}
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
-		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: wait + timeout,
+		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: wait + stepTimeout,
 		OnStart: func(pid int) {
 			if pid <= 0 || pid == os.Getpid() {
 				pid = fallbackPID
@@ -2455,6 +2538,20 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 			}
 		},
 	})
+	if w.PauseTracker != nil {
+		w.PauseTracker.EndLineWait(j.Consumer, time.Now())
+		totalPausedMs := w.PauseTracker.TotalMillis(j.Consumer, time.Now())
+		if totalPausedMs > 0 && j.JobDir != "" {
+			if rec, rerr := ReadJobRecord(j.JobDir); rerr == nil {
+				delta := totalPausedMs - rec.PausedMillis
+				if delta > 0 {
+					rec.DeadlineAt += delta / 1000
+					rec.PausedMillis = totalPausedMs
+					reportTo(nil, "job record "+filepath.Base(j.JobDir), WriteJobRecord(j.JobDir, rec))
+				}
+			}
+		}
+	}
 	combined := res.Stdout
 	if res.Stderr != "" {
 		combined = strings.TrimSuffix(combined, "\n") + "\n" + res.Stderr

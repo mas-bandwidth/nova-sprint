@@ -32,6 +32,8 @@ type takeReceipt struct {
 	Branch    string `json:"branch"`
 	Head      string `json:"head"`
 	Tier      string `json:"tier"`
+	Resources string `json:"resources"`
+	Priority  string `json:"priority,omitempty"`
 	Brief     string `json:"brief"`
 	Prose     string `json:"prose"`
 	Finding   string `json:"finding"`
@@ -173,8 +175,15 @@ func (e *Engine) takenOutput(ctx context.Context, in *input, snap store.Snapshot
 			prior = worker.StartHead(c.BaseSHA, c.Prior, tip)
 		}
 	}
+	spec := "cpu 1, memory 1"
+	if c.Kind == "work" {
+		raw, count, _ := card.ParseBriefNeeds(c.Brief)
+		if count > 0 && raw != "" {
+			spec = raw
+		}
+	}
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
-		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
+		Tier: c.Tier, Resources: spec, Priority: c.Priority, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
 		PriorHead: prior, PriorFinished: c.Kind == "work" && prior != "" && card.FinishedAt(consumersOf(snap, c.Of), prior),
 		Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), StreamGates: nonNil(s.Gates), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
 		Review: c.Review, Model: c.Model, Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge,
@@ -192,8 +201,8 @@ func takenText(t takeReceipt, row string) string {
 	ref := fmtCard(t.Consumer, t.Gen)
 	terms := fmt.Sprintf("deadline=%ds forge=%s", t.Deadline, orWord(t.Forge, "none"))
 	rules := "How this card finishes:\n" + strings.TrimRight(worker.KinFinishRules(worker.Job{Kind: t.Kind, Branch: t.Branch, Head: t.Head, Stream: t.Stream, BaseSHA: t.BaseSHA,
-		StreamGates: t.StreamGates, CommitName: t.CommitName, CommitEmail: t.CommitEmail}, worker.KinFinish{Ref: ref, Row: row, Epoch: t.Epoch}), "\n")
-	brief := t.Brief
+		StreamGates: t.StreamGates, CommitName: t.CommitName, CommitEmail: t.CommitEmail, Resources: t.Resources, Priority: t.Priority}, worker.KinFinish{Ref: ref, Row: row, Epoch: t.Epoch}), "\n")
+	brief := ensureBriefResources(t.Brief, t.Resources)
 	if t.Kind != "read" {
 		for _, g := range t.StreamGates { // the stream's, after the card's own DONE-WHEN lines
 			brief = strings.TrimRight(brief, "\n") + "\nSTREAM GATE: " + g
@@ -214,6 +223,37 @@ func takenText(t takeReceipt, row string) string {
 	}
 	lines = append(lines, brief, rules)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
+}
+
+func ensureBriefResources(brief, spec string) string {
+	lines := strings.Split(strings.ReplaceAll(brief, "\r\n", "\n"), "\n")
+	found := false
+	var out []string
+	header := true
+	for i, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if header && trimmed == "" {
+			if !found {
+				out = append(out, "RESOURCES: "+spec)
+				found = true
+			}
+			header = false
+		}
+		if header && strings.HasPrefix(trimmed, "RESOURCES:") {
+			out = append(out, "RESOURCES: "+spec)
+			found = true
+			continue
+		}
+		out = append(out, l)
+		if header && i == 0 && !found && len(lines) == 1 {
+			out = append(out, "RESOURCES: "+spec)
+			found = true
+		}
+	}
+	if !found {
+		out = append([]string{lines[0], "RESOURCES: " + spec}, lines[1:]...)
+	}
+	return strings.Join(out, "\n")
 }
 
 func nonNil(s []string) []string {

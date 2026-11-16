@@ -762,16 +762,13 @@ live consumer, so only the dropped producer is released. Tests:
 `Steps.tla` has no coordinator drop verb; the machine's Withdraw and Cancel are
 `CardMachine.tla`'s, composed as `CardMerge.cfg` checks.
 
-## Built: routes in the deal (stitch w2A, 2026-11-07)
+## Built: routes in the deal (stitch w2A, 2026-11-07; retired for RESOURCES in v3.0.0, R41-R44)
 
-A producer whose brief carries `NEEDS-ROUTE: <name>` lines (read once, by
-`card.NeedsRoutes`) is a candidate only for rows that serve its tier and
-every route (`Roster.ServesRoutes`); the candidate cache keys on tier and
-routes. With none, the `unserved` judgement's About is the tier plus
-`+<route>` per route, and it clears only when a row serves all of them, so a
-tier-only row no longer clears it each tick. Test:
-`TestTickRoutesDealOnlyToServingRows`. No TLA model names routes; the
-candidate filter narrows the row set the model already chooses from.
+In v2, a producer whose brief carried `NEEDS-ROUTE: <name>` lines was a candidate
+only for rows that served its tier and every route. In v3.0.0, `NEEDS-ROUTE:` is
+completely retired in favor of `RESOURCES: <spec>` (coarse whole-number resources
+and tags per R9, R10, R41-R44). Pure light reads use `cpu 1, memory 1` with zero
+tags (Q4, R42), and friends obtain an atomic machine hold before SSHing (R55-R58, Q2).
 
 **Stitch, what the deal carries and when the tick deals (2026-11-07, branch
 `v2-stitch-w2D1`).**

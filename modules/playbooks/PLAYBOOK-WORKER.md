@@ -259,11 +259,13 @@ so honestly with one of these, never with a finish of a head that does not meet 
   never started, a staging failure, a rate limit or credit refusal):
   `nova-sprint report <id>@<gen> --result fault --reason "<what failed>" --as <you> --epoch <e>`.
   It prints `FAULTED <id> ...`; a fault spends no attempt and never counts toward a hold.
-- The work needs a route or device this row does not have (a tool, a device, a network, a
-  model route): the same `report --result fault`, with a reason that starts `missing-route:`, then
-  the route's name in one word (the name a brief declares with `NEEDS-ROUTE: <route>`), then what
+- The work needs a tag, device, or resource this row does not have (a tool, a device, a network, a
+  model route): the same `report --result fault`, with a reason that starts `missing-route:` or `missing-resource:`, then
+  the name in one word (the name a brief declares with `RESOURCES: <spec>`), then what
   is missing, `--reason "missing-route: adb no device attached to this row"`. The card is not dealt
-  again by itself; it waits, held, until the coordinator answers.
+  again by itself; it waits, held, until the coordinator answers. In v3.0.0, `NEEDS-ROUTE:` is completely retired
+  in favor of `RESOURCES:`; reads are pure light reads running under `cpu 1, memory 1` with zero tags,
+  and friend rows running work on fleet machines lock them atomically before SSHing via `nova-fleet reserve --needs ...` (R55–R58, Q2).
 - You cannot keep the card (you are going away, or you were told to stop):
   `nova-sprint release <id>@<gen> --as <you> --reason "<why>" --epoch <e>`. The card goes
   back to ready with your branch kept, and no blame. If you pushed commits on it, add

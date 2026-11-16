@@ -390,6 +390,63 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 	}
 }
 
+func TestBuildWallArgv_Needs(t *testing.T) {
+	t.Parallel()
+	const mockBin = "mock-reserve-needs-test"
+	reserveSupportsNeedsCache_internal.Store(mockBin, true)
+	cfg := WallConfig{
+		ReserveBin: mockBin,
+		ReserveDir: "/var/tmp/nova-reserve",
+		SandboxBin: "nova-sandbox",
+	}
+	j := Job{
+		Consumer:  "p1.w1",
+		Epoch:     2,
+		Kind:      "work",
+		Resources: "cpu 4, memory 8",
+		Priority:  "critical",
+		JobDir:    t.TempDir(),
+	}
+	argv := BuildWallArgv(cfg, j, nil, []string{"echo", "hi"})
+	joined := strings.Join(argv, " ")
+	if !strings.Contains(joined, "--needs cpu 4, memory 8") {
+		t.Fatalf("expected --needs in argv: %s", joined)
+	}
+	if !strings.Contains(joined, "--holder bench") {
+		t.Fatalf("expected --holder bench in argv: %s", joined)
+	}
+	if !strings.Contains(joined, "--consumer p1.w1@2") {
+		t.Fatalf("expected --consumer p1.w1@2 in argv: %s", joined)
+	}
+	if !strings.Contains(joined, "--label critical") {
+		t.Fatalf("expected --label critical in argv: %s", joined)
+	}
+	if !strings.Contains(joined, "--priority critical") {
+		t.Fatalf("expected --priority critical in argv: %s", joined)
+	}
+
+	// Read job uses DefaultReadNeeds ("cpu 1, memory 1"), label read, priority read
+	jRead := Job{
+		Consumer:  "p1.r1",
+		Epoch:     1,
+		Kind:      "read",
+		Resources: "cpu 8, memory 16", // ignored on read
+		Priority:  "critical",         // overridden by read
+		JobDir:    t.TempDir(),
+	}
+	readArgv := BuildWallArgv(cfg, jRead, nil, []string{"echo", "read"})
+	readJoined := strings.Join(readArgv, " ")
+	if !strings.Contains(readJoined, "--needs cpu 1, memory 1") {
+		t.Fatalf("expected read job to use cpu 1, memory 1: %s", readJoined)
+	}
+	if !strings.Contains(readJoined, "--label read") {
+		t.Fatalf("expected read job to use --label read: %s", readJoined)
+	}
+	if !strings.Contains(readJoined, "--priority read") {
+		t.Fatalf("expected read job to use --priority read: %s", readJoined)
+	}
+}
+
 func TestClassifyOutcomesAndFaultRules(t *testing.T) {
 	t.Parallel()
 	h := &ClaudeHarness{}

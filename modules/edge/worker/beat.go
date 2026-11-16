@@ -3,6 +3,7 @@ package worker
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 // BeatEvery is how often a worker pushes its heartbeat while it runs (a
@@ -22,8 +24,8 @@ const BeatEvery = 30 * time.Second
 
 type (
 	// Heartbeat is what a bench says it carries: its 1-minute load average,
-	// its logical cores, and its nova-reserve slots in use and in all (0 of 0
-	// when the slots could not be read). It is the board's load cell.
+	// its logical cores, its measured resources and holds from nova-reserve (R48),
+	// and its legacy slots in use and in all.
 	Heartbeat struct {
 		Load1 float64
 		// CPUPeak is the highest CPU busy percent of the last CPUWindow, across all
@@ -32,7 +34,8 @@ type (
 		Cores, SlotsUsed, SlotsTotal int
 		// Tiers are what the harness serves (its adapter's Needs.Tiers),
 		// a comma list in store.Tiers' order: the roster deals by them.
-		Tiers string
+		Tiers     string
+		Resources store.RowResources
 	}
 	// Beater pushes a heartbeat to the sprint (CLISprintClient is one).
 	Beater interface {
@@ -46,24 +49,38 @@ type (
 	}
 	// OSMeter measures the real bench: the load average from the kernel
 	// (/proc/loadavg on Linux, sysctl vm.loadavg on macOS and the BSDs) and
-	// the slots from `nova-reserve status`.
+	// the resources and slots from `nova-reserve status --json`.
 	OSMeter struct {
 		Exec       edge.Exec
 		ReserveBin string
+		ReserveDir string
 		ReadFile   func(string) ([]byte, error) // os.ReadFile when nil
 		// CPU is the sampler whose peak the beat carries (nil: the load
 		// average over the cores stands in for it); Now is the clock it is
 		// read at (time.Now when nil).
-		CPU *CPUSampler
-		Now func() time.Time
+		CPU           *CPUSampler
+		Now           func() time.Time
+		PauseTracker  *PauseTracker
+		OnStateChange func()
 	}
 )
 
+type reserveStatusJSON struct {
+	Tags            []string                  `json:"tags"`
+	UsableCores     int                       `json:"usable_cores"`
+	Resources       map[string]int            `json:"resources"`
+	HeldSprint      map[string]int            `json:"held_sprint"`
+	HeldOther       map[string]int            `json:"held_other"`
+	HeldByLabel     map[string]map[string]int `json:"held_by_label"`
+	PausedByLabel   map[string]map[string]int `json:"paused_by_label"`
+	AnyPaused       bool                      `json:"any_paused"`
+	SprintConsumers []string                  `json:"sprint_consumers"`
+	PausedConsumers []string                  `json:"paused_consumers"`
+}
+
 var reserveFree = regexp.MustCompile(`(?m)^free=(\d+)/(\d+)\s*$`)
 
-// Sample reads the load, then the slots. Either failure comes back with the
-// beat the rest made (an unread load as 0, unread slots as 0 of 0), so a
-// bench without a load average or nova-reserve still reports.
+// Sample reads the load, then nova-reserve status (--json).
 func (m OSMeter) Sample(ctx context.Context) (Heartbeat, error) {
 	load, lerr := m.load1_internal(ctx)
 	hb := Heartbeat{Load1: load, Cores: runtime.NumCPU()}
@@ -76,13 +93,61 @@ func (m OSMeter) Sample(ctx context.Context) (Heartbeat, error) {
 		peak, ok = m.CPU.Peak(now())
 	}
 	hb.CPUPeak = cpuPeakOrLoad(peak, ok, load, hb.Cores)
-	res, err := cmp.Or[edge.Exec](m.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: []string{resolveToolBin_internal(cmp.Or(m.ReserveBin, "nova-reserve")), "status"}, Timeout: 5 * time.Second})
-	if err != nil || res.ExitCode != 0 {
-		return hb, errors.Join(lerr, fmt.Errorf("nova-reserve status: %w", edge.Failure([]string{"nova-reserve", "status"}, nil, res.ExitCode, res.Stdout, res.Stderr, err)))
+
+	statusArgv := []string{resolveToolBin_internal(cmp.Or(m.ReserveBin, "nova-reserve")), "status", "--json"}
+	if m.ReserveDir != "" {
+		statusArgv = append(statusArgv, "--dir", m.ReserveDir)
+	} else {
+		statusArgv = append(statusArgv, "--dir", DefaultReserveDir)
 	}
-	used, total, perr := ParseReserveStatus(res.Stdout)
-	hb.SlotsUsed, hb.SlotsTotal = used, total
-	return hb, errors.Join(lerr, perr)
+	res, err := cmp.Or[edge.Exec](m.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: statusArgv, Timeout: 5 * time.Second})
+	if err != nil || res.ExitCode != 0 {
+		// Fallback to plain status if --json failed (e.g. older mocks in unit tests)
+		plainArgv := []string{resolveToolBin_internal(cmp.Or(m.ReserveBin, "nova-reserve")), "status"}
+		if m.ReserveDir != "" {
+			plainArgv = append(plainArgv, "--dir", m.ReserveDir)
+		}
+		resPlain, errPlain := cmp.Or[edge.Exec](m.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: plainArgv, Timeout: 5 * time.Second})
+		if errPlain != nil || resPlain.ExitCode != 0 {
+			return hb, errors.Join(lerr, fmt.Errorf("nova-reserve status: %w", edge.Failure([]string{"nova-reserve", "status"}, nil, res.ExitCode, res.Stdout, res.Stderr, err)))
+		}
+		used, total, perr := ParseReserveStatus(resPlain.Stdout)
+		hb.SlotsUsed, hb.SlotsTotal = used, total
+		return hb, errors.Join(lerr, perr)
+	}
+
+	var st reserveStatusJSON
+	if jerr := json.Unmarshal([]byte(res.Stdout), &st); jerr == nil && (st.Resources != nil || len(st.Tags) > 0) {
+		hb.Resources = store.RowResources{
+			Total:           st.Resources,
+			HeldSprint:      st.HeldSprint,
+			HeldOther:       st.HeldOther,
+			HeldByLabel:     st.HeldByLabel,
+			PausedByLabel:   st.PausedByLabel,
+			AnyPaused:       st.AnyPaused,
+			SprintConsumers: st.SprintConsumers,
+			PausedConsumers: st.PausedConsumers,
+		}
+		if st.UsableCores > 0 {
+			hb.Cores = st.UsableCores
+		}
+		now := time.Now()
+		if m.Now != nil {
+			now = m.Now()
+		}
+		if m.PauseTracker != nil {
+			changed := m.PauseTracker.UpdatePausedConsumers(st.PausedConsumers, now)
+			hb.Resources.PausedMillis = m.PauseTracker.Snapshot(now)
+			if changed && m.OnStateChange != nil {
+				m.OnStateChange()
+			}
+		}
+	} else {
+		used, total, perr := ParseReserveStatus(res.Stdout)
+		hb.SlotsUsed, hb.SlotsTotal = used, total
+		return hb, errors.Join(lerr, perr)
+	}
+	return hb, lerr
 }
 
 func (m OSMeter) load1_internal(ctx context.Context) (float64, error) {
@@ -160,12 +225,41 @@ func (r *Runner) beat_internal(ctx context.Context, row string) {
 	}
 }
 
+// TriggerBeat triggers an immediate edge-triggered heartbeat push.
+func (r *Runner) TriggerBeat() {
+	if r.beatWake != nil {
+		select {
+		case r.beatWake <- struct{}{}:
+		default:
+		}
+	}
+}
+
 // beatLoop_internal pushes a heartbeat now and then every BeatEvery until
-// ctx ends. It is not run without a Meter. Time is the runner's Sleep.
+// ctx ends, waking immediately on edge triggers (R48).
 func (r *Runner) beatLoop_internal(ctx context.Context, row string) {
 	for ctx.Err() == nil {
 		r.beat_internal(ctx, row)
-		r.Sleep(r.beatEvery_internal())
+		if r.beatWake == nil {
+			r.Sleep(r.beatEvery_internal())
+			continue
+		}
+		select {
+		case <-r.beatWake:
+			continue
+		default:
+		}
+		if r.After != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-r.beatWake:
+				continue
+			case <-r.After(r.beatEvery_internal()):
+			}
+		} else {
+			r.Sleep(r.beatEvery_internal())
+		}
 	}
 }
 

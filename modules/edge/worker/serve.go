@@ -117,6 +117,7 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		return nil, err
 	}
 	wall.ReserveBin, wall.SandboxBin, wall.ReserveWait, wall.NetDeny, wall.WorkRoot, wall.MirrorRoot = "nova-reserve", "nova-sandbox", timeouts.ReserveWait, true, workRoot, mirrorRoot
+	wall.ReserveDir = DefaultReserveDir
 	if envSh := filepath.Join(home, "sdk", "env.sh"); slices.Contains(c.WallReads, filepath.Join(home, "sdk")) {
 		if st, err := os.Stat(envSh); err == nil && st.Mode().IsRegular() {
 			wall.SDKEnv = envSh
@@ -136,7 +137,7 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, KillJob: killJob, Config: wall},
 		KillJob: killJob,
 		Procs:   OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
-		Warn: out, Meter: OSMeter{Exec: ex, ReserveBin: "nova-reserve", CPU: NewOSCPUSampler(ex)},
+		Warn: out, Meter: OSMeter{Exec: ex, ReserveBin: "nova-reserve", ReserveDir: DefaultReserveDir, CPU: NewOSCPUSampler(ex)},
 	})
 }
 

@@ -53,6 +53,8 @@ type (
 	}
 	TakeInfo struct {
 		Consumer, Producer, Kind, Stream, Repo, Base, Branch, Head, Tier, Brief, Prose, Finding string
+		Resources                                                                               string   `json:"resources"`
+		Priority                                                                                string   `json:"priority,omitempty"`
 		StreamRef                                                                               string   `json:"stream_ref"`
 		BaseSHA                                                                                 string   `json:"base_sha"`
 		PriorHead                                                                               string   `json:"prior_head"`
@@ -285,6 +287,9 @@ func (c *CLISprintClient) Beat(ctx context.Context, row string, hb Heartbeat) er
 		"--cores", strconv.Itoa(hb.Cores), "--slots-used", strconv.Itoa(hb.SlotsUsed), "--slots-total", strconv.Itoa(hb.SlotsTotal)}
 	if hb.Tiers != "" {
 		args = append(args, "--tiers", hb.Tiers)
+	}
+	if b, err := json.Marshal(hb.Resources); err == nil && len(b) > 2 && string(b) != "{}" {
+		args = append(args, "--resources", string(b))
 	}
 	out, code, err := c.run_internal(ctx, c.argv_internal(args...))
 	return c.classifyCLIError_internal(out, code, err)

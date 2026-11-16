@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -608,6 +609,9 @@ func stepReserveWait_internal(conf, bound time.Duration) time.Duration {
 // the wall drops it (nova-sandbox help).
 var wallKeeps_internal = []string{"PATH", "HOME", "LANG", "TERM"}
 
+// DefaultReserveDir is the converged state directory for nova-reserve everywhere (R16).
+const DefaultReserveDir = "/var/tmp/nova-reserve"
+
 // BuildWallArgv is nova-reserve around nova-sandbox around the harness: the
 // job directory and the adapter's Needs (j.Needs) written, cfg's paths
 // read, and the network as the adapter declares
@@ -620,14 +624,49 @@ func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
 	if runtime.GOOS != "windows" {
 		argv = append(argv, "nice", "-n", "15")
 	}
-	argv = append(argv, cmp.Or(cfg.ReserveBin, "nova-reserve"), "run")
+	bin := cmp.Or(cfg.ReserveBin, "nova-reserve")
+	argv = append(argv, bin, "run")
 	if cfg.ReserveDir != "" {
 		argv = append(argv, "--dir", cfg.ReserveDir)
 	}
-	if j.SlotWeight > 0 {
+	if reserveSupportsNeeds_internal(bin) {
+		needs := "cpu 1, memory 1"
+		if j.Kind != "read" && j.Resources != "" {
+			needs = j.Resources
+		}
+		argv = append(argv, "--needs", needs, "--holder", "bench")
+		consumerRef := cmp.Or(j.Consumer, "probe")
+		if j.Epoch > 0 && j.Consumer != "" {
+			consumerRef = fmt.Sprintf("%s@%d", j.Consumer, j.Epoch)
+		}
+		argv = append(argv, "--consumer", consumerRef)
+		lbl := "work"
+		if j.Kind == "read" {
+			lbl = "read"
+		} else if j.Priority == "blocker" {
+			lbl = "blocker"
+		} else if j.Priority == "critical" {
+			lbl = "critical"
+		} else if j.Attempt > 1 {
+			lbl = "fix"
+		}
+		argv = append(argv, "--label", lbl)
+		prio := "normal"
+		if j.Kind == "read" {
+			prio = "read"
+		} else if j.Priority != "" {
+			prio = j.Priority
+		}
+		argv = append(argv, "--priority", prio)
+	} else if j.SlotWeight > 0 {
 		argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
+	} else {
+		argv = append(argv, "--slots", "1")
 	}
-	argv = append(argv, "--wait", cmp.Or(cfg.ReserveWait, 5*time.Second).String(), "--why", cmp.Or(j.Consumer, "probe"), "--", cmp.Or(cfg.SandboxBin, "nova-sandbox"))
+	if cfg.ReserveWait > 0 {
+		argv = append(argv, "--wait", cfg.ReserveWait.String())
+	}
+	argv = append(argv, "--why", cmp.Or(j.Consumer, "probe"), "--", cmp.Or(cfg.SandboxBin, "nova-sandbox"))
 	argv = append(argv, sandboxFlags_internal(cfg, j, env)...)
 	return append(append(argv, "--"), harnessArgv...)
 }
@@ -916,4 +955,23 @@ func DetectGo(ctx context.Context, ex edge.Exec, timeout time.Duration) (goroot,
 		return "", "", fmt.Errorf("%s printed %d lines, want GOROOT and GOMODCACHE: %q", strings.Join(argv, " "), len(lines), TailBytes([]byte(res.Stdout), 200))
 	}
 	return strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1]), nil
+}
+
+var reserveSupportsNeedsCache_internal sync.Map
+
+// reserveSupportsNeeds_internal reports whether bin (e.g. nova-reserve) supports
+// the v3 flag --needs. If the binary cannot be executed or fails, it defaults to false.
+func reserveSupportsNeeds_internal(bin string) bool {
+	if bin == "" {
+		bin = "nova-reserve"
+	}
+	if v, ok := reserveSupportsNeedsCache_internal.Load(bin); ok {
+		return v.(bool)
+	}
+	var supports bool
+	if out, err := exec.Command(bin, "-h").CombinedOutput(); err == nil || len(out) > 0 {
+		supports = strings.Contains(string(out), "--needs")
+	}
+	reserveSupportsNeedsCache_internal.Store(bin, supports)
+	return supports
 }
