@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -34,10 +35,12 @@ const (
 
 // Machine is a fleet machine as nova-config holds it.
 type Machine struct {
-	Name     string
-	Roles    []string
-	Cores    int
-	OS, Arch string
+	Name      string
+	Roles     []string
+	Cores     int
+	OS, Arch  string
+	Tags      []string
+	Resources map[string]int
 }
 
 // Friend is a friend as nova-config holds it. Width is the friend's own
@@ -61,12 +64,48 @@ type Source interface {
 // with no cores in nova-config loads at width 0, shown held with that
 // reason, and is dealt nothing until its cores are set.
 type Worker struct {
-	Name    string
-	Width   int
-	Tiers   []string
-	Routes  []string // the routes and devices it serves (RoutePrefix roles)
-	Harness string
-	Held    string
+	Name      string
+	Width     int
+	Tiers     []string
+	Tags      []string       // includes EffectiveOS ("mac" for "darwin") and Arch
+	Resources map[string]int // "cpu", "memory", and custom resources
+	Routes    []string       // the routes and devices it serves (RoutePrefix roles)
+	Harness   string
+	Held      string
+}
+
+const UnmeasuredResources = "unmeasured resources in nova-config"
+
+// FitsMax returns true iff w has every tag in n.Tags and w.Resources[k] >= v for every k, v in n.Amounts.
+func (w Worker) FitsMax(n card.Needs) bool {
+	for _, tag := range n.Tags {
+		if !slices.Contains(w.Tags, tag) {
+			return false
+		}
+	}
+	cpu := w.Resources["cpu"]
+	if cpu == 0 && w.Width > 0 {
+		cpu = w.Width
+	}
+	mem := w.Resources["memory"]
+	if mem == 0 && cpu > 0 {
+		mem = max(1, cpu)
+	}
+	for k, v := range n.Amounts {
+		var available int
+		switch k {
+		case "cpu":
+			available = cpu
+		case "memory":
+			available = mem
+		default:
+			available = w.Resources[k]
+		}
+		if available < v {
+			return false
+		}
+	}
+	return true
 }
 
 // RoutePrefix is how a machine serves a route or a device in nova-config
@@ -98,9 +137,10 @@ type Refused struct {
 // Roster is one read of the roster, keyed by row name. Refused is the rows
 // that could not be loaded, in source order.
 type Roster struct {
-	Workers map[string]Worker
-	Kin     map[string]Kin
-	Refused []Refused
+	Workers  map[string]Worker
+	Kin      map[string]Kin
+	Machines []Machine
+	Refused  []Refused
 	// Listed is every name nova-config lists in this read, whatever its
 	// roles or enabled flag: a machine that is not a bench and a friend
 	// that is disabled are listed though neither is a row of the roster.
@@ -163,9 +203,13 @@ func (r Roster) RefusedNamed(name string) (Refused, bool) {
 // that cannot be loaded (no name, a name given twice, a negative width, an
 // unknown tier) is skipped and named in Refused: the roster is not
 // guessed, and one bad row never empties it.
-func Load(ctx context.Context, src Source, cap int) (Roster, error) {
-	if cap < 1 {
-		return Roster{}, fmt.Errorf("roster: width cap %d is below 1", cap)
+func Load(ctx context.Context, src Source, cap ...int) (Roster, error) {
+	widthCap := 8
+	if len(cap) > 0 {
+		if cap[0] < 1 {
+			return Roster{}, fmt.Errorf("roster: width cap %d is below 1", cap[0])
+		}
+		widthCap = cap[0]
 	}
 	ms, err := src.Machines(ctx)
 	if err != nil {
@@ -175,7 +219,7 @@ func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 	if err != nil {
 		return Roster{}, fmt.Errorf("roster: friends: %w", err)
 	}
-	r := Roster{Workers: map[string]Worker{}, Kin: map[string]Kin{}, Listed: map[string]bool{}}
+	r := Roster{Workers: map[string]Worker{}, Kin: map[string]Kin{}, Machines: slices.Clone(ms), Listed: map[string]bool{}}
 	for _, m := range ms {
 		r.Listed[m.Name] = true
 	}
@@ -183,7 +227,7 @@ func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 		r.Listed[f.Name] = true
 	}
 	delete(r.Listed, "")
-	r.addWorkers(ms, cap)
+	r.addWorkers(ms, widthCap)
 	r.addKin(fs)
 	return r, nil
 }
@@ -201,8 +245,40 @@ func (r *Roster) addWorkers(ms []Machine, cap int) {
 			r.refuse(m.Name, KindWorker, "machine "+why)
 			continue
 		}
-		w := Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Routes: routesOf(m.Roles), Harness: WorkerHarness}
-		if m.Cores < 1 {
+		var tags []string
+		if len(m.Tags) > 0 || m.Resources != nil {
+			effOS := m.OS
+			if effOS == "darwin" {
+				effOS = "mac"
+			}
+			tags = slices.Clone(m.Tags)
+			if effOS != "" && !slices.Contains(tags, effOS) {
+				tags = append(tags, effOS)
+			}
+			if m.Arch != "" && !slices.Contains(tags, m.Arch) {
+				tags = append(tags, m.Arch)
+			}
+			slices.Sort(tags)
+		}
+		var resources map[string]int
+		if m.Resources != nil {
+			resources = maps.Clone(m.Resources)
+			if m.Cores > 0 && resources["cpu"] == 0 {
+				resources["cpu"] = m.Cores
+			}
+		}
+		w := Worker{
+			Name:      m.Name,
+			Width:     min(m.Cores, cap),
+			Tiers:     slices.Clone(store.Tiers),
+			Tags:      tags,
+			Resources: resources,
+			Routes:    routesOf(m.Roles),
+			Harness:   WorkerHarness,
+		}
+		if m.Resources != nil && (resources["cpu"] < 1 || resources["memory"] < 1) {
+			w.Held = UnmeasuredResources
+		} else if m.Cores < 1 {
 			w.Width, w.Held = 0, NoCores
 		}
 		r.Workers[m.Name] = w

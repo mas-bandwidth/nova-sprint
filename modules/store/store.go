@@ -255,12 +255,27 @@ type Row struct {
 	// (cleared with Tiers). The tick deals a worker row behind the run's
 	// release nothing (roster.Advertised; defect D3); no store rule reads it.
 	Version string `json:"version"`
+	// Resources is the bench's measured resources and holds from nova-reserve (R48, round 33).
+	Resources RowResources `json:"resources,omitempty"`
 	// Retired is set by RetireRow (round 32): nova-config no longer names
 	// the row, so it is not in the fleet (Glenn, 2026-11-15). A retired row is
 	// in no read (Snapshot, Read, Rebuild and Fold leave it out), every write
 	// but PutRow refuses it as absent, PutRow brings it back, and a clear does
 	// not carry it. Only an after-image carries it, so a fold drops the row.
 	Retired bool `json:"retired,omitempty"`
+}
+
+// RowResources represents the resources on a bench row (SEAM-CONTRACT 2.3).
+type RowResources struct {
+	Total           map[string]int            `json:"total,omitempty"`
+	HeldSprint      map[string]int            `json:"held_sprint,omitempty"`
+	HeldOther       map[string]int            `json:"held_other,omitempty"`
+	HeldByLabel     map[string]map[string]int `json:"held_by_label,omitempty"`
+	PausedByLabel   map[string]map[string]int `json:"paused_by_label,omitempty"`
+	AnyPaused       bool                      `json:"any_paused,omitempty"`
+	SprintConsumers []string                  `json:"sprint_consumers,omitempty"`
+	PausedConsumers []string                  `json:"paused_consumers,omitempty"`
+	PausedMillis    map[string]int64          `json:"paused_millis,omitempty"` // monotonic cumulative pause+wait ms per consumer ID
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,

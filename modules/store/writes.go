@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -149,7 +150,8 @@ func (w *work) setRowLoad(v SetRowLoad) (string, error) {
 	}
 	next := old
 	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.CPUPeakDeci, next.Tiers, next.Version = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal, v.CPUPeakDeci, v.Tiers, v.Version
-	if next == old {
+	next.Resources = v.Resources
+	if reflect.DeepEqual(next, old) {
 		return "row " + v.Row + " already has the given load", nil
 	}
 	w.before.Rows, w.after.Rows = touch(w.before.Rows, w.after.Rows, v.Row, old, true, next)

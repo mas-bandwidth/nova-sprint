@@ -394,9 +394,10 @@ type SetRowFlaps struct {
 type SetRowLoad struct {
 	Row                                      string
 	Load1Centi, Cores, SlotsUsed, SlotsTotal int
-	Tiers                                    string // the tiers the worker serves, a comma list of Tiers ("" none advertised)
-	CPUPeakDeci                              int    // the highest CPU busy percent over the last 10 s, across all cores, in tenths: 0 to 1000
-	Version                                  string // the release of the binary that beat ("" unknown)
+	Tiers                                    string       // the tiers the worker serves, a comma list of Tiers ("" none advertised)
+	CPUPeakDeci                              int          // the highest CPU busy percent over the last 10 s, across all cores, in tenths: 0 to 1000
+	Version                                  string       // the release of the binary that beat ("" unknown)
+	Resources                                RowResources // measured resources and holds from nova-reserve (R48)
 }
 
 // RetireRow retires a row nova-config no longer names (round 32; Glenn,
@@ -654,7 +655,7 @@ func rowSpec(w Write) spec {
 			if v.CPUPeakDeci > 1000 {
 				c.fail("load needs cpu_peak_deci of at most 1000, got %d", v.CPUPeakDeci)
 			}
-			if v.Cores < 1 || v.SlotsUsed > v.SlotsTotal {
+			if len(v.Resources.Total) == 0 && (v.Cores < 1 || v.SlotsUsed > v.SlotsTotal) {
 				c.fail("load needs cores of at least 1 and slots_used no more than slots_total, got cores %d, slots %d of %d", v.Cores, v.SlotsUsed, v.SlotsTotal)
 			}
 			if v.Tiers != JoinTiers(SplitTiers(v.Tiers)) {
