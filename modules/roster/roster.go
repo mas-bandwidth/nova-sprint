@@ -61,12 +61,14 @@ type Source interface {
 // with no cores in nova-config loads at width 0, shown held with that
 // reason, and is dealt nothing until its cores are set.
 type Worker struct {
-	Name    string
-	Width   int
-	Tiers   []string
-	Routes  []string // the routes and devices it serves (RoutePrefix roles)
-	Harness string
-	Held    string
+	Name      string
+	Width     int
+	Tiers     []string
+	Tags      []string       `json:"tags,omitempty"`
+	Resources map[string]int `json:"resources,omitempty"`
+	Routes    []string       // the routes and devices it serves (RoutePrefix roles)
+	Harness   string
+	Held      string
 }
 
 // RoutePrefix is how a machine serves a route or a device in nova-config

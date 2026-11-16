@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -149,11 +150,19 @@ func (w *work) setRowLoad(v SetRowLoad) (string, error) {
 	}
 	next := old
 	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.CPUPeakDeci, next.Tiers, next.Version = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal, v.CPUPeakDeci, v.Tiers, v.Version
-	if next == old {
+	if rowEqual(next, old) {
 		return "row " + v.Row + " already has the given load", nil
 	}
 	w.before.Rows, w.after.Rows = touch(w.before.Rows, w.after.Rows, v.Row, old, true, next)
 	return "", w.tx.putRow(next)
+}
+
+func rowEqual(a, b Row) bool {
+	return a.Name == b.Name && a.State == b.State && a.Session == b.Session && a.Role == b.Role &&
+		a.Flaps == b.Flaps && a.Held == b.Held && a.Reason == b.Reason && a.Gen == b.Gen &&
+		a.Load1Centi == b.Load1Centi && a.Cores == b.Cores && a.SlotsUsed == b.SlotsUsed &&
+		a.SlotsTotal == b.SlotsTotal && a.CPUPeakDeci == b.CPUPeakDeci && a.Tiers == b.Tiers &&
+		a.Version == b.Version && a.Retired == b.Retired && reflect.DeepEqual(a.Resources, b.Resources)
 }
 
 func (w *work) writePutRow(v PutRow) (string, error) {

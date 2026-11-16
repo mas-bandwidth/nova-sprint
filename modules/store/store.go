@@ -261,6 +261,21 @@ type Row struct {
 	// but PutRow refuses it as absent, PutRow brings it back, and a clear does
 	// not carry it. Only an after-image carries it, so a fold drops the row.
 	Retired bool `json:"retired,omitempty"`
+	// Resources is the v3 capacity, held, and paused resource state.
+	Resources RowResources `json:"resources,omitempty"`
+}
+
+// RowResources captures v3 per-row capacity and allocations by label.
+type RowResources struct {
+	Total           map[string]int            `json:"total,omitempty"`
+	HeldSprint      map[string]int            `json:"held_sprint,omitempty"`
+	HeldOther       map[string]int            `json:"held_other,omitempty"`
+	HeldByLabel     map[string]map[string]int `json:"held_by_label,omitempty"`
+	PausedByLabel   map[string]map[string]int `json:"paused_by_label,omitempty"`
+	AnyPaused       bool                      `json:"any_paused,omitempty"`
+	SprintConsumers []string                  `json:"sprint_consumers,omitempty"`
+	PausedConsumers []string                  `json:"paused_consumers,omitempty"`
+	PausedMillis    map[string]int64          `json:"paused_millis,omitempty"` // monotonic cumulative pause+wait ms per consumer ID
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,
