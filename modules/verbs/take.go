@@ -46,8 +46,8 @@ type takeReceipt struct {
 	PriorFinished bool     `json:"prior_finished"`
 	Paths         []string `json:"paths"`
 	DoneWhen      []string `json:"done_when"`
-	// StreamGates are the stream's gates (store.Stream.Gates): every card
-	// of the stream passes them at its finished head, after its DONE-WHENs.
+	// StreamGates are the stream's gates (store.Stream.Gates): every work
+	// card of the stream passes them at its finished head, after its DONE-WHENs.
 	StreamGates []string `json:"stream_gates"`
 	Epoch       int      `json:"epoch"`
 	Gen         int      `json:"gen"`
@@ -194,8 +194,10 @@ func takenText(t takeReceipt, row string) string {
 	rules := "How this card finishes:\n" + strings.TrimRight(worker.KinFinishRules(worker.Job{Kind: t.Kind, Branch: t.Branch, Head: t.Head, Stream: t.Stream, BaseSHA: t.BaseSHA,
 		StreamGates: t.StreamGates, CommitName: t.CommitName, CommitEmail: t.CommitEmail}, worker.KinFinish{Ref: ref, Row: row, Epoch: t.Epoch}), "\n")
 	brief := t.Brief
-	for _, g := range t.StreamGates { // the stream's, after the card's own DONE-WHEN lines
-		brief = strings.TrimRight(brief, "\n") + "\nSTREAM GATE: " + g
+	if t.Kind != "read" {
+		for _, g := range t.StreamGates { // the stream's, after the card's own DONE-WHEN lines
+			brief = strings.TrimRight(brief, "\n") + "\nSTREAM GATE: " + g
+		}
 	}
 	if t.Kind == "read" {
 		return done(fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, t.Epoch),

@@ -369,34 +369,72 @@ func TestTheBaseRunLeavesTheJobTreeAtTheHead(t *testing.T) {
 	}
 }
 
-// JOB.md lists the stream's gates after the card's done-when lines, and
-// the finish rules say what a gate red at the base too means; a stream
-// with none adds nothing.
+// A work job's JOB.md lists the stream's gates after the card's done-when
+// lines, and the finish rules say what a gate red at the base too means; a
+// stream with none adds nothing.
 func TestJobMDCarriesTheStreamGates(t *testing.T) {
 	t.Parallel()
-	for _, kind := range []string{"work", "read"} {
-		j := Job{Consumer: "p1.w1", Kind: kind, Stream: "s1", Repo: "o/r", Branch: "sprint/s1/p1", BaseSHA: testPriorSHA, Head: testCommitSHA,
-			JobDir: t.TempDir(), WorktreeDir: "/w", DoneWhen: []string{"make test"}, StreamGates: []string{genGate}, CommitName: "Bot", CommitEmail: "bot@x"}
-		if err := writeJobMD_internal(j); err != nil {
-			t.Fatal(err)
+	j := Job{Consumer: "p1.w1", Kind: "work", Stream: "s1", Repo: "o/r", Branch: "sprint/s1/p1", BaseSHA: testPriorSHA, Head: testCommitSHA,
+		JobDir: t.TempDir(), WorktreeDir: "/w", DoneWhen: []string{"make test"}, StreamGates: []string{genGate}, CommitName: "Bot", CommitEmail: "bot@x"}
+	if err := writeJobMD_internal(j); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(j.JobDir, JobMDName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := string(b)
+	for _, want := range []string{"done-when: make test\nstream gate: " + genGate + "\n", "Run every stream gate", "red at the base the card started from (" + testPriorSHA + ")"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("work JOB.md lacks %q:\n%s", want, md)
 		}
-		b, err := os.ReadFile(filepath.Join(j.JobDir, JobMDName))
-		if err != nil {
-			t.Fatal(err)
+	}
+	kin := KinFinishRules(j, KinFinish{Ref: "p1.w1@2", Row: "stella", Epoch: 1})
+	if !strings.Contains(kin, "stream gate <command> is red at base "+testPriorSHA) {
+		t.Errorf("work kin rules lack how to name a base's red gate:\n%s", kin)
+	}
+	j.StreamGates = nil
+	if strings.Contains(finishRules_internal(j), "stream gate") || strings.Contains(KinFinishRules(j, KinFinish{Ref: "p1.w1@2", Row: "stella", Epoch: 1}), "stream gate") {
+		t.Errorf("work: a stream with no gates names stream gates in its rules")
+	}
+}
+
+// A read inspects the code, diff, invariants and tests as written and never
+// runs DONE-WHEN or stream gate commands: neither JOB.md, the harness prompt,
+// nor a friend's finish rules tells a read to execute gates or passes chained
+// gate commands on the prompt header.
+func TestReadInstructionsForbidRunningGates(t *testing.T) {
+	t.Parallel()
+	j := Job{Consumer: "p1.r1.1", Producer: "p1", Kind: "read", Tier: "pro", Stream: "s1", Repo: "o/r", Base: "main", BaseSHA: testPriorSHA, Head: testCommitSHA,
+		JobDir: t.TempDir(), WorktreeDir: "/w", Paths: []string{"a.go"}, DoneWhen: []string{"make test", "go vet ./..."}, StreamGates: []string{genGate},
+		Prose: "Read it.", CommitName: "Bot", CommitEmail: "bot@x"}
+	if err := writeJobMD_internal(j); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(j.JobDir, JobMDName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, prompt, bench, kin := string(b), buildPrompt_internal(j), finishRules_internal(j), KinFinishRules(j, KinFinish{Ref: "p1.r1.1@2", Row: "stella", Epoch: 1})
+	if !strings.Contains(md, "done-when: make test\n") {
+		t.Errorf("read JOB.md dropped the card's done-when context:\n%s", md)
+	}
+	if strings.Contains(md, "stream gate:") {
+		t.Errorf("read JOB.md lists stream gate commands:\n%s", md)
+	}
+	for _, bad := range []string{"done_when=", "stream_gates="} {
+		if strings.Contains(prompt, bad) {
+			t.Errorf("read prompt carries %q:\n%s", bad, prompt)
 		}
-		md := string(b)
-		for _, want := range []string{"done-when: make test\nstream gate: " + genGate + "\n", "Run every stream gate", "red at the base the card started from (" + testPriorSHA + ")"} {
-			if !strings.Contains(md, want) {
-				t.Errorf("%s JOB.md lacks %q:\n%s", kind, want, md)
+	}
+	for name, rules := range map[string]string{"bench": bench, "kin": kin} {
+		if !strings.Contains(rules, "Do not run done-when or stream gate commands") {
+			t.Errorf("%s read rules do not forbid running gates:\n%s", name, rules)
+		}
+		for _, bad := range []string{"Run every done-when", "Run every stream gate", "stream gate <command> is red at base"} {
+			if strings.Contains(rules, bad) {
+				t.Errorf("%s read rules still tell the reader %q:\n%s", name, bad, rules)
 			}
-		}
-		kin := KinFinishRules(j, KinFinish{Ref: "p1.w1@2", Row: "stella", Epoch: 1})
-		if !strings.Contains(kin, "stream gate <command> is red at base "+testPriorSHA) {
-			t.Errorf("%s kin rules lack how to name a base's red gate:\n%s", kind, kin)
-		}
-		j.StreamGates = nil
-		if strings.Contains(finishRules_internal(j), "stream gate") || strings.Contains(KinFinishRules(j, KinFinish{Ref: "p1.w1@2", Row: "stella", Epoch: 1}), "stream gate") {
-			t.Errorf("%s: a stream with no gates names stream gates in its rules", kind)
 		}
 	}
 }

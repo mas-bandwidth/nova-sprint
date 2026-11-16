@@ -41,8 +41,10 @@ func writeJobMD_internal(j Job) error {
 	for _, d := range j.DoneWhen {
 		fmt.Fprintf(&b, "done-when: %s\n", d)
 	}
-	for _, g := range j.StreamGates {
-		fmt.Fprintf(&b, "stream gate: %s\n", g)
+	if j.Kind != "read" {
+		for _, g := range j.StreamGates {
+			fmt.Fprintf(&b, "stream gate: %s\n", g)
+		}
 	}
 	if body := strings.TrimSpace(cmp.Or(j.Prose, j.Brief)); body != "" {
 		fmt.Fprintf(&b, "\n## The card\n\n%s\n", body)
@@ -118,11 +120,11 @@ func finishRules(j Job, k *KinFinish) string {
 	if k == nil {
 		if j.Kind == "read" {
 			return "1. Read the head checked out in " + j.WorktreeDir + " against the card. Edit no tracked file, commit nothing, run no git push and no gh.\n" +
-				streamGatesRule_internal(j, false) +
+				"   Do not run done-when or stream gate commands: the work attempt ran them, and landing runs CI. Read the diff against the base, the code, the invariants and the tests.\n" +
 				"2. Write " + res + ", then exit 0. Its forms:\n" +
 				"   {\"result\":\"ok\"}: the head meets the card as written.\n" +
 				"   {\"result\":\"fix\",\"finding\":\"<path>:<line>: <the defect and its repair>\"}: it does not; name every defect.\n" +
-				"   {\"result\":\"fault\",\"reason\":\"<why>\"}: you could not judge it (a tool, a build, a missing input).\n" +
+				"   {\"result\":\"fault\",\"reason\":\"<why>\"}: you could not judge it (a tool or a missing input).\n" +
 				routeFault_internal() +
 				"A run that exits without " + res + " is reported a fault.\n"
 		}
@@ -143,9 +145,8 @@ func finishRules(j Job, k *KinFinish) string {
 	fault := "   nova-sprint report " + k.Ref + " --result fault --reason \"<why>\"" + tail + ": a tool, the harness or a route failed, not the work; a reason starting " + card.MissingRoute + " <route> leaves the card waiting, with that reason, for the coordinator.\n"
 	if j.Kind == "read" {
 		return "1. Check out " + j.Head + " detached in a fresh directory of your own and read it against the card. Edit no tracked file, commit nothing, push nothing.\n" +
-			"2. Run every done-when command at that head; keep each command, exit code and log.\n" +
-			streamGatesRule_internal(j, true) +
-			"3. Answer with one of:\n" +
+			"   Do not run done-when or stream gate commands: the work attempt ran them, and landing runs CI. Read the diff against the base, the code, the invariants and the tests.\n" +
+			"2. Answer with one of:\n" +
 			"   nova-sprint read " + k.Ref + " yes" + tail + ": the head meets the card as written.\n" +
 			"   nova-sprint read " + k.Ref + " fix --finding \"<path>:<line>: <the defect and its repair>\"" + tail + ": it does not; name every defect.\n" +
 			fault
@@ -163,21 +164,19 @@ func finishRules(j Job, k *KinFinish) string {
 }
 
 // streamGatesRule_internal is the finish rule for the stream's gates
-// (j.StreamGates), "" for a stream with none: run each at the same head
-// after the done-when commands; one red at the base as well is the base's,
-// not the card's. kin: a kin row says so in its report's reason or finding;
-// a bench's worker says it in the report itself (streamGates_internal).
+// (j.StreamGates) on a work job, "" for a read or a stream with none: run
+// each at the same head after the done-when commands; one red at the base as
+// well is the base's, not the card's. kin: a kin row says so in its finish
+// reason; a bench's worker says it in the report itself
+// (streamGates_internal).
 func streamGatesRule_internal(j Job, kin bool) string {
-	if len(j.StreamGates) == 0 {
+	if j.Kind == "read" || len(j.StreamGates) == 0 {
 		return ""
 	}
 	base := cmp.Or(j.BaseSHA, "the base")
-	rule := "   Run every stream gate (the stream gate lines: every card of stream " + j.Stream + " passes them) at the same head; each must exit 0, except one that is red at the base the card started from (" + base + "), or at the stream tip merged into it, as well: that is the base's fault, not this card's, and is no reason to fail the work or answer fix.\n"
+	rule := "   Run every stream gate (the stream gate lines: every card of stream " + j.Stream + " passes them) at the same head; each must exit 0, except one that is red at the base the card started from (" + base + "), or at the stream tip merged into it, as well: that is the base's fault, not this card's, and is no reason to fail the work.\n"
 	if !kin {
 		return rule
-	}
-	if j.Kind == "read" {
-		return rule + "   Name such a gate in the yes's --finding: \"stream gate <command> is red at base " + base + "\".\n"
 	}
 	return rule + "   Name such a gate in the finish: --head <sha> --reason \"stream gate <command> is red at base " + base + "\".\n"
 }
