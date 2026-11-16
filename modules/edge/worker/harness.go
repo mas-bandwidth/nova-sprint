@@ -424,7 +424,7 @@ func buildPrompt_internal(j Job) string {
 }
 func classifyExitAndTail_internal(exit int, tail []byte) Outcome {
 	text := edge.RedactKeys(TailBytes(tail, MaxReasonBytes)) // the harness's own words, into a stored reason
-	if exit == 134 || exit == 137 {
+	if exit < 0 || exit > 128 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
 	}
 	var ev struct {
@@ -461,7 +461,7 @@ func ClassifyJob(h Harness, j Job, exit int, elapsed, launchGrace time.Duration,
 
 func classifyJob_internal(h Harness, j Job, exit int, elapsed, launchGrace time.Duration, tail []byte) Outcome {
 	text := edge.RedactKeys(TailBytes(tail, MaxReasonBytes)) // the harness's own words, into a stored reason
-	if exit == 134 || exit == 137 {
+	if exit < 0 || exit > 128 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
 	}
 	// A result.json that does not parse is said in the reason: the job is
@@ -762,6 +762,8 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 			clean = append(clean, kv)
 		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME" || u == "DOTNET_CLI_HOME") && jobDir == "":
 			clean = append(clean, kv)
+		case (u == "NOVA_RESERVE_CPUS" || u == "CARGO_BUILD_JOBS" || u == "RUST_TEST_THREADS") && positiveIntEnv_internal(v):
+			clean = append(clean, u+"="+strings.TrimSpace(v))
 		case slices.Contains(allowed, u):
 			if u == "DOTNET_CLI_TELEMETRY_OPTOUT" {
 				hasDotnetOptout = true
@@ -782,6 +784,11 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 		}
 	}
 	return clean
+}
+
+func positiveIntEnv_internal(v string) bool {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	return err == nil && n >= 1
 }
 
 // CheckWallReads is the operator's --wall-read directories as the wall

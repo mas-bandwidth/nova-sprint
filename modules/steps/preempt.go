@@ -84,15 +84,17 @@ func (t *tick) preemptOn(b store.Card, row string, victims []string, needs card.
 	}
 }
 
-// serving is the open, unrested rows serving c's work tier and resources.
+// serving is the open (up, not held), unrested rows serving c's work tier and
+// resources, by name: the candidates without the rows resting after faults.
 func (t *tick) serving(c store.Card) []string {
 	return t.servingKind(c, "work")
 }
 
+// servingKind is the open, unrested, unclaimed candidate rows for kind ("work" or "read").
 func (t *tick) servingKind(c store.Card, kind string) []string {
 	var out []string
 	for _, f := range t.candidates(c, kind) {
-		if _, resting := t.rested[f.Name]; !resting {
+		if _, resting := t.rested[f.Name]; !resting && t.unclaimed(f.Name) {
 			out = append(out, f.Name)
 		}
 	}

@@ -38,7 +38,7 @@ func TestRoleMatrix(t *testing.T) {
 	coordinator := map[string]bool{"stream add": true, "stream set": true, "stream remove": true, "add": true, "judge": true, "land": true, "hold": true, "unhold": true, "retire": true,
 		"priority": true, "drop": true, "relink": true, "replace": true, "policy set": true, "policy activate": true,
 		"stop": true, "start": true, "stats reset": true, "identity": true, "backup": true, "clear": true}
-	worker := map[string]bool{"beat": true, "take": true, "finish": true, "read": true, "report": true, "release": true, "show": true, "queue": true,
+	worker := map[string]bool{"beat": true, "take": true, "finish": true, "read": true, "report": true, "release": true,
 		"policy show": true, "policy check": true}
 	for _, v := range table {
 		want := roleCold
@@ -81,16 +81,16 @@ func TestCoreRefusals(t *testing.T) {
 		{name: "a flag twice", as: "alice", args: []string{"queue", "--stream", "s", "--stream", "s"}, exit: 2, want: []string{"needs one non-empty value"}},
 		{name: "too many arguments", as: "alice", args: []string{"queue", "x"}, exit: 2, want: []string{"queue takes"}},
 		{name: "a dash argument", as: "carol", args: []string{"hold", "-x", "--reason", "r"}, exit: 2, want: []string{"unknown argument -x"}},
-		{name: "no name", args: []string{"queue"}, exit: 1, want: []string{"no name given", "--as <you>"}},
-		{name: "a bad name", as: "a b", args: []string{"queue"}, exit: 1, want: []string{"is not a name the sprint takes"}},
-		{name: "not on the bus", as: "erin", args: []string{"queue"}, exit: 1, want: []string{"erin is not on the bus", "nova-bus hook --as erin"}},
-		{name: "on the bus, not hooked", as: "dave", args: []string{"queue"}, exit: 1, want: []string{"hook in first", "nova-sprint hook --as dave --role worker"}},
+		{name: "no name", args: []string{"release", "p1.w1@1", "--reason", "r", "--dry-run"}, exit: 1, want: []string{"no name given", "--as <you>"}},
+		{name: "a bad name", as: "a b", args: []string{"release", "p1.w1@1", "--reason", "r", "--dry-run"}, exit: 1, want: []string{"is not a name the sprint takes"}},
+		{name: "not on the bus", as: "erin", args: []string{"release", "p1.w1@1", "--reason", "r", "--dry-run"}, exit: 1, want: []string{"erin is not on the bus", "nova-bus hook --as erin"}},
+		{name: "on the bus, not hooked", as: "dave", args: []string{"release", "p1.w1@1", "--reason", "r", "--dry-run"}, exit: 1, want: []string{"hook in first", "nova-sprint hook --as dave --role worker"}},
 		{name: "a worker on a coordinator verb", as: "alice", args: []string{"stop", "--reason", "r"}, exit: 1, want: []string{"stop is the coordinator's, and alice is a worker", "ask carol"}},
 		{name: "a coordinator verb with no coordinator", as: "alice", args: []string{"stop", "--reason", "r"}, exit: 1,
 			snap: setRow("carol", func(r *store.Row) { r.Session, r.Role = "", "" }), want: []string{"the sprint has none"}},
-		{name: "the bus fails", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.bus.err = errBroken }, want: []string{"nova-bus who failed"}},
+		{name: "the bus fails", as: "alice", args: []string{"release", "p1.w1@1", "--reason", "r", "--dry-run"}, exit: 2, prep: func(_ *testing.T, w *world) { w.bus.err = errBroken }, want: []string{"nova-bus who failed"}},
 		// nova-bus that cannot run is named first, and the fix still hooks in
-		{name: "nova-bus missing", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) {
+		{name: "nova-bus missing", as: "alice", args: []string{"release", "p1.w1@1", "--reason", "r", "--dry-run"}, exit: 2, prep: func(_ *testing.T, w *world) {
 			w.bus.err = fmt.Errorf("bus who: %w", &edge.ExecError{Program: "nova-bus", Kind: edge.ErrMissingBinary, Reason: `binary "nova-bus" not found`, Fix: "install nova-tools on PATH"})
 		}, want: []string{`cannot run nova-bus: binary "nova-bus" not found: install nova-tools on PATH, then hook in to the bus first`, "nova-bus hook --as alice"}},
 		// the acting name is checked before the usage, an unknown verb before both
@@ -98,7 +98,7 @@ func TestCoreRefusals(t *testing.T) {
 		{name: "off the bus before the usage", as: "erin", args: []string{"stream", "add"}, exit: 1, want: []string{"SPRINT REFUSED stream add: erin is not on the bus"}},
 		{name: "an unknown verb before the bus", as: "alice", args: []string{"bogusverb"}, exit: 2, prep: func(_ *testing.T, w *world) { w.bus.err = errBroken }, want: []string{"unknown verb bogusverb: nova-sprint help"}},
 		{name: "own unhook off the bus", as: "erin", args: []string{"unhook"}, exit: 1, want: []string{"erin is not on the bus"}},
-		{name: "no bus", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.e.Bus = nil }, want: []string{"nova-bus is not configured"}},
+		{name: "no bus", as: "alice", args: []string{"release", "p1.w1@1", "--reason", "r", "--dry-run"}, exit: 2, prep: func(_ *testing.T, w *world) { w.e.Bus = nil }, want: []string{"nova-bus is not configured"}},
 		{name: "no store", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.e.Store = nil }, want: []string{"the store is not configured"}},
 		{name: "the store fails", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.e.Store = failingStore{w.f} }, want: []string{"the store did not answer"}},
 	})

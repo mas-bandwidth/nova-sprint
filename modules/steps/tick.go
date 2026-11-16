@@ -237,8 +237,8 @@ func (t *tick) streamFacts(s string) StreamFacts {
 // candidates is the rows policy may name for c: open (up, not held), on the
 // bus (present; Steps.tla Eligible and ServingOpen), serving c's tier and
 // tags/max-resources (DefaultReadNeeds for reads), not claimed by a row move
-// when the list is built, and for a read not c's author and not holding a
-// live read of c's head. Room is the engine's check at the deal.
+// when the list is built, and for a read not c's author, not holding a live
+// read of c's head, and still unclaimed. Room is the engine's check at the deal.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	needs := t.consumerNeeds(kind, c.Brief)
 	key := c.Tier + "\x00" + needsCacheKey(needs)
@@ -258,7 +258,7 @@ func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	}
 	var out []RowFacts
 	for _, f := range base {
-		if f.Name != c.Author && !t.readingOn(c, f.Name) {
+		if f.Name != c.Author && !t.readingOn(c, f.Name) && t.unclaimed(f.Name) {
 			out = append(out, f)
 		}
 	}

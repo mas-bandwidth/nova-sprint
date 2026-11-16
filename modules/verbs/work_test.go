@@ -450,6 +450,16 @@ func TestShowAndQueue(t *testing.T) {
 	want(t, w.do("carol", "show", "s", "--stitch"), 0, `"diff_range": "origin/main..origin/sprint-group/s"`, `"id": "p2"`)
 	want(t, w.do("alice", "queue"), 0, "p1 stream=s state=working", "holders=alice", "p2 stream=s state=review")
 	want(t, w.do("alice", "queue", "--stream", "s"), 0, "p1 stream=s")
+
+	// Read-only cold verbs: show and queue run without a sprint hook, off the
+	// bus, with no --as / NOVA_SPRINT_AS (e.g. sprint-landwatch), or with Bus nil.
+	want(t, w.do("", "show", "p1"), 0, `"id": "p1"`, "next: nova-sprint next --as <you>")
+	want(t, w.do("", "queue"), 0, "p1 stream=s state=working", "next: nova-sprint show <card>")
+	want(t, w.do("erin", "show"), 0, `"Seq": 10`, "next: nova-sprint next --as erin")
+	want(t, w.do("dave", "queue", "--stream", "s"), 0, "p1 stream=s")
+	w.e.Bus = nil
+	want(t, w.do("", "show", "p1"), 0, `"id": "p1"`)
+	want(t, w.do("", "queue"), 0, "p1 stream=s state=working")
 }
 
 func TestShowAndQueueRefusals(t *testing.T) {

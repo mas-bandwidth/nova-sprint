@@ -72,3 +72,92 @@ func TestExpiryReopensWhatStillHolds(t *testing.T) {
 	assert.Equal(t, "deadline passed unanswered and it still holds: reopened as unserved.heavy.3 (repeat 2)", j["unserved.heavy.2"].Answer)
 	assert.Equal(t, "UNANSWERED 2 TIMES, ESCALATED: "+first.Question, j["unserved.heavy.3"].Question)
 }
+
+type askReads struct{ n int }
+
+func (a askReads) Ask(Questions) Answers {
+	return Answers{Version: 1, Models: benchModels(), Reads: map[string]int{"p1": a.n}}
+}
+
+// TestJudgeAtEpisodesAndSupersede covers the live 2026-11-16 collision
+// ("judgement flap.macbook.24 exists", 19,871 refused judge ops):
+//  1. jindex tracks the highest trailing episode number in addition to the
+//     judgement count, so lapse() after judgeAt("flap", "macbook", 12, ...)
+//     opens flap.macbook.13 (and when .24 already exists while an older .2
+//     lapses, opens .25 instead of colliding with .24).
+//  2. When flaps grow while an earlier flap episode is still open, judgeAt
+//     expires the older open episode in the same op so at most one episode is
+//     open per (kind, about).
+func TestJudgeAtEpisodesAndSupersede(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.row("macbook.local", 1, "pro")
+	s.must("flaps", store.SetRowFlaps{Row: "macbook.local", Flaps: 12})
+	s.tick()
+	require.Equal(t, []string{"flap.macbook.local.12"}, s.openJudgements("flap"))
+
+	// Past the deadline at the same flap count: lapse opens .13, never .2.
+	s.now = s.snap().Judgements["flap.macbook.local.12"].Deadline.Add(time.Second)
+	s.tick()
+	require.Empty(t, s.rejected)
+	require.Equal(t, []string{"flap.macbook.local.13"}, s.openJudgements("flap"))
+	assert.Equal(t, "expired", s.snap().Judgements["flap.macbook.local.12"].State)
+
+	// Flaps grow while .13 is open: .13 is expired and .15 opens as the one open episode.
+	s.must("flaps", store.SetRowFlaps{Row: "macbook.local", Flaps: 15})
+	s.tick()
+	require.Empty(t, s.rejected)
+	require.Equal(t, []string{"flap.macbook.local.15"}, s.openJudgements("flap"))
+	assert.Equal(t, "expired", s.snap().Judgements["flap.macbook.local.13"].State)
+	assert.Equal(t, "reopened at 15 as flap.macbook.local.15", s.snap().Judgements["flap.macbook.local.13"].Answer)
+
+	// Even when a higher closed episode (.24) coexists with an older open episode (.2)
+	// from before the fix, lapse advances past 24 to .25 instead of colliding with .24.
+	s.must("close15", store.AnswerJudgement{ID: "flap.macbook.local.15", Answer: "retry: ack", Actor: "carol"})
+	s.must("open24", store.PutJudgement{ID: "flap.macbook.local.24", Kind: "flap", About: "macbook.local", Question: "row flapped 24", Group: "flap", Deadline: s.now.Add(time.Hour)})
+	s.must("close24",
+		store.AnswerJudgement{ID: "flap.macbook.local.24", Answer: "retry: ack", Actor: "carol"},
+		store.PutJudgement{ID: "flap.macbook.local.2", Kind: "flap", About: "macbook.local", Question: "legacy open", Group: "flap", Deadline: s.now.Add(time.Second)},
+		store.SetRowFlaps{Row: "macbook.local", Flaps: 24},
+	)
+	s.now = s.snap().Judgements["flap.macbook.local.2"].Deadline.Add(time.Second)
+	s.tick()
+	require.Empty(t, s.rejected, "judgementOp must not collide with flap.macbook.local.24")
+	require.Equal(t, []string{"flap.macbook.local.25"}, s.openJudgements("flap"))
+	assert.Equal(t, "expired", s.snap().Judgements["flap.macbook.local.2"].State)
+}
+
+// TestCannotReadMatchesReadCandidates ensures cleared("cannot-read") uses the
+// exact read-candidate eligibility of dealRead: a row already holding a live
+// read of the same head does not falsely clear cannot-read when a second read
+// is owed, and a tier-serving row without NEEDS-ROUTE clears cannot-read once
+// open.
+func TestCannotReadMatchesReadCandidates(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.ask = askReads{n: 2}
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 2, "pro")
+	s.producer("p1", "s1", "pro", "a.go")
+	s.run(2)
+	w1 := "p1.w1"
+	s.take(w1)
+	s.report(w1, "ok", sha(1), "done")
+	// First tick deals 1 read to `other`; 2 reads are owed, and no third row exists.
+	s.tick()
+	require.Equal(t, "review", s.state("p1"))
+	// Next tick: `other` already holds p1.r1, so no row can take the 2nd read;
+	// cannot-read opens and must STAY open (not be immediately expired by cleared).
+	s.tick()
+	require.Equal(t, []string{"cannot-read.p1.1"}, s.openJudgements("cannot-read"))
+	s.tick()
+	require.Equal(t, []string{"cannot-read.p1.1"}, s.openJudgements("cannot-read"), "a row already reading p1 must not clear cannot-read")
+	assert.Equal(t, "open", s.snap().Judgements["cannot-read.p1.1"].State)
+
+	// Once a third row serving pro (with no routes) joins, cannot-read clears and the 2nd read deals.
+	s.row("r3", 2, "pro")
+	s.run(2)
+	assert.Empty(t, s.openJudgements("cannot-read"))
+	assert.Equal(t, "row r3 may read p1", s.snap().Judgements["cannot-read.p1.1"].Answer)
+}
