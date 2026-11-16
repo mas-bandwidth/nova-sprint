@@ -680,7 +680,9 @@ func isInfraFault_internal(res WallRunResult, runErr error) (bool, string) {
 		return false, ""
 	}
 	tail := TailBytes(res.Output, 512)
-	if strings.Contains(tail, "SANDBOX REFUSED") || strings.HasPrefix(strings.TrimSpace(string(res.Output)), "SANDBOX REFUSED") || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 {
+	if strings.Contains(tail, "SANDBOX REFUSED") || strings.HasPrefix(strings.TrimSpace(string(res.Output)), "SANDBOX REFUSED") ||
+		res.ExitCode < 0 || res.ExitCode == 125 || res.ExitCode == 126 || res.ExitCode == 127 ||
+		res.ExitCode == 129 || res.ExitCode == 130 || res.ExitCode == 143 {
 		return true, fmt.Sprintf("wall/binary fault (exit %d): %s", res.ExitCode, tail)
 	}
 	return false, ""
@@ -2192,6 +2194,7 @@ type OSReserveWall struct {
 	UseSandbox bool
 	Exec       edge.Exec
 	LookPath   func(string) (string, error) // exec.LookPath when nil
+	Env        func() []string              // os.Environ when nil
 	// KillGroup kills what is left of a finished wall command's process
 	// group and is how many it found (OSKillGroup in the binary); nil kills
 	// nothing. No guarantee rests on it: no worker git runs in the job
@@ -2252,7 +2255,7 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if why != "" {
 		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
-	env, release, err := gateJobserver_internal(SanitizeWallEnv(os.Environ(), j.JobDir), j.JobDir)
+	env, release, err := gateJobserver_internal(SanitizeWallEnv(w.environ_internal(), j.JobDir), j.JobDir)
 	if err != nil {
 		return WallRunResult{}, err
 	}
@@ -2283,20 +2286,57 @@ func cargoLinkerEnv_internal(goos, goarch string, lookPath func(string) (string,
 	return "CARGO_TARGET_" + triple + "_UNKNOWN_LINUX_GNU_LINKER=" + cc
 }
 
-// gateJobs_internal is a gate's build parallelism: one nova-reserve slot,
-// which at nova-reserve's default capacity (CPU/4 slots) is 4 cores, or
-// the bench's cores when it has fewer.
-func gateJobs_internal() int { return max(1, min(4, runtime.NumCPU())) }
+// gateJobs_internal is a gate's build parallelism: derived from NOVA_RESERVE_CPUS
+// (or CARGO_BUILD_JOBS) when set in env, falling back to one default
+// nova-reserve slot (up to 4 cores, or NumCPU when fewer).
+func gateJobs_internal(env ...[]string) int {
+	for _, list := range env {
+		if n, ok := envPositiveInt_internal(list, "NOVA_RESERVE_CPUS", "CARGO_BUILD_JOBS"); ok {
+			return n
+		}
+	}
+	if len(env) == 0 {
+		if n, ok := envPositiveInt_internal(os.Environ(), "NOVA_RESERVE_CPUS", "CARGO_BUILD_JOBS"); ok {
+			return n
+		}
+	}
+	return max(1, min(4, runtime.NumCPU()))
+}
+
+func envPositiveInt_internal(env []string, names ...string) (int, bool) {
+	for _, want := range names {
+		found, val := false, 0
+		for _, kv := range env {
+			k, v, ok := strings.Cut(kv, "=")
+			if !ok || !strings.EqualFold(k, want) {
+				continue
+			}
+			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 1 {
+				found, val = true, n
+			}
+		}
+		if found {
+			return val, true
+		}
+	}
+	return 0, false
+}
 
 // gateJobserver_internal is env with CARGO_MAKEFLAGS naming a FIFO
 // jobserver in jobDir (a --write path of the wall), made and held open
 // read-write here with gateJobs-1 tokens until release; it replaces any
-// CARGO_MAKEFLAGS env had. cargo's own pipe jobserver adds a pre_exec, so
+// CARGO_MAKEFLAGS env had, and derives RUST_TEST_THREADS from NOVA_RESERVE_CPUS
+// when set and not already given. cargo's own pipe jobserver adds a pre_exec, so
 // std forks through socketpair(AF_UNIX, SOCK_SEQPACKET), which the wall's
 // seccomp refuses (EPERM, rustc never runs); with a fifo: jobserver
 // jobserver-rs adds none and std uses posix_spawn. Harmless to a gate that
 // is not cargo, so every gate gets it. env as it is with no jobDir.
 func gateJobserver_internal(env []string, jobDir string) ([]string, func(), error) {
+	if n, ok := envPositiveInt_internal(env, "NOVA_RESERVE_CPUS"); ok {
+		if _, has := envPositiveInt_internal(env, "RUST_TEST_THREADS"); !has {
+			env = append(slices.Clone(env), fmt.Sprintf("RUST_TEST_THREADS=%d", n))
+		}
+	}
 	if jobDir == "" {
 		return env, func() {}, nil
 	}
@@ -2328,7 +2368,8 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 	if err == nil && st.Mode&syscall.S_IFMT != syscall.S_IFIFO {
 		err = errors.New("not a FIFO")
 	}
-	tokens := []byte(strings.Repeat("+", gateJobs_internal()-1))
+	jobs := gateJobs_internal(env)
+	tokens := []byte(strings.Repeat("+", jobs-1))
 	if n := 0; err == nil && len(tokens) > 0 {
 		if n, err = syscall.Write(fd, tokens); err == nil && n != len(tokens) {
 			err = fmt.Errorf("wrote %d of %d tokens", n, len(tokens))
@@ -2339,13 +2380,20 @@ func gateJobserver_internal(env []string, jobDir string) ([]string, func(), erro
 		return env, nil, fmt.Errorf("worker: seeding the gate's jobserver FIFO %s: %w", fifo, err)
 	}
 	env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(strings.ToUpper(kv), "CARGO_MAKEFLAGS=") })
-	return append(env, fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", gateJobs_internal(), fifo)), release, nil
+	return append(env, fmt.Sprintf("CARGO_MAKEFLAGS=-j%d --jobserver-auth=fifo:%s", jobs, fifo)), release, nil
+}
+
+func (w *OSReserveWall) environ_internal() []string {
+	if w.Env != nil {
+		return w.Env()
+	}
+	return os.Environ()
 }
 
 func (w *OSReserveWall) RunStep(ctx context.Context, j Job, argv []string, timeout time.Duration) (WallRunResult, error) {
 	cfg := w.effectiveConfig_internal(j)
 	cfg.ReserveWait = stepReserveWait_internal(cfg.ReserveWait, timeout)
-	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(w.environ_internal(), j.JobDir), timeout)
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
@@ -2392,6 +2440,17 @@ func slotHeld_internal(res edge.Result) bool {
 func noSlot_internal(res edge.Result) bool {
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
 	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") || strings.HasPrefix(first, "nova-reserve: no exclusive hold within "))
+}
+
+// reserveFault_internal: nova-reserve exited non-zero on its own error before
+// holding a slot (capacity mismatch, corrupt capacity file, lock dir error),
+// distinct from its no-slot refusal and from a command failing after HELD.
+func reserveFault_internal(res edge.Result) bool {
+	if res.ExitCode == 0 || slotHeld_internal(res) || noSlot_internal(res) {
+		return false
+	}
+	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
+	return strings.HasPrefix(first, "nova-reserve: ")
 }
 
 // sdkWallKeeps_internal are the names the wall sets itself, which the
@@ -2476,6 +2535,9 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if noSlot_internal(res) {
 		return out, fmt.Errorf("%w: waited %s: %w", ErrNoSlot, wait, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
+	}
+	if err == nil && reserveFault_internal(res) {
+		return out, fmt.Errorf("nova-reserve failed before holding a slot: %w", edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
 	}
 	if err != nil {
 		// The run never completed (a timeout, a missing binary): the
