@@ -67,11 +67,11 @@ func TestCardAdmission(t *testing.T) {
 	}
 	runCases(t, []tcase{
 		{name: "an unserved tier", as: "carol", args: b("u1", ""), exit: 1, prep: noPro, want: []string{"card u1: no row in nova-config serves tier pro", "nova-config friend set"}},
-		{name: "an unserved route", as: "carol", args: b("u2", "NEEDS-ROUTE: ipad\n"), exit: 1, want: []string{"serves tier pro with route(s) ipad", "--roles bench,route:ipad"}},
-		{name: "a served route", as: "carol", args: b("u3", "NEEDS-ROUTE: ipad\n"), exit: 0,
+		{name: "retired NEEDS-ROUTE", as: "carol", args: b("u2", "NEEDS-ROUTE: ipad\n"), exit: 1, want: []string{"card u2: NEEDS-ROUTE is retired in v3.0.0; use RESOURCES instead", "replace NEEDS-ROUTE: <route> with RESOURCES:"}},
+		{name: "a served resource tag", as: "carol", args: b("u3", "RESOURCES: cpu 1, memory 1, ipad\n"), exit: 0,
 			prep: func(_ *testing.T, w *world) {
 				a := w.roster.ro.Workers["alice"]
-				a.Routes = []string{"ipad"}
+				a.Tags = []string{"ipad"}
 				w.roster.ro.Workers["alice"] = a
 			}, want: []string{"ADDED 1 cards"}},
 		{name: "a missing directory", as: "carol", args: paths("p3", "z/q.go"), exit: 1, prep: tree, want: []string{"card p3: PATHS z/q.go: neither it nor its directory z/ is there", "ending in /"}},

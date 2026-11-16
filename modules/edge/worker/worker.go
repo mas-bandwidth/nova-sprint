@@ -63,6 +63,7 @@ func (t Timeouts) WithDefaults() Timeouts {
 type (
 	Job struct {
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, Head, Tier, Model, HarnessName, Brief, Prose, Finding string
+		Resources, Priority                                                                                                                             string
 		Paths, DoneWhen, StreamGates, Siblings                                                                                                          []string
 		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
 		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, Forge                                                                                  string
@@ -119,10 +120,11 @@ type (
 	}
 	JobRecord struct {
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, TargetHead string
+		Resources, Priority                                                                                  string `json:",omitempty"`
 		DoneWhen                                                                                             []string
 		Epoch, Gen, Attempt, PID                                                                             int
 		ResultID, State, Nonce, PushedHead, Forge                                                            string
-		StartedAt, DeadlineAt                                                                                int64
+		StartedAt, DeadlineAt, PausedMillis                                                                  int64
 		Outcome                                                                                              Outcome
 		Cost                                                                                                 Cost
 		// Refusals counts the sends of this record's report the sprint

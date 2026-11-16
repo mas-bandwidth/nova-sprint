@@ -3,8 +3,10 @@ package verbs
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,7 +17,8 @@ import (
 // runBeat is `beat`, the worker's heartbeat (INTENT 7, push: the bench says
 // what it is carrying; nobody asks it): the bench's 1-minute load average,
 // the highest CPU busy percent of its last 10 seconds (--cpu-peak, across all
-// cores, 100 is every core busy; the board's CPU cell), its logical cores, its nova-reserve slots in use and in all, and the
+// cores, 100 is every core busy; the board's CPU cell), its measured resources
+// from nova-reserve (R48), its logical cores, its nova-reserve slots in use and in all, and the
 // tiers its harness serves (--tiers, defect 74), and this build's version (the
 // binary that takes the row's cards; defect D3). It sets the row's load
 // columns, which the board's load cell reads and the roster takes the row's
@@ -27,7 +30,7 @@ func runBeat(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		return "", f
 	}
 	w.Version = cmp.Or(e.WorkerBuild, e.Version) // the build that takes this row's cards: the tick deals a row behind the run's release nothing (defect D3)
-	if r := snap.Rows[in.actor]; r.Load1Centi == w.Load1Centi && r.Cores == w.Cores && r.SlotsUsed == w.SlotsUsed && r.SlotsTotal == w.SlotsTotal && r.CPUPeakDeci == w.CPUPeakDeci && r.Tiers == w.Tiers && r.Version == w.Version {
+	if r := snap.Rows[in.actor]; r.Load1Centi == w.Load1Centi && r.Cores == w.Cores && r.SlotsUsed == w.SlotsUsed && r.SlotsTotal == w.SlotsTotal && r.CPUPeakDeci == w.CPUPeakDeci && r.Tiers == w.Tiers && r.Version == w.Version && reflect.DeepEqual(r.Resources, w.Resources) {
 		return done(waitNext, "BEAT "+in.actor+" unchanged"), nil
 	}
 	op := e.newOp("beat", in.actor, snap, w)
@@ -54,18 +57,28 @@ func beatWrite(in *input) (store.SetRowLoad, *Fail) {
 		}
 		w.CPUPeakDeci = int(math.Round(peak * 10))
 	}
+	if in.has("resources") {
+		var res store.RowResources
+		if err := json.Unmarshal([]byte(in.str("resources")), &res); err != nil {
+			return w, misuse("beat", "--resources takes valid JSON: "+ParseFailure(err, []byte(in.str("resources"))))
+		}
+		w.Resources = res
+	}
 	for _, c := range []struct {
 		flag string
 		to   *int
 		min  int
 	}{{"cores", &w.Cores, 1}, {"slots-used", &w.SlotsUsed, 0}, {"slots-total", &w.SlotsTotal, 0}} {
+		if !in.has(c.flag) && in.has("resources") {
+			continue
+		}
 		n, err := strconv.Atoi(in.str(c.flag))
 		if err != nil || n < c.min || n > 1_000_000 {
 			return w, misuse("beat", fmt.Sprintf("--%s takes a whole number, %d or more (%s)", c.flag, c.min, badNumber(in.str(c.flag), err)))
 		}
 		*c.to = n
 	}
-	if w.SlotsUsed > w.SlotsTotal {
+	if !in.has("resources") && w.SlotsUsed > w.SlotsTotal {
 		return w, misuse("beat", fmt.Sprintf("--slots-used %d is more than --slots-total %d", w.SlotsUsed, w.SlotsTotal))
 	}
 	names := store.SplitTiers(in.str("tiers"))

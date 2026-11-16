@@ -166,7 +166,7 @@ func (t *Ticker) seed(ctx context.Context) {
 // present, and every ready tier would be judged unserved).
 func (l *loop) tick(ctx context.Context, n int) error {
 	start := l.cfg.Clock.Now()
-	ro, rerr := l.cfg.Roster.ReadRosterAt(ctx, max(1, l.ticker.Limits().FleetWidthCap))
+	ro, rerr := l.cfg.Roster.ReadRoster(ctx)
 	if rerr == nil {
 		l.log.RosterRefused(ro.Refused)
 	}

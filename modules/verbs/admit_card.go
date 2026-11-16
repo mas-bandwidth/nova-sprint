@@ -127,12 +127,35 @@ func treeSet(files []string) map[string]bool {
 	return set
 }
 
-// cardLint is the checks that need no repository: the tier and routes
+// cardLint is the checks that need no repository: the tier and RESOURCES
 // served by a row in nova-config, DONE-WHEN parsing, and no bench named (a stored brief is re-linted the same way).
 func cardLint(f cardFacts, ro roster.Roster) error {
-	routes := card.NeedsRoutes(f.Brief)
-	if !served(ro, f.Tier, routes) {
-		return refuse(fmt.Sprintf("card %s: no row in nova-config serves tier %s%s", f.ID, f.Tier, routeWords(routes)), serveFix(f.Tier, routes))
+	if strings.Contains(f.Brief, card.RouteField+":") || strings.Contains(f.Brief, "NEEDS-ROUTE:") {
+		return refuse(fmt.Sprintf("card %s: %s is retired in v3.0.0; use %s instead", f.ID, card.RouteField, card.ResourcesField),
+			"replace NEEDS-ROUTE: <route> with RESOURCES: cpu 1, memory 1, <tag> (e.g. RESOURCES: cpu 1, memory 1, metal), then add the card again")
+	}
+	raw, count, err := card.ParseBriefNeeds(f.Brief)
+	if err != nil {
+		return RefusalOr(err, refuse(fmt.Sprintf("card %s: %s", f.ID, err.Error()), "fix the RESOURCES line, then add the card again"))
+	}
+	if count > 1 {
+		return refuse(fmt.Sprintf("card %s: duplicate RESOURCES line", f.ID), "keep only one RESOURCES line, then add the card again")
+	}
+	needs := card.DefaultReadNeeds()
+	if count == 1 && raw != "" {
+		parsed, perr := card.ParseNeeds(raw, nil, nil)
+		if perr != nil {
+			return RefusalOr(perr, refuse(fmt.Sprintf("card %s: RESOURCES %q is malformed: %v", f.ID, raw, perr), "fix the RESOURCES line (e.g. RESOURCES: cpu 4, memory 8, mac), then add the card again"))
+		}
+		needs = parsed
+	}
+	if !admitServed(ro, f.Tier, needs) {
+		if needs.Amounts["cpu"] <= 1 && needs.Amounts["memory"] <= 1 && len(needs.Tags) == 0 && len(needs.Amounts) <= 2 {
+			return refuse(fmt.Sprintf("card %s: no row in nova-config serves tier %s", f.ID, f.Tier),
+				"give a friend the tier (nova-config friend set <name> --tiers ...,"+f.Tier+"), give a bench cores, or change the brief's tier line, then add the card again")
+		}
+		return refuse(fmt.Sprintf("card %s: no row in nova-config serves tier %s with resources %s", f.ID, f.Tier, formatNeeds(needs)),
+			"give a bench that fits the tier (nova-config machine set <bench> --roles bench,...), configure tags and resources (nova-config machine set <bench> --tags ... --cpu-units ... --memory-gb ...), or adjust the card's RESOURCES line, then add the card again")
 	}
 	for _, d := range f.DoneWhen {
 		if _, why := edge.ParseGate(d); why != "" {
@@ -146,31 +169,107 @@ func cardLint(f cardFacts, ro roster.Roster) error {
 	return nil
 }
 
-// served is whether a row nova-config lists, at a width above 0, serves
-// tier and every route.
-func served(ro roster.Roster, tier string, routes []string) bool {
-	for _, n := range append(slices.Collect(maps.Keys(ro.Workers)), slices.Collect(maps.Keys(ro.Kin))...) {
-		_, width, tiers, _ := ro.Row(n)
-		if width > 0 && slices.Contains(tiers, tier) && ro.ServesRoutes(n, routes) {
+// admitServed checks joint (tier, tags, resources) fit (R12) on at least one
+// configured bench, or tier on an enabled friend + (tags, resources) fit on a machine.
+func admitServed(ro roster.Roster, tier string, needs card.Needs) bool {
+	for _, w := range ro.Workers {
+		if w.Held == "" && slices.Contains(w.Tiers, tier) && workerFits(w, needs) {
 			return true
+		}
+	}
+	friendHasTier := false
+	for _, k := range ro.Kin {
+		if k.Width > 0 && slices.Contains(k.Tiers, tier) {
+			friendHasTier = true
+			break
+		}
+	}
+	if friendHasTier {
+		if len(ro.Machines) == 0 {
+			for _, w := range ro.Workers {
+				if workerFits(w, needs) {
+					return true
+				}
+			}
+			if len(needs.Tags) == 0 && needs.Amounts["cpu"] <= 1 && needs.Amounts["memory"] <= 1 && len(needs.Amounts) <= 2 {
+				return true
+			}
+		} else {
+			for _, m := range ro.Machines {
+				if machineFitsNeeds(m, needs) {
+					return true
+				}
+			}
 		}
 	}
 	return false
 }
 
-func routeWords(routes []string) string {
-	if len(routes) == 0 {
-		return ""
+func workerFits(w roster.Worker, needs card.Needs) bool {
+	if len(w.Tags) > 0 || len(w.Resources) > 0 {
+		return w.FitsMax(needs)
 	}
-	return " with route(s) " + strings.Join(routes, ", ")
+	if len(needs.Tags) > 0 {
+		return false
+	}
+	for k, v := range needs.Amounts {
+		if k == "cpu" && w.Width > 0 && w.Width < v {
+			return false
+		}
+		if k != "cpu" && k != "memory" {
+			return false
+		}
+	}
+	return w.Width > 0
 }
 
-// serveFix is how a tier and routes come to be served.
-func serveFix(tier string, routes []string) string {
-	if len(routes) > 0 {
-		return "give a bench that has it the role " + roster.RoutePrefix + routes[0] + " (nova-config machine set <bench> --roles bench," + roster.RoutePrefix + routes[0] + " --actor <you> --reason <why>), or drop the " + card.RouteField + " line, then add the card again"
+func machineFitsNeeds(m roster.Machine, needs card.Needs) bool {
+	effOS := m.OS
+	if effOS == "darwin" {
+		effOS = "mac"
 	}
-	return "give a friend the tier (nova-config friend set <name> --tiers ...," + tier + "), give a bench cores, or change the brief's tier line, then add the card again"
+	tags := slices.Clone(m.Tags)
+	if effOS != "" && !slices.Contains(tags, effOS) {
+		tags = append(tags, effOS)
+	}
+	if m.Arch != "" && !slices.Contains(tags, m.Arch) {
+		tags = append(tags, m.Arch)
+	}
+	for _, tag := range needs.Tags {
+		if !slices.Contains(tags, tag) {
+			return false
+		}
+	}
+	res := maps.Clone(m.Resources)
+	if res == nil {
+		res = map[string]int{}
+	}
+	if m.Cores > 0 && res["cpu"] == 0 {
+		res["cpu"] = m.Cores
+	}
+	for k, v := range needs.Amounts {
+		if res[k] < v {
+			return false
+		}
+	}
+	return true
+}
+
+func formatNeeds(n card.Needs) string {
+	var parts []string
+	if n.Amounts["cpu"] > 0 {
+		parts = append(parts, fmt.Sprintf("cpu %d", n.Amounts["cpu"]))
+	}
+	if n.Amounts["memory"] > 0 {
+		parts = append(parts, fmt.Sprintf("memory %d", n.Amounts["memory"]))
+	}
+	for k, v := range n.Amounts {
+		if k != "cpu" && k != "memory" {
+			parts = append(parts, fmt.Sprintf("%s %d", k, v))
+		}
+	}
+	parts = append(parts, n.Tags...)
+	return strings.Join(parts, ", ")
 }
 
 // benchNamed is the first gate line (DONE-WHEN, TEST) naming a bench

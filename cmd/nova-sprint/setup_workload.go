@@ -451,8 +451,8 @@ func (w productionWorkload) downWhy(ctx context.Context, down []benchState) stri
 }
 
 // SmokeReady is the first deal made ready: every worker row hooked, up,
-// its process this build (WorkersReady) and dealable, a width from its cores (a bench with none is held at width 0,
-// roster.NoCores). A fresh sprint is stopped until start and moves
+// its process this build (WorkersReady) and dealable (a bench with none is held,
+// roster.UnmeasuredResources). A fresh sprint is stopped until start and moves
 // nothing, so up deals no card itself; the run deals once started.
 func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 	states, err := w.benchStates(ctx)
@@ -468,8 +468,8 @@ func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 		case b.behind || b.unbeaten:
 			why = append(why, b.name+"'s worker process is not this build ("+cmp.Or(b.beat, "not beaten yet")+")")
 		case b.cores == nil || *b.cores < 1:
-			why = append(why, b.name+" is held at width 0: "+roster.NoCores)
-			fix = "nova-config machine set " + b.name + " --cores <n> --actor <you> --reason <why> (each bench named), then nova-sprint up again"
+			why = append(why, b.name+" has "+roster.UnmeasuredResources)
+			fix = "nova-config machine set " + b.name + " --cpu-units <n> --memory-gb <g> --actor <you> --reason <why> (each bench named), then nova-sprint up again"
 		}
 	}
 	if len(why) == 0 {

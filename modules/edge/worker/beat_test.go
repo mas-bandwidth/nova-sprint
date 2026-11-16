@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -70,7 +71,7 @@ func TestOSMeterSample(t *testing.T) {
 	}
 	hb, err := m.Sample(t.Context())
 	want := Heartbeat{Load1: 2.5, CPUPeak: 42.5, Cores: runtime.NumCPU(), SlotsUsed: 3, SlotsTotal: 4}
-	if err != nil || hb != want {
+	if err != nil || !reflect.DeepEqual(hb, want) {
 		t.Fatalf("Sample = %+v, %v; want %+v", hb, err, want)
 	}
 	m.Exec = beatExec{reserve: "garbage", sysctl: "{ 2.50 1.00 1.00 }"}
@@ -221,7 +222,7 @@ func TestBeatWithoutLoadStillBeats(t *testing.T) {
 		r.beat_internal(t.Context(), "b1")
 	}
 	want := Heartbeat{Cores: runtime.NumCPU(), SlotsUsed: 3, SlotsTotal: 4, Tiers: "small,medium"}
-	if len(rec.beats) != 2 || rec.beats[0] != want || rec.beats[1] != want {
+	if len(rec.beats) != 2 || !reflect.DeepEqual(rec.beats[0], want) || !reflect.DeepEqual(rec.beats[1], want) {
 		t.Fatalf("beats %+v; want two of %+v", rec.beats, want)
 	}
 	if len(warns) != 1 || !strings.HasPrefix(warns[0], "WORKER WARNING heartbeat") || !strings.Contains(warns[0], "load average") {

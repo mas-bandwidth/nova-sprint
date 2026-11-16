@@ -319,7 +319,7 @@ func TestSmokeReadyNeedsEveryWorkerDealable(t *testing.T) {
 	present := map[string]bool{"amd-1": true, "amd-2": true}
 	ok, err := testWorkload(f, rows, present).SmokeReady(context.Background())
 	var nr *verbs.WorkloadNotReady
-	if ok || !errors.As(err, &nr) || nr.Why != "not every worker row is dealable: amd-2 is held at width 0: "+roster.NoCores || !strings.HasPrefix(nr.Fix, "nova-config machine set amd-2 --cores <n>") {
+	if ok || !errors.As(err, &nr) || nr.Why != "not every worker row is dealable: amd-2 has "+roster.UnmeasuredResources || !strings.HasPrefix(nr.Fix, "nova-config machine set amd-2 --cpu-units <n>") {
 		t.Fatal(ok, err)
 	}
 	f.machines = strings.Replace(workloadMachines, `"roles":"bench"}`, `"roles":"bench","cores":4}`, 1)

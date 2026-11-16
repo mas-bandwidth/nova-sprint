@@ -155,11 +155,9 @@ against origin and the roster; `check` re-proves every waiting or ready
 producer the same way, and `restore` prints the same proof for the cards it
 restored (an `ADMIT` line each). The parse refuses:
 
-- **NEEDS-ROUTE: <name>** (repeatable). The card is dealt only to a row that
-  serves every route it names. A machine serves a route through a
-  `route:<name>` role in nova-config (`--roles bench,route:<name>`); kin
-  serve no routes. The one parse is `card.NeedsRoutes`, which the tick, the
-  unserved judgement and admission all read. Uppercase like every other key.
+- **RESOURCES: <spec>**. Stated once in the header block before the first blank line:
+  `RESOURCES: cpu 4, memory 8, mac, metal`
+  Work needs whole-number resources (`cpu` in CPU units, `memory` in GiB, custom exclusive devices like `ps5 1`) and tags (`linux`, `mac`, `windows`, `amd64`, `arm64`, `gpu`, `metal`, ...). Auto OS/Arch tags (`mac`, `linux`, `amd64`, `arm64`) are derived automatically. If omitted, default work budget is `cpu 1, memory 1` with zero tags. Pure light `read`s (`kind == "read"`) always execute with the default read budget `cpu 1, memory 1` with zero hardware/OS tags, regardless of the producer card's `RESOURCES:` line (Q4, R42). `NEEDS-ROUTE:` is completely retired in v3.0.0; cards declaring `NEEDS-ROUTE:` are refused with a pasteable `RESOURCES:` remedy. Friends execute work on fleet machines by obtaining an atomic fleet reservation (`nova-fleet reserve --needs ...`), locking the hold before SSHing (R55–R58, Q2).
 - **DONE-WHEN** that is not one command. A DONE-WHEN is one argv: words
   split at white space, a single or double quote joining what it encloses,
   run directly with no shell. So the line is refused (decided 2026-11-07,
@@ -182,7 +180,7 @@ restored (an `ADMIT` line each). The parse refuses:
 Then, against the roster and origin:
 
 - the stream is in the store and its base is at origin;
-- a row up at width above zero serves the card's tier and every route;
+- at least one bench in nova-config serves the card's tier and fits its resources (R12), or an enabled friend serves the tier and a machine in nova-config fits the card's resources;
 - no DONE-WHEN or TEST names a roster bench as a word;
 - each PATHS entry is at the base: a glob (`*`, `?`, `[`) matches a file or
   directory there; a literal exists, or its directory does, or its directory

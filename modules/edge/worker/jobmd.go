@@ -211,5 +211,5 @@ func kinIdentity(j Job) string {
 // lacks: a fault whose reason starts card.MissingRoute leaves the card waiting,
 // with that reason, for the coordinator instead of dealing it again (defect 48).
 func routeFault_internal() string {
-	return fmt.Sprintf("   {\"result\":\"fault\",\"reason\":\"%s <route> <what is missing>\"}: the work needs a route or device this bench lacks (a tool, a device, a network); <route> is one word, the name a brief declares with %s: <route>. The card waits for the coordinator instead of being dealt again.\n", card.MissingRoute, card.RouteField)
+	return fmt.Sprintf("   {\"result\":\"fault\",\"reason\":\"%s <resource> <what is missing>\"}: the work needs a tag or resource this bench lacks (a tool, a device, a network); <resource> is one word, the name a brief declares with %s: <resource>. The card waits for the coordinator instead of being dealt again.\n", card.MissingRoute, card.ResourcesField)
 }

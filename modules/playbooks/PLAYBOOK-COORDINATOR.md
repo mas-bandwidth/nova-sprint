@@ -156,12 +156,14 @@ What each judgement kind asks of you, and where to look before you choose:
 - `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unhold`, or `drop`. An unhold gives the card a full fresh bounce budget (the limit
-  counts only bounces after it; escalation to a stronger tier still reads the total). A `held` judgement that says the card faulted for a missing
-  route or device names the row and what is missing (its reason starts `missing-route: <route>`,
-  the route's name as a brief declares it with `NEEDS-ROUTE: <route>`): the card is never dealt
-  again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
-  that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
-  `unhold`; or `drop` it. A `held` whose reason reads `reads faulted <n> times running at review
+  counts only bounces after it; escalation to a stronger tier still reads the total). A `held` judgement that says the card faulted for missing
+  resources or tags names the row and what is missing (its reason starts `missing-route: <tag>` or `missing-resource: <res>`,
+  the tag/resource a brief declares with `RESOURCES: <spec>`): the card is never dealt
+  again by itself. Replace it with a brief that adjusts the needs or tags, so it is dealt only to a row
+  that fits it; or configure a machine with the tags and resources in nova-config and
+  `unhold`; or `drop` it. (In v3.0.0, `NEEDS-ROUTE:` is completely retired in favor of `RESOURCES:`;
+  pure light reads run under `cpu 1, memory 1` with zero tags regardless of the producer card's line,
+  and friends lock machines atomically before SSHing via `nova-fleet reserve --needs ...` per R55–R58, Q2). A `held` whose reason reads `reads faulted <n> times running at review
   <r>` is a review whose reads all faulted policy's `faults` limit in a row (the reason ends with
   the newest fault): fix that cause (a route, a tool on the reading rows), then `unhold`; the card
   is dealt again as work and its next review counts afresh. A `held` that says an attempt
