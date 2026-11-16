@@ -51,13 +51,18 @@ type TraceScenario struct {
 	Gen0  map[string]int // row -> its gen at Init
 }
 
-// TierName is the model's name of a tier: "t1", "t2"; a tier outside the
-// scenario is its own name.
+// TierName is the model's name of a tier (preserving any "+<resources>"
+// suffix from unservedAbout): "t1", "t2"; a tier outside the scenario is its
+// own name.
 func (sc TraceScenario) TierName(tier string) string {
-	if i := slices.Index(sc.Tiers, tier); i >= 0 {
-		return fmt.Sprintf("t%d", i+1)
+	base, rest, hasExtra := strings.Cut(tier, "+")
+	if i := slices.Index(sc.Tiers, base); i >= 0 {
+		base = fmt.Sprintf("t%d", i+1)
 	}
-	return tier
+	if hasExtra {
+		return base + "+" + rest
+	}
+	return base
 }
 
 // HeadN is the attempt number a head stands for: the walk pushes
@@ -97,16 +102,20 @@ func StoreTLA(v *View, sc TraceScenario) string {
 	if len(cs) > 0 {
 		csTLA = "(" + strings.Join(cs, " @@ ") + ")"
 	}
-	var up, rg, sh []string
+	var up, rg, paused, other, sh []string
 	for _, r := range sortedKeys(v.Rows) {
-		up = append(up, fmt.Sprintf("%s |-> %s", r, tlaBool(v.Rows[r].State == "up")))
-		rg = append(rg, fmt.Sprintf("%s |-> %d", r, v.Rows[r].Gen-sc.Gen0[r]))
+		row := v.Rows[r]
+		up = append(up, fmt.Sprintf("%s |-> %s", r, tlaBool(row.State == "up")))
+		rg = append(rg, fmt.Sprintf("%s |-> %d", r, row.Gen-sc.Gen0[r]))
+		paused = append(paused, fmt.Sprintf("%s |-> %s", r, tlaBool(row.Resources.AnyPaused)))
+		other = append(other, fmt.Sprintf("%s |-> [cpu |-> %d, mem |-> %d]", r, row.Resources.HeldOther["cpu"], row.Resources.HeldOther["memory"]))
 	}
 	for _, s := range sortedKeys(v.Streams) {
 		sh = append(sh, fmt.Sprintf("%s |-> %s", s, tlaBool(v.Streams[s].Held)))
 	}
-	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], rg |-> [%s], sh |-> [%s], tko |-> <<%s>>, ob |-> {%s}",
-		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(rg, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "), strings.Join(ob, ", "))
+	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], rg |-> [%s], sh |-> [%s], tko |-> <<%s>>, ob |-> {%s}, paused |-> [%s], other |-> [%s]",
+		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(rg, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "), strings.Join(ob, ", "),
+		strings.Join(paused, ", "), strings.Join(other, ", "))
 }
 
 func producerTLA(v *View, c store.Card) string {

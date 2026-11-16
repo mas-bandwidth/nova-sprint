@@ -133,8 +133,10 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 		catalogAsk(ctx),
 	}
 	for _, r := range ix.rows {
-		out = append(out, askOf("width", r.Name, starlark.Tuple{row(r)}, func(v starlark.Value) (Width, string) { return checkWidth(v, r.width) },
-			func(a *Answers, w Width) { a.Width[r.Name] = w }))
+		if r.kind == roster.KindKin {
+			out = append(out, askOf("width", r.Name, starlark.Tuple{row(r)}, func(v starlark.Value) (Width, string) { return checkWidth(v, r.width) },
+				func(a *Answers, w Width) { a.Width[r.Name] = w }))
+		}
 	}
 	for _, id := range q.Order {
 		if c, ok := ix.producer(id); ok {
@@ -150,31 +152,32 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 }
 
 // rowsAsk is one rows question, with its joint check: the rows named must
-// leave the card as many rows able to take it (a work answer above 0 in
-// width) as it needs, one for work and the reads answer for a read (layer 3
-// deals a read to that many distinct rows; the names are distinct
-// candidates, so never the author), when the candidates could (a configured
-// width above 0): rowan2's and cold read 3's probe.
+// leave the card as many rows able to take it (benches are inherently capable;
+// kin need a work answer above 0 in width) as it needs, one for work and the
+// reads answer for a read, when the candidates could.
 func (ix *index) rowsAsk(c store.Card, rq RowsQuestion, dealt map[RowsQuestion][]string) ask {
 	set := ix.candidateSet(c, rq, dealt)
 	card := ix.card(c)
 	return ask{q: "rows", subject: rq.Card + " " + rq.Kind, args: starlark.Tuple{card, starlark.String(rq.Kind), set.list},
 		digest: digestOf("rows", card.String()+" "+rq.Kind+" "+set.digest), rq: &rq,
 		acceptRows: func(v starlark.Value) ([]string, string) { return checkRows(v, c, set, ix.facts) },
-		joint:      func(a *Answers) string { return jointRows(a, rq, set) }}
+		joint:      func(a *Answers) string { return jointRows(a, rq, set, ix.facts) }}
 }
 
 // jointRows is rowsAsk's joint check on the tick's answers a.
-func jointRows(a *Answers, rq RowsQuestion, set *candidateSet) string {
+func jointRows(a *Answers, rq RowsQuestion, set *candidateSet, facts map[string]rostered) string {
 	need, have, could, first := 1, 0, 0, ""
 	if n, ok := a.Reads[rq.Card]; ok && rq.Kind == KindRead {
 		need = n
 	}
 	for _, n := range a.Rows[rq] {
-		have += b2i(a.Width[n].Work > 0)
+		r := facts[n]
+		capable := r.kind == roster.KindWorker && r.held == "" || r.kind == roster.KindKin && a.Width[n].Work > 0
+		have += b2i(capable)
 	}
 	for _, r := range set.rows {
-		if r.width > 0 {
+		capable := r.kind == roster.KindWorker && r.held == "" || r.kind == roster.KindKin && r.width > 0
+		if capable {
 			could++
 			first = cmp.Or(first, r.Name)
 		}

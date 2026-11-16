@@ -92,7 +92,7 @@ func TestColdread3DefectJointCheckIgnoresReadCount(t *testing.T) {
 	w := readWorld(t)
 	snap := w.snap()
 	body, _ := override("reads", "def reads(card):\n    return 2")
-	body = strings.Replace(body, "    return prefer(candidates, _want(card, kind))", "    return [candidates[0].name]", 1)
+	body, _ = overrideIn(body, "rows", "def rows(card, kind, candidates):\n    return [candidates[0].name]")
 	a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	// Round 5: the probe's first line required a.Rows to hold v2's answer
 	// ["b"], which no passing assertion below allows (once v2 is refused

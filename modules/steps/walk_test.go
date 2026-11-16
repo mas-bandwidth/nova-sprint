@@ -387,12 +387,22 @@ func (w *walk) check(where string) {
 	w.t.Helper()
 	s := w.snap()
 	working := map[string]int{}
+	benchUsed := map[string]map[string]int{}
 	for id, c := range s.Cards {
 		if !isConsumer(c) || !isLive(c) {
 			continue
 		}
 		if c.State == "working" {
 			working[c.Holder]++
+			if _, isBench := w.roster.Workers[c.Holder]; isBench {
+				if benchUsed[c.Holder] == nil {
+					benchUsed[c.Holder] = map[string]int{}
+				}
+				needs := card.ResolveNeeds(c.Kind, c.Brief, nil, nil)
+				for k, v := range needs.Amounts {
+					benchUsed[c.Holder][k] += v
+				}
+			}
 		}
 		_, _, tiers, ok := w.roster.Row(c.Holder)
 		assert.True(w.t, ok && slices.Contains(tiers, c.Tier), "%s: NeverBelowTier: %s on %s", where, id, c.Holder)
@@ -405,7 +415,13 @@ func (w *walk) check(where string) {
 		}
 	}
 	for row, n := range working {
-		_, width, _, _ := w.roster.Row(row)
-		assert.LessOrEqual(w.t, n, width, "%s: WidthKept on %s", where, row)
+		if k, ok := w.roster.Kin[row]; ok {
+			assert.LessOrEqual(w.t, n, k.Width, "%s: WidthKept on %s", where, row)
+		}
+		if wk, ok := w.roster.Workers[row]; ok {
+			for res, used := range benchUsed[row] {
+				assert.LessOrEqual(w.t, used, wk.Resources[res], "%s: NeverOverCommitted (%s) on %s", where, res, row)
+			}
+		}
 	}
 }

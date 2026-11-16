@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -273,24 +274,14 @@ const repeated = ", ESCALATED: "
 func (t *tick) cleared(j store.Judgement) string {
 	switch j.Kind {
 	case "unserved":
-		parts := strings.Split(j.About, "+") // the tier, then the routes (unservedAbout)
-		for _, n := range t.rowNames {
-			if _, resting := t.rested[n]; resting { // a resting row serves no deal (serving)
-				continue
-			}
-			if t.v.Open(t.v.Rows[n]) && t.present(n) && contains(t.tiers(n), parts[0]) && t.in.Roster.ServesRoutes(n, parts[1:]) {
-				return "row " + n + " serves " + j.About
-			}
-		}
+		return t.clearedUnserved(j.About)
 	case "cannot-read":
 		c, ok := t.v.Cards[j.About]
 		if !ok || t.owed(c) <= 0 {
 			return j.About + " no longer waits for a read"
 		}
-		for _, r := range t.serving(c) {
-			if r != c.Author {
-				return "row " + r + " may read " + j.About
-			}
+		if rows := t.servingKind(c, "read"); len(rows) > 0 {
+			return "row " + rows[0] + " may read " + j.About
 		}
 	case "held":
 		if c, ok := t.v.Cards[j.About]; !ok || c.State != card.Waiting || !card.HeldReason(c.Reason) {
@@ -313,9 +304,7 @@ func (t *tick) cleared(j store.Judgement) string {
 			return "stream " + j.About + " landed"
 		}
 	case "idle":
-		if open, working := t.load(); working*4 >= open*3 {
-			return "working at or above three quarters of the open width"
-		}
+		return t.clearedIdle()
 	case "land-rate":
 		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= t.lim.LandTarget {
 			return "land rate back at target"
@@ -329,6 +318,29 @@ func (t *tick) cleared(j store.Judgement) string {
 		}
 	}
 	return t.clearedDeal(j)
+}
+
+func (t *tick) clearedUnserved(about string) string {
+	tier, needs := t.parseUnservedAbout(about)
+	for _, n := range t.rowNames {
+		if _, resting := t.rested[n]; resting {
+			continue
+		}
+		if t.v.Open(t.v.Rows[n]) && t.present(n) && contains(t.tiers(n), tier) && t.rowFitsMax(n, needs) {
+			return "row " + n + " serves " + about
+		}
+	}
+	return ""
+}
+
+func (t *tick) clearedIdle() string {
+	if t.suppressIdle() {
+		return "idle suppressed while bench paused or resource busy"
+	}
+	if openRows, util := t.fleetUtilization(); openRows == 0 || util >= Engine.IdleCeiling {
+		return "fleet utilization at or above ceiling"
+	}
+	return ""
 }
 
 // clearedDeal is cleared for the deal's own kinds: a tier a model can now be
@@ -363,10 +375,10 @@ func contains(xs []string, x string) bool {
 	return false
 }
 
-// alarms are stall (nothing landed in the bound while producers wait in
-// review or merging, per stream), idle (working under the floor of the open
-// width while producers wait) and land-rate (a stream's first-time land
-// rate under target over the sample).
+// alarms are stall (nothing landed in the bound less PausedMillis while
+// producers wait in review or merging, per stream), idle (fleet utilization
+// under the floor across open rows while producers wait, unless suppressed)
+// and land-rate (a stream's first-time land rate under target over the sample).
 func (t *tick) alarms() {
 	for _, s := range sortedKeys(t.v.Streams) {
 		if f := t.streamFacts(s); f.Merging+f.Review > 0 {
@@ -374,7 +386,8 @@ func (t *tick) alarms() {
 			if at, ok := t.v.Landed[s]; ok && at.After(since) {
 				since = at
 			}
-			if !t.in.Now.Before(since.Add(seconds(t.tmo.LandingStall))) {
+			elapsed := max(time.Duration(0), t.in.Now.Sub(since)-t.streamPaused(s, since))
+			if elapsed >= seconds(t.tmo.LandingStall) {
 				t.judge("stall", s, fmt.Sprintf("stream %s: nothing landed since %s while %d review and %d merging wait", s, since.UTC().Format("15:04:05"), f.Review, f.Merging))
 			}
 		}
@@ -382,23 +395,105 @@ func (t *tick) alarms() {
 			t.judge("land-rate", s, fmt.Sprintf("stream %s lands first time at %.0f%% over %d; the target is %.0f%%", s, rate*100, n, t.lim.LandTarget*100))
 		}
 	}
-	open, working := t.load()
+	openRows, util := t.fleetUtilization()
 	waiting := len(t.v.byState["ready"]) + len(t.v.byState["waiting"])
-	if open > 0 && waiting > 0 && float64(working) < t.lim.IdleFloor*float64(open) {
-		t.judge("idle", "fleet", fmt.Sprintf("working %d of %d open width while %d ready and %d waiting: %s", working, open, len(t.v.byState["ready"]), len(t.v.byState["waiting"]), t.idleCauses()))
+	if openRows > 0 && waiting > 0 && util < t.lim.IdleFloor && !t.suppressIdle() {
+		t.judge("idle", "fleet", fmt.Sprintf("fleet utilization %.0f%% (floor %.0f%%, %d open row(s)) while %d ready and %d waiting: %s",
+			util*100, t.lim.IdleFloor*100, openRows, len(t.v.byState["ready"]), len(t.v.byState["waiting"]), t.idleCauses()))
 	}
 }
 
-// load is the open width (up, unheld rows on the bus) and the working
-// consumers.
-func (t *tick) load() (open, working int) {
-	for n, r := range t.v.Rows {
-		if t.v.Open(r) && t.present(n) {
-			open += t.width(n)
-			working += t.v.Working(n)
+// streamPaused returns the maximum PausedMillis across consumers of stream s's
+// review and merging producers since the last landing (R39b).
+func (t *tick) streamPaused(stream string, since time.Time) time.Duration {
+	var best time.Duration
+	for _, state := range []string{"review", "merging"} {
+		for p := range t.v.byState[state] {
+			if t.v.Cards[p].Stream != stream {
+				continue
+			}
+			for id := range t.v.consOf[p] {
+				c := t.v.Cards[id]
+				if isLive(c) || !t.dealtAt(id).Before(since) {
+					best = max(best, t.consumerPaused(c.Holder, id))
+				}
+			}
 		}
 	}
-	return open, working
+	return best
+}
+
+// fleetUtilization averages row utilization across open, present rows (R54/Q14).
+func (t *tick) fleetUtilization() (openRows int, avg float64) {
+	sum := 0.0
+	for _, n := range t.rowNames {
+		r := t.v.Rows[n]
+		if !t.v.Open(r) || !t.present(n) {
+			continue
+		}
+		if u, ok := t.rowUtilization(n, r); ok {
+			openRows++
+			sum += u
+		}
+	}
+	if openRows == 0 {
+		return 0, 0
+	}
+	return openRows, sum / float64(openRows)
+}
+
+func (t *tick) rowUtilization(n string, r store.Row) (float64, bool) {
+	rr := t.rowOf(n)
+	switch rr.Kind {
+	case roster.KindKin:
+		if rr.Width <= 0 {
+			return 0, false
+		}
+		return min(1.0, float64(t.v.Working(n))/float64(rr.Width)), true
+	case roster.KindWorker:
+		if rr.Held != "" {
+			return 0, false
+		}
+		totalCPU := r.Resources.Total["cpu"]
+		if totalCPU <= 0 {
+			totalCPU = rr.Resources["cpu"]
+		}
+		if totalCPU <= 0 {
+			return 0, false
+		}
+		heldSprint := r.Resources.HeldSprint["cpu"]
+		if r.Resources.Total == nil && r.Resources.HeldSprint == nil {
+			heldSprint = t.benchSprintUsed(n)["cpu"]
+		}
+		return min(1.0, float64(heldSprint+r.Resources.HeldOther["cpu"])/float64(totalCPU)), true
+	}
+	return 0, false
+}
+
+// suppressIdle returns true when any open present bench has AnyPaused or when
+// an undealt ready card is waiting on a busy resource across its serving rows.
+func (t *tick) suppressIdle() bool {
+	for _, n := range t.rowNames {
+		r := t.v.Rows[n]
+		if t.v.Open(r) && t.present(n) && t.kind(n) == roster.KindWorker && r.Resources.AnyPaused {
+			return true
+		}
+	}
+	for _, p := range t.v.Producers("ready") {
+		c := t.v.Cards[p]
+		if c.Kind != "producer" || !t.free(p) || t.v.Streams[c.Stream].Held || !t.admitted(p) {
+			continue
+		}
+		serving := t.named(c, t.serving(c))
+		if len(serving) == 0 {
+			continue
+		}
+		needs := t.consumerNeeds("work", c.Brief)
+		if len(t.withRoomFor(serving, needs)) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // idleCauses is the idle judgement's facts: the ready producers in held

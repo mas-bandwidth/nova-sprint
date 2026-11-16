@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -184,13 +185,39 @@ func (e *Engine) sibling() *Engine {
 
 func (s source) wire() wireSource { return wireSource{s.version, s.label, s.body, s.stored} }
 
-// unworded is snap with every card's brief and prose dropped: no question
-// reads them (rowan2's ruling 4 and 5), so what crosses to the child grows
-// with the card count, not with the briefs.
+// briefResourcesOnly extracts only the RESOURCES: metadata header from brief
+// (if any) before unworded drops the rest of brief and prose, so card.tags and
+// card.resources survive into the child evaluator without sending prose.
+func briefResourcesOnly(brief string) string {
+	if brief == "" {
+		return ""
+	}
+	end := strings.Index(brief, "\n\n")
+	if crlf := strings.Index(brief, "\r\n\r\n"); crlf >= 0 && (end < 0 || crlf < end) {
+		end = crlf
+	}
+	hdr := brief
+	if end >= 0 {
+		hdr = brief[:end]
+	}
+	hdr = hdr[:min(len(hdr), 4096)]
+	if !strings.Contains(hdr, card.ResourcesField) {
+		return ""
+	}
+	vals := card.BriefField(hdr, card.ResourcesField)
+	if len(vals) == 0 {
+		return ""
+	}
+	return "_\n" + card.ResourcesField + ": " + cut(strings.Join(vals, ", "), 512)
+}
+
+// unworded is snap with every card's prose and non-resource brief text
+// dropped, so what crosses to the child grows with the card count, not with
+// the briefs, while keeping RESOURCES: for card.tags and card.resources.
 func unworded(snap store.Snapshot) store.Snapshot {
 	cards := make(map[string]store.Card, len(snap.Cards))
 	for id, c := range snap.Cards {
-		c.Brief, c.Prose = "", ""
+		c.Brief, c.Prose = briefResourcesOnly(c.Brief), ""
 		cards[id] = c
 	}
 	snap.Cards = cards

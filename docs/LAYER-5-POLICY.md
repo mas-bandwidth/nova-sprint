@@ -1023,3 +1023,12 @@ What the stitch changed in layer 5 and why:
   start while other rows sat idle). `row.width` itself is now a worker's advertised width
   (min of nova-config's cores-cap width and its nova-reserve slots, `roster.Advertised`).
   `TestDefaultAnswersEverySnapshot` says `Ahead: 0`.
+
+### Built: v3 resource-aware bench candidates and kin-only width (`R65`, 2026-11-16)
+
+- **`width(row)` for `kin` rows only, `fleet_width_cap` retired (`policy.go`, `default.star`, `validate.go`, `answer.go`):**
+  - `width(row)` is asked only for `kin` (friend) rows; `limits()` and `default.star` drop `fleet_width_cap`.
+  - `jointRows` (`answer.go`) marks bench candidates (`kind == "worker"`) inherently capable (`capable = true`), never rejecting a bench candidate for lacking a `Width` answer (`tla/Policy.tla` `BenchCapableWithoutWidth`, reversed witness `PolicyBenchNeedsWidth`).
+- **Pre-`unworded` card needs and bench candidate attributes (`evaluator.go`, `inputs.go`, `prefer.go`):**
+  - `evaluator.go` extracts `card.tags` (frozen tuple) and `card.resources` (frozen dict of amounts) from `c.Brief` *before* `unworded()` blanks `Brief`/`Prose`/`Reason`/`Finding` across the subprocess boundary (`TestFunctionalV3EvaluatorPreservesCardResourcesAcrossUnworded`).
+  - Candidate structs for benches expose `tags` (frozen tuple), `resources` (frozen total dict), and `free` (frozen available dict computed via `R50` / `R52`), omitting `width`; `prefer(candidates, rank[, needs])` checks `free >= needs` on benches and `working < width` on friends.

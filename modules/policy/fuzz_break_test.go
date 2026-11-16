@@ -96,7 +96,7 @@ func fuzzBigSnapshot() (store.Snapshot, roster.Roster) {
 	for i := range 50 {
 		name := fmt.Sprintf("r%02d", i)
 		snap.Rows[name] = store.Row{Name: name, State: "up", Session: "s-" + name, Role: "worker"}
-		ro.Workers[name] = roster.Worker{Name: name, Width: 2, Tiers: store.Tiers[i%4:], Harness: roster.WorkerHarness}
+		ro.Workers[name] = roster.Worker{Name: name, Resources: map[string]int{"cpu": 2, "memory": 2}, Tiers: store.Tiers[i%4:], Harness: roster.WorkerHarness}
 	}
 	for i := range 5000 {
 		id := fmt.Sprintf("p%04d", i)

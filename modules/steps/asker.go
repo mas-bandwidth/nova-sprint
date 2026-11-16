@@ -45,7 +45,8 @@ type CardFacts struct {
 type RowFacts struct {
 	Name, Kind, Model, Harness, Rank string
 	Width, Working, Ready, Flaps     int
-	Tiers                            []string
+	Tiers, Tags                      []string
+	Resources, Free                  map[string]int
 }
 
 // RowsQuestion asks rows(card, kind, candidates): Kind is work or read;

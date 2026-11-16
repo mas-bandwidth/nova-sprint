@@ -1016,3 +1016,19 @@ check `StepsNeverBothStarted` shows p and q of one stream, naming one file,
 working together. Test: `TestTickSameFileCardsBothStart` (replaces
 `TestTickOverlapIsAFile`). The sections above that describe the hold are
 history.
+
+## Built: v3 multi-resource dealer, AnyPaused gate, multi-victim preemption and pause exclusion (2026-11-16)
+
+- **Multi-resource bench room (`R50`, `R52`, `deal.go`, `roster.go`, `tick.go`):**
+  - Benches carry `Tags` and `Resources` (`cpu`, `memory`, plus optional hardware resources) instead of `Width`; `Questions.Width` asks `width(row)` only for `kin` rows.
+  - `read` consumers always require `card.DefaultReadNeeds()` (`cpu 1, memory 1`, zero tags); `work` consumers resolve `RESOURCES:` from the producer's brief against the fleet's known tags and resources.
+  - When `row.Resources.AnyPaused` is true (`R52`, including paused friend/person holds), nothing is dealt or preempted onto that bench and `RowFacts.Free` reports `0` for every resource.
+  - Otherwise active sprint consumers on bench `B` are the consumer-ID union `WorkingOn(B) U row.Resources.SprintConsumers` (deduplicating `<id>@<epoch>` against `<id>`), plus deals recorded earlier in the same tick (`t.dealtNeeds[B]`), summed by `ConsumerNeeds(c)[r]` and added to `row.Resources.HeldOther[r]`.
+  - `ranked()` orders eligible rows by `!withdrawnFrom`, desired tier rank, idle status (`used == 0`), bottleneck free-resource fraction (`min_{r in card.Amounts} free[r]/total[r]` on benches, `(room - used)/room` on friends), policy `answered` order, then `name`. `hand.go` formats `NUDGE` with CPU/memory free/total on benches while keeping width text on friends.
+- **Multi-victim blocker preemption (`R53`, `preempt.go`, `group.go`):**
+  - On benches, preemption verifies `!row.Resources.AnyPaused` and `B.Resources[r] - row.Resources.HeldOther[r] >= blocker.Amounts[r]` for all `r`, then selects an inclusion-minimal lowest-priority set of working sprint victims (`low < normal < high < read < critical`, youngest `TakenAt` first within a rung, never another `blocker`), pruning backwards so higher-priority victims are spared whenever lower-priority ones suffice. All victim `Withdraw{Preempt: true}` moves and the blocker's `Start` merge into one atomic `pre` group with one `stop` `EdgeRequest` per victim.
+- **Pause deadline exclusion & utilization-based `idle` (`R39b`, `R54`, `limits.go`, `judge.go`):**
+  - `consumerPaused` subtracts `row.Resources.PausedMillis` from elapsed working time before `working_max` withdrawal and stream `landing_stall`.
+  - Fleet utilization averages `min(1.0, (HeldSprint["cpu"] + HeldOther["cpu"]) / Total["cpu"])` on benches and `working / width` on friends across open present rows, suppressing `idle` whenever any open bench has `AnyPaused` or an undealt ready producer waits on a busy resource across its serving rows.
+- **Model (`tla/Steps.tla`, `tla/StepsTrace.tla`, `tla/make-steps-witnesses.py`):**
+  - Models multi-resource `RowCap`/`CardRes`/`ConsNeeds`, `paused` (`NoDealBehindPause`, witness `StepsDealsBehindPause`, reach `StepsNeverPausedSkipped`), `other` CI load (`NoFutilePreempt`, witness `StepsFutilePreempt`), and multi-victim `Grp` (`vs` set, `PreemptMultiStops`, witness `StepsMissingMultiStop`, reach `StepsNeverMultiPreempted`).

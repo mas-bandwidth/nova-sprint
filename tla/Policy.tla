@@ -1,35 +1,22 @@
 ------------------------------ MODULE Policy -------------------------------
 (***************************************************************************)
-(* Layer 5 of nova-sprint v2: policy versions, activation and the per-tick *)
-(* fallback (docs/LAYER-5-POLICY.md, "The model"; the code is              *)
-(* modules/policy/answer.go AnswerContext, modules/policy/tick.go race, and               *)
-(* modules/policy/verbs.go Set and Activate). Round 3: the tick's one deadline is *)
-(* one more way a version breaks on a tick, and a fallback started early  *)
-(* (tick.go fallbackAfter) never changes which version answers: the first *)
-(* in order that passes, as Tick says.                                    *)
+(* Layer 5 of nova-sprint v3: policy versions, activation, per-tick        *)
+(* fallback, and R65 bench capability without width (docs/LAYER-5-POLICY.md; *)
+(* modules/policy/answer.go AnswerContext & jointRows, modules/policy/tick.go *)
+(* race, and modules/policy/verbs.go Set and Activate).                    *)
 (*                                                                         *)
-(* Versions 1..MaxVersion are stored in order and never deleted; Default  *)
-(* is the built-in, never stored; it can fail too (a bug in the binary).  *)
-(* When every version tried fails the tick is answered by NoAnswer: it    *)
-(* still applies every move that needs no answer, and deals nothing.      *)
-(* Init is the state after up: the default stored as the next version    *)
-(* number and active (modules/policy/verbs.go Up); the model holds no data rows,  *)
-(* which the code counts but never runs, so that number is 1 here.        *)
-(* Round 5: Activate answers the built-in's judgement too (policy:v0: any *)
-(* clean activation answers it), and is one op in the code, as it is one  *)
-(* step here, fenced on no version or judgement written since its         *)
-(* snapshot (UnchangedSince; a beat moves the seq and none of them). The  *)
-(* snapshot moving between its check and its op is Drift after Activate:  *)
-(* Drift may set breaks to any set at any step, so the states are these.  *)
-(* That reordering is argued here, not checked: TLC checks Activate with  *)
-(* a fresh guard, and the PolicyTrace walk is serial.                     *)
-(* breaks is the set of                                                  *)
-(* versions that fail (a runtime error, a refused answer or the deadline) *)
-(* on the current snapshot; Drift moves the snapshot, so breaks changes   *)
-(* arbitrarily. One card stands for every card: a tick may move it, a     *)
-(* policy change never does, and a wait keeps the bound it started under. *)
-(* judgements[v] counts the open policy judgements of version v (group    *)
-(* key policy:v<n>).                                                      *)
+(* Versions 1..MaxVersion are stored in order and never deleted; Default   *)
+(* is the built-in, never stored; it can fail too (a bug in the binary).   *)
+(* When every version tried fails the tick is answered by NoAnswer: it     *)
+(* still applies every move that needs no answer, and deals nothing.       *)
+(* Init is the state after up: the default stored as the next version      *)
+(* number and active (modules/policy/verbs.go Up).                         *)
+(*                                                                         *)
+(* R65 (v3): width(row) is asked only for kin (friend) rows                *)
+(* (WidthAskedKinds = {"kin"}); worker benches carry tags, resources and   *)
+(* free capacity instead of width, and jointRows treats candidate benches  *)
+(* as inherently capable (JointCapable("worker", ...) = TRUE) rather than  *)
+(* rejecting them for having no width entry.                               *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -42,12 +29,14 @@ NoAnswer == -2
 Usable == Versions \cup {Default}
 CardStates == {"ready", "working", "done"}
 Ops == {"up", "set", "activate", "drift", "tick"}
+RowKinds == {"kin", "worker"}
+WidthAskedKinds == {"kin"}
 
 VARIABLES stored, active, prev, everActive, breaks, answeredBy, tickBreaks,
-          judgements, card, cardBefore, waitBound, startBound, lastOp
+          judgements, card, cardBefore, waitBound, startBound, benchDealt, lastOp
 
 vars == <<stored, active, prev, everActive, breaks, answeredBy, tickBreaks,
-          judgements, card, cardBefore, waitBound, startBound, lastOp>>
+          judgements, card, cardBefore, waitBound, startBound, benchDealt, lastOp>>
 
 TypeOK ==
   /\ stored \subseteq Versions
@@ -61,6 +50,7 @@ TypeOK ==
   /\ card \in CardStates /\ cardBefore \in CardStates
   /\ waitBound \in Versions \cup {Default, None}
   /\ startBound \in Versions \cup {Default, None}
+  /\ benchDealt \in BOOLEAN
   /\ lastOp \in Ops
 
 Init ==
@@ -69,10 +59,17 @@ Init ==
   /\ judgements = [v \in Usable |-> 0]
   /\ card = "ready" /\ cardBefore = "ready"
   /\ waitBound = None /\ startBound = None
+  /\ benchDealt = FALSE
   /\ lastOp = "up"
 
 (* The card's next state when a tick moves it.                            *)
 Advance(c) == CASE c = "ready" -> "working" [] c = "working" -> "done" [] c = "done" -> "ready"
+
+(* R65: width(row) is asked only for WidthAskedKinds ({"kin"}); jointRows *)
+(* treats worker benches as inherently capable without a width entry.     *)
+JointCapable(kind, widthMap) ==
+  IF kind = "worker" THEN TRUE
+  ELSE kind \in DOMAIN widthMap /\ widthMap[kind] > 0
 
 (* policy set: checked on the current snapshot before it is stored; the   *)
 (* next number; never active.                                             *)
@@ -83,7 +80,7 @@ Set(v) ==
   /\ prev' = prev
   /\ cardBefore' = card
   /\ lastOp' = "set"
-  /\ UNCHANGED <<active, everActive, breaks, answeredBy, tickBreaks, judgements, card, waitBound, startBound>>
+  /\ UNCHANGED <<active, everActive, breaks, answeredBy, tickBreaks, judgements, card, waitBound, startBound, benchDealt>>
 
 (* policy activate: a stored version that runs clean on the current       *)
 (* snapshot; one op moves the active flag and answers the open policy     *)
@@ -100,18 +97,17 @@ Activate(v) ==
   /\ waitBound' = waitBound
   /\ cardBefore' = card
   /\ lastOp' = "activate"
-  /\ UNCHANGED <<stored, breaks, answeredBy, tickBreaks, startBound>>
+  /\ UNCHANGED <<stored, breaks, answeredBy, tickBreaks, startBound, benchDealt>>
 
 (* The snapshot moves: any set of versions may now fail, the built-in too. *)
 Drift ==
   /\ \E b \in SUBSET Usable : b # breaks /\ breaks' = b
   /\ cardBefore' = card
   /\ lastOp' = "drift"
-  /\ UNCHANGED <<stored, active, prev, everActive, answeredBy, tickBreaks, judgements, card, waitBound, startBound>>
+  /\ UNCHANGED <<stored, active, prev, everActive, answeredBy, tickBreaks, judgements, card, waitBound, startBound, benchDealt>>
 
 (* The version that answers a tick: active, else the previous active,     *)
-(* else the built-in (modules/policy/answer.go Versions.tried), else NoAnswer     *)
-(* (Answers.Version -1).                                                  *)
+(* else the built-in, else NoAnswer.                                      *)
 Pick ==
   IF active \notin breaks THEN active
   ELSE IF prev # None /\ prev \notin breaks THEN prev
@@ -127,21 +123,22 @@ Failing ==
   (IF active \in breaks /\ (prev = None \/ prev \in breaks) THEN {Default} \cap breaks ELSE {})
 
 (* A tick: answered by Pick; opens a judgement for each failing version   *)
-(* with none open; may move the card. A wait records the bound of the     *)
-(* version that answered the tick that started it.                        *)
+(* with none open; may move the card.                                     *)
 Tick ==
-  /\ answeredBy' = Pick
-  /\ tickBreaks' = breaks
-  /\ judgements' = [u \in Usable |-> IF u \in Failing /\ judgements[u] = 0 THEN 1 ELSE judgements[u]]
-  /\ \E c \in {card, Advance(card)} :
-       /\ (c = "working" /\ card = "ready") => Pick # NoAnswer   \* a deal needs an answer
-       /\ card' = c
-       /\ IF c = "working" /\ card # "working" THEN waitBound' = Pick /\ startBound' = Pick
-          ELSE IF c # "working" THEN waitBound' = None /\ startBound' = None
-          ELSE UNCHANGED <<waitBound, startBound>>
-  /\ cardBefore' = card
-  /\ lastOp' = "tick"
-  /\ UNCHANGED <<stored, active, prev, everActive, breaks>>
+  LET widthMap == [k \in WidthAskedKinds |-> 1]
+  IN /\ answeredBy' = Pick
+     /\ tickBreaks' = breaks
+     /\ judgements' = [u \in Usable |-> IF u \in Failing /\ judgements[u] = 0 THEN 1 ELSE judgements[u]]
+     /\ benchDealt' = (Pick # NoAnswer /\ JointCapable("worker", widthMap))
+     /\ \E c \in {card, Advance(card)} :
+          /\ (c = "working" /\ card = "ready") => Pick # NoAnswer   \* a deal needs an answer
+          /\ card' = c
+          /\ IF c = "working" /\ card # "working" THEN waitBound' = Pick /\ startBound' = Pick
+             ELSE IF c # "working" THEN waitBound' = None /\ startBound' = None
+             ELSE UNCHANGED <<waitBound, startBound>>
+     /\ cardBefore' = card
+     /\ lastOp' = "tick"
+     /\ UNCHANGED <<stored, active, prev, everActive, breaks>>
 
 Next ==
   \/ \E v \in Versions : Set(v)
@@ -152,7 +149,7 @@ Next ==
 Spec == Init /\ [][Next]_vars
 
 -----------------------------------------------------------------------------
-(* Invariants: the design's six, and FallbackWasActive for its witness.  *)
+(* Invariants: the design's six, FallbackWasActive, and R65 bench capable. *)
 
 ActiveStored == active \in stored
 
@@ -173,6 +170,10 @@ OneJudgementPerVersion == \A v \in Usable : judgements[v] <= 1
 WaitKeepsItsBound == card = "working" => waitBound = startBound
 
 FallbackWasActive == answeredBy \in everActive \cup {Default, None, NoAnswer}
+
+BenchCapableWithoutWidth ==
+  /\ "worker" \notin WidthAskedKinds
+  /\ (lastOp = "tick" /\ answeredBy # NoAnswer) => benchDealt
 
 (* Reachability: each must be violated (tla/reach/Policy*.cfg), or the    *)
 (* model never reaches the case the invariants above are about.           *)

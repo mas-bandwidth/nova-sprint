@@ -46,7 +46,7 @@ func loadSnap(producers, rows int) (store.Snapshot, roster.Roster) {
 	for i := range rows {
 		name := fmt.Sprintf("r%03d", i)
 		snap.Rows[name] = store.Row{Name: name, State: "up", Session: "s-" + name, Role: "worker"}
-		ro.Workers[name] = roster.Worker{Name: name, Width: 2, Tiers: store.Tiers, Harness: roster.WorkerHarness}
+		ro.Workers[name] = roster.Worker{Name: name, Resources: map[string]int{"cpu": 2, "memory": 2}, Tiers: store.Tiers, Harness: roster.WorkerHarness}
 	}
 	for i := range producers {
 		id := fmt.Sprintf("p%04d", i)

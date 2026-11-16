@@ -177,7 +177,7 @@ func checkWidth(v starlark.Value, width int) (Width, string) {
 // limitKeys are limits' required keys; chain_limit is optional (absent in a
 // version stored before it, which answers the default's 3).
 var limitKeys = []string{"bounces", "faults", "same_finding", "reports_per_tick", "route_rest_window", "route_rest_after",
-	"escalate_after", "frontier_after", "flap_limit", "fleet_width_cap", "idle_floor", "land_target"}
+	"escalate_after", "frontier_after", "flap_limit", "idle_floor", "land_target"}
 
 // checkLimits: every key present, each in its range; frontier_after at or
 // above escalate_after, route_rest_after at most route_rest_window; the
@@ -199,8 +199,7 @@ func checkLimits(v starlark.Value) (Limits, string) {
 		dst    *int
 	}{{"bounces", 1, 100, &l.Bounces}, {"faults", 1, 100, &l.Faults}, {"same_finding", 1, 10, &l.SameFinding},
 		{"reports_per_tick", 1, 10000, &l.ReportsPerTick}, {"route_rest_window", 1, 100, &l.RouteRestWindow},
-		{"escalate_after", 1, 100, &l.EscalateAfter}, {"flap_limit", 1, 100, &l.FlapLimit},
-		{"fleet_width_cap", 1, 256, &l.FleetWidthCap}} {
+		{"escalate_after", 1, 100, &l.EscalateAfter}, {"flap_limit", 1, 100, &l.FlapLimit}} {
 		if *f.dst, msg = intIn(f.key, d[f.key], f.lo, f.hi); msg != "" {
 			return Limits{}, msg
 		}

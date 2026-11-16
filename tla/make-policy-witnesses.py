@@ -18,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 INVARIANTS = [
     "TypeOK", "ActiveStored", "AnsweredByUsable", "TickAlwaysAnswered", "ActivateMovesNoCard",
     "OneJudgementPerVersion", "WaitKeepsItsBound", "FallbackWasActive", "NoAnswerStartsNothing",
+    "BenchCapableWithoutWidth",
 ]
 
 CONSTANTS = "CONSTANT MaxVersion = 3\nSPECIFICATION Spec\n"
@@ -65,6 +66,10 @@ WITNESSES = [
     ("PolicyWaitRebound", "WaitKeepsItsBound",
      "Activate re-bounds a wait in progress by the new version's timeouts.",
      [("  /\\ waitBound' = waitBound\n", "  /\\ waitBound' = IF card = \"working\" THEN v ELSE waitBound   \\* FAULT\n", 1)]),
+    ("PolicyBenchNeedsWidth", "BenchCapableWithoutWidth",
+     "jointRows checks widthMap on worker benches (v2 bug under R65): with\nwidth asked only for kin rows, every bench candidate is rejected.",
+     [("JointCapable(kind, widthMap) ==\n  IF kind = \"worker\" THEN TRUE\n  ELSE kind \\in DOMAIN widthMap /\\ widthMap[kind] > 0\n",
+       "JointCapable(kind, widthMap) ==\n  kind \\in DOMAIN widthMap /\\ widthMap[kind] > 0   \\* FAULT: bench required width\n", 1)]),
 ]
 
 

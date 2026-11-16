@@ -1,17 +1,7 @@
 #!/usr/bin/env python3
 """Generate the step model's reversed witnesses and every cfg from Steps.tla.
 
-Run from anywhere: python3 tla/make-steps-witnesses.py. The same shape as
-make-witnesses.py and make-card-witnesses.py: each witness is Steps.tla with
-its module renamed, a header naming the fault, and a few exact text
-replacements; a replacement that does not match exactly the expected number
-of times stops the script, so a change to Steps.tla that a fault no longer
-fits fails here instead of producing a witness that tests nothing. Commit
-the generated files; CI runs them as they are.
-
-A witness's target is the first INVARIANT (or, for the liveness witness,
-the first line, a PROPERTY) of its cfg, which ci-tlc.sh requires to be the
-one TLC reports.
+Run from anywhere: python3 tla/make-steps-witnesses.py.
 """
 import os
 import sys
@@ -28,6 +18,7 @@ INVARIANTS = [
     "ResolveFromState", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
     "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
     "LapsedReleased", "HandEmptyWhenClosed", "OfferedIsAccepted",
+    "NoDealBehindPause", "NoFutilePreempt", "PreemptMultiStops",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -39,20 +30,18 @@ SCENARIOS = {
     "deal":  {"K": 4, "MaxAtt": 2, "MaxBounce": 1, "MaxEnv": 1, "MaxArrive": 1, "Budget": 2, "Pack": 2},
     "land":  {"K": 2, "MaxAtt": 1, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 3, "Budget": 2, "Pack": 2},
     "burst": {"K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 0, "MaxArrive": 4, "Budget": 1, "Pack": 1},
-    # pre packed one group per op: a tick of several ops, so an op reads
-    # cards an earlier op of the same tick wrote (the predicted fence).
     "pre1":  {"Scenario": "pre", "K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 2,
               "Budget": 2, "Pack": 1},
 }
 
-# The passing runs: cfg name -> scenario. Each checks every invariant and,
-# under FairSpec, the liveness property.
 PASSING = {"StepsPre": "pre", "StepsPrePack1": "pre1", "StepsDeal": "deal", "StepsLand": "land",
            "StepsBurst": "burst"}
 
 # Reachability checks on Steps.tla: name -> (scenario, what).
 REACH = {
-    "StepsNeverPreempted": ("pre", "a blocker preempts the youngest working consumer"),
+    "StepsNeverPreempted": ("pre", "a blocker preempts a working consumer"),
+    "StepsNeverMultiPreempted": ("pre", "a blocker preempts multiple victims in one atomic group"),
+    "StepsNeverPausedSkipped": ("pre", "a ready producer waits behind an AnyPaused bench"),
     "StepsNeverUnserved": ("pre", "a ready blocker with no open serving row opens unserved"),
     "StepsNeverRefused": ("pre", "an op is refused by a race"),
     "StepsNeverSplit": ("pre", "a group of a refused op is packed as an op of its own"),
@@ -86,28 +75,26 @@ REACH = {
     "StepsNeverUndealt": ("burst", "a producer left ready with room two ticks opens undealt"),
 }
 
-# (name, target, scenario, fault, replacements). A target in PROPERTIES is a
-# liveness witness: its cfg uses FairSpec and lists the property first.
+# (name, target, scenario, fault, replacements).
 WITNESSES = [
     ("StepsDealtTwice", "NeverDealtTwice", "pre",
      "The deal does not skip a blocker the preemption step claimed: one\n"
      "tick plans the preemption and a plain Start for the same blocker.\n"
-     "Since the deal is the take (defect 52) a blocker preempts only when\n"
-     "no row has room, so the deal could not place it either; the second\n"
-     "fault, a preemption that fires with free width, makes the first\n"
-     "reachable, and the Free guard is what then keeps the deal off it.",
+     "The second fault makes preemption fire with free room so the deal\n"
+     "can place it too when the Free guard is removed.",
      [("LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ Free(p, cl) /\\ admitted[p])",
-       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE /\\ admitted[p])   \\* FAULT: was Free(p, cl)", 1),
-      ("  /\\ NoFreeWidth(W, b)\n", "  /\\ TRUE   \\* FAULT 2: was NoFreeWidth(W, b)\n", 1)]),
+       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE /\\ admitted[p])   \\* FAULT", 1),
+      ("  /\\ NoFreeWidth(W, b)\n", "  /\\ TRUE   \\* FAULT 2: was NoFreeWidth(W, b)\n", 1),
+      ("DealStep(V, cl3r, pre.t, a.rows, TRUE)", "DealStep(V, cl3r, ZeroTally, a.rows, TRUE)", 1)]),
     ("StepsTwoGroups", "OneGroupPerCard", "land",
      "The land-result step ignores cards already claimed: a result\n"
      "delivered twice plans two groups on one producer in one tick.",
      [("        /\\ PKey(p) \\notin cl\n", "        /\\ TRUE   \\* FAULT: was PKey(p) \\notin cl\n", 1)]),
     ("StepsWidthOver", "WidthKept", "burst",
-     "The deal does not count the row's load: with the deal the take, a\n"
-     "second producer is dealt to a full row.",
-     [("  /\\ Used(V, r, t) < Width[r]\n",
-       "  /\\ TRUE   \\* FAULT: was Used(V, r, t) < Width[r]\n", 1)]),
+     "The deal ignores multi-resource room (R50): a second producer is\n"
+     "dealt onto a bench whose resources are already full.",
+     [("  /\\ HasRoom(V, r, ConsNeeds(x.kind, x.p), t)\n",
+       "  /\\ ~V.paused[r]   \\* FAULT: was HasRoom(V, r, ConsNeeds(x.kind, x.p), t)\n", 1)]),
     ("StepsCutReady", "DealIsTake", "pre",
      "Start cuts its work consumer ready, as before defect 52.",
      [("StartCut(W, p, r) == [st |-> \"working\", kind |-> \"work\",",
@@ -115,22 +102,21 @@ WITNESSES = [
     ("StepsUndealtSilent", "DealtWithinKTicks", "burst",
      "The tick never opens the undealt judgement: a producer the budget\n"
      "leaves ready with room tick after tick sits unworked unseen.",
-     [("        /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"} \\cup {p \\in und : rdy[p] + 1 >= UndealtTicks}",
-       "        /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"}   \\* FAULT: no new undealt judgement", 1)]),
+     [("             /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"} \\cup {p \\in und : rdy[p] + 1 >= UndealtTicks}",
+       "             /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"}   \\* FAULT: no new undealt judgement", 1)]),
     ("StepsBlockerQueued", "BlockerPreemptsInOneTick", "pre",
-     "The preemption step counts queue room (ready plus working under width\n"
-     "plus ahead) as free width, so a ready blocker is queued behind full\n"
-     "rows instead of preempting.",
-     [("NoFreeWidth(W, b) == \\A r \\in ServingOpen(W, b) : Cardinality(Working(W, r)) >= Width[r]",
-       "NoFreeWidth(W, b) == \\A r \\in ServingOpen(W, b) : Cardinality(Load(W, r)) >= Width[r] + 1   \\* FAULT", 1)]),
+     "The preemption step demands more load than capacity before firing,\n"
+     "so a ready blocker is queued behind full rows instead of preempting.",
+     [("NoFreeWidth(W, b) == \\A r \\in ServingOpen(W, \"work\", b) : ~HasRoom(W, r, CardRes[b], ZeroTally)",
+       "NoFreeWidth(W, b) == \\A r \\in ServingOpen(W, \"work\", b) : SprintUsed(W, r).cpu > RowCap[r].cpu   \\* FAULT", 1)]),
     ("StepsHalfWrites", "GroupWhole", "pre",
      "A refused op is split by halves of writes: the preemption's Withdraw\n"
      "is applied without the blocker's Start.",
      [("       ELSE ApplyFold(V, ops, i + 1, [acc EXCEPT !.ref = @ \\cup {i}])",
        "       ELSE ApplyFold(V, ops, i + 1, [acc EXCEPT !.ref = @ \\cup {i},   \\* FAULT: the Withdraw half\n"
        "                                     !.w = IF ops[i][1].kind = \"pre\"\n"
-       "                                           THEN [acc.w EXCEPT !.cs[ops[i][1].c].st = \"fail\",\n"
-       "                                                              !.tko = Drop(acc.w.tko, ops[i][1].c)]\n"
+       "                                           THEN [acc.w EXCEPT !.cs = [c \\in CIds |-> IF c \\in ops[i][1].vs THEN [acc.w.cs[c] EXCEPT !.st = \"fail\"] ELSE acc.w.cs[c]],\n"
+       "                                                              !.tko = SelectSeq(acc.w.tko, LAMBDA c : c \\notin ops[i][1].vs)]\n"
        "                                           ELSE acc.w])", 1)]),
     ("StepsPartialOp", "NeverHalfApplied", "pre",
      "A refused op applies the groups whose fences pass and drops only the\n"
@@ -156,38 +142,38 @@ WITNESSES = [
      [("  ELSE IF OpOK(acc.pv, acc.w, ops[i])", "  ELSE IF OpOK(V, acc.w, ops[i])   \\* FAULT: was acc.pv", 1)]),
     ("StepsBudgetIgnored", "BudgetKept", "burst",
      "The budget is not applied: every group of the tick is admitted.",
-     [("ELSE IF ~acc.stop /\\ (acc.nb = 0 \\/ acc.t + Size(g) <= Budget)",
-       "ELSE IF TRUE   \\* FAULT: was ~acc.stop /\\ (acc.nb = 0 \\/ acc.t + Size(g) <= Budget)", 1)]),
+     [("          ELSE IF ~acc.stop /\\ (acc.nb = 0 \\/ acc.t + Size(g) <= Budget)",
+       "          ELSE IF TRUE   \\* FAULT: was ~acc.stop /\\ (acc.nb = 0 \\/ acc.t + Size(g) <= Budget)", 1)]),
     ("StepsCarryDropped", "CarryFIFO", "burst",
      "The carry drops what the budget left: only the items of refused ops\n"
      "stay in the inbox.",
-     [("        /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
-       "        /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps   \\* FAULT\n"
-       "                                                 /\\ it.stamp \\in {g.stamp : g \\in admIn})", 1)]),
+     [("             /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
+       "             /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps   \\* FAULT\n"
+       "                                                      /\\ it.stamp \\in {g.stamp : g \\in admIn})", 1)]),
     ("StepsCarryNewestFirst", "CarryFIFO", "burst",
      "The carry is put back newest first.",
-     [("        /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
-       "        /\\ inbox' = LET X == SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)   \\* FAULT\n"
-       "                    IN [i \\in 1..Len(X) |-> X[Len(X) + 1 - i]]", 1)]),
+     [("             /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
+       "             /\\ inbox' = LET X == SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)   \\* FAULT\n"
+       "                         IN [i \\in 1..Len(X) |-> X[Len(X) + 1 - i]]", 1)]),
     ("StepsStopEarly", "EdgeAfterAccepted", "pre",
      "A stop request is dispatched from every op, refused ones included\n"
      "(After ignored): a runner is stopped for a consumer never withdrawn.",
-     [("stops == UNION {g.req : g \\in UNION {GroupsIn(ops[i]) : i \\in ap.ok}}",
-       "stops == UNION {g.req : g \\in UNION {GroupsIn(ops[i]) : i \\in 1..Len(ops)}}   \\* FAULT", 1)]),
+     [("              stops == UNION {g.req : g \\in accd}",
+       "              stops == UNION {g.req : g \\in UNION {GroupsIn(ops[i]) : i \\in 1..Len(ops)}}   \\* FAULT", 1)]),
     ("StepsReadyOnRoom", "ReadyNeverFlipsWithLoad", "deal",
      "Ready is conditioned on room: Resolve requires an open serving row\n"
-     "with room under width.",
+     "with room.",
      [("  /\\ NeedsLanded(W, p)\n  /\\ ~W.sh[Stream[p]]\n",
        "  /\\ NeedsLanded(W, p)\n  /\\ ~W.sh[Stream[p]]\n"
-       "  /\\ \\E r \\in ServingOpen(W, p) : Cardinality(Load(W, r)) < Width[r]   \\* FAULT\n", 1)]),
+       "  /\\ \\E r \\in ServingOpen(W, \"work\", p) : HasRoom(W, r, CardRes[p], ZeroTally)   \\* FAULT\n", 1)]),
     ("StepsTierUnchecked", "NeverBelowTier", "deal",
      "The tier is checked nowhere: policy's rows answer is taken for any up\n"
      "row, and Start does not check that the row serves the card's tier.",
      [("InDomain(V, x, ar, t) == ar \\in Rows /\\ Eligible(V, x, ar, t)",
-       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar] /\\ bus[ar] /\\ Used(V, ar, t) < Width[ar]\n"
+       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar] /\\ bus[ar] /\\ HasRoom(V, ar, ConsNeeds(x.kind, x.p), t)\n"
        "                          /\\ (x.kind = \"read\" => ar # V.ps[x.p].author)   \\* FAULT: Eligible without Serves", 1),
-      ("  /\\ ~W.sh[Stream[p]]\n  /\\ Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n",
-       "  /\\ ~W.sh[Stream[p]]\n  /\\ TRUE   \\* FAULT: was Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n", 1)]),
+      ("  /\\ ~W.sh[Stream[p]]\n  /\\ Serves(r, \"work\", p)\n  /\\ W.ps[p].att < MaxAtt\n",
+       "  /\\ ~W.sh[Stream[p]]\n  /\\ TRUE   \\* FAULT: was Serves(r, \"work\", p)\n  /\\ W.ps[p].att < MaxAtt\n", 1)]),
     ("StepsAfterIgnored", "AfterKept", "land",
      "The land step ignores after: a producer is sent to land while its\n"
      "after target is queued to land.",
@@ -216,24 +202,25 @@ WITNESSES = [
        "RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN ar\n"
        "                       ELSE IF ar = \"failed\" THEN NoR ELSE DefaultRow(V, x, t)   \\* FAULT", 1)]),
     ("StepsOldestVictim", "PreemptYoungest", "pre",
-     "The victim default is the oldest working consumer, not the youngest.",
-     [("VictimFor(W, S) == Youngest(W, S)",
-       "VictimFor(W, S) == CHOOSE c \\in S : \\A d \\in S : Pos(W.tko, c) <= Pos(W.tko, d)   \\* FAULT: the oldest, not Youngest(W, S)", 1)]),
+     "Within one priority rung, preemption picks the oldest working\n"
+     "consumer instead of the youngest.",
+     [("          THEN <<c>> \\o rest",
+       "          THEN rest \\o <<c>>   \\* FAULT: oldest first", 1)]),
     ("StepsDealsWithoutPolicy", "NoDealWithoutPolicy", "pre",
      "The policy gate is ignored: the tick preempts and deals on the\n"
      "default rows while no active policy answers.",
-     [("         pre  == IF V.pol THEN PreStep(V, a) ELSE NoPlan",
-       "         pre  == PreStep(V, a)   \\* FAULT: was gated on V.pol", 1),
-      ("         dl   == IF V.pol THEN DealStep(V, cl3r, a.rows, TRUE) ELSE NoPlan",
-       "         dl   == DealStep(V, cl3r, a.rows, TRUE)   \\* FAULT: was gated on V.pol", 1)]),
+     [("{IF V.pol THEN PreStep(V, a) ELSE NoPlan} :",
+       "{PreStep(V, a)} :   \\* FAULT: was gated on V.pol", 1),
+      ("{IF V.pol THEN DealStep(V, cl3r, pre.t, a.rows, TRUE) ELSE NoPlan} :",
+       "{DealStep(V, cl3r, pre.t, a.rows, TRUE)} :   \\* FAULT: was gated on V.pol", 1)]),
     ("StepsResolveOnEvent", "ResolveFromState", "deal",
      "Resolve is driven by the land step's events, not the state: a\n"
      "producer with needs resolves only in a tick that consumes its need's\n"
      "landed result, so a need landed by a store op never releases it.",
-     [("         res  == ResolveSet(V, inb.cl)",
-       "         res  == {p \\in ResolveSet(V, inb.cl) :   \\* FAULT: on the event only\n"
-       "                    \\A n \\in Needs[p] : \\E i \\in 1..Len(inbox) :\n"
-       "                      inbox[i].out = \"landed\" /\\ inbox[i].id[3][1] = n}", 1)]),
+     [("\\E res \\in {ResolveSet(V, inb.cl)} :",
+       "\\E res \\in {{p \\in ResolveSet(V, inb.cl) :   \\* FAULT: on the event only\n"
+       "             \\A n \\in Needs[p] : \\E i \\in 1..Len(inbox) :\n"
+       "               inbox[i].out = \"landed\" /\\ inbox[i].id[3][1] = n}} :", 1)]),
     ("StepsYesOnFault", "VerdictHasItsRead", "deal",
      "The verdict default is yes unless a read said fix: a review whose\n"
      "only read faulted is merged with no read that said ok.",
@@ -251,44 +238,61 @@ WITNESSES = [
        "  /\\ TRUE   \\* FAULT: was bus[r]\n", 1)]),
     ("StepsOfferedAbsent", "OfferedIsAccepted", "deal",
      "Layer 5 builds a rows question's candidates itself, from the store's\n"
-     "up with no bus (as until 2026-11-11): a row up in the store and off\n"
-     "the bus is offered, the default policy names it, and the deal refuses\n"
-     "the whole answer for a row it never accepted.",
+     "up with no bus: a row up in the store and off the bus is offered,\n"
+     "and the deal refuses the answer for a row it never accepted.",
      [("PolicyOffered(V, x, r) == Offered(V, x, r)",
-       "PolicyOffered(V, x, r) == V.up[r] /\\ Serves(r, x.p) /\\ (x.kind = \"read\" => r # V.ps[x.p].author)   \\* FAULT: was Offered(V, x, r), which reads the bus", 1)]),
+       "PolicyOffered(V, x, r) == V.up[r] /\\ Serves(r, x.kind, x.p) /\\ (x.kind = \"read\" => r # V.ps[x.p].author)   \\* FAULT", 1)]),
     ("StepsDealtUnadmitted", "NeverDealtUnadmitted", "deal",
      "The deal reads no admission (item 4, 2026-11-08): a producer whose\n"
      "PATHS left its stream's base is dealt, and fails on its row.",
-     [("                                          /\\ admitted[p])   \\* a producer that failed admission is never dealt",
-       "                                          /\\ TRUE)   \\* FAULT: was admitted[p]", 1)]),
+     [("/\\ admitted[p])   \\* a producer that failed admission is never dealt",
+       "/\\ TRUE)   \\* FAULT: was admitted[p]", 1)]),
     ("StepsAdmissionUnshown", "AdmissionShown", "deal",
      "A failed admission opens no judgement: the card waits undealt and\n"
      "only check run by hand says why (item 4, 2026-11-08).",
-     [("                   \\cup {[kind |-> \"admission\", about |-> s] : s \\in {s \\in Streams : Unadmitted(V, s) # {}}}\n",
+     [("                        \\cup {[kind |-> \"admission\", about |-> s] : s \\in {s \\in Streams : Unadmitted(V, s) # {}}}\n",
        "", 1)]),
     ("StepsExpiresSilently", "ExpiryNeverSilent", "deal",
      "A deadline closes a judgement whatever holds (item 3, 2026-11-08): the\n"
      "cause is still there and nothing says so until a later tick reopens it.",
-     [("         Lapsed == dueJ \\ jnew\n",
-       "         Lapsed == dueJ   \\* FAULT: was dueJ \\ jnew\n", 1)]),
+     [("              Lapsed == dueJ \\ jnew\n",
+       "              Lapsed == dueJ   \\* FAULT: was dueJ \\ jnew\n", 1)]),
     ("StepsLapsedKept", "LapsedReleased", "pre",
      "A card whose row is off the bus, past its deadline or that was never\n"
-     "taken stays in the row's hand until the coordinator releases it by hand\n"
-     "(item 2, 2026-11-08: 15 untaken, 14 off the bus, 8 past the deadline).",
+     "taken stays in the row's hand until the coordinator releases it.",
      [("       IN IF L # {} /\\ Free(p, cl)\n",
        "       IN IF FALSE   \\* FAULT: was L # {} /\\ Free(p, cl)\n", 1)]),
     ("StepsHandKept", "HandEmptyWhenClosed", "deal",
      "A row's Gone leaves its hand in place, as before 2026-11-10: a\n"
-     "closed row holds cards nobody works (aurora, unhooked and held,\n"
-     "with 15 cards).",
-     [("                                      THEN ReturnHand([w EXCEPT !.up[r] = FALSE, !.rg[r] = @ + 1], r)",
-       "                                      THEN [w EXCEPT !.up[r] = FALSE, !.rg[r] = @ + 1]   \\* FAULT: was ReturnHand", 1)]),
+     "closed row holds cards nobody works.",
+     [("THEN ReturnHand([w EXCEPT !.up[r] = FALSE, !.rg[r] = @ + 1], r)",
+       "THEN [w EXCEPT !.up[r] = FALSE, !.rg[r] = @ + 1]   \\* FAULT: was ReturnHand", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
-     "The deal leaves one slot of each row empty (a row is dealt only\n"
-     "while working is under width less one): a ready producer with room\n"
-     "waits for a slot the deal never fills.",
-     [("  /\\ Used(V, r, t) < Width[r]\n",
-       "  /\\ Used(V, r, t) + 1 < Width[r]   \\* FAULT: was Used(V, r, t) < Width[r]\n", 1)]),
+     "The deal leaves two resource units of each row empty: a ready\n"
+     "producer with room waits for capacity the deal never fills.",
+     [("  /\\ HasRoom(V, r, ConsNeeds(x.kind, x.p), t)\n",
+       "  /\\ HasRoom(V, r, [cpu |-> ConsNeeds(x.kind, x.p).cpu + 2, mem |-> ConsNeeds(x.kind, x.p).mem + 2], t)   \\* FAULT\n", 1)]),
+    ("StepsDealsBehindPause", "NoDealBehindPause", "pre",
+     "R52 AnyPaused guard omitted: the dealer deals work onto a bench\n"
+     "that already has a paused holder queued behind CI.",
+     [("  /\\ ~W.paused[r]\n",
+       "  /\\ TRUE   \\* FAULT: ignored W.paused[r] (R52)\n", 1)]),
+    ("StepsFutilePreempt", "NoFutilePreempt", "pre",
+     "R53 HeldOther headroom guard omitted: preemption kills a sprint\n"
+     "victim on a bench held by CI where the blocker still cannot fit.",
+     [("  IF W.paused[r] \\/ ~Serves(r, \"work\", b) \\/ ~CanFitWithoutSprint(W, r, CardRes[b]) THEN {}\n"
+       "  ELSE LET es == EligSeq(W, r, b)\n"
+       "       IN IF Len(es) = 0 THEN {}\n"
+       "          ELSE IF FitsAfterFreeing(W, r, CardRes[b], {es[1]}) THEN {es[1]}",
+       "  IF W.paused[r] \\/ ~Serves(r, \"work\", b) THEN {}\n"
+       "  ELSE LET es == EligSeq(W, r, b)\n"
+       "       IN IF Len(es) = 0 THEN {}\n"
+       "          ELSE IF TRUE THEN {es[1]}   \\* FAULT: ignored HeldOther headroom (R53)", 1)]),
+    ("StepsMissingMultiStop", "PreemptMultiStops", "pre",
+     "Multi-victim preemption group emits a stop request for only one\n"
+     "victim instead of every preempted victim in g.vs.",
+     [("   req   |-> IF kind = \"pre\" THEN {StopReq(c) : c \\in vs} ELSE {}]",
+       "   req   |-> IF kind = \"pre\" /\\ vs # {} THEN {StopReq(CHOOSE c \\in vs : TRUE)} ELSE {}]   \\* FAULT", 1)]),
 ]
 
 

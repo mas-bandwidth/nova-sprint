@@ -115,8 +115,24 @@ func (w *world) stream(name string) {
 	w.must("stream", store.PutStream{Name: name, Repo: "git@example.com:r.git", Base: "main", Pos: len(w.v.Streams) + 1})
 }
 
-func (w *world) row(name string, width int, tiers ...string) {
-	w.roster.Workers[name] = roster.Worker{Name: name, Width: width, Tiers: tiers}
+func (w *world) row(name string, units int, tiers ...string) {
+	wk := roster.Worker{Name: name, Tiers: tiers}
+	if units > 0 {
+		wk.Resources = map[string]int{"cpu": units, "memory": units}
+	} else {
+		wk.Held = roster.UnmeasuredResources
+	}
+	w.roster.Workers[name] = wk
+	w.must("row", store.PutRow{Name: name, Session: "hook-" + name, Role: "worker"})
+	w.must("seen", store.SetRowState{Row: name, State: "up"})
+}
+
+func (w *world) bench(name string, tags []string, resources map[string]int, tiers ...string) {
+	wk := roster.Worker{Name: name, Tiers: tiers, Tags: tags, Resources: resources}
+	if wk.Resources["cpu"] < 1 || wk.Resources["memory"] < 1 {
+		wk.Held = roster.UnmeasuredResources
+	}
+	w.roster.Workers[name] = wk
 	w.must("row", store.PutRow{Name: name, Session: "hook-" + name, Role: "worker"})
 	w.must("seen", store.SetRowState{Row: name, State: "up"})
 }

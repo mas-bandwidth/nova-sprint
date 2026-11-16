@@ -38,7 +38,7 @@ func TestHandNudgesThenReturnsUntaken(t *testing.T) {
 	require.Len(t, p.Nudges, 1)
 	n := p.Nudges[0]
 	assert.Equal(t, Nudge{Row: "r1", Card: "p1.w1"}, Nudge{Row: n.Row, Card: n.Card})
-	assert.True(t, strings.HasPrefix(n.Line, "NUDGE you have a new ready card. you have 1 ready cards, you are currently working on 0, and your width is 1. Please work to width! card=p1.w1 "), n.Line)
+	assert.True(t, strings.HasPrefix(n.Line, "NUDGE you have a new ready card. you have 1 ready cards, you are currently working on 0 (cpu 0/1 free, memory 0/1 GiB free). card=p1.w1 "), n.Line)
 	assert.Contains(t, n.Line, "nova-sprint take p1.w1@")
 	assert.Empty(t, s.openJudgements("unacked"), "a nudge, not yet a judgement")
 	p = s.tick()
@@ -233,7 +233,7 @@ func TestHandRouteFaultWaits(t *testing.T) {
 	q := s.snap().Judgements[js[0]].Question
 	assert.Contains(t, q, "row r1")
 	assert.Contains(t, q, "adb no device on this row")
-	assert.Contains(t, q, "declares NEEDS-ROUTE: adb, so the deal sends it only to a row serving route:adb", "the fix in the routes' one vocabulary")
+	assert.Contains(t, q, "declares RESOURCES: adb, so the deal sends it only to a row with adb", "the fix in the resources vocabulary")
 	s.run(4)
 	s.requireState("p1", "waiting")
 	_, redealt := s.snap().Cards["p1.w2"]

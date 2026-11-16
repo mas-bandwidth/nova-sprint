@@ -251,12 +251,20 @@ func (t *tick) rowMove(r string, e card.Event) move {
 // withdraw is a consumer's Withdraw with its producer's stream, so a release
 // into a held stream parks.
 func (t *tick) withdraw(c, reason string) move {
+	return t.withdrawWith(c, reason, false)
+}
+
+func (t *tick) preemptWithdraw(c, reason string) move {
+	return t.withdrawWith(c, reason, true)
+}
+
+func (t *tick) withdrawWith(c, reason string, preempt bool) move {
 	cc := t.v.Cards[c]
 	head := ""
 	if cc.Kind == "work" && cc.State == "working" && cc.Head != "" {
 		head = cc.Head
 	}
-	return t.consumerMove(c, card.Withdraw{Reason: reason, Head: head, Stream: t.streamOf(cc.Stream)})
+	return t.consumerMove(c, card.Withdraw{Reason: reason, Head: head, Stream: t.streamOf(cc.Stream), Preempt: preempt})
 }
 
 func eventName(e card.Event) string { return strings.TrimPrefix(fmt.Sprintf("%T", e), "card.") }

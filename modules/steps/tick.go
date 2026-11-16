@@ -2,10 +2,12 @@ package steps
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -18,27 +20,30 @@ type tick struct {
 	lim Limits
 	tmo Timeouts
 
-	rowsCache map[string]card.Row
-	rowNames  []string              // every row, by name, once
-	rfacts    map[string]RowFacts   // rowFacts, once per row per tick
-	roster    map[string]RosterRow  // the roster's facts, once per row per tick
-	planned   int                   // cards touched by the non-blocker groups planned so far
-	candCache map[string][]RowFacts // candidates per tier and routes for work, once per tick
-	roomCache map[string]int        // room per row (policy's work), once per tick
-	rankCache map[string]int        // rank index per row, once per tick
-	claimed   set                   // cards and rows an earlier step claimed
-	resolved  set                   // producers resolved this tick (the idle judgement reads it)
-	tally     map[string]int        // consumers dealt per row this tick
-	provTally map[string]int        // consumers dealt per provider this tick (the concurrency budget)
-	rested    set                   // rows resting after faults (LPM R34): a deal filter
-	groups    []group
-	edges     []EdgeRequest // land requests, waiting on no op
-	judges    []judgement
-	pend      set               // kind and about of every judgement in judges (addJudge)
-	detected  set               // kind and about of every open judgement a step detected again this tick (held)
-	jidx      judgedIndex       // the view's judgements by kind and about (judged)
-	expires   map[string]string // judgement id -> why it expires
-	leftOut   map[string]string // refusedAlone key -> the store's reason ("" for one already judged), built once (leaveOut)
+	rowsCache      map[string]card.Row
+	rowNames       []string                // every row, by name, once
+	knownTags      map[string]bool         // fleet tags from Roster.Workers
+	knownResources map[string]bool         // fleet resources from Roster.Workers
+	rfacts         map[string]RowFacts     // rowFacts, once per row per tick
+	roster         map[string]RosterRow    // the roster's facts, once per row per tick
+	planned        int                     // cards touched by the non-blocker groups planned so far
+	candCache      map[string][]RowFacts   // candidates per tier and needs, once per tick
+	roomCache      map[string]int          // room per kin row (policy's work), once per tick
+	rankCache      map[string]int          // rank index per row, once per tick
+	claimed        set                     // cards and rows an earlier step claimed
+	resolved       set                     // producers resolved this tick (the idle judgement reads it)
+	tally          map[string]int          // consumers dealt per row this tick
+	dealtNeeds     map[string][]card.Needs // bench resource needs dealt per row this tick
+	provTally      map[string]int          // consumers dealt per provider this tick (the concurrency budget)
+	rested         set                     // rows resting after faults (LPM R34): a deal filter
+	groups         []group
+	edges          []EdgeRequest // land requests, waiting on no op
+	judges         []judgement
+	pend           set               // kind and about of every judgement in judges (addJudge)
+	detected       set               // kind and about of every open judgement a step detected again this tick (held)
+	jidx           judgedIndex       // the view's judgements by kind and about (judged)
+	expires        map[string]string // judgement id -> why it expires
+	leftOut        map[string]string // refusedAlone key -> the store's reason ("" for one already judged), built once (leaveOut)
 }
 
 // Tick plans one tick (docs/LAYER-3-STEPS.md "The tick"; tla/Steps.tla Tick).
@@ -72,9 +77,14 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 }
 
 func newTick(v *View, in Inputs) *tick {
-	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, provTally: map[string]int{}, rested: set{}, expires: map[string]string{},
+	knownTags, knownResources := rosterVocabulary(in.Roster)
+	return &tick{
+		v: v, in: in, knownTags: knownTags, knownResources: knownResources,
+		claimed: set{}, resolved: set{}, tally: map[string]int{}, dealtNeeds: map[string][]card.Needs{},
+		provTally: map[string]int{}, rested: set{}, expires: map[string]string{},
 		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{},
-		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{}}
+		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{},
+	}
 }
 
 // overBudget says whether the non-blocker groups planned so far touch the
@@ -163,7 +173,9 @@ func (t *tick) questions() Questions {
 		}
 	}
 	for _, n := range t.rowNames {
-		q.Width = append(q.Width, t.rowFacts(t.v.Rows[n]))
+		if t.kind(n) == roster.KindKin {
+			q.Width = append(q.Width, t.rowFacts(t.v.Rows[n]))
+		}
 	}
 	for _, s := range sortedKeys(t.v.Streams) {
 		if f := t.streamFacts(s); f.Merging > 0 {
@@ -188,7 +200,14 @@ func (t *tick) rowFacts(r store.Row) RowFacts {
 	if f, ok := t.rfacts[r.Name]; ok {
 		return f
 	}
-	f := RowFacts{Name: r.Name, Kind: t.kind(r.Name), Rank: t.rank(r.Name), Width: t.width(r.Name), Flaps: r.Flaps, Tiers: t.tiers(r.Name)}
+	rr := t.rowOf(r.Name)
+	f := RowFacts{
+		Name: r.Name, Kind: rr.Kind, Rank: t.rank(r.Name), Width: rr.Width,
+		Flaps: r.Flaps, Tiers: rr.Tiers, Tags: rr.Tags, Resources: maps.Clone(rr.Resources),
+	}
+	if rr.Kind == roster.KindWorker {
+		f.Free = t.benchFree(r.Name)
+	}
 	for id := range t.v.liveOnRow[r.Name] {
 		if t.v.Cards[id].State == "working" {
 			f.Working++
@@ -216,31 +235,29 @@ func (t *tick) streamFacts(s string) StreamFacts {
 }
 
 // candidates is the rows policy may name for c: open (up, not held), on the
-// bus (present; Steps.tla Eligible and ServingOpen), serving c's tier, not
-// claimed by a row move when the list is built, and for a read not c's
-// author and not holding a live read of c's head. Room is the engine's check
-// at the deal. The work list is built once per tier per tick, by questions()
-// before the rest, so it is what policy was asked; serving drops the resting
-// rows. A read's is filtered from it.
+// bus (present; Steps.tla Eligible and ServingOpen), serving c's tier and
+// tags/max-resources (DefaultReadNeeds for reads), not claimed by a row move
+// when the list is built, and for a read not c's author and not holding a
+// live read of c's head. Room is the engine's check at the deal.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
-	routes := card.NeedsRoutes(c.Brief) // only rows serving every route the card declares
-	key := c.Tier + "\x00" + strings.Join(routes, ",")
-	work, ok := t.candCache[key]
+	needs := t.consumerNeeds(kind, c.Brief)
+	key := c.Tier + "\x00" + needsCacheKey(needs)
+	base, ok := t.candCache[key]
 	if !ok {
 		for _, n := range t.rowNames {
 			r := t.v.Rows[n]
-			if !t.v.Open(r) || !t.present(n) || !slices.Contains(t.tiers(n), c.Tier) || !t.in.Roster.ServesRoutes(n, routes) || !t.unclaimed(n) {
+			if !t.v.Open(r) || !t.present(n) || !slices.Contains(t.tiers(n), c.Tier) || !t.rowFitsMax(n, needs) || !t.unclaimed(n) {
 				continue
 			}
-			work = append(work, t.rowFacts(r))
+			base = append(base, t.rowFacts(r))
 		}
-		t.candCache[key] = work
+		t.candCache[key] = base
 	}
 	if kind != "read" {
-		return work
+		return base
 	}
 	var out []RowFacts
-	for _, f := range work {
+	for _, f := range base {
 		if f.Name != c.Author && !t.readingOn(c, f.Name) {
 			out = append(out, f)
 		}

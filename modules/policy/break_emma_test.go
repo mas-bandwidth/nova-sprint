@@ -92,7 +92,7 @@ func TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck(t *testing.T) {
 		// with width(r2) = {work: 0, ahead: 0} per Lesson 5.5.
 		// Because r2.working < r2.width, default.star's rows() returns ONLY ["r2"] and drops "r1",
 		// which then fails the joint check: "every row named has work 0 in width, while row r1 could take it".
-		ro := handRoster(rc{"r1", "worker", 1, []string{"pro"}, ""}, rc{"r2", "worker", 1, []string{"pro"}, ""})
+		ro := handRoster(rc{"r1", "kin", 1, []string{"pro"}, "m-pro"}, rc{"r2", "kin", 1, []string{"pro"}, "m-pro"})
 		snap := store.Snapshot{
 			Epoch:   1,
 			Streams: map[string]store.Stream{"s1": {Name: "s1"}},

@@ -75,7 +75,7 @@ func newPolicyTrace(t testing.TB) *policyTrace {
 		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Score: 1, Brief: "do p1", Prose: "do p1"}}
 	for i := range traceMax + 1 {
 		writes = append(writes, hooked(fmt.Sprintf("x%d", i)))
-		w.configure(rc{fmt.Sprintf("x%d", i), "worker", 1, []string{"pro"}, ""})
+		w.configure(rc{fmt.Sprintf("x%d", i), "kin", 1, []string{"pro"}, "m-pro"})
 	}
 	w.apply(writes...)
 	writes = []store.Write{store.SetCardState{Card: "p1", State: "ready"}}
@@ -136,9 +136,9 @@ func (tr *policyTrace) activate(v int) {
 // changes no version's outcome changes no variable of the model, a stutter,
 // not recorded.
 func (tr *policyTrace) drift(i int) {
-	x := tr.w.ro.Workers[fmt.Sprintf("x%d", i)]
+	x := tr.w.ro.Kin[fmt.Sprintf("x%d", i)]
 	x.Width = 3 - x.Width
-	tr.w.ro.Workers[x.Name] = x
+	tr.w.ro.Kin[x.Name] = x
 	tr.record("Drift")
 }
 

@@ -212,11 +212,12 @@ func TestBreakJointCheckIgnoresTheReadCount(t *testing.T) {
 	}}
 	for _, n := range []string{"a", "b", "c"} {
 		snap.Rows[n] = store.Row{Name: n, State: "up", Session: "s-" + n, Role: "worker"}
-		ro.Workers[n] = roster.Worker{Name: n, Width: 1, Tiers: []string{"flash"}, Harness: roster.WorkerHarness}
+		ro.Kin[n] = roster.Kin{Name: n, Width: 1, Tiers: []string{"flash"}, Model: "m-flash", Harness: "claude"}
 	}
 	body := strings.Replace(DefaultBody(), "    return 1  # v1 standing rule", "    return 2  # v1 standing rule", 1)
-	body = strings.Replace(body, `    return {"work": row.width, "ahead": row.width}`, `    w = 0 if row.name == "b" else row.width
-    return {"work": w, "ahead": w}`, 1)
+	body, _ = overrideIn(body, "width", `def width(row):
+    w = 0 if row.name == "b" else row.width
+    return {"work": w, "ahead": w}`)
 	require.NotEqual(t, DefaultBody(), body)
 	a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, snap, ro, FullQuestions(snap, nil))
 	able := 0
@@ -285,9 +286,9 @@ func TestHeldRowan2ConcurrentTicksStayExact(t *testing.T) {
 	s1 := w.snap()
 	w.apply(store.SetCardState{Card: "p4", State: "ready"})
 	s2 := w.snap()
-	wide := seedRoster() // r1 at width 3 for the second snapshot
+	wide := seedRoster() // r1 at 3 cpu/memory units for the second snapshot
 	r1 := wide.Workers["r1"]
-	r1.Width = 3
+	r1.Resources = map[string]int{"cpu": 3, "memory": 3}
 	wide.Workers["r1"] = r1
 	ros := []roster.Roster{w.ro, wide}
 	v2, _ := override("reads", "def reads(card):\n    return 2")

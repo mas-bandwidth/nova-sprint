@@ -174,7 +174,8 @@ func (t *tick) rowLimits(n string) {
 			continue
 		}
 		deadline := t.tmo.Consumer[c.Tier]
-		if since := t.in.Now.Sub(t.dealtAt(id)); deadline > 0 && since >= seconds(t.tmo.ReadyTake+deadline) {
+		since := max(time.Duration(0), t.in.Now.Sub(t.dealtAt(id))-t.consumerPaused(n, id))
+		if deadline > 0 && since >= seconds(t.tmo.ReadyTake+deadline) {
 			t.group("withdraw", id, t.withdraw(id, fmt.Sprintf("working %d s with no report, past tier %s's deadline of %d s after the take window; branch %s is kept", int(since/time.Second), c.Tier, deadline, c.Branch)))
 		} else if silent >= seconds(t.tmo.RowSilentWithdraw) {
 			t.group("withdraw", id, t.withdraw(id, fmt.Sprintf("row %s silent for %s; branch %s is kept", n, silent.Truncate(time.Second), c.Branch)))
@@ -186,6 +187,20 @@ func (t *tick) rowLimits(n string) {
 			g.judge = t.riding("down", n, fmt.Sprintf("friend row %s was off the bus for %s and is down; its hand went back to the queue, branches kept. It comes back up by itself when its hook is on the bus again; if it is gone for good, nova-sprint unhook %s", n, silent.Truncate(time.Second), n))
 		}
 	}
+}
+
+// consumerPaused returns cumulative pause+wait duration reported for consumer
+// id on row (R39b).
+func (t *tick) consumerPaused(row, id string) time.Duration {
+	pm := t.v.Rows[row].Resources.PausedMillis
+	if len(pm) == 0 {
+		return 0
+	}
+	ms := max(pm[id+"@"+itoa(t.v.Epoch)], pm[id])
+	if ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 // rest marks the rows resting after faults (LPM R34, LESSONS 4.24): the

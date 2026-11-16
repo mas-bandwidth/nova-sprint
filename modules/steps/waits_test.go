@@ -130,12 +130,12 @@ func TestIdleJudgementSaysWhyNothingDeals(t *testing.T) {
 	s.run(4)
 	require.Equal(t, "working", s.state("p1"))
 	require.Equal(t, []string{"idle.fleet.1"}, s.openJudgements("idle"))
-	assert.Equal(t, "working 0 of 8 open width while 0 ready and 4 waiting: 0 in held streams, 0 with no serving row", s.snap().Judgements["idle.fleet.1"].Question,
+	assert.Equal(t, "fleet utilization 0% (floor 50%, 1 open row(s)) while 0 ready and 4 waiting: 0 in held streams, 0 with no serving row", s.snap().Judgements["idle.fleet.1"].Question,
 		"the first tick resolves p1: something is dealable")
 	s.must("expire", store.ExpireJudgement{ID: "idle.fleet.1", Reason: "test"})
 	s.run(2)
 	require.Equal(t, []string{"idle.fleet.2"}, s.openJudgements("idle"))
-	assert.Equal(t, "working 1 of 8 open width while 0 ready and 3 waiting: nothing dealable: 1 chain (longest 3, top: p1 blocks 3); ready: 0 in held streams, 0 with no serving row; each stream's waits and chains: nova-sprint check; the top: nova-sprint show p1 (it is working; its landing frees the chain); "+unchain,
+	assert.Equal(t, "fleet utilization 12% (floor 50%, 1 open row(s)) while 0 ready and 3 waiting: nothing dealable: 1 chain (longest 3, top: p1 blocks 3); ready: 0 in held streams, 0 with no serving row; each stream's waits and chains: nova-sprint check; the top: nova-sprint show p1 (it is working; its landing frees the chain); "+unchain,
 		s.snap().Judgements["idle.fleet.2"].Question)
 }
 

@@ -1,24 +1,42 @@
 package steps
 
 import (
+	"maps"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// The roster is nova-config as the steps consume it (package roster): the one
-// true source of the fleet and the friends (Glenn, 2026-11-06), nothing of
-// which is copied into the store. A store row is a name, up or down, its
-// hook (session and role), held and its reason, flaps and a gen; its kind,
-// width and the tiers it serves are read here by name (Inputs.Roster).
-
 // RosterRow is one row's facts as the tick caches them; Kind "" is unlisted.
 type RosterRow struct {
-	Kind  string
-	Width int
-	Tiers []string
+	Kind      string
+	Width     int
+	Tiers     []string
+	Tags      []string
+	Resources map[string]int
+	Held      string
+}
+
+var defaultWorkNeeds = card.Needs{Amounts: map[string]int{"cpu": 1, "memory": 1}}
+
+func rosterVocabulary(ro roster.Roster) (tags, resources map[string]bool) {
+	if len(ro.Workers) == 0 {
+		return nil, nil
+	}
+	tags, resources = map[string]bool{}, map[string]bool{}
+	for _, w := range ro.Workers {
+		for _, t := range w.Tags {
+			tags[t] = true
+		}
+		for r := range w.Resources {
+			resources[r] = true
+		}
+	}
+	return tags, resources
 }
 
 // rowOf is the roster's facts for row name, read once per tick; Kind "" is
@@ -28,11 +46,16 @@ func (t *tick) rowOf(name string) RosterRow {
 		return r
 	}
 	r := RosterRow{}
-	if kind, w, ts, ok := t.in.Roster.Row(name); ok {
-		r = RosterRow{Kind: kind, Width: w, Tiers: ts}
-		if r.Kind == "" {
-			r.Kind = roster.KindWorker
+	if w, ok := t.in.Roster.Workers[name]; ok {
+		r = RosterRow{
+			Kind:      roster.KindWorker,
+			Tiers:     slices.Clone(w.Tiers),
+			Tags:      slices.Clone(w.Tags),
+			Resources: maps.Clone(w.Resources),
+			Held:      w.Held,
 		}
+	} else if k, ok := t.in.Roster.Kin[name]; ok {
+		r = RosterRow{Kind: roster.KindKin, Width: k.Width, Tiers: slices.Clone(k.Tiers)}
 	}
 	t.roster[name] = r
 	return r
@@ -45,11 +68,60 @@ func (t *tick) listed(name string) bool { return t.rowOf(name).Kind != "" }
 // kind is row name's kind from the roster (worker or kin), "" when unlisted.
 func (t *tick) kind(name string) string { return t.rowOf(name).Kind }
 
-// width is row name's width from the roster, 0 when unlisted.
+// width is row name's width from the roster (0 for workers or unlisted).
 func (t *tick) width(name string) int { return t.rowOf(name).Width }
 
 // tiers is the tiers row name serves, from the roster; none when unlisted.
 func (t *tick) tiers(name string) []string { return t.rowOf(name).Tiers }
+
+// rowFitsMax reports whether row name can ever fit needs by static capacity
+// and tags (benches check FitsMax; kin rows choose a machine themselves).
+func (t *tick) rowFitsMax(name string, needs card.Needs) bool {
+	rr := t.rowOf(name)
+	if rr.Kind == roster.KindWorker {
+		return t.in.Roster.Workers[name].FitsMax(needs)
+	}
+	return rr.Kind == roster.KindKin
+}
+
+// consumerNeeds resolves the resource and tag needs of a consumer of kind
+// ("work" or "read") with brief. Reads always use DefaultReadNeeds.
+func (t *tick) consumerNeeds(kind, brief string) card.Needs {
+	if kind == "read" {
+		return card.DefaultReadNeeds()
+	}
+	if brief == "" || !strings.Contains(brief[:min(len(brief), 4096)], card.ResourcesField) {
+		return defaultWorkNeeds
+	}
+	return card.ResolveNeeds("work", brief, t.knownTags, t.knownResources)
+}
+
+// consumerNeedsByID returns the resource needs of consumer id in the view
+// (falling back to DefaultReadNeeds for unknown cross-epoch consumer ids).
+func (t *tick) consumerNeedsByID(id string) card.Needs {
+	if c, ok := t.v.Cards[id]; ok {
+		brief := c.Brief
+		if brief == "" && c.Of != "" {
+			brief = t.v.Cards[c.Of].Brief
+		}
+		return t.consumerNeeds(c.Kind, brief)
+	}
+	return card.DefaultReadNeeds()
+}
+
+// canonicalConsumerID strips a matching "@<epoch>" suffix from a SprintConsumers
+// entry so "<id>@<epoch>" deduplicates with "<id>" in liveOnRow.
+func canonicalConsumerID(raw string, epoch int) string {
+	raw = strings.TrimSpace(raw)
+	base, ep, ok := strings.Cut(raw, "@")
+	if !ok {
+		return base
+	}
+	if n, err := strconv.Atoi(ep); err == nil && n == epoch {
+		return base
+	}
+	return raw
+}
 
 // rank is the highest tier a row lists; "" for none.
 func (t *tick) rank(name string) string {
@@ -64,7 +136,7 @@ func (t *tick) rank(name string) string {
 }
 
 // rowRecord is a store row as the card machine reads it, its width and tiers
-// from the roster (the machine's deal guards take them from there).
+// from the roster.
 func (t *tick) rowRecord(r store.Row) card.Row {
 	rr := t.rowOf(r.Name)
 	return card.RowFromStore(r, rr.Width, rr.Tiers)
@@ -77,16 +149,7 @@ func RosterGroup(name string) string { return "roster:" + name }
 // RetiredReason is the reason a retired row keeps.
 const RetiredReason = "retired: nova-config no longer names it"
 
-// unlisted is every store row the roster lacks. One nova-config does not name
-// at all is retired, its hand returned to the queue in the same op, branches
-// and heads kept (Glenn, 2026-11-15: "the nova-sprint system and dash
-// follows the set of machines defined automatically in nova-config";
-// tla/RowAlive.tla Retire): it then shows nowhere until it hooks in again.
-// An empty roster retires nothing (Retirable): a read that failed plans no
-// tick at all (run RosterUnread), and one that returned nothing is a fault,
-// never a fleet with no rows. One nova-config names that is not a roster row
-// (a machine that is not a bench, a disabled friend, a refused row) is dealt
-// nothing and opens the roster judgement.
+// unlisted is every store row the roster lacks.
 func (t *tick) unlisted() {
 	for _, n := range t.rowNames {
 		switch {
@@ -99,23 +162,13 @@ func (t *tick) unlisted() {
 	}
 }
 
-// Retirable says whether store row r is retired on roster ro: ro is not
-// empty, nova-config does not name the row, and it is not hooked as the
-// coordinator (tla/RowAlive.tla RetireDue). The coordinator is never
-// unhooked by a tick: a sprint never runs without one, so that row keeps the
-// roster judgement until it unhooks or nova-config names it. The steps, the
-// retire verb and the doctor read it, so all three judge a row the same way.
+// Retirable says whether store row r is retired on roster ro.
 func Retirable(ro roster.Roster, r store.Row) bool {
 	return !ro.Empty() && !ro.Names(r.Name) && r.Role != "coordinator"
 }
 
 // retire is the tick's retire of row n: its hand returned and the row
-// retired in one op (retireMoves). The store refuses a retire while the row
-// holds a live card, so when this tick cannot return the whole hand (a card
-// a step claimed, one whose producer is not free, one the card machine will
-// not withdraw) it returns what it can and retires the row on a later tick,
-// when the hand is empty (tla/RowAlive.tla Retire: RetireDue needs the hand
-// empty after the op's own withdraws).
+// retired in one op (retireMoves).
 func (t *tick) retire(n string) {
 	if !t.unclaimed(n) {
 		return
@@ -131,8 +184,7 @@ func (t *tick) retire(n string) {
 }
 
 // retireMoves is the Withdraw of every live consumer of row n this op can
-// return, each released with its branch and pushed head kept (ids, in
-// order), then, when that is the whole hand (whole), the row's Retire.
+// return, then, when that is the whole hand (whole), the row's Retire.
 func (t *tick) retireMoves(n string) (moves []move, ids []string, whole bool) {
 	whole = true
 	for _, id := range t.v.Live(n) {

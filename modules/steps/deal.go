@@ -2,11 +2,14 @@ package steps
 
 import (
 	"cmp"
+	"crypto/sha256"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -24,15 +27,7 @@ type cand struct {
 }
 
 // deal is the deal and reads step (LAYER-3 "Deal and reads"; the model's
-// DealStep; NeverDealtTwice, NeverBelowTier, guarantee 8). One candidate
-// list down the ladder, within a rung in policy's order then id; each
-// candidate is dealt to a row with room (working under policy's work, at
-// most the width: the deal is the take, defect 52), the
-// row from policy's rows answer, else the engine's ranking; a candidate no
-// row has room for stays ready, queued. Escalation is row choice: a work
-// consumer at the card's own rank, one up at escalate_after bounces, the
-// top rank at frontier_after; a read at the rank above the writer's. No
-// tier is ever written, and a row below the card's tier is never offered.
+// DealStep; NeverDealtTwice, NeverBelowTier, guarantee 8).
 func (t *tick) deal() {
 	if t.gated() {
 		return
@@ -105,17 +100,17 @@ func (t *tick) dealWork(c store.Card) {
 		return
 	}
 	answered := t.rowsAnswer(c, "work")
-	serving := t.serving(c)
+	serving := t.servingKind(c, "work")
 	if len(serving) == 0 {
-		q := "no open row serves tier " + c.Tier + routesClause(c) + "; ready " + c.ID + " waits"
-		var resting []string // serving is empty: every candidate rests after faults
+		q := "no open row serves tier " + c.Tier + t.needsClause(c) + "; ready " + c.ID + " waits"
+		var resting []string
 		for _, f := range t.candidates(c, "work") {
 			resting = append(resting, f.Name)
 		}
 		if len(resting) > 0 {
 			q += "; resting after faults, dealt to again when the rest ends: " + strings.Join(resting, ", ")
 		}
-		t.judge("unserved", unservedAbout(c), q)
+		t.judge("unserved", t.unservedAbout(c), q)
 		return
 	}
 	named := t.named(c, serving)
@@ -125,13 +120,14 @@ func (t *tick) dealWork(c store.Card) {
 	}
 	base, ok := t.base(c.Stream)
 	if !ok || (t.overBudget() && rung(c) != "blocker") {
-		return // past the budget nothing more is dealt; the judgements above are still opened
+		return
 	}
-	row := t.pickRow(c, t.named(c, answered), t.withRoom(t.dealable(c, named)))
+	workNeeds := t.consumerNeeds("work", c.Brief)
+	row := t.pickRow(c, t.named(c, answered), t.withRoomFor(t.dealable(c, named), workNeeds))
 	if row == "" {
 		return
 	}
-	t.tally[row]++ // the in-tick tally counts the deal whether or not the budget admits it
+	t.recordDeal(row, workNeeds)
 	t.provTally[provider(t.model(c, row))]++
 	start := card.Start{Row: row, Branch: branch(c), Base: base, Model: t.model(c, row)}
 	if g := t.group("start", c.ID, t.producerMove(c.ID, start)); g != nil {
@@ -144,12 +140,7 @@ func (t *tick) dealRead(c store.Card) {
 		return
 	}
 	answered := t.rowsAnswer(c, "read")
-	var serving []string
-	for _, r := range t.serving(c) {
-		if r != c.Author && !t.readingOn(c, r) {
-			serving = append(serving, r)
-		}
-	}
+	serving := t.servingKind(c, "read")
 	if len(serving) == 0 {
 		t.judge("cannot-read", c.ID, "no open row may read "+c.ID+" (author "+c.Author+"); the review waits on nothing")
 		return
@@ -162,10 +153,11 @@ func (t *tick) dealRead(c store.Card) {
 	if t.overBudget() {
 		return
 	}
+	readNeeds := card.DefaultReadNeeds()
 	var rows, models []string
-	for _, r := range t.pickRows(c, t.named(c, answered), t.withRoom(t.dealable(c, named)), t.owed(c)) {
-		if m := t.model(c, r); len(t.dealable(c, []string{r})) > 0 { // the budget counts this read's earlier rows
-			t.tally[r]++
+	for _, r := range t.pickRows(c, t.named(c, answered), t.withRoomFor(t.dealable(c, named), readNeeds), t.owed(c)) {
+		if m := t.model(c, r); len(t.dealable(c, []string{r})) > 0 {
+			t.recordDeal(r, readNeeds)
 			t.provTally[provider(m)]++
 			rows, models = append(rows, r), append(models, m)
 		}
@@ -177,9 +169,7 @@ func (t *tick) dealRead(c store.Card) {
 }
 
 // dealable drops the rows whose model for c rests after a provider's rate
-// limit (View.RateLimited, for policy's route_rest_for), or whose provider
-// is at its concurrency budget: its consumers live across the fleet plus
-// this tick's deals (Answers.Concurrency; none is unlimited).
+// limit or whose provider is at its concurrency budget.
 func (t *tick) dealable(c store.Card, rows []string) []string {
 	var out []string
 	for _, r := range rows {
@@ -209,20 +199,102 @@ func (t *tick) providerUsed(p string) int {
 	return n
 }
 
-// provider is the provider half of a provider/model id.
 func provider(model string) string {
 	p, _, _ := strings.Cut(model, "/")
 	return p
 }
 
-// withRoom keeps the rows with room: live consumers plus this tick's deals
-// under policy's work, at most the width. Every live consumer is in hand
-// (working; a ready one is a pre-deal-is-take leftover the holds step
-// withdraws), so this is the width check at the deal.
-func (t *tick) withRoom(rows []string) []string {
+// recordDeal updates in-tick consumer and bench resource tallies for row.
+func (t *tick) recordDeal(row string, needs card.Needs) {
+	t.tally[row]++
+	if t.kind(row) == roster.KindWorker {
+		t.dealtNeeds[row] = append(t.dealtNeeds[row], needs)
+	}
+}
+
+// benchSprintUsed computes sprint_used(B, r) per R50: the consumer-ID union of
+// working consumers on B and row.Resources.SprintConsumers, plus earlier deals
+// made to B in this tick.
+func (t *tick) benchSprintUsed(row string) map[string]int {
+	active := set{}
+	for id := range t.v.liveOnRow[row] {
+		if t.v.Cards[id].State == "working" {
+			active[id] = struct{}{}
+		}
+	}
+	for _, raw := range t.v.Rows[row].Resources.SprintConsumers {
+		if id := canonicalConsumerID(raw, t.v.Epoch); id != "" {
+			active[id] = struct{}{}
+		}
+	}
+	out := map[string]int{}
+	for id := range active {
+		for k, v := range t.consumerNeedsByID(id).Amounts {
+			out[k] += v
+		}
+	}
+	for _, needs := range t.dealtNeeds[row] {
+		for k, v := range needs.Amounts {
+			out[k] += v
+		}
+	}
+	return out
+}
+
+// benchUsed computes used(B, r) = HeldOther[r] + sprint_used(B, r) per R50.
+func (t *tick) benchUsed(row string) map[string]int {
+	used := t.benchSprintUsed(row)
+	for k, v := range t.v.Rows[row].Resources.HeldOther {
+		used[k] += v
+	}
+	return used
+}
+
+// benchFree returns available bench resources per R50/R52 (zero for all keys
+// when unmeasured or AnyPaused).
+func (t *tick) benchFree(row string) map[string]int {
+	rr := t.rowOf(row)
+	out := make(map[string]int, len(rr.Resources))
+	if rr.Held != "" || t.v.Rows[row].Resources.AnyPaused {
+		for k := range rr.Resources {
+			out[k] = 0
+		}
+		return out
+	}
+	used := t.benchUsed(row)
+	for k, total := range rr.Resources {
+		out[k] = max(0, total-used[k])
+	}
+	return out
+}
+
+// hasRoom reports whether row has room for needs right now (width on kin,
+// R50/R52 multi-resource room on benches).
+func (t *tick) hasRoom(row string, needs card.Needs) bool {
+	switch t.kind(row) {
+	case roster.KindKin:
+		return t.used(row) < t.room(row)
+	case roster.KindWorker:
+		rr := t.rowOf(row)
+		if rr.Held != "" || t.v.Rows[row].Resources.AnyPaused || !t.rowFitsMax(row, needs) {
+			return false
+		}
+		used := t.benchUsed(row)
+		for k, need := range needs.Amounts {
+			if rr.Resources[k]-used[k] < need {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// withRoomFor filters rows to those that have room for needs right now.
+func (t *tick) withRoomFor(rows []string, needs card.Needs) []string {
 	var out []string
 	for _, r := range rows {
-		if t.used(r) < t.room(r) {
+		if t.hasRoom(r, needs) {
 			out = append(out, r)
 		}
 	}
@@ -231,7 +303,7 @@ func (t *tick) withRoom(rows []string) []string {
 
 func (t *tick) used(r string) int { return len(t.v.liveOnRow[r]) + t.tally[r] }
 
-// room is policy's work for row r, read once per tick.
+// room is policy's work for kin row r, read once per tick.
 func (t *tick) room(r string) int {
 	if n, ok := t.roomCache[r]; ok {
 		return n
@@ -250,12 +322,46 @@ func (t *tick) rankIndex(r string) int {
 	return t.rankCache[r]
 }
 
-// rowsAnswer is policy's rows answer for c, read once per candidate (the
-// oracle records a miss per question whatever the candidate's fate); nil
-// when the engine's ranking decides. The candidates policy was offered
-// include rows resting after faults (the rest is known only after the
-// questions); the answer drops them, and an answer naming only resting rows
-// is no answer, never a miss: policy named a row it was offered.
+func (t *tick) rowIdle(r string) bool {
+	if t.used(r) > 0 {
+		return false
+	}
+	if t.kind(r) == roster.KindWorker {
+		for _, v := range t.benchUsed(r) {
+			if v > 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (t *tick) freeFraction(r string, needs card.Needs) float64 {
+	if t.kind(r) == roster.KindKin {
+		room := t.room(r)
+		if room <= 0 {
+			return 0
+		}
+		return float64(max(0, room-t.used(r))) / float64(room)
+	}
+	rr := t.rowOf(r)
+	free := t.benchFree(r)
+	best := 1.0
+	has := false
+	for _, k := range sortedKeys(needs.Amounts) {
+		total := rr.Resources[k]
+		if total <= 0 {
+			return 0
+		}
+		frac := float64(free[k]) / float64(total)
+		if !has || frac < best {
+			best, has = frac, true
+		}
+	}
+	return best
+}
+
+// rowsAnswer is policy's rows answer for c, dropping resting rows.
 func (t *tick) rowsAnswer(c store.Card, kind string) []string {
 	answered := t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
 	if answered == nil {
@@ -279,10 +385,7 @@ func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 }
 
 // pickRows is up to n distinct rows for c among rows (every one eligible,
-// with room): policy's answered rows are the set a card may go to, its order
-// no preference; the engine's ranking (which counts this tick's deals) picks
-// among them, then among the rest. An answer naming no row with room is a
-// miss, as an answer naming a row not offered is.
+// with room): policy's answered rows first, then the rest.
 func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
 	if len(rows) == 0 || n <= 0 {
 		return nil
@@ -290,13 +393,14 @@ func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
 	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
 		t.o.refuse("rows", fmt.Sprintf("rows(%s) names %s, none with room (rows with room: %s)", c.ID, firstIDs(answered), cmp.Or(firstIDs(rows), "none")))
 	}
+	kind := kindOf(c)
 	allowed := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return !slices.Contains(answered, r) })
-	out := t.ranked(c, kindOf(c), allowed, n)[:min(n, len(allowed))]
+	out := t.ranked(c, kind, answered, allowed, n)[:min(n, len(allowed))]
 	if len(out) >= n {
 		return out
 	}
 	rest := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return slices.Contains(out, r) })
-	out = append(out, t.ranked(c, kindOf(c), rest, n-len(out))[:min(n-len(out), len(rest))]...)
+	out = append(out, t.ranked(c, kind, nil, rest, n-len(out))[:min(n-len(out), len(rest))]...)
 	return out
 }
 
@@ -307,47 +411,68 @@ func kindOf(c store.Card) string {
 	return "work"
 }
 
-// ranked is rows in the engine's order (the model's DefaultRow): the desired
-// rank exactly, then above it, then an idle lane, then most room, then name;
-// a row the card was withdrawn from last, when another remains (LPM D22).
-// rows come in name order, so a stable sort keeps the name tie-break; a
-// single candidate's best row is one pass (the deal's common case).
-func (t *tick) ranked(c store.Card, kind string, rows []string, n int) []string {
-	want := t.desired(c, kind)
-	score := func(r string) int {
-		rk := t.rankIndex(r)
-		s := 0
-		switch {
-		case rk == want:
-			s = 100
-		case rk > want:
-			s = 50
-		}
-		if t.used(r) == 0 {
-			s += 10
-		}
-		if t.withdrawnFrom(c, r) {
-			s -= 1000
-		}
-		return s + t.room(r) - t.used(r)
+func (t *tick) tierBand(r string, want int) int {
+	rk := t.rankIndex(r)
+	switch {
+	case rk == want:
+		return 2
+	case rk > want:
+		return 1
+	default:
+		return 0
 	}
+}
+
+func (t *tick) compareRows(c store.Card, want int, needs card.Needs, answered []string, a, b string) int {
+	if wa, wb := t.withdrawnFrom(c, a), t.withdrawnFrom(c, b); wa != wb {
+		if !wa {
+			return -1
+		}
+		return 1
+	}
+	if cmpBand := cmp.Compare(t.tierBand(b, want), t.tierBand(a, want)); cmpBand != 0 {
+		return cmpBand
+	}
+	if ia, ib := t.rowIdle(a), t.rowIdle(b); ia != ib {
+		if ia {
+			return -1
+		}
+		return 1
+	}
+	if cmpFrac := cmp.Compare(t.freeFraction(b, needs), t.freeFraction(a, needs)); cmpFrac != 0 {
+		return cmpFrac
+	}
+	if len(answered) > 0 {
+		if pa, pb := slices.Index(answered, a), slices.Index(answered, b); pa >= 0 && pb >= 0 && pa != pb {
+			return cmp.Compare(pa, pb)
+		}
+	}
+	return cmp.Compare(a, b)
+}
+
+// ranked orders rows by !withdrawnFrom, desired tier rank, idle status,
+// bottleneck free-resource fraction, policy answer order, then name.
+func (t *tick) ranked(c store.Card, kind string, answered, rows []string, n int) []string {
+	if len(rows) == 0 {
+		return nil
+	}
+	want := t.desired(c, kind)
+	needs := t.consumerNeeds(kind, c.Brief)
 	if n == 1 {
-		best, bestScore := "", 0
-		for _, r := range rows {
-			if s := score(r); best == "" || s > bestScore {
-				best, bestScore = r, s
+		best := rows[0]
+		for _, r := range rows[1:] {
+			if t.compareRows(c, want, needs, answered, r, best) < 0 {
+				best = r
 			}
 		}
 		return []string{best}
 	}
 	out := slices.Clone(rows)
-	slices.SortStableFunc(out, func(a, b string) int { return cmp.Compare(score(b), score(a)) })
+	slices.SortStableFunc(out, func(a, b string) int { return t.compareRows(c, want, needs, answered, a, b) })
 	return out
 }
 
-// desired is the rank wanted for c (LAYER-3 "Escalation"): a read at the
-// rank above the writer's row (the top stays the top); work at the card's
-// tier, one up at escalate_after bounces, the top at frontier_after.
+// desired is the rank wanted for c (LAYER-3 "Escalation").
 func (t *tick) desired(c store.Card, kind string) int {
 	top := t.topRank()
 	if kind == "read" {
@@ -366,8 +491,7 @@ func (t *tick) desired(c store.Card, kind string) int {
 	return min(want, top)
 }
 
-// topRank is the highest rank any listed row serves: the top escalation
-// reaches (the top stays the top); the top tier when no row is listed.
+// topRank is the highest rank any listed row serves.
 func (t *tick) topRank() int {
 	top := -1
 	for n := range t.v.Rows {
@@ -391,18 +515,65 @@ func (t *tick) withdrawnFrom(c store.Card, row string) bool {
 	return false
 }
 
-// routesClause is " with route(s) <a, b>" for a card that declares routes
-// (card.NeedsRoutes), else "".
-func routesClause(c store.Card) string {
-	if rs := card.NeedsRoutes(c.Brief); len(rs) > 0 {
-		return " with route(s) " + strings.Join(rs, ", ")
+func needsCacheKey(needs card.Needs) string {
+	parts := slices.Clone(needs.Tags)
+	for _, k := range sortedKeys(needs.Amounts) {
+		parts = append(parts, k+"="+itoa(needs.Amounts[k]))
+	}
+	return strings.Join(parts, "+")
+}
+
+func extraNeedsTokens(needs card.Needs, sep string) []string {
+	var out []string
+	out = append(out, needs.Tags...)
+	for _, k := range sortedKeys(needs.Amounts) {
+		v := needs.Amounts[k]
+		if (k == "cpu" || k == "memory") && v == 1 {
+			continue
+		}
+		if v == 1 && k != "cpu" && k != "memory" {
+			out = append(out, k)
+		} else {
+			out = append(out, k+sep+itoa(v))
+		}
+	}
+	return out
+}
+
+func (t *tick) needsClause(c store.Card) string {
+	words := extraNeedsTokens(t.consumerNeeds("work", c.Brief), " ")
+	if len(words) > 0 {
+		return " with resource(s) " + strings.Join(words, ", ")
 	}
 	return ""
 }
 
-// unservedAbout is what an unserved judgement is about: the card's tier,
-// then "+<route>" for each route it declares (cleared reads it back), so a
-// tier served without the route does not clear it.
-func unservedAbout(c store.Card) string {
-	return strings.Join(append([]string{c.Tier}, card.NeedsRoutes(c.Brief)...), "+")
+func (t *tick) unservedAbout(c store.Card) string {
+	parts := append([]string{c.Tier}, extraNeedsTokens(t.consumerNeeds("work", c.Brief), ":")...)
+	s := strings.Join(parts, "+")
+	if len(s) <= 96 {
+		return s
+	}
+	sum := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%s+hash:%x", c.Tier, sum[:8])
+}
+
+func (t *tick) parseUnservedAbout(about string) (string, card.Needs) {
+	parts := strings.Split(about, "+")
+	needs := card.Needs{Amounts: map[string]int{"cpu": 1, "memory": 1}}
+	for _, tok := range parts[1:] {
+		if name, numStr, ok := strings.Cut(tok, ":"); ok {
+			if name == "hash" {
+				needs.Tags = append(needs.Tags, tok)
+			} else if n, err := strconv.Atoi(numStr); err == nil && n >= 1 {
+				needs.Amounts[name] = n
+			}
+		} else if t.knownResources[tok] {
+			needs.Amounts[tok] = 1
+		} else if tok != "" {
+			needs.Tags = append(needs.Tags, tok)
+		}
+	}
+	slices.Sort(needs.Tags)
+	return parts[0], needs
 }

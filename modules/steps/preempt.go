@@ -1,25 +1,22 @@
 package steps
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
-// preempt is the preemption step (LAYER-3 "Preemption"; the model's PreStep;
-// BlockerPreemptsInOneTick, PreemptYoungest). A ready blocker with no free
-// width on any open serving row (working at width) gets, on one such row,
-// one group: Withdraw of the youngest working consumer there (releasing its
-// producer, score and branch kept) merged with the blocker's Start, and a
-// stop request for the runner that rides with the op. The row is policy's
-// rows answer when it names one with a victim, else the first by name; at
-// most one preemption per row per tick. No open serving row at all opens
-// unserved for the tier and the blocker stays ready.
+// preempt is the preemption step (LAYER-3 "Preemption"; R53). A ready blocker
+// with no free room on any open serving row preempts minimal lowest-priority
+// working sprint victims in v2's order (never behind AnyPaused or insufficient
+// non-sprint headroom on a bench) and starts in the same op.
 func (t *tick) preempt() {
 	if t.o.a.NoDeal != "" {
-		return // the gate: the deal step opens its judgement
+		return
 	}
 	used := set{}
 	for _, b := range t.v.Producers("ready") {
@@ -29,14 +26,15 @@ func (t *tick) preempt() {
 		}
 		serving := t.named(c, t.serving(c))
 		if len(serving) == 0 {
-			continue // the deal opens unserved or no-model
+			continue
 		}
-		if !t.noFreeWidth(serving) {
-			continue // the deal starts it
+		needs := t.consumerNeeds("work", c.Brief)
+		if !t.noFreeRoom(c, serving, needs) {
+			continue
 		}
 		var rows []string
 		for _, r := range serving {
-			if _, u := used[r]; !u && t.victim(r, b) != "" {
+			if _, u := used[r]; !u && len(t.victims(r, b, needs)) > 0 {
 				rows = append(rows, r)
 			}
 		}
@@ -44,34 +42,56 @@ func (t *tick) preempt() {
 			continue
 		}
 		row := t.preferred(c, rows)
-		t.preemptOn(c, row, t.victim(row, b))
+		t.preemptOn(c, row, t.victims(row, b, needs), needs)
 		used[row] = struct{}{}
 	}
 }
 
-// preemptOn plans the preemption of victim on row for blocker b.
-func (t *tick) preemptOn(b store.Card, row, victim string) {
+func (t *tick) noFreeRoom(c store.Card, rows []string, needs card.Needs) bool {
+	for _, r := range t.dealable(c, rows) {
+		if t.kind(r) == roster.KindKin {
+			if t.v.Working(r) < t.room(r) {
+				return false
+			}
+		} else if t.hasRoom(r, needs) {
+			return false
+		}
+	}
+	return true
+}
+
+// preemptOn plans the multi-victim preemption of victims on row for blocker b.
+func (t *tick) preemptOn(b store.Card, row string, victims []string, needs card.Needs) {
 	base, ok := t.base(b.Stream)
-	if !ok {
+	if !ok || len(victims) == 0 {
 		return
 	}
+	moves := make([]move, 0, len(victims)+1)
+	for _, v := range victims {
+		moves = append(moves, t.preemptWithdraw(v, "preempted by blocker "+b.ID))
+	}
 	start := card.Start{Row: row, Branch: branch(b), Base: base, Model: t.model(b, row)}
-	g := t.group("pre", b.ID, t.withdraw(victim, "preempted by blocker "+b.ID), t.producerMove(b.ID, start))
+	moves = append(moves, t.producerMove(b.ID, start))
+	g := t.group("pre", b.ID, moves...)
 	if g == nil {
 		return
 	}
+	t.recordDeal(row, needs)
 	g.blocker = true
-	vc := t.v.Cards[victim]
-	g.edges = []EdgeRequest{{ID: "stop." + victim, Kind: "stop", Stream: vc.Stream, Cards: []string{victim}, Row: row, Consumer: victim}}
+	for _, v := range victims {
+		vc := t.v.Cards[v]
+		g.edges = append(g.edges, EdgeRequest{ID: "stop." + v, Kind: "stop", Stream: vc.Stream, Cards: []string{v}, Row: row, Consumer: v})
+	}
 }
 
-// serving is the open (up, not held), unrested rows serving c's tier, by
-// name: the candidates without the rows resting after faults. The rest is
-// applied here, not in the candidates, because the candidates are built
-// when the questions are asked, before the rest is known.
+// serving is the open, unrested rows serving c's work tier and resources.
 func (t *tick) serving(c store.Card) []string {
+	return t.servingKind(c, "work")
+}
+
+func (t *tick) servingKind(c store.Card, kind string) []string {
 	var out []string
-	for _, f := range t.candidates(c, "work") {
+	for _, f := range t.candidates(c, kind) {
 		if _, resting := t.rested[f.Name]; !resting {
 			out = append(out, f.Name)
 		}
@@ -79,31 +99,130 @@ func (t *tick) serving(c store.Card) []string {
 	return out
 }
 
-// noFreeWidth says whether every row works at its width (ready consumers
-// hold no width; a queue is not free width: the model's NoFreeWidth).
-func (t *tick) noFreeWidth(rows []string) bool {
-	for _, r := range rows {
-		if t.v.Working(r) < t.width(r) {
+func (t *tick) consumerPrio(c store.Card) int {
+	if c.Kind == "read" {
+		return 3
+	}
+	switch rung(t.v.Cards[c.Of]) {
+	case "low":
+		return 0
+	case "normal":
+		return 1
+	case "high":
+		return 2
+	case "critical":
+		return 4
+	case "blocker":
+		return 5
+	}
+	return 1
+}
+
+func (t *tick) eligibleVictims(row, b string) []string {
+	var elig []string
+	seenProd := set{}
+	for _, id := range t.v.Live(row) {
+		c := t.v.Cards[id]
+		if c.State != "working" || c.Of == b || !t.unclaimed(id) || !t.free(c.Of) || t.consumerPrio(c) >= 5 {
+			continue
+		}
+		if _, dup := seenProd[c.Of]; dup {
+			continue
+		}
+		seenProd[c.Of] = struct{}{}
+		elig = append(elig, id)
+	}
+	slices.SortFunc(elig, func(a, b string) int {
+		if cp := cmp.Compare(t.consumerPrio(t.v.Cards[a]), t.consumerPrio(t.v.Cards[b])); cp != 0 {
+			return cp
+		}
+		if !t.v.TakenAt[a].Equal(t.v.TakenAt[b]) {
+			return t.v.TakenAt[b].Compare(t.v.TakenAt[a])
+		}
+		return cmp.Compare(b, a)
+	})
+	return elig
+}
+
+func (t *tick) fitsAfterFreeing(row string, needs card.Needs, freed []string) bool {
+	if t.kind(row) == roster.KindKin {
+		return len(freed) >= max(1, t.v.Working(row)-t.width(row)+1)
+	}
+	rr := t.rowOf(row)
+	sr := t.v.Rows[row]
+	drop := set{}
+	for _, id := range freed {
+		drop[id] = struct{}{}
+	}
+	active := set{}
+	for id := range t.v.liveOnRow[row] {
+		if _, dropped := drop[id]; !dropped && t.v.Cards[id].State == "working" {
+			active[id] = struct{}{}
+		}
+	}
+	for _, raw := range sr.Resources.SprintConsumers {
+		id := canonicalConsumerID(raw, t.v.Epoch)
+		if _, dropped := drop[id]; id != "" && !dropped {
+			active[id] = struct{}{}
+		}
+	}
+	used := map[string]int{}
+	for k, v := range sr.Resources.HeldOther {
+		used[k] += v
+	}
+	for id := range active {
+		for k, v := range t.consumerNeedsByID(id).Amounts {
+			used[k] += v
+		}
+	}
+	for _, d := range t.dealtNeeds[row] {
+		for k, v := range d.Amounts {
+			used[k] += v
+		}
+	}
+	for k, need := range needs.Amounts {
+		if rr.Resources[k]-used[k] < need {
 			return false
 		}
 	}
 	return true
 }
 
-// victim is the youngest working consumer on row that is not b's and is
-// unclaimed: the latest taken, by id when the take was not witnessed.
-func (t *tick) victim(row, b string) string {
-	best := ""
-	for _, id := range t.v.Live(row) {
-		c := t.v.Cards[id]
-		if c.State != "working" || c.Of == b || !t.unclaimed(id) || !t.free(c.Of) {
-			continue
+// victims returns the minimal lowest-priority victim set on row whose
+// preemption frees room for needs, or nil when preemption cannot fit needs.
+func (t *tick) victims(row, b string, needs card.Needs) []string {
+	if t.kind(row) == roster.KindWorker {
+		rr := t.rowOf(row)
+		sr := t.v.Rows[row]
+		if rr.Held != "" || sr.Resources.AnyPaused || !t.rowFitsMax(row, needs) {
+			return nil
 		}
-		if best == "" || t.v.TakenAt[id].After(t.v.TakenAt[best]) || (t.v.TakenAt[id].Equal(t.v.TakenAt[best]) && id > best) {
-			best = id
+		for k, need := range needs.Amounts {
+			if rr.Resources[k]-sr.Resources.HeldOther[k] < need {
+				return nil
+			}
 		}
 	}
-	return best
+	elig := t.eligibleVictims(row, b)
+	var chosen []string
+	fit := false
+	for _, id := range elig {
+		chosen = append(chosen, id)
+		if t.fitsAfterFreeing(row, needs, chosen) {
+			fit = true
+			break
+		}
+	}
+	if !fit {
+		return nil
+	}
+	for j := len(chosen) - 2; j >= 0; j-- {
+		without := slices.Delete(slices.Clone(chosen), j, j+1)
+		if t.fitsAfterFreeing(row, needs, without) {
+			chosen = without
+		}
+	}
+	return chosen
 }
 
 // preferred is the first of rows policy's answer for c names, else the first
@@ -132,11 +251,6 @@ func (t *tick) base(stream string) (string, bool) {
 	return b, true
 }
 
-// noHead is how the engine judgement for a stream with no head begins;
-// cleared knows the judgement by it.
 func noHead(stream string) string { return "stream " + stream + " has no head in the tick's inputs" }
 
-// branch is the card branch: sprint/<stream>/<producer> (the stream's group
-// branch is sprint-group/<stream>, outside sprint/, so the two never meet as
-// a file and a directory of one ref).
 func branch(c store.Card) string { return "sprint/" + c.Stream + "/" + c.ID }

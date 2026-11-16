@@ -36,7 +36,8 @@ def rows(card, kind, candidates):
     # highest first. Every candidate is listed, those with room first (the
     # rest queue). Never below the tier: candidates all serve it.
     # prefer is that rule in Go, so a tick is linear in its producers.
-    return prefer(candidates, _want(card, kind))
+    needs = card.resources if kind == "work" else {}
+    return prefer(candidates, _want(card, kind), needs)
 
 def reads(card):
     return 1  # v1 standing rule, 2026-10-20
@@ -50,11 +51,7 @@ def verdict(card, reads):
     return "retry"  # every done read faulted: ask one more read
 
 def width(row):
-    # dogfood 2026-11-07 (Glenn: a ready card never sits): no deal-ahead for
-    # anyone; a bench runs at most 4 harnesses at once (nova-reserve shared
-    # slots), so its work width is 4 whatever its cores say (defect 65).
-    if row.kind == "worker":
-        return {"work": min(row.width, 4), "ahead": 0}
+    # Called only for kin rows (friends); benches carry tags and resources.
     return {"work": row.width, "ahead": 0}
 
 def limits():
@@ -68,8 +65,7 @@ def limits():
         "escalate_after": _ESCALATE_AFTER,
         "frontier_after": _FRONTIER_AFTER,
         "flap_limit": 3,           # unmeasured: a guess (layer 3's engine default)
-        "fleet_width_cap": 8,      # guess (roster's FleetWidthCap before round 6)
-        "idle_floor": 0.5,         # guess (LESSONS 3.18: under half the open width)
+        "idle_floor": 0.5,         # guess (LESSONS 3.18: under half the open capacity)
         "land_target": 0.3,        # guess (layer 3's engine default, over 20 landings)
         "chain_limit": 3,          # Glenn 2026-11-08: wide and flat; add refuses a longer NEEDS chain
     }

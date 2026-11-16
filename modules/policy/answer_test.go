@@ -130,7 +130,7 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 		require.Empty(t, fs, "shape %d", i)
 		assert.Equal(t, 0, a.Version)
 		assert.Equal(t, Limits{Bounces: 12, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
-			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, FleetWidthCap: 8, ChainLimit: 3, IdleFloor: 0.5, LandTarget: 0.3}, a.Limits)
+			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, ChainLimit: 3, IdleFloor: 0.5, LandTarget: 0.3}, a.Limits)
 		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 300, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800,
 			Tick: 10, ReadyNag: 30, ReadyTake: 180, JudgementUnseen: 300, MergingNag: 300, MergingNagEvery: 1, Consumer: map[string]int{"flash": 3600, "pro": 7200, "heavy": 7200, "frontier": 7200}}, a.Timeouts)
 		assert.Empty(t, a.Prices)
@@ -145,7 +145,8 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	assert.Equal(t, []any{int64(1), int64(10)}, a.Order["p1"])
 	assert.Equal(t, []any{int64(0), int64(10)}, a.Order["p2"], "a fix attempt first")
 	assert.Equal(t, "yes", a.Verdict["p3"])
-	assert.Equal(t, Width{Work: 2, Ahead: 0}, a.Width["r1"], "no deal-ahead for a worker (defect 74)")
+	assert.Equal(t, Width{Work: 1, Ahead: 0}, a.Width["r3"], "width() answered for kin")
+	assert.NotContains(t, a.Width, "r1", "benches have resources, not width")
 	assert.Equal(t, Landing{BackedUp: 4, Flowing: 1, CIWait: 600, GroupMax: 4, LandOnSharedRed: true}, a.Landing["s1"])
 	assert.Equal(t, map[string]bool{"s1": true, "s2": true}, a.Stitch)
 	a, _ = testEngine().Answer(Versions{}, shapes[2], w.ro, FullQuestions(shapes[2], nil))
@@ -263,22 +264,29 @@ func TestRosterIsTheSourceOfRowFacts(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	body, _ := override("width", `def width(row):
+    if row.kind != "kin":
+        fail("width asked for non-kin %r" % row)
     if row.name == "r3" and (row.kind, row.width, row.tiers, row.model, row.harness) != ("kin", 1, ("frontier",), "m-frontier", "claude"):
         fail("r3 is %r" % row)
-    if row.name == "r1" and (row.kind, row.width, row.tiers, row.model, row.harness) != ("worker", 2, ("flash", "pro", "heavy"), "", "nova-worker"):
-        fail("r1 is %r" % row)
     return {"work": row.width, "ahead": row.width}`)
+	body, _ = overrideIn(body, "rows", `def rows(card, kind, candidates):
+    for c in candidates:
+        if c.name == "r1" and (c.kind, c.tiers, c.model, c.harness, c.resources["cpu"], c.resources["memory"]) != ("worker", ("flash", "pro", "heavy"), "", "nova-worker", 2, 2):
+            fail("r1 is %r" % c)
+    return prefer(candidates, _want(card, kind), card.resources if kind == "work" else {})`)
 	a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, 2, a.Version)
-	assert.Equal(t, Width{Work: 2, Ahead: 2}, a.Width["r1"])
+	assert.Equal(t, Width{Work: 1, Ahead: 1}, a.Width["r3"])
+	assert.NotContains(t, a.Width, "r1", "benches are not asked width")
 	assert.Empty(t, Judgements(w.snap(), w.ro, fs), "every row is in nova-config")
 
 	delete(w.ro.Workers, "r1") // nova-config drops r1
+	delete(w.ro.Kin, "r3")     // nova-config drops r3
 	snap := w.snap()
 	a, fs = testEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	require.Empty(t, fs)
-	assert.NotContains(t, a.Width, "r1", "no width question for a row nova-config does not name")
+	assert.NotContains(t, a.Width, "r3", "no width question for a row nova-config does not name")
 	assert.Empty(t, a.Rows[RowsQuestion{"p3", KindRead}], "p3's read: r1 is no candidate, r2 is its author")
 	assert.Empty(t, Judgements(snap, w.ro, fs), "a row nova-config does not name is the steps' roster judgement, not the policy's too")
 }

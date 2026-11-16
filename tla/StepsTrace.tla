@@ -49,20 +49,23 @@ VARIABLE l
 traceVars == <<vars, l>>
 
 TraceActions == {"Init", "Snap", "Tick", "Report", "Hold", "Unhold", "Gone", "Seen",
-                 "Leave", "Return", "Refuse", "Admit", "EnvMove", "EdgeResult", "Answer"}
+                 "Leave", "Return", "Refuse", "Admit", "Pause", "Unpause", "OtherLoad",
+                 "EnvMove", "EdgeResult", "Answer"}
 
 Has(r, f) == f \in DOMAIN r
 
-\* The store in parts: ps, up, sh, tko whole; cs as the live slots.
+\* The store in parts: ps, up, sh, tko, paused, other whole; cs as the live slots.
 Parts(W, r) ==
-  /\ Has(r, "ps")  => W.ps = r.ps
-  /\ Has(r, "up")  => W.up = r.up
-  /\ Has(r, "rg")  => W.rg = r.rg
-  /\ Has(r, "sh")  => W.sh = r.sh
-  /\ Has(r, "tko") => W.tko = r.tko
-  /\ Has(r, "ob")  => W.ob = r.ob
-  /\ Has(r, "cs")  => /\ \A c \in DOMAIN r.cs : c \in CIds /\ W.cs[c] = r.cs[c]
-                      /\ \A c \in CIds \ DOMAIN r.cs : W.cs[c].st = "none"
+  /\ Has(r, "ps")     => W.ps = r.ps
+  /\ Has(r, "up")     => W.up = r.up
+  /\ Has(r, "rg")     => W.rg = r.rg
+  /\ Has(r, "sh")     => W.sh = r.sh
+  /\ Has(r, "tko")    => W.tko = r.tko
+  /\ Has(r, "ob")     => W.ob = r.ob
+  /\ Has(r, "paused") => W.paused = r.paused
+  /\ Has(r, "other")  => W.other = r.other
+  /\ Has(r, "cs")     => /\ \A c \in DOMAIN r.cs : c \in CIds /\ W.cs[c] = r.cs[c]
+                         /\ \A c \in CIds \ DOMAIN r.cs : W.cs[c].st = "none"
 
 \* The logged variables: a present field equals the variable.
 Logged(r) ==
@@ -100,6 +103,9 @@ EnvKind(r) ==
     [] r.action = "Return" -> \E x \in Rows : ~bus[x] /\ bus'[x]
     [] r.action = "Refuse" -> \E p \in Prods : admitted[p] /\ ~admitted'[p]   \* the base moved: admission refused
     [] r.action = "Admit"  -> \E p \in Prods : ~admitted[p] /\ admitted'[p]
+    [] r.action = "Pause"     -> \E x \in Rows : ~w.paused[x] /\ w'.paused[x]
+    [] r.action = "Unpause"   -> \E x \in Rows : w.paused[x] /\ ~w'.paused[x]
+    [] r.action = "OtherLoad" -> \E x \in Rows : w.other[x] # w'.other[x]
     [] OTHER               -> TRUE
 
 \* The model action a record names, with its arguments.
@@ -110,7 +116,7 @@ StepAs(r) ==
                                     /\ Has(r, "offered") => r.offered = OfferedTo(snap)   \* what the code's questions offered
                                     /\ Tick(a, due)
     [] r.action = "Report"     -> Report(r.card, r.res)
-    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "Refuse", "Admit", "EnvMove"} -> EnvMove /\ EnvKind(r)
+    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "Refuse", "Admit", "Pause", "Unpause", "OtherLoad", "EnvMove"} -> EnvMove /\ EnvKind(r)
     [] r.action = "EdgeResult" -> \E f \in inflight : f.id = r.id /\ EdgeResult(f, r.out, r.n)
     [] r.action = "Answer"     -> Answer(r.p, r.choice)
     [] OTHER                   -> FALSE

@@ -4,8 +4,10 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -16,34 +18,77 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
+var (
+	emptyTuple           = starlark.Tuple{}
+	emptyResourcesDict   = makeFrozenIntDict(nil)
+	defaultAmounts       = map[string]int{"cpu": 1, "memory": 1}
+	defaultResourcesDict = makeFrozenIntDict(defaultAmounts)
+	defaultNeeds         = card.Needs{Amounts: defaultAmounts}
+)
+
+func makeFrozenIntDict(m map[string]int) *starlark.Dict {
+	d := starlark.NewDict(len(m))
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		if err := d.SetKey(starlark.String(k), starlark.MakeInt(m[k])); err != nil {
+			panic(err)
+		}
+	}
+	d.Freeze()
+	return d
+}
+
+func frozenIntDict(m map[string]int) *starlark.Dict {
+	if len(m) == 0 {
+		return emptyResourcesDict
+	}
+	if len(m) == 2 && m["cpu"] == 1 && m["memory"] == 1 {
+		return defaultResourcesDict
+	}
+	return makeFrozenIntDict(m)
+}
+
 // index is what one tick's inputs are built from: the snapshot, the roster
 // and the counts every question shares, computed once.
 type index struct {
-	snap    store.Snapshot
-	rows    []rostered             // the snapshot's rows the roster names, by name, byte order
-	facts   map[string]rostered    // the same, by name
-	load    map[string][2]int      // row -> working, ready consumers it holds
-	reads   map[string][]string    // producer -> its done reads of its current review and head, by id
-	cons    map[string][]card.Card // producer -> its consumers, for last_bounce
-	streams map[string]*streamCount
-	sets    map[string]*candidateSet // by the deal's list; with none, by tier, kind and (for a read) author
+	snap           store.Snapshot
+	knownTags      map[string]bool
+	knownResources map[string]bool
+	rows           []rostered          // the snapshot's rows the roster names, by name, byte order
+	facts          map[string]rostered // the same, by name
+	load           map[string][2]int   // row -> working, ready consumers it holds
+	workingByRow   map[string][]string // row -> working consumer ids
+	candVals       map[string]starlark.Value
+	reads          map[string][]string    // producer -> its done reads of its current review and head, by id
+	cons           map[string][]card.Card // producer -> its consumers, for last_bounce
+	streams        map[string]*streamCount
+	sets           map[string]*candidateSet // by the deal's list; with none, by tier, kind, needs and (for a read) author
 }
 
 // rostered is a store row with its configuration from the roster, by its
 // name (store round 22: a row is sprint state only; nova-config, read by
-// roster.Load, is the one source of kind, width, tiers, model and harness).
+// roster.Load, is the one source of kind, tags, resources, width, tiers,
+// model and harness).
 type rostered struct {
 	store.Row
-	kind, model, harness string
-	width                int
-	tiers                []string
+	kind, model, harness, held string
+	width                      int
+	tiers, tags                []string
+	resources, free            map[string]int
 }
 
 // rosterOf is r with its roster facts; ok is false when the roster does not
-// name it (a worker has no model).
+// name it (a worker has no model and carries tags and resources instead of width).
 func rosterOf(ro roster.Roster, r store.Row) (rostered, bool) {
 	if w, ok := ro.Workers[r.Name]; ok {
-		return rostered{Row: r, kind: roster.KindWorker, harness: w.Harness, width: w.Width, tiers: w.Tiers}, true
+		return rostered{
+			Row:       r,
+			kind:      roster.KindWorker,
+			harness:   w.Harness,
+			held:      w.Held,
+			tiers:     w.Tiers,
+			tags:      w.Tags,
+			resources: w.Resources,
+		}, true
 	}
 	if k, ok := ro.Kin[r.Name]; ok {
 		return rostered{Row: r, kind: roster.KindKin, model: k.Model, harness: k.Harness, width: k.Width, tiers: k.Tiers}, true
@@ -63,10 +108,39 @@ type candidateSet struct {
 
 type streamCount struct{ merging, review, cards, landed int }
 
+func rosterVocabulary(ro roster.Roster) (tags, resources map[string]bool) {
+	if len(ro.Workers) == 0 {
+		return nil, nil
+	}
+	tags, resources = map[string]bool{}, map[string]bool{}
+	for _, w := range ro.Workers {
+		for _, t := range w.Tags {
+			tags[t] = true
+		}
+		for r := range w.Resources {
+			resources[r] = true
+		}
+	}
+	return tags, resources
+}
+
 // newIndex indexes snap with ro: a row the roster does not name is in no
 // question (Judgements reports it).
 func newIndex(snap store.Snapshot, ro roster.Roster) *index {
-	ix := &index{snap: snap, facts: map[string]rostered{}, load: map[string][2]int{}, reads: map[string][]string{}, cons: map[string][]card.Card{}, streams: map[string]*streamCount{}, sets: map[string]*candidateSet{}}
+	knownTags, knownResources := rosterVocabulary(ro)
+	ix := &index{
+		snap:           snap,
+		knownTags:      knownTags,
+		knownResources: knownResources,
+		facts:          map[string]rostered{},
+		load:           map[string][2]int{},
+		workingByRow:   map[string][]string{},
+		candVals:       map[string]starlark.Value{},
+		reads:          map[string][]string{},
+		cons:           map[string][]card.Card{},
+		streams:        map[string]*streamCount{},
+		sets:           map[string]*candidateSet{},
+	}
 	for _, r := range snap.Rows {
 		if f, ok := rosterOf(ro, r); ok {
 			ix.rows, ix.facts[r.Name] = append(ix.rows, f), f
@@ -79,6 +153,13 @@ func newIndex(snap store.Snapshot, ro roster.Roster) *index {
 	for _, c := range snap.Cards {
 		ix.count(c)
 	}
+	for i, r := range ix.rows {
+		if r.kind == roster.KindWorker {
+			r.free = ix.benchFree(r)
+			ix.rows[i] = r
+			ix.facts[r.Name] = r
+		}
+	}
 	for _, ids := range ix.reads {
 		slices.Sort(ids)
 	}
@@ -89,8 +170,12 @@ func (ix *index) count(c store.Card) {
 	switch c.Kind {
 	case "work", "read":
 		l := ix.load[c.Holder]
-		l[0] += b2i(c.State == "working")
-		l[1] += b2i(c.State == "ready")
+		if c.State == "working" {
+			l[0]++
+			ix.workingByRow[c.Holder] = append(ix.workingByRow[c.Holder], c.ID)
+		} else if c.State == "ready" {
+			l[1]++
+		}
 		ix.load[c.Holder] = l
 		ix.cons[c.Of] = append(ix.cons[c.Of], card.FromStore(c))
 		if p, ok := ix.snap.Cards[c.Of]; ok && c.Kind == "read" && c.State == "done" && c.Review == p.Review && c.Head == p.Head {
@@ -104,6 +189,95 @@ func (ix *index) count(c store.Card) {
 			s.landed += b2i(c.State == "landed")
 		}
 	}
+}
+
+func canonicalConsumerID(raw string, epoch int) string {
+	raw = strings.TrimSpace(raw)
+	base, ep, ok := strings.Cut(raw, "@")
+	if !ok {
+		return base
+	}
+	if n, err := strconv.Atoi(ep); err == nil && n == epoch {
+		return base
+	}
+	return raw
+}
+
+func (ix *index) resolveNeeds(kind, brief string) card.Needs {
+	if kind == "read" || brief == "" {
+		return defaultNeeds
+	}
+	prefix := brief[:min(len(brief), 4096)]
+	if !strings.Contains(prefix, card.ResourcesField) {
+		return defaultNeeds
+	}
+	return card.ResolveNeeds(kind, brief, ix.knownTags, ix.knownResources)
+}
+
+// benchFree computes available resources on bench r using the exact R50/R52
+// consumer-ID union room formula.
+func (ix *index) benchFree(r rostered) map[string]int {
+	if len(r.resources) == 0 {
+		return nil
+	}
+	free := make(map[string]int, len(r.resources))
+	if r.held != "" || r.Resources.AnyPaused {
+		for k := range r.resources {
+			free[k] = 0
+		}
+		return free
+	}
+	active := map[string]bool{}
+	for _, id := range ix.workingByRow[r.Name] {
+		active[id] = true
+	}
+	for _, raw := range r.Resources.SprintConsumers {
+		if id := canonicalConsumerID(raw, ix.snap.Epoch); id != "" {
+			active[id] = true
+		}
+	}
+	var sprintUsed map[string]int
+	if len(active) > 0 {
+		sprintUsed = map[string]int{}
+		for id := range active {
+			needs := defaultNeeds
+			if cons, ok := ix.snap.Cards[id]; ok {
+				needs = ix.resolveNeeds(cons.Kind, cons.Brief)
+			}
+			for k, v := range needs.Amounts {
+				sprintUsed[k] += v
+			}
+		}
+	}
+	for k, total := range r.resources {
+		used := r.Resources.HeldOther[k] + sprintUsed[k]
+		free[k] = max(0, total-used)
+	}
+	return free
+}
+
+func rosteredFitsMax(r rostered, n card.Needs) bool {
+	if r.kind == roster.KindKin {
+		return true
+	}
+	w := roster.Worker{Name: r.Name, Tiers: r.tiers, Tags: r.tags, Resources: r.resources, Held: r.held}
+	return w.FitsMax(n)
+}
+
+func needsCacheKey(n card.Needs) string {
+	if len(n.Tags) == 0 && len(n.Amounts) == 2 && n.Amounts["cpu"] == 1 && n.Amounts["memory"] == 1 {
+		return ""
+	}
+	var b strings.Builder
+	for _, t := range n.Tags {
+		b.WriteString("t:")
+		b.WriteString(t)
+		b.WriteByte(',')
+	}
+	for _, k := range slices.Sorted(maps.Keys(n.Amounts)) {
+		fmt.Fprintf(&b, "%s=%d,", k, n.Amounts[k])
+	}
+	return b.String()
 }
 
 func b2i(b bool) int {
@@ -128,16 +302,14 @@ func rung(tier string) int { return slices.Index(store.Tiers, tier) }
 
 // candidateSet is rows' third argument for producer c and question rq, by
 // rank, lowest first, then by name. In a tick it is the deal's own list,
-// dealt[rq], row for row: layer 3 built it from what only the tick knows
-// too (who is on the bus, the routes the card needs, who reads the head
-// already), so a version is never offered a row the deal would refuse
-// (tla/Steps.tla OfferedIsAccepted, witness StepsOfferedAbsent). With no
-// list (check) it is the rows the store and the roster show may take the
-// consumer: up, not held, hooked in as worker or coordinator, serving the
-// card's tier, and for a read not its author.
+// dealt[rq], row for row. With no list (check) it is the rows the store and
+// the roster show may take the consumer: up, not held, hooked in as worker or
+// coordinator, serving the card's tier and tags/max-resources, and for a read
+// not its author.
 func (ix *index) candidateSet(c store.Card, rq RowsQuestion, dealt map[RowsQuestion][]string) *candidateSet {
 	offered, tick := dealt[rq]
-	key := c.Tier + " " + rq.Kind
+	needs := ix.resolveNeeds(rq.Kind, c.Brief)
+	key := c.Tier + " " + rq.Kind + " " + needsCacheKey(needs)
 	if rq.Kind == KindRead {
 		key += " " + c.Author
 	}
@@ -150,7 +322,8 @@ func (ix *index) candidateSet(c store.Card, rq RowsQuestion, dealt map[RowsQuest
 	s := &candidateSet{}
 	for _, r := range ix.rows {
 		hooked := r.Session != "" && (r.Role == "worker" || r.Role == "coordinator") // steps.Hooked
-		open := r.State == "up" && !r.Held && hooked && slices.Contains(r.tiers, c.Tier) && (rq.Kind != KindRead || r.Name != c.Author)
+		open := r.State == "up" && !r.Held && hooked && slices.Contains(r.tiers, c.Tier) &&
+			rosteredFitsMax(r, needs) && (rq.Kind != KindRead || r.Name != c.Author)
 		if (tick && slices.Contains(offered, r.Name)) || (!tick && open) {
 			s.rows = append(s.rows, r)
 		}
@@ -183,6 +356,9 @@ func value(v any) starlark.Value {
 	case int:
 		return starlark.MakeInt(x)
 	case []string:
+		if len(x) == 0 {
+			return emptyTuple
+		}
 		return tupleOf(x)
 	}
 	return v.(starlark.Value)
@@ -196,33 +372,43 @@ func orderCard(c store.Card) starlark.Value {
 }
 
 // card is the subject of rows, reads and verdict: id, stream, tier (its
-// minimum), attempt, bounces, priority, writer_rank (the rank of the row
-// that wrote the head; the card's tier when that row is unknown) and
-// last_bounce (what last sent it back: "fail" from a work fail, "fix" from a
-// read that said fix, "" for neither; card.LastBounce). Never the
-// prose (rowan2's ruling 4 and 5): a brief of any size would enter every
-// input and the answer cache's key, so the inputs would grow with the briefs
-// and not with the card count.
+// minimum), attempt, bounces, priority, writer_rank, last_bounce, tags and
+// resources. Never the prose.
 func (ix *index) card(c store.Card) starlark.Value {
 	writer := c.Tier
 	if r, ok := ix.facts[c.Author]; ok && Rank(r.tiers) != "" {
 		writer = Rank(r.tiers)
 	}
+	needs := ix.resolveNeeds("work", c.Brief)
 	return newStruct("id", c.ID, "stream", c.Stream, "tier", c.Tier, "attempt", c.Attempt,
 		"bounces", c.Bounces, "priority", cmp.Or(c.Priority, "normal"), "writer_rank", writer,
-		"last_bounce", card.LastBounce(card.FromStore(c), ix.cons[c.ID]))
+		"last_bounce", card.LastBounce(card.FromStore(c), ix.cons[c.ID]),
+		"tags", needs.Tags, "resources", frozenIntDict(needs.Amounts))
 }
 
-// candidate is one row offered to rows: name, tiers, rank, model, harness,
-// width, working, ready.
+// candidate is one row offered to rows: benches expose tags, resources and free
+// (and no width); kin expose width (and empty tags, resources, free).
 func (ix *index) candidate(r rostered) starlark.Value {
+	if v, ok := ix.candVals[r.Name]; ok {
+		return v
+	}
 	l := ix.load[r.Name]
-	return newStruct("name", r.Name, "tiers", r.tiers, "rank", Rank(r.tiers), "model", r.model, "harness", r.harness,
-		"width", r.width, "working", l[0], "ready", l[1])
+	var v starlark.Value
+	if r.kind == roster.KindKin {
+		v = newStruct("name", r.Name, "kind", r.kind, "tiers", r.tiers, "rank", Rank(r.tiers), "model", r.model, "harness", r.harness,
+			"width", r.width, "tags", emptyTuple, "resources", emptyResourcesDict, "free", emptyResourcesDict,
+			"working", l[0], "ready", l[1])
+	} else {
+		v = newStruct("name", r.Name, "kind", r.kind, "tiers", r.tiers, "rank", Rank(r.tiers), "model", r.model, "harness", r.harness,
+			"tags", r.tags, "resources", frozenIntDict(r.resources), "free", frozenIntDict(r.free),
+			"working", l[0], "ready", l[1])
+	}
+	ix.candVals[r.Name] = v
+	return v
 }
 
-// row is width's subject: name, kind, width, tiers, model, harness (the
-// roster's, from nova-config), flaps (the store's).
+// row is width's subject (kin only): name, kind, width, tiers, model, harness,
+// flaps.
 func row(r rostered) starlark.Value {
 	return newStruct("name", r.Name, "kind", r.kind, "width", r.width, "tiers", r.tiers, "model", r.model,
 		"harness", r.harness, "flaps", r.Flaps)

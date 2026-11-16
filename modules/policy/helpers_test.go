@@ -46,7 +46,14 @@ func handRoster(rcs ...rc) roster.Roster {
 		if c.kind == roster.KindKin {
 			ro.Kin[c.name] = roster.Kin{Name: c.name, Model: c.model, Harness: "claude", Width: c.width, Tiers: c.tiers}
 		} else {
-			ro.Workers[c.name] = roster.Worker{Name: c.name, Width: c.width, Tiers: c.tiers, Harness: roster.WorkerHarness}
+			res := map[string]int{}
+			held := ""
+			if c.width > 0 {
+				res = map[string]int{"cpu": c.width, "memory": c.width}
+			} else {
+				held = roster.UnmeasuredResources
+			}
+			ro.Workers[c.name] = roster.Worker{Name: c.name, Resources: res, Tiers: c.tiers, Harness: roster.WorkerHarness, Held: held}
 		}
 	}
 	return ro

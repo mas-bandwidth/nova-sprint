@@ -50,12 +50,12 @@ func TestRefusals(t *testing.T) {
 		{"verdict", `"maybe"`, `verdict(p3): the answer is "maybe", not "yes", "fix" or "retry"`},
 		{"verdict", "True", `verdict(p3): the answer is a bool, not "yes", "fix" or "retry"`},
 		{"verdict", `"fix"`, `verdict(p3): "fix" with no fix read`},
-		{"width", `{"work": 3, "ahead": 2}`, "width(r1): work 3 is outside 0..2 (the row's width)"},
-		{"width", `{"work": -1, "ahead": 2}`, "width(r1): work -1 is outside 0..2 (the row's width)"},
-		{"width", `{"work": 1, "ahead": 9}`, "width(r1): ahead 9 is outside 0..8 (4 x the row's width)"},
-		{"width", `{"work": 1}`, "width(r1): key ahead is missing"},
-		{"width", `{"work": 1, "ahead": 1, "x": 1}`, `width(r1): key "x" is not one of work ahead`},
-		{"width", "[1]", "width(r1): the answer is a list, not a dict of work ahead"},
+		{"width", `{"work": 2, "ahead": 2}`, "width(r3): work 2 is outside 0..1 (the row's width)"},
+		{"width", `{"work": -1, "ahead": 2}`, "width(r3): work -1 is outside 0..1 (the row's width)"},
+		{"width", `{"work": 1, "ahead": 5}`, "width(r3): ahead 5 is outside 0..4 (4 x the row's width)"},
+		{"width", `{"work": 1}`, "width(r3): key ahead is missing"},
+		{"width", `{"work": 1, "ahead": 1, "x": 1}`, `width(r3): key "x" is not one of work ahead`},
+		{"width", "[1]", "width(r3): the answer is a list, not a dict of work ahead"},
 		{"limits", "{" + strings.Replace(limits, `"bounces": 6`, `"bounces": 0`, 1) + `, "route_rest_after": 3}`, "limits(): bounces 0 is outside 1..100"},
 		{"limits", steer("escalate_after", "0"), "limits(): escalate_after 0 is outside 1..100"},
 		{"limits", steer("frontier_after", "1"), "limits(): frontier_after 1 is outside 2..100 (escalate_after to 100)"},
@@ -80,7 +80,7 @@ func TestRefusals(t *testing.T) {
 		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "ready_nag": 0}`, "timeouts(): ready_nag 0 is outside 1..86400"},
 		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "ready_take": 86401}`, "timeouts(): ready_take 86401 is outside 1..86400"},
 		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "judgement_unseen": 0}`, "timeouts(): judgement_unseen 0 is outside 1..86400"},
-		{"limits", steer("fleet_width_cap", "0"), "limits(): fleet_width_cap 0 is outside 1..256"},
+		{"limits", "{" + limits + `, "route_rest_after": 3, "fleet_width_cap": 8}`, `limits(): key "fleet_width_cap" is not one of bounces faults same_finding reports_per_tick route_rest_window route_rest_after escalate_after frontier_after flap_limit idle_floor land_target chain_limit`},
 		{"limits", "{" + limits + `, "route_rest_after": 3, "chain_limit": 0}`, "limits(): chain_limit 0 is outside 1..100"},
 		{"landing", `{"backed_up": 4, "flowing": 4}`, "landing(s1): flowing 4 is outside 0..3 (below backed_up)"},
 		{"landing", `{"backed_up": 1001, "flowing": 1}`, "landing(s1): backed_up 1001 is outside 1..1000"},
@@ -97,7 +97,6 @@ func TestRefusals(t *testing.T) {
 		{"prices", `{1: {"in": 1, "out": 1}}`, "prices(): a key is an int, not a model name"},
 		{"prices", `{"m": {"in": 1, "out": 1, "cache": 1}}`, "prices(): m: key \"cache\" is not one of in out cache_read cache_write"},
 		{"prices", `{"m": {"in": 1, "out": 1, "cache_read": -2}}`, "prices(): m cache_read -2 is outside 0..9223372036854775807"},
-		{"width", `{"work": 0, "ahead": 0}`, "rows(p1 work): every row named has work 0 in width, while row r1 could take it"},
 	} {
 		body, line := override(tc.q, fmt.Sprintf("def %s(%s):\n    return %s", tc.q, params[tc.q], tc.ret))
 		if tc.q == "width" && strings.HasPrefix(tc.want, "rows") {
@@ -106,6 +105,13 @@ func TestRefusals(t *testing.T) {
 		f := refusedBy(t, w, body)
 		assert.Equal(t, fmt.Sprintf("POLICY REFUSED v2 line %d %s", line, tc.want), f.Error(), "%s returning %s", tc.q, tc.ret)
 	}
+	wKin := fakeWorld(t)
+	wKin.apply(store.PutCard{ID: "pf", Kind: "producer", Stream: "s1", Tier: "frontier", Score: 1, Brief: "do pf", Prose: "do pf"})
+	wKin.apply(store.SetCardState{Card: "pf", State: "ready"})
+	zeroKin, _ := override("width", `def width(row):
+    return {"work": 0, "ahead": 0}`)
+	f := refusedBy(t, wKin, zeroKin)
+	assert.Equal(t, fmt.Sprintf("POLICY REFUSED v2 line %d rows(pf work): every row named has work 0 in width, while row r3 could take it", defLine(zeroKin, "rows")), f.Error())
 }
 
 // TestJudgementUnseenOptional: a stored version that does not name
@@ -273,7 +279,7 @@ func inDomain(t *testing.T, snap store.Snapshot, ro roster.Roster, a Answers) {
 }
 
 // steering is limits' steering keys at the built-in's values (round 5).
-const steering = `"escalate_after": 2, "frontier_after": 4, "flap_limit": 3, "fleet_width_cap": 8, "idle_floor": 0.5, "land_target": 0.9`
+const steering = `"escalate_after": 2, "frontier_after": 4, "flap_limit": 3, "idle_floor": 0.5, "land_target": 0.9`
 
 // steeringValue is key's entry in steering.
 func steeringValue(key string) string {

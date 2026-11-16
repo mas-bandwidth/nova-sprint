@@ -43,21 +43,22 @@ var traceScenarios = map[string]struct {
 // traceWalk is one scenario's world and its trace.
 type traceWalk struct {
 	*sim
-	scen     string
-	sc       TraceScenario
-	rng      *rand.Rand
-	records  []string
-	stamp    map[string]int
-	reqID    map[string]string
-	phase    string   // idle or snapped
-	pref     string   // the asker's preferred row, "" for failed
-	offered  []string // every row the last tick's rows questions offered, as <<producer, kind, row>>
-	raced    bool     // a move came after the fold
-	truth    *View    // the store as it is, for the records; the tick's view (w.v) is folded only at Snap
-	tcursor  int64
-	counting bool // picks count toward the depth: a producer is not final
-	picked   int
-	legal    int
+	scen        string
+	sc          TraceScenario
+	rng         *rand.Rand
+	records     []string
+	stamp       map[string]int
+	reqID       map[string]string
+	phase       string   // idle or snapped
+	pref        string   // the asker's preferred row, "" for failed
+	offered     []string // every row the last tick's rows questions offered, as <<producer, kind, row>>
+	raced       bool     // a move came after the fold
+	truth       *View    // the store as it is, for the records; the tick's view (w.v) is folded only at Snap
+	tcursor     int64
+	keepRecords bool
+	counting    bool // picks count toward the depth: a producer is not final
+	picked      int
+	legal       int
 }
 
 // traceAsker answers as the model's oracle: every question in domain from
@@ -114,15 +115,19 @@ func (a traceAsker) Ask(q Questions) Answers {
 	return out
 }
 
-func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
+func newTraceWalk(t *testing.T, scen string, seed int64, keepRecords bool) *traceWalk {
 	w := &traceWalk{sim: newSim(t), scen: scen, sc: TraceScenario{Tiers: []string{"pro", "heavy"}}, rng: rand.New(rand.NewSource(seed)),
-		stamp: map[string]int{}, reqID: map[string]string{}, phase: "idle"}
+		stamp: map[string]int{}, reqID: map[string]string{}, phase: "idle", keepRecords: keepRecords}
 	w.ask = traceAsker{w}
 	landLike := scen == "land" || scen == "burst"
 	w.stream("s1")
 	w.stream("s2")
+	r2Units := 2
+	if scen == "pre" {
+		r2Units = 3
+	}
 	w.row("r1", 1, "pro")
-	w.row("r2", 2, "pro", "heavy")
+	w.row("r2", r2Units, "pro", "heavy")
 	qStream, qPath := "s1", "a/z"
 	if landLike {
 		qStream = "s2"
@@ -141,6 +146,7 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 			b.Tier, b.Needs = "heavy", []string{"p"}
 		} else {
 			b.Priority = "blocker"
+			b.Brief = "tier: pro\nRESOURCES: cpu 2, memory 2\n\ndo b"
 		}
 		w.must("add", b)
 	}
@@ -187,10 +193,13 @@ func (w *traceWalk) truthView() *View {
 func (w *traceWalk) record(action string, args []string) {
 	w.t.Helper()
 	v := w.truthView()
+	if !w.keepRecords {
+		return
+	}
 	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
 	fields = append(fields, args...)
 	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
-		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA(), "admitted |-> "+w.admTLA())
+		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA(), "admitted |-> "+w.admTLA(v))
 	w.records = append(w.records, "["+strings.Join(fields, ", ")+"]")
 }
 
@@ -345,10 +354,10 @@ func (w *traceWalk) busTLA() string {
 
 // admTLA is the model's admitted: every producer but the ones the walk's
 // admission re-proof refuses.
-func (w *traceWalk) admTLA() string {
+func (w *traceWalk) admTLA(v *View) string {
 	var out []string
-	for _, id := range sortedKeys(w.snap().Cards) {
-		if c := w.snap().Cards[id]; c.Kind == "producer" {
+	for _, id := range sortedKeys(v.Cards) {
+		if c := v.Cards[id]; c.Kind == "producer" {
 			_, refused := w.unadmitted[id]
 			out = append(out, fmt.Sprintf("%s |-> %s", id, tlaBool(!refused)))
 		}
@@ -362,12 +371,24 @@ func (w *traceWalk) admTLA() string {
 // land holds and lifts s1; burst has none.
 func (w *traceWalk) envOne() {
 	w.pick()
-	s := w.snap()
+	v := w.truthView()
 	switch w.scen {
 	case "pre":
-		if w.rng.Intn(2) == 0 && s.Streams["s2"].Held {
-			w.unhold("s2")
-			return
+		switch w.rng.Intn(4) {
+		case 0:
+			if v.Streams["s2"].Held {
+				w.unhold("s2")
+				return
+			}
+		case 1:
+			if w.phase == "idle" {
+				w.pauseFlip("r2")
+				return
+			}
+		case 2:
+			if w.phase == "idle" && w.otherLoad("r2") {
+				return
+			}
 		}
 		w.flip("r2")
 	case "deal":
@@ -380,7 +401,7 @@ func (w *traceWalk) envOne() {
 			w.flip("r1")
 		}
 	case "land":
-		if s.Streams["s1"].Held {
+		if v.Streams["s1"].Held {
 			w.unhold("s1")
 		} else {
 			w.hold("s1")
@@ -419,6 +440,57 @@ func (w *traceWalk) flip(row string) {
 		w.ok()
 		w.moved(action, nil)
 	}
+}
+
+func (w *traceWalk) pauseFlip(row string) {
+	v := w.truthView()
+	res := v.Rows[row].Resources.Clone()
+	res.AnyPaused = !res.AnyPaused
+	action := "Pause"
+	if !res.AnyPaused {
+		action = "Unpause"
+	}
+	if w.apply("load", nil, store.SetRowLoad{Row: row, Tiers: "pro,heavy", Resources: res}).Accepted {
+		w.ok()
+		w.moved(action, nil)
+	}
+}
+
+func (w *traceWalk) otherLoad(row string) bool {
+	v := w.truthView()
+	sprintCPU := 0
+	for _, c := range v.Cards {
+		if isConsumer(c) && c.State == "working" && c.Holder == row {
+			if c.Of == "b" && c.Kind == "work" {
+				sprintCPU += 2
+			} else {
+				sprintCPU++
+			}
+		}
+	}
+	cur := v.Rows[row].Resources.HeldOther["cpu"]
+	var choices []int
+	for _, lv := range []int{0, 1, 2} {
+		if lv != cur && lv+sprintCPU <= 3 {
+			choices = append(choices, lv)
+		}
+	}
+	if len(choices) == 0 {
+		return false
+	}
+	lv := choices[w.rng.Intn(len(choices))]
+	res := v.Rows[row].Resources.Clone()
+	if lv == 0 {
+		res.HeldOther = nil
+	} else {
+		res.HeldOther = map[string]int{"cpu": lv, "memory": lv}
+	}
+	if w.apply("load", nil, store.SetRowLoad{Row: row, Tiers: "pro,heavy", Resources: res}).Accepted {
+		w.ok()
+		w.moved("OtherLoad", nil)
+		return true
+	}
+	return false
 }
 
 func (w *traceWalk) readyOf(stream string) []card.Card {
@@ -535,7 +607,7 @@ func (w *traceWalk) ok() {
 
 func (w *traceWalk) consumersIn(state string) []string {
 	var out []string
-	for _, c := range w.snap().Cards {
+	for _, c := range w.truthView().Cards {
 		if isConsumer(c) && c.State == state {
 			out = append(out, c.ID)
 		}
@@ -605,7 +677,7 @@ func TestTraceWalk(t *testing.T) { // unitlint: serial, modelDefaults writes the
 			for seed := int64(1); seed <= seeds; seed++ {
 				t.Run(fmt.Sprint(seed), func(t *testing.T) {
 					t.Parallel()
-					w := newTraceWalk(t, scen, seed)
+					w := newTraceWalk(t, scen, seed, false)
 					for i := 0; i < steps; i++ {
 						w.step()
 					}
@@ -634,7 +706,7 @@ func TestTraceFixtures(t *testing.T) { // unitlint: serial, modelDefaults writes
 	}
 	for _, scen := range []string{"pre", "deal", "land", "burst"} {
 		for seed := int64(1); seed <= 3; seed++ {
-			w := newTraceWalk(t, scen, seed)
+			w := newTraceWalk(t, scen, seed, dir != "")
 			for i := 0; i < 150; i++ {
 				w.step()
 			}
