@@ -38,7 +38,7 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 		t.Fatalf("fleet = %d rows, want %d: %+v", len(fleet), len(want), fleet)
 	}
 	for n, w := range want {
-		if g := fleet[n]; g == nil || *g != w {
+		if g := fleet[n]; g == nil || g.Status != w.Status || g.Width != w.Width {
 			t.Errorf("fleet[%s] = %+v, want %+v", n, g, w)
 		}
 	}
@@ -81,7 +81,7 @@ func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 			t.Errorf("%s is on the board: fleet %+v friends %+v", n, fleet[n], friends[n])
 		}
 	}
-	if g := fleet["new-bench"]; g == nil || *g != (fleetRow{Status: "down", Width: 4}) {
+	if g := fleet["new-bench"]; g == nil || g.Status != "down" || g.Width != 4 {
 		t.Errorf("new-bench = %+v, want down at width 4", g)
 	}
 	if g := fleet["rowan"]; g == nil {
@@ -98,7 +98,7 @@ func TestBoardWithAnEmptyRosterShowsEveryRow(t *testing.T) {
 	t.Parallel()
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}, "gone": {Name: "gone", State: "up"}}}
 	fleet := mapSnapshot(snap, roster.Roster{}, time.Time{}, nil).Tables["fleet"].(map[string]*fleetRow)
-	if len(fleet) != 2 || *fleet["amd-1"] != (fleetRow{Status: "down"}) || *fleet["gone"] != (fleetRow{Status: "down"}) {
+	if len(fleet) != 2 || fleet["amd-1"].Status != "down" || fleet["gone"].Status != "down" {
 		t.Fatalf("fleet = %+v", fleet)
 	}
 }
@@ -158,11 +158,19 @@ func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var cells map[string]map[string]string
+	var cells map[string]map[string]any
 	if err := json.Unmarshal(body, &cells); err != nil {
 		t.Fatal(err)
 	}
-	if cells["a"]["load"] != "87.3%" || cells["a"]["slots"] != "3 / 8" {
+	loadVal := ""
+	if v, ok := cells["a"]["load"]; ok && v != nil {
+		loadVal = v.(string)
+	}
+	slotsVal := ""
+	if v, ok := cells["a"]["slots"]; ok && v != nil {
+		slotsVal = v.(string)
+	}
+	if loadVal != "87.3%" || slotsVal != "3 / 8" {
 		t.Errorf("a = %v: want load 87.3%% and slots 3 / 8", cells["a"])
 	}
 	for _, n := range []string{"b", "c"} {

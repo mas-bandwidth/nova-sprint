@@ -35,12 +35,28 @@ func (f fleetRow) MarshalJSON() ([]byte, error) {
 	if f.OK+f.Failed > 0 {
 		pct = fmt.Sprintf("%.1f%%", f.OKPct)
 	}
-	m := map[string]string{"status": f.Status, "width": integer(f.Width), "ready": integer(f.Ready), "working": integer(f.Working), "done": integer(f.Done), "blocker_working": integer(f.Blocker), "critical_working": integer(f.Critical), "fix_working": integer(f.Fix), "reads_working": integer(f.Reads), "ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct,
-		"tokens": usage.Compact(f.Tokens), "tokens_n": strconv.FormatInt(f.Tokens, 10)}
+	m := map[string]any{
+		"status": f.Status, "width": integer(f.Width), "ready": integer(f.Ready), "working": integer(f.Working), "done": integer(f.Done),
+		"blocker_working": integer(f.Blocker), "critical_working": integer(f.Critical), "fix_working": integer(f.Fix), "reads_working": integer(f.Reads),
+		"ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct,
+		"tokens": usage.Compact(f.Tokens), "tokens_n": strconv.FormatInt(f.Tokens, 10),
+	}
 	for k, v := range map[string]string{"load": f.Load, "slots": f.Slots} {
 		if v != "" {
 			m[k] = v
 		}
+	}
+	if f.Tags != nil {
+		m["tags"] = f.Tags
+	}
+	if f.CPU != nil {
+		m["cpu"] = f.CPU
+	}
+	if f.Memory != nil {
+		m["memory"] = f.Memory
+	}
+	if f.Resources.Total != nil || len(f.Resources.HeldByLabel) > 0 {
+		m["resources"] = f.Resources
 	}
 	return json.Marshal(m)
 }

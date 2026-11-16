@@ -1,10 +1,10 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "05e80c534e9e",
+  "build": "71f0473e3720",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "05e80c534e9e",
+    "build": "71f0473e3720",
     "coordinator": "",
     "cost": {
       "api_tokens": "0",
@@ -47,10 +47,18 @@
       "fleet": {
         "amd-1": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -63,10 +71,18 @@
         },
         "m00": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -79,10 +95,18 @@
         },
         "m01": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -95,10 +119,18 @@
         },
         "m02": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -111,10 +143,18 @@
         },
         "m03": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -127,10 +167,18 @@
         },
         "m04": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -143,10 +191,18 @@
         },
         "m05": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -159,10 +215,18 @@
         },
         "m06": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -175,10 +239,18 @@
         },
         "m07": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -191,10 +263,18 @@
         },
         "m08": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -207,10 +287,18 @@
         },
         "m09": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -223,10 +311,18 @@
         },
         "m10": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -239,10 +335,18 @@
         },
         "m11": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -255,10 +359,18 @@
         },
         "r": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -271,10 +383,18 @@
         },
         "w": {
           "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
           "critical_working": "0",
           "done": "0",
           "failed": "0",
           "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
           "ok": "0",
           "okpct": "-",
           "reads_working": "0",
@@ -404,6 +524,368 @@
         "alpha": {}
       },
       "readers": {},
+      "resources": {
+        "amd-1": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "4000",
+          "working": "0"
+        },
+        "m00": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m01": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m02": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m03": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m04": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m05": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m06": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m07": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m08": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m09": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m10": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "m11": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "16",
+          "working": "0"
+        },
+        "r": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "8",
+          "working": "0"
+        },
+        "w": {
+          "blocker_working": "0",
+          "cpu": {
+            "held": 0,
+            "total": 0
+          },
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "memory": {
+            "held": 0,
+            "total": 0
+          },
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
+          "width": "2",
+          "working": "0"
+        }
+      },
       "work": {
         "alpha": {
           "cost": "-",
