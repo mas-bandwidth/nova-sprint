@@ -257,6 +257,50 @@ func TestClearFencedOnRowsNotTheSeq(t *testing.T) {
 	}
 }
 
+func TestClearFencesCoordinatorHookAndRetriesCursorWrites(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	quiet(&s)
+	w := worldFrom(t, s)
+	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
+	w.arch.during = func() {
+		op := store.Op{ID: "cursor.1", Epoch: 1, Actor: "sprint", Kind: "watch", At: t0,
+			Writes: []store.Write{store.SetCursor{Name: "watch", Seq: 10}}}
+		if r, err := w.f.Apply(context.Background(), op); err != nil || !r.Accepted {
+			t.Fatalf("cursor write: %+v %v", r, err)
+		}
+	}
+	raced := false
+	w.e.Store = &racing{Fake: w.f, before: func() {
+		if !raced {
+			raced = true
+			op := store.Op{ID: "cursor.2", Epoch: 1, Actor: "sprint", Kind: "watch", At: t0,
+				Writes: []store.Write{store.SetCursor{Name: "watch", Seq: 11}}}
+			if r, err := w.f.Apply(context.Background(), op); err != nil || !r.Accepted {
+				t.Fatalf("cursor race write: %+v %v", r, err)
+			}
+		}
+	}}
+	want(t, w.do("carol", "clear", "--confirm", "1"), 0, "CLEARED epoch=2 opened; backup /b/1.dump")
+	if got := w.snap(t); got.Epoch != 2 || got.Cursors["watch"] != 11 {
+		t.Fatalf("snapshot %+v, want epoch 2 with watch cursor 11", got)
+	}
+
+	w = worldFrom(t, s)
+	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
+	w.arch.during = func() {
+		op := store.Op{ID: "unhook.carol", Epoch: 1, Actor: "carol", Kind: "unhook", At: t0,
+			Writes: []store.Write{store.PutRow{Name: "carol"}}}
+		if r, err := w.f.Apply(context.Background(), op); err != nil || !r.Accepted {
+			t.Fatalf("unhook carol: %+v %v", r, err)
+		}
+	}
+	want(t, w.do("carol", "clear", "--confirm", "1"), 1, "carol's hook changed")
+	if got := w.snap(t); got.Epoch != 1 {
+		t.Fatalf("cleared after coordinator lost hook: epoch %d", got.Epoch)
+	}
+}
+
 func TestClearRefusals(t *testing.T) {
 	t.Parallel()
 	runCases(t, []tcase{

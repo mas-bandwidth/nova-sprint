@@ -1,8 +1,10 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -292,14 +294,50 @@ func runClear(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 	if info.Epoch != snap.Epoch || info.Seq < snap.Seq {
 		return "", refuse("the store changed while the backup was made", again)
 	}
-	op := e.newOp("clear", in.actor, snap)
-	op.Expect = []store.Expect{store.RowsOnlySince{Seq: snap.Seq}}
-	r, err := applyOnce(ctx, e.Store, op, e.Store.Clear)
-	if err != nil {
-		return "", err
+	for try := 1; ; try++ {
+		cur, err := e.snapshot(ctx)
+		if err != nil {
+			return "", err
+		}
+		if change := cmp.Or(epochChange(snap, cur), hookChange(in.actor)(snap, cur)); change != "" {
+			return "", refuse(change, again)
+		}
+		fenceSeq := snap.Seq
+		if clearBackedUpSame(snap, cur) && cur.Seq > fenceSeq {
+			fenceSeq = cur.Seq
+		}
+		op := e.newOp("clear", in.actor, snap, fenceSeq, try)
+		op.Expect = []store.Expect{store.RowsOnlySince{Seq: fenceSeq}}
+		r, err := applyOnce(ctx, e.Store, op, e.Store.Clear)
+		if err != nil {
+			return "", err
+		}
+		if r.Accepted {
+			return done("nova-sprint stream add <name> --repo <org/repo>", what, fmt.Sprintf("CLEARED epoch=%d opened; backup %s", r.NewEpoch, info.Path)), nil
+		}
+		if r.Seq <= fenceSeq+1 || try == fenceTries {
+			return "", refuse(r.Reason, again)
+		}
+		after, err := e.snapshot(ctx)
+		if err != nil {
+			return "", err
+		}
+		if change := cmp.Or(epochChange(snap, after), hookChange(in.actor)(snap, after)); change != "" {
+			return "", refuse(r.Reason+"; "+change, again)
+		}
+		if !clearBackedUpSame(snap, after) {
+			return "", refuse(r.Reason, again)
+		}
 	}
-	if !r.Accepted {
-		return "", refuse(r.Reason, again)
-	}
-	return done("nova-sprint stream add <name> --repo <org/repo>", what, fmt.Sprintf("CLEARED epoch=%d opened; backup %s", r.NewEpoch, info.Path)), nil
+}
+
+func clearBackedUpSame(was, now store.Snapshot) bool {
+	return was.Epoch == now.Epoch &&
+		was.Policy == now.Policy &&
+		was.Stopped == now.Stopped &&
+		was.StopReason == now.StopReason &&
+		was.Identity == now.Identity &&
+		reflect.DeepEqual(was.Streams, now.Streams) &&
+		reflect.DeepEqual(was.Cards, now.Cards) &&
+		reflect.DeepEqual(was.Judgements, now.Judgements)
 }

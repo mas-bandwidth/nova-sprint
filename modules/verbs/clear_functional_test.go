@@ -48,10 +48,15 @@ func TestFunctionalClearWhileWorkersBeat(t *testing.T) {
 	w.e.Store = pg
 	w.e.Archive = NewPGArchive(dsn, "", "v2.0.0", t.TempDir(), nil)
 
-	beats, stop := make(chan int), make(chan struct{})
+	firstBeat, beats, stop := make(chan struct{}), make(chan int), make(chan struct{})
 	go func() {
 		n := 0
-		defer func() { beats <- n }()
+		defer func() {
+			if n == 0 {
+				close(firstBeat)
+			}
+			beats <- n
+		}()
 		for i := 1; ; i++ {
 			select {
 			case <-stop:
@@ -62,10 +67,16 @@ func TestFunctionalClearWhileWorkersBeat(t *testing.T) {
 				Writes: []store.Write{store.SetRowLoad{Row: "alice", Load1Centi: i, Cores: 8}}}
 			if r, err := pg.Apply(ctx, op); err == nil && r.Accepted {
 				n++
+				if n == 1 {
+					close(firstBeat)
+				}
+			} else if ctx.Err() != nil {
+				return
 			}
 			time.Sleep(2 * time.Millisecond)
 		}
 	}()
+	<-firstBeat
 	res := w.do("carol", "clear", "--confirm", "1")
 	close(stop)
 	n := <-beats
