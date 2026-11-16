@@ -20,6 +20,15 @@ import (
 // or --stitch <stream> (every producer with its head, author, reads and
 // costs, and the range to diff).
 func runShow(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	if snap.Epoch == 0 {
+		var err error
+		if snap, err = e.snapshot(ctx); err != nil {
+			return "", err
+		}
+	}
+	if err := epochNow(in.epoch(), snap); err != nil {
+		return "", err
+	}
 	name := in.arg(0)
 	var v any
 	switch {
@@ -57,7 +66,7 @@ func runShow(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if err != nil {
 		return "", err
 	}
-	return done("nova-sprint next --as "+in.actor, string(b)), nil
+	return e.withUnseen(ctx, in, done("nova-sprint next --as "+orWord(in.actor, "<you>"), string(b))), nil
 }
 
 // shownCard is a card as show prints it: the brief once. Prose is the
@@ -166,6 +175,15 @@ func consumers(snap store.Snapshot, producer string) []store.Card {
 // runQueue is `queue`: every producer not landed or failed, one line each,
 // in deal order.
 func runQueue(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	if snap.Epoch == 0 {
+		var err error
+		if snap, err = e.snapshot(ctx); err != nil {
+			return "", err
+		}
+	}
+	if err := epochNow(in.epoch(), snap); err != nil {
+		return "", err
+	}
 	stream := in.str("stream")
 	if _, ok := snap.Streams[stream]; stream != "" && !ok {
 		return "", refuse("no stream "+stream, "nova-sprint show")
@@ -181,7 +199,7 @@ func runQueue(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 	if len(lines) == 0 {
 		lines = []string{"the queue is empty"}
 	}
-	return done("nova-sprint show <card>", lines...), nil
+	return e.withUnseen(ctx, in, done("nova-sprint show <card>", lines...)), nil
 }
 
 func holders(snap store.Snapshot, producer string) string {

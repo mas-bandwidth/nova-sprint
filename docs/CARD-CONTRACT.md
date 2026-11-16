@@ -155,11 +155,13 @@ against origin and the roster; `check` re-proves every waiting or ready
 producer the same way, and `restore` prints the same proof for the cards it
 restored (an `ADMIT` line each). The parse refuses:
 
-- **NEEDS-ROUTE: <name>** (repeatable). The card is dealt only to a row that
-  serves every route it names. A machine serves a route through a
-  `route:<name>` role in nova-config (`--roles bench,route:<name>`); kin
-  serve no routes. The one parse is `card.NeedsRoutes`, which the tick, the
-  unserved judgement and admission all read. Uppercase like every other key.
+- **NEEDS-ROUTE: <name>** (repeatable). A work card is dealt only to a row that
+  serves every route it names (a read reviews the finished diff without running
+  gates or touching devices, so any row serving the card's tier may read it). A
+  machine serves a route through a `route:<name>` role in nova-config
+  (`--roles bench,route:<name>`); kin serve no routes. The one parse is
+  `card.NeedsRoutes`, which the tick, the unserved judgement and admission all
+  read. Uppercase like every other key.
 - **DONE-WHEN** that is not one command. A DONE-WHEN is one argv: words
   split at white space, a single or double quote joining what it encloses,
   run directly with no shell. So the line is refused (decided 2026-11-07,

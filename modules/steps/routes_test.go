@@ -34,4 +34,13 @@ func TestTickRoutesDealOnlyToServingRows(t *testing.T) {
 			assert.Equal(t, "r2", c.Holder, "dealt to the row that serves the route")
 		}
 	}
+
+	// #835 decouple: once r2 finishes the work card, a read reviews the diff
+	// without running gates or touching devices, so r1 (serving pro without
+	// route:ipad) is eligible to read p1 without opening cannot-read.
+	s.take("p1.w1")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.run(2)
+	assert.Empty(t, s.openJudgements("cannot-read"), "tier-serving row without NEEDS-ROUTE may read")
+	assert.Equal(t, "r1", s.card("p1.r1.1").Holder, "read dealt to tier-serving row r1 without route:ipad")
 }

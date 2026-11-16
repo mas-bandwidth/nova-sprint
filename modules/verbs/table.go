@@ -160,10 +160,10 @@ func workVerbs() []*verb {
 		{name: "beat", group: "work", role: roleWorker, usage: "--load1 <loadavg> [--cpu-peak <percent>] --cores <n> --slots-used <n> --slots-total <n> [--tiers <t,t>] --as <row>", flags: "load1= cpu-peak= cores= slots-used= slots-total= tiers=", max: 0, run: runBeat, cards: noCards,
 			about: "the worker's heartbeat: the bench's 1-minute load average, its cores, its nova-reserve slots and the tiers its harness serves, for the board's load cell and the roster's width and tiers; writes nothing when it repeats the last beat",
 			needs: []string{"not hooked in: nova-sprint hook --as <row> --role worker", "a flag missing or not a number: nova-sprint help beat"}},
-		{name: "show", group: "work", role: roleWorker, usage: "[<card>|<stream>|<row>|run] [--stitch]", flags: "stitch", max: 1, run: runShow,
+		{name: "show", group: "work", usage: "[<card>|<stream>|<row>|run] [--stitch]", flags: "stitch", max: 1, run: runShow,
 			about: "one record as JSON (a row with its worker bench's unit, as check reads it), the chooser (run), or a stream's stitch view",
 			needs: []string{"an unknown name: nova-sprint show"}},
-		{name: "queue", group: "work", role: roleWorker, usage: "[--stream <s>]", flags: "stream=", max: 0, run: runQueue,
+		{name: "queue", group: "work", usage: "[--stream <s>]", flags: "stream=", max: 0, run: runQueue,
 			about: "the producers not yet final, in deal order"},
 	}
 }

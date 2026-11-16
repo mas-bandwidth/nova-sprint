@@ -144,12 +144,7 @@ func (t *tick) dealRead(c store.Card) {
 		return
 	}
 	answered := t.rowsAnswer(c, "read")
-	var serving []string
-	for _, r := range t.serving(c) {
-		if r != c.Author && !t.readingOn(c, r) {
-			serving = append(serving, r)
-		}
-	}
+	serving := t.servingKind(c, "read")
 	if len(serving) == 0 {
 		t.judge("cannot-read", c.ID, "no open row may read "+c.ID+" (author "+c.Author+"); the review waits on nothing")
 		return
