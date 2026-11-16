@@ -1,20 +1,14 @@
 # nova-sprint v3.0.0: resources
 
-A specification. Draft for review. Nothing in it is built.
+A specification. Reconciled and settled for v3.0.0.
 
 v3 is experimental. v2 is still the version in use, and it keeps being fixed
 and worked in. This specification changes one thing about v2 and leaves the
 rest alone, landing included.
 
-**To a reviewer.** Read the whole page before replying. Reply with findings as
-section, then finding. The most useful findings are: a rule that contradicts
-another, a rule you would have to guess at to build, a claim about v2 that is
-wrong, and a case the rules do not cover. [Open questions](#11-open-questions)
-lists what the authors already know is undecided; answers to those are welcome
-too.
-
-Each rule is numbered and marked with who decided it: **[G]** Glenn, on
-2026-11-15, or **[R]** Rowan, a choice Glenn left to Rowan and can overrule.
+Each rule is numbered and marked with who decided it: **[G]** Glenn, settled on
+2026-11-15, or **[R]** Rowan, settled and reconciled in review by Emma
+Antigravity on 2026-11-15.
 
 ## 1. The change
 
@@ -35,6 +29,26 @@ needs a GPU, Metal, Windows or a device goes only where that exists. The
 second is that CI and cards share one count, so one can no longer starve the
 other unseen.
 
+In v3.0.0:
+- **All resources are identical [G]:** CPU, memory, and devices obey one
+  identical fit rule ([R11](#5-what-work-needs)). If any needed resource is
+  unavailable, work cannot start.
+- **Pause only between commands [G]:** Running processes are never killed or
+  frozen mid-command ([R34](#8-ci-wins)). CI takes its holds immediately; card
+  holds yield at command boundaries, run at low OS priority (`CPUWeight=1` +
+  `SCHED_IDLE` on Linux, `PRIO_DARWIN_BG` on macOS vs `CPUWeight=10000` /
+  `IOWeight=10000` on CI), and do not start their next command until CI ends.
+- **Reads are pure reviews [G]:** Reads do not run `DONE-WHEN` or
+  `STREAM GATE` commands and always take the light default budget (`cpu 1, memory 1`,
+  zero hardware/OS tags) ([R42](#101-the-card), [R43](#101-the-card)).
+- **Atomic fleet reservation [G]:** Friends acquire reservations atomically
+  before connecting ([R55](#105-friends)), replacing racy check-then-SSH.
+- **Unix/server boundary [G]:** Server tools run strictly on Linux, macOS, and
+  WSL2. There are no native Windows benches and no `nova-reserve.exe` ([R16](#6-holds)).
+- **Retire `NEEDS-ROUTE:` [G]:** `NEEDS-ROUTE:` is retired in favor of
+  `RESOURCES:` ([R41](#101-the-card)), and OS/arch tags are auto-derived from
+  `nova-config` ([R1](#4-tags-and-resources)).
+
 ## 2. Why
 
 **Width is a guess.** A bench's width is its core count, capped by
@@ -44,13 +58,20 @@ numbers is measured, and none knows what a consumer does: a read that waits on
 a model costs the same as a build that uses every core.
 
 **CI is not counted.** A runner's jobs take no reservation, and the dealer
-cannot see them. The one rule between CI and cards is that card work runs at
-a lower operating-system priority than CI.
+cannot see them. The one rule between CI and cards was that card work ran at
+a lower POSIX priority (`nice`) than CI.
 
 **That rule was not enough on 2026-11-15,** as measured in that day's sprint:
 hulk ran at a load of 70 with four or five CI runners and card work sharing
 it, and CI shards there were cancelled at the two-minute limit for an hour.
-Width said nothing about it.
+Under Linux cgroup v2, `github-runner` ran in `/system.slice` while bench
+workers ran in `/user.slice/user-<uid>.slice`; because both slices defaulted to
+`cpu.weight=100`, POSIX `nice` inside the user slice did not constrain CPU
+shares against the system slice.
+
+In v3, CI runners take explicit holds, card holds yield at command boundaries,
+and OS slices enforce real cross-slice priority (`CPUWeight=10000` / `IOWeight=10000`
+on CI vs `CPUWeight=1` / `IOWeight=1` / `SCHED_IDLE` on bench work).
 
 Glenn: "this will all be approximate, but better than what we have which is
 weirdly non-scientific around guessing the # of cards per-machine".
@@ -69,9 +90,8 @@ weirdly non-scientific around guessing the # of cards per-machine".
 | work | Anything that runs on a machine: a step of a consumer card's run, a CI job, a command. |
 | needs | What a piece of work must hold: the list it states, plus the defaults of [R10](#5-what-work-needs). |
 | hold | The resources one piece of work has on one machine, from start to end. |
-| waiter | Work that has asked for a hold and not yet been given it. A waiter holds nothing. |
-| paused | The state of a hold whose CPU a CI job has taken ([8](#8-ci-wins)). |
-| stopped | Ended by force. Stopped work starts over if it runs again. |
+| waiter | Work that has asked for a hold and not yet been given it. A waiter holds nothing. Time spent waiting is excluded from deadlines ([R39b](#8-ci-wins)). |
+| paused | The state of a hold that cannot start its next command because CI holds resources on the machine ([8](#8-ci-wins)). A paused hold holds no resources on the ledger while paused, and resumes before new work. Time spent paused is excluded from deadlines ([R39b](#8-ci-wins)). |
 | producer card | The unit of work in a stream. Unchanged from v2. |
 | consumer card | One go at a producer's work: a work attempt or a read. |
 | dealer | The part of the sprint that hands consumer cards out. |
@@ -85,6 +105,10 @@ weirdly non-scientific around guessing the # of cards per-machine".
 **R1 [G].** A tag is a name a machine has or does not have: `linux`, `mac`,
 `windows`, `gpu`, `metal`. A tag is never held. Any amount of work can run on
 a machine that has it.
+The machine's operating system (`linux`, `mac`, `windows`, with `darwin`
+normalized to `mac`) and architecture (`amd64`, `arm64`) are auto-derived as
+tags from `nova-config` ([Q8](#11-open-questions)). Conflicting manual OS or
+arch tags are refused.
 
 **R2 [G].** A resource is a name and a whole number on a machine: `cpu 16`,
 `memory 64`, `ps5 1`. Amounts are whole numbers. There are no fractions.
@@ -93,16 +117,18 @@ a machine that has it.
 same record. A thing a machine has one of is a resource with amount 1: work
 holds all of it or does not name it.
 
-**R4 [G].** `memory` is in gigabytes. `cpu` is in CPU units.
+**R4 [G].** `memory` is in gigabytes (GiB). `cpu` is in CPU units.
 
 **R5 [R].** Within a fleet a name is a tag or a resource, the same on every
-machine. `gpu` as a tag means everything on the machine may use its GPU at
-once. `gpu 1` as a resource means one piece of work holds it. A fleet picks
-one.
+machine. A fleet picks one.
+Naming convention: shareable toolchains or SDKs that allow concurrent builds
+use a tag with the `-sdk` suffix (e.g. `ps5-sdk` tag allows 10 compile cards
+to run concurrently). Exclusive physical hardware uses a resource with
+amount 1 (e.g. `ps5 1` ensures only one card accesses the physical devkit).
 
 **R6 [G].** A machine's tags and resources are kept in nova-config with the
 machine. The link runs both ways: from a machine to what it has, and from a
-name to the machines that have it.
+name to the machines that have it (`nova-config resources`).
 
 **R7 [G].** The default set of tools is installed on every machine, so the
 fleet is as uniform as it can be made. Tags and resources name what is
@@ -132,10 +158,13 @@ are tags and which are resources.
 defaults are part of the work's needs everywhere a rule says "needs".
 
 **R11 [G].** Work **fits** on a machine when the machine has every tag the
-work needs, and for every resource the work needs, the amount other holds
-count for plus the amount needed is at most the machine's amount. A hold
-counts for all of its resources, except that a paused hold counts for no CPU
-([R34](#8-ci-wins)). This one rule covers every resource.
+work needs, and for every resource the work needs, the amount other unpaused
+holds count for plus the amount needed is at most the machine's amount:
+
+    sum(unpaused holds on r) + needed(r) <= machine's amount(r)
+
+All resources are identical: CPU, memory, and devices obey this same rule. If
+any needed resource does not fit, the work cannot start.
 
 **R12 [R].** Work that needs a tag or resource the machine does not have, or
 more of a resource than the machine has in all, can never fit there. It is
@@ -152,36 +181,55 @@ machine with no fleet and no sprint.
 
 **R15 [R].** A hold belongs to one command running on the machine, as a slot
 does today. When the command ends, for any reason, the operating system frees
-the hold. There are no tokens and no leases. (A CI job is not one command:
+the hold. There are no tokens and no leases. (A CI job holds across its run:
 [Q1](#11-open-questions).)
 
 **R16 [R].** nova-reserve on a machine is the one authority on what is held
 there. Two askers can never hold the same resources, whoever sent them.
+Every caller on a machine (sprint bench worker, CI runner, friend SSH session,
+human) uses the single shared state directory `/var/tmp/nova-reserve` with
+shared permissions.
+Unix/server boundary: server tools run strictly on Linux, macOS, and WSL2.
+There are no native Windows benches and no `nova-reserve.exe`. On WSL2 hosts,
+Windows CI runner hooks invoke `wsl.exe ... nova-reserve hold --holder ci` so
+one Unix ledger governs the physical machine ([Q6](#11-open-questions)).
 
-**R17 [R].** A hold steers and does not police. It tells the work how many
-cores to use ([R28](#7-cpu-units)). Nothing stops work from using more CPU or
-memory than it holds. [R40](#9-the-check) is how that is noticed.
+**R17 [R].** A hold steers and sets process environment. It exports
+`NOVA_RESERVE_DIR`, `NOVA_RESERVE_CPUS=<cores>`, `GOMAXPROCS=<cores>`,
+`CARGO_BUILD_JOBS=<cores>`, `RAYON_NUM_THREADS=<cores>`,
+`CMAKE_BUILD_PARALLEL_LEVEL=<cores>`, and `MAKEFLAGS`.
+On Linux it sets OS priority (`CPUWeight=1`, `IOWeight=1`, `SCHED_IDLE`) for
+bench card holds, while CI runs at `CPUWeight=10000`, `IOWeight=10000`, `Nice=-10`.
+On macOS it sets `setpriority` `PRIO_DARWIN_BG` for bench holds.
 
 **R18 [R].** Work that fits a machine but finds no room now waits in one line
-per machine. Waiters are served strictly in arrival order: a later, smaller
-request does not pass an earlier one, so a large request at the head holds
-back smaller ones behind it. A waiter that gives up leaves the line. Two
-things do not use the line: a CI job ([R33](#8-ci-wins)) and unpausing
-([R36](#8-ci-wins)). Sending important work first is the sender's job.
+per machine (`line/<seq>.lock`). Waiters are served strictly in arrival order:
+a later, smaller request does not pass an earlier one. A waiter that gives up
+leaves the line. Two things do not use the line: a CI job ([R33](#8-ci-wins))
+and unpausing ([R36](#8-ci-wins)).
+Re-entrancy guard: if `NOVA_RESERVE_DIR` in the process environment matches the
+target directory, `nova-reserve` executes the child command directly without
+taking a nested hold, preventing self-deadlocks inside CI scripts.
 
-**R19 [R].** A hold carries a label and a priority. The label says what kind
-of work it is: for a consumer card, v2's types (blocker, critical, fix, read,
-work); for a CI job, `ci`; otherwise whatever its asker says. The priority is
-one of v2's levels (low, normal, high, critical, blocker). The sprint sets it
-from the card. A hold whose asker sets none is `normal`.
+**R19 [R].** A hold carries explicit metadata:
+- `--holder <bench|friend|ci|person>`
+- `--consumer <card.attempt@epoch>`
+- `--label <ci|blocker|critical|fix|read|work|custom>`
+- `--priority <blocker|critical|read|high|normal|low>`
+- `--why <text>`
 
-**R20 [R].** Asking for the whole machine stays as it is in nova-reserve
-today: it holds everything the machine has.
+Priority levels run in strict order:
+`blocker > critical > read > high > normal > low`.
+A hold whose asker sets no priority defaults to `normal`.
 
-**R21 [G].** nova-tools has no view of resources. It answers questions: what
-tags and resources there are and on which machines, what is held now and by
-what, and it gives and releases holds. The picture is the sprint's board
-([10.6](#106-the-board)).
+**R20 [R].** Asking for the whole machine (`--exclusive`) holds everything the
+machine has.
+
+**R21 [G].** nova-tools has no global view of resources. It answers questions:
+what tags and resources exist and on which machines (`nova-config resources`),
+what is held now and by what on a machine (`nova-reserve status --json`), and
+fleet-wide reservations (`nova-fleet reserve`, `nova-fleet resources`). The
+visual picture is the sprint's board ([10.6](#106-the-board)).
 
 ## 7. CPU units
 
@@ -210,34 +258,30 @@ is a constant in the benchmark, the same in every copy of the tools, so one
 CPU unit is the same amount on every fleet. A machine's CPU units are its
 score divided by the constant, rounded down, at least 1.
 
-**R27 [R].** A machine is measured once, when it joins a fleet, or the first
-time nova-reserve is used on a machine with no fleet. The benchmark holds the
-whole machine while it runs ([R20](#6-holds)), so nothing else is running
-during the measurement. The number is kept, and measured again only when
-asked. Memory is read from the machine at the same time.
+**R27 [R].** A machine is measured once, when it joins a fleet. The benchmark
+auto-runs on `run`/`hold` only when `<dir>` is the system default `/var/tmp/nova-reserve`
+and `capacity.json` is missing; it never auto-runs on custom or temporary
+directories.
+The benchmark holds `--exclusive` while it runs. Usable memory is read from the
+machine at the same time (cgroup v2 `memory.max` if bounded, else physical GiB,
+at least 1). If a CI job arrives during a benchmark, calibration aborts with
+non-zero status rather than recording an invalid score ([Q12](#11-open-questions)).
 
 **R28 [R].** CPU is counted in CPU units ([R11](#5-what-work-needs)). Cores
 are not counted. They are only what work is told to use:
 
     cores to use = units held x usable cores / machine's CPU units, rounded down, at least 1
 
-Where nova-reserve can pin (Linux), it pins the work to that many cores.
-Which cores is nova-reserve's choice, and two holds may be given the same
-core. Elsewhere the number is only what the work's tools are told.
-
-With made-up numbers: a machine with 16 ordinary cores measures 16 CPU units,
-and `cpu 4` is told to use 4 cores. A machine with 16 stronger cores measures
-48 CPU units; there `cpu 4` is told to use 1 core and `cpu 12` to use 4.
+Where nova-reserve can pin (Linux), it dynamically assigns disjoint physical
+cores and SMT pairs across currently unpaused holds. Elsewhere the number is
+only what the work's tools are told via environment variables.
 
 **R29 [R].** The conversion is approximate, and that is accepted. On a fast
-machine small pieces of work share cores: `cpu 1` on that stronger machine is
-a third of a core, and three of them may be told to use the same core. On a
-slow machine work is told to use slightly fewer cores than its units are
-worth. What work is told to use is within one core of what it asked for.
+machine small pieces of work share cores. What work is told to use is within
+one core of what it asked for.
 
-**R30 [R].** Work that cannot be split across cores is not treated specially
-in v3.0.0. It asks for `cpu 1` and is told to use one core, wherever it
-lands. [Q7](#11-open-questions) is about sending it to a fast core.
+**R30 [R].** Work that cannot be split across cores asks for `cpu 1` and is told
+to use one core. `fast-core` is cut from v3.0.0 ([Q7](#11-open-questions)).
 
 ## 8. CI wins
 
@@ -251,40 +295,48 @@ nothing, so no CPU is wasted while CI is not running.
 not use the line ([R18](#6-holds)). It takes its hold at once, even when
 other work fills the machine.
 
-**R34 [G].** When a CI job takes CPU that other work holds, enough other
-holds on that machine yield to it and are **paused**: lowest priority first,
-and among equals the youngest first. A paused hold counts for no CPU. It
-keeps its other resources. It is not killed and does not start over.
+**R34 [G].** When a CI job arrives, it takes its hold immediately. Running
+commands are never killed and never frozen mid-command with `SIGSTOP` or
+`cgroup.freeze` ([Q3](#11-open-questions)).
+Instead, active holds whose needed resources plus CI exceed the machine's
+capacity become logically **paused** on the ledger: lowest priority first, and
+youngest first on ties. Paused holds finish their already-running command at low
+OS priority (`CPUWeight=1` + `SCHED_IDLE` on Linux, `PRIO_DARWIN_BG` on macOS),
+and **cannot start their next command** until CI finishes and all their needed
+resources fit again. While paused, a hold counts for zero resources on the
+ledger.
 
-**R35 [G].** A machine is never counted over what it has. For CPU, what CI
-holds and what the holds still running hold come to at most the machine's CPU
-units.
+**R35 [G].** A machine is never counted over what it has. For all resources,
+what CI holds and what unpaused holds hold come to at most the machine's
+amounts:
+
+    sum(unpaused holds on r) + sum(ci holds on r) <= machine's amount(r)
 
 **R36 [G].** When a CI job ends, paused holds come back first. While any hold
 on a machine is paused, no waiter and no new work is given a hold there. Each
-paused hold is unpaused as soon as it fits, highest priority first. This can
-leave CPU unused for a moment, while a paused hold waits for another CI job
-to end; that is accepted, because a CI job is short.
+paused hold is unpaused as soon as all its needed resources fit, highest
+priority first. A continuing consumer unpauses ahead of `line/` waiters.
 
-**R37 [G].** By default CI can take all of a machine. A most that CI may hold
-on a machine is an idea, not part of this specification.
+**R37 [G].** By default CI can take all of a machine.
 
 **R38 [R].** A hold is in one of two states, held or paused, and its size
 never changes.
 
-**R39 [R].** Pausing frees CPU, not memory. If a CI job's memory does not fit
-([R11](#5-what-work-needs)), other work on the machine is stopped, in the
-order of [R34](#8-ci-wins), until it does. A consumer stopped this way is
-dealt again later with v2's `fault` result, which blames nobody.
+**R39 [DELETED].** Mid-command stopping/killing is deleted. All resources are
+identical ([R11](#5-what-work-needs)): if all needed resources are not
+available, work cannot start its next command. In-flight commands run to
+completion under OS priority steering.
 
 **R39a [R].** CI does not pause or stop CI. A machine's runners are sized so
-that all of them running a job at once fit in the machine: runners times one
-job's needs is at most the machine's amount, for every resource. So a CI job
-never has to wait for another CI job either. A machine set up otherwise is a
-configuration error, found when the runners are set up.
+that all runner scopes fit in the machine:
 
-**R39b [R].** Time a consumer spends paused does not count toward the
-deadline at which v2 withdraws a working consumer.
+    sum over scopes s (runners_s * needs_s) <= machine's amount(r)
+
+for every resource `r`.
+
+**R39b [R].** Time a consumer spends paused or waiting in line is excluded
+from all worker, step, and stall deadlines (`working_max`, `DeadlineAt`,
+step execution timeouts, and stream landing stall detection).
 
 Glenn: "The design I want does not waste CPU while we are not running CI, so
 it does work, but then prioritizes CI ahead of work, when we do.", "the card
@@ -294,44 +346,41 @@ machine.", "unpausing cards are done, before new cards are dealt."
 ## 9. The check
 
 **R40 [G].** Each machine still measures its real CPU use, as a bench's
-heartbeat does in v2. The measurement is kept for checking and is not drawn
-on the board.
-
-What is held is a plan; what the machine measures is what happened. A machine
-far busier than its holds has something running without a hold. Work that
-uses far more or less than it held was given the wrong numbers.
+heartbeat does in v2. The measurement is kept internal for coordinator
+awareness and health checking; it is not drawn on the board.
 
 ## 10. What changes in nova-sprint
 
-Each part says what v2 does today and what v3 does. Tier, routes and a
-friend's width do not change **[G]**. Producer cards do not change at all
-**[G]**. Streams, needs between cards, reads, review and landing do not
-change.
+Tier, routes and a friend's width do not change **[G]**. Producer cards do
+not change at all **[G]**. Streams, needs between cards, review and landing
+do not change.
 
 ### 10.1 The card
 
 Today a brief's first line is its tier, and a card names a route it needs with
-a `NEEDS-ROUTE:` line in the block before the first blank line.
+a `NEEDS-ROUTE:` line.
 
-**R41 [R].** A card states what its work needs with one line in that same
-block:
+**R41 [R].** `NEEDS-ROUTE:` is retired in v3.0.0 ([Q5](#11-open-questions)).
+A card states what its work needs with a `RESOURCES:` line in the brief header:
 
     RESOURCES: cpu 4, memory 8, mac, metal
 
-The list is as in [R9](#5-what-work-needs). A card with no `RESOURCES:` line
-states nothing, so its work's needs are the defaults: `cpu 1` and `memory 1`.
+A card with no `RESOURCES:` line states nothing, so its work's needs are the
+defaults: `cpu 1` and `memory 1`.
 
-**R42 [G].** The coordinator decides the list for each card, by judgement.
-There is no table of defaults. A read is cheaper than the work it reads; work
-that compiles and runs tests needs more than work that edits a page.
+**R42 [G].** The coordinator sets the `RESOURCES:` line for each card.
+**Reads are purely code and diff reviews [G]**: reads do not run `DONE-WHEN`
+or `STREAM GATE` commands (stripped in both v2 PR #835 and v3). Work cards
+and CI own building and running tests; reads inspect the diff against base,
+invariants, code structure, and test quality ([Q4](#11-open-questions)).
 
-**R43 [R].** The line is part of the brief, as tier and routes are. The
-producer card's record does not change. Every consumer cut from the card has
-the same needs ([Q4](#11-open-questions) asks about reads).
+**R43 [G].** Every `read` consumer uses the light default read budget:
+`cpu 1, memory 1` with zero hardware or OS tags, regardless of the producer
+card's `RESOURCES:` line. Work consumers use the card's `RESOURCES:` line.
 
 **R44 [R].** `add` refuses a card whose list is malformed. It also refuses a
-card whose needs no bench in nova-config can ever fit ([R12](#5-what-work-needs)),
-as v2 refuses a card whose tier and routes no row serves.
+card whose needs no single bench row in `nova-config` can ever satisfy jointly
+across tier, tags, and resource amounts ([R12](#5-what-work-needs)).
 
 ### 10.2 The roster
 
@@ -339,7 +388,7 @@ Today a bench is a row whose width is its cores, capped by `fleet_width_cap`,
 and capped again by the nova-reserve slots it reports.
 
 **R45 [G].** A bench has no width. Its row carries its tags and resources
-from nova-config.
+from nova-config. An unmeasured bench has `Held: "unmeasured resources in nova-config"`.
 
 **R46 [G].** `fleet_width_cap` is removed. It has nothing to bound.
 
@@ -351,199 +400,206 @@ once. It says nothing about where their work runs.
 Today a bench's heartbeat carries its load, its CPU peak, its cores, its
 nova-reserve slots used and in all, and the tiers it serves.
 
-**R48 [R].** A bench's heartbeat carries, for each resource it has: the
-amount in all, the amount this sprint's consumers hold there, and the amount
-everything else holds there (CI, friends' work, people). It names which of
-its consumers are paused. It still carries the load, the CPU peak and the
-tiers. It no longer carries cores or slots.
+**R48 [R].** A bench's heartbeat carries:
+- `resources`: machine capacity amounts
+- `held_sprint`: amounts held by unpaused sprint bench consumers
+- `held_other`: amounts held by non-sprint work (CI, friends, people)
+- `held_by_label`: unpaused amounts grouped by label (`ci`, `blocker`, `critical`, `fix`, `read`, `work`)
+- `paused_by_label`: paused amounts grouped by label
+- `any_paused`: boolean, true if **any** hold on the machine is paused
+- `sprint_consumers`: list of consumer IDs holding on the bench
+- `paused_consumers`: list of paused consumer IDs
+- `paused_millis`: monotonic cumulative pause+wait duration per consumer ID
+
+The heartbeat emits edge-triggered updates immediately upon hold or pause state
+changes. Cores, slots, and load are dropped from the board.
 
 ### 10.4 The deal
 
-Today the dealer deals a consumer to a row while the row's live consumers,
-plus this tick's deals, are under its width. The store has not checked width
-since v2's round 22; the dealer is the only check.
-
 **R49 [G].** The dealer decides where work it places on benches runs.
 
-**R50 [R].** The dealer deals a consumer to a bench only when the bench has
-every tag the card needs, and for every resource the card needs:
+**R50 [R].** The dealer deals a consumer to a bench only when:
+1. The bench has every tag the card needs.
+2. The bench has `any_paused == false` ([R52](#104-the-deal)).
+3. For every resource `r` the card needs:
 
-    amount in all - used >= the card's need
+       amount in all(r) - used(r) >= card's need(r)
 
-    used = held by everything else
-         + the larger of: the needs of consumers dealt there and not finished
-                          (this tick's deals included),
-                          and what this sprint's consumers hold there
+   where `used(r)` is calculated by exact consumer-ID union sum:
 
-A consumer that has been dealt but has not started counts through its needs.
-A consumer the sprint has withdrawn but whose command has not yet ended
-counts through what it still holds. Two deals in one tick cannot take the
-same room. While a consumer is paused, its CPU is counted once in its needs
-and again in the CI job that displaced it; that over-count is harmless,
-because of [R52](#104-the-deal).
+       Let C_active be the union of:
+         - consumer IDs currently in state "working" on bench B (including deals earlier in this tick)
+         - consumer IDs in row.Resources.SprintConsumers (still holding during wind-down)
 
-**R51 [R].** What the heartbeat says is a moment old. The hold itself is
-taken on the bench, through nova-reserve, when the work starts. In v2 a
-consumer that finds no slot within a few seconds is staged and asks again on
-a later pass. In v3 it asks once and keeps its place in the bench's line
-([R18](#6-holds)) until it is given room or the sprint withdraws it.
+       sprint_used(B, r) = sum_{c in C_active} card_needs(c)[r]
+       used(B, r) = row.Resources.HeldOther[r] + sprint_used(B, r)
 
-**R51a [R].** A consumer's run is several commands in v2 (the harness, then
-the seal, the apply and each gate), and each takes its own nova-reserve slot.
-That stays: each step takes its own hold, with the card's needs. The dealer's
-count ([R50](#104-the-deal)) keeps the consumer's room for its whole run, so
-a later step normally finds it ([Q13](#11-open-questions)).
+Two deals in one tick cannot take the same room.
 
-**R52 [G].** The dealer deals nothing new to a bench while any consumer there
-is paused ([R36](#8-ci-wins)).
+**R51 [R].** The hold itself is taken on the bench, through nova-reserve, when
+the command starts. A consumer waits in the bench's line ([R18](#6-holds))
+until room is available or the sprint withdraws it.
+
+**R51a [R].** A consumer's run consists of several command steps (harness, seal,
+apply, gate). Each step takes a hold via `nova-reserve` carrying the consumer ID
+and needed resources. Command boundaries serve as clean yield gates: if CI has
+arrived, the completed step exits its hold, the consumer transitions to paused
+on the ledger, and once CI ends, the unpausing consumer resumes before new
+waiters ([R36](#8-ci-wins)).
+
+**R52 [G].** The dealer deals nothing new to a bench while `any_paused` is true
+on that bench ([R36](#8-ci-wins)).
 
 **R53 [R].** Deal order is unchanged: v2's ladder (blocker, critical, read,
-high, normal, low). Preemption stays as v2 has it, for blockers only. Its
-test "no free width on an open serving row" becomes "no open bench that has
-the card's tags has its needs free", and it withdraws victims in v2's order
-until the blocker's needs fit ([Q9](#11-open-questions)).
+high, normal, low). Preemption stays for blockers only: when no open bench that
+has the blocker's tags has its needs free, preemption checks that
+`total(r) - held_other(r) >= blocker.needs(r)` and `!any_paused`, and withdraws
+sprint victims on the bench in v2's order with `fault` until the blocker fits.
+Friend-row preemption is retained.
 
-**R54 [R].** v2's idle alarm measures working consumers over open width,
-across benches and friends. For friends that stays. For benches it becomes
-CPU units held over CPU units in all ([Q14](#11-open-questions)).
+**R54 [R].** The idle alarm measures fleet utilization as the average across
+open rows of:
+- on open benches: `min(1, cpu_held / cpu_total)`
+- on open friends: `working / width`
+
+The alarm is suppressed when any bench is paused or when ready cards are blocked
+on unavailable tags or resources ([Q14](#11-open-questions)).
 
 ### 10.5 Friends
 
-**R55 [G].** A friend decides where the work it is dealt runs. Where the
-friend's session runs does not matter; what matters is the machine it chooses
-to do the work on.
+**R55 [G].** Friends use **atomic fleet reservation** ([Q2](#11-open-questions)).
+A friend does not guess or use racy check-then-SSH advice. It requests an
+atomic reservation from `nova-tools`:
 
-**R56 [G].** A friend's work holds resources like any other. It runs each
-command on the chosen machine through nova-reserve, over ssh, with the card's
-needs. A friend that runs several commands at once for one card divides the
-card's needs among them; that is the friend's care, and nothing enforces it.
+    nova-fleet reserve --needs "<spec>" [--holder friend] [--consumer <id>]
 
-**R57 [R].** The dealer and a friend can choose the same machine at the same
-moment. nova-reserve there gives the room to one and the other waits
-([R16](#6-holds)). A friend's work is counted only while a command of it is
-running, so between a friend's commands the dealer may fill the bench, and
-the friend's next command waits in line.
+`nova-fleet` finds an eligible machine, acquires the `nova-reserve` hold
+atomically over SSH, holds it open, and prints the assigned host. The hold
+auto-releases on disconnect.
+
+**R56 [G].** A friend's work holds resources like any other. The reservation
+covers the friend's work on that host.
+
+**R57 [R].** Because the reservation is held atomically across the friend's
+work on that host, the dealer cannot fill the bench between steps while the
+friend's worktree is staged there.
 
 **R58 [R].** A friend is dealt cards as in v2: by tier, routes and its width.
-It chooses a machine that has the card's tags, from nova-config. Until it can
-ask the fleet where there is room ([Q2](#11-open-questions)), it chooses
-without knowing what is free, and its command waits in that machine's line.
+When executing, it obtains an atomic reservation via `nova-fleet reserve`.
 
 ### 10.6 The board
 
-Today the board has a Fleet table and a Friends table drawn by one renderer,
-with the columns machine or friend, status, ready, working (one cell per unit
-of width), working over width, done, ok% and load.
+Today the board has a Fleet table and a Friends table.
 
-**R59 [G].** The Fleet section becomes Resources. Its rows are still the
-machines. Where a row shows its working cells and width, it shows its CPU,
-its memory and its tags.
+**R59 [G].** The Fleet section becomes Resources. Its rows are the machines.
+Columns are: `machine`, `status`, `cpu`, `memory`, `tags`.
+Columns `width`, `working/width`, `ready`, `load`, and visual `ok%`/`done` are
+dropped from the Resources table. (Machine `ok%` remains internal for
+coordinator health checks.)
 
-**R60 [G].** It answers one question: are we using the fleet's resources
-fully, yes or no. It shows everything that holds, CI included.
+**R60 [G].** Resources answers one question: are we using the fleet's
+resources fully, yes or no. It shows everything that holds, CI included.
 
-**R61 [G].** A machine's bars are split by type of work, in the colors the
-board already uses for working cells: blocker, critical, fix, read and work.
-Who is doing the work is not shown.
+**R61 [G].** A machine's bars are split by label: `ci`, `blocker`, `critical`,
+`fix`, `read`, and `work`.
 
-**R62 [G].** Paused work is shown on the machine's bar, behind the CI that
-displaced it. Glenn: "this is why we visualize resourcecs and what tehy are
-doing", "per-machine -- NOT cards."
+**R62 [G].** `ci` is colored steel blue / cyan (`#38bdf8`), outside the card
+severity spectrum. Paused work is shown on the machine's bar behind the CI that
+displaced it.
 
-**R63 [G].** The load column goes, from both tables.
+**R63 [G].** The load and ready columns are removed.
 
-**R64 [G].** The Friends section is otherwise unchanged. It still draws each
-friend's consumer cards against its width. What those cards hold shows in
-Resources.
+**R64 [G].** The Friends section is **100% unchanged**. It draws each friend's
+consumer cards against its width.
 
 ### 10.7 Policy
 
-Today policy answers `width(row)` for every row with how many consumers the
-row works, at most its width, and `limits()` carries `fleet_width_cap`.
-
-**R65 [R].** `width(row)` is asked only for friends. For a bench there is no
-width to answer. `limits()` no longer carries `fleet_width_cap`. The rows a
-policy sees carry tags and resources where they carried width.
-
-This is why v3 is a major version: a policy written for v2 does not load
-unchanged.
+**R65 [R].** `width(row)` is asked only for friends (`kin`). For a bench there
+is no width. `limits()` no longer carries `fleet_width_cap`.
+In Layer 5 policy:
+- `jointRows` treats candidate benches as inherently capable (`capable = true`),
+  never comparing them against `a.Width`.
+- `inputs.go` attaches `tags` and `resources` to `card` before `unworded()`
+  blanks the brief, and attaches `tags`, `resources`, and `free` room to bench
+  candidates.
 
 ### 10.8 Removed
 
-- A bench's width, and every count against it: the roster's width, the `check`
-  verb's width line, the working-over-width column.
+- A bench's width, and every count against it (roster width, check verb width line, working-over-width column).
 - `fleet_width_cap`.
 - The heartbeat's cores and slots.
-- The board's load column.
+- The board's load and ready columns, and visual `ok%`/`done` on Resources.
+- `NEEDS-ROUTE:` in briefs.
+- Mid-command process stopping or killing (`R39`).
 
-## 11. Open questions
+## 11. Open questions (Settled Decisions)
 
-**Q1. A CI job's hold.** A job is not one command, so [R15](#6-holds) does not
-cover it. Runners already run a hook before each job and one after, and the
-two-minute timer starts when the first hook ends. The hold could be taken in
-the first hook and released in the second. What holds it in between, and what
-frees it if the runner dies, is not designed. Who states a job's needs is not
-chosen. The fleet sizes a runner at 4 cores today, so `cpu 4` is the natural
-default for CPU. A job must state its memory too: with the default of
-`memory 1`, [R39](#8-ci-wins) would never act.
+**Q1. A CI job's hold.** Settled: `job-started.sh` spawns a detached
+`nova-reserve hold --holder ci --label ci ...` process watching `Runner.Worker`
+via Linux `pidfd_open` or macOS `kqueue`, holding an OS `flock` and exiting on
+`job-completed.sh`. If `job-started.sh` fails, `Runner.Worker` is terminated
+so unheld steps cannot execute. Runner job needs are configured per scope in
+`nova-config`.
 
-**Q2. Asking the whole fleet.** A friend or a person needs to ask which
-machines have given tags and amounts free. Which tool answers, from what, and
-how fresh the answer must be, is not designed. The dealer does not need this:
-it has the heartbeats.
+**Q2. Asking the whole fleet.** Settled: Friends and scripts use atomic
+reservation via `nova-fleet reserve --needs ...`, which probes candidates and
+locks the hold on a winning host atomically before returning the hostname.
+Fleet status is queried via `nova-fleet resources [--json]`.
 
-**Q3. What paused does to the process.** [R34](#8-ci-wins) settles the count.
-The process could be really stopped until the CI job ends, or left running at
-a low priority. Card work already runs at a lower priority than CI in v2, and
-on 2026-11-15 that did not keep CI inside two minutes on hulk
-([2](#2-why)), which argues for really stopping it. A stopped process cannot
-answer a polite request to end until it is continued.
+**Q3. What paused does to the process.** Settled: Pause only between commands
+([R34](#8-ci-wins)). No mid-command `SIGSTOP` or `cgroup.freeze`. CI holds
+take resources immediately; card holds yield at command boundaries, run at low
+OS priority (`CPUWeight=1` + `SCHED_IDLE` on Linux, `PRIO_DARWIN_BG` on macOS
+vs `CPUWeight=10000` / `IOWeight=10000` / `Nice=-10` on CI), and do not start
+their next command until CI finishes and all needed resources fit again.
 
-**Q4. Reads.** A read is cheaper than the work it reads. Does a card state
-its reads' needs apart from its work's?
+**Q4. Reads.** Settled: Reads do not run `DONE-WHEN` or `STREAM GATE` commands
+(stripped in PR #835 and v3). Reads are purely code/diff reviews and always
+take the default read budget (`cpu 1, memory 1`, zero hardware/OS tags),
+regardless of the producer card's `RESOURCES:` line ([R42](#101-the-card),
+[R43](#101-the-card)).
 
-**Q5. Devices.** A v2 route already names a device a machine serves, and
-routes do not change. A device could also be a resource with amount 1. There
-should be one way to say it.
+**Q5. Devices vs routes.** Settled: `NEEDS-ROUTE:` is retired in v3.0.0.
+Shareable toolchains use tags with the `-sdk` suffix (`ps5-sdk`); exclusive
+hardware devices use amount-1 resources (`ps5 1`) ([R5](#4-tags-and-resources)).
 
-**Q6. Windows.** nova-reserve has no Windows build, and the fleet has Windows
-runners and a Windows bench.
+**Q6. Windows.** Settled: Strictly no native Windows benches and no
+`nova-reserve.exe`. Server tools run on Linux, macOS, and WSL2. On WSL2 hosts,
+Windows CI runner hooks call `wsl.exe ... nova-reserve hold --holder ci` so one
+Unix ledger governs the physical host. Native Windows clients interact only
+via `nexus-client`.
 
-**Q7. Work that cannot be split.** More cores do not help it; it needs one
-fast core ([R30](#7-cpu-units)). A sketch: the benchmark also times one
-thread, and a machine whose cores clear a fixed speed gets a resource
-`fast-core`, counted and held like any other. Not designed: how many of a
-machine's cores are fast when it has more than one kind, and how a hold of
-`fast-core 1` is tied to an actual fast core.
+**Q7. Work that cannot be split.** Settled: `fast-core` is cut from v3.0.0.
+Single-threaded work asks for `cpu 1` and runs on one core ([R30](#7-cpu-units)).
 
-**Q8. Operating system and architecture as tags.** nova-config already holds
-both for each machine. Do they become tags automatically?
+**Q8. Operating system and architecture as tags.** Settled: `os` (`linux`, `mac`,
+`windows`, with `darwin` normalized to `mac`) and `arch` (`amd64`, `arm64`)
+are automatically derived as tags from `nova-config` rows.
 
-**Q9. Preemption.** v2 preempts for a blocker by withdrawing one working
-consumer, which starts over later. Under v3 a blocker that finds no room
-could instead pause lower priority work, as CI does, so nothing starts over.
-[R53](#104-the-deal) keeps v2's rule until this is decided.
+**Q9. Blocker preemption.** Settled: Retain v2 withdraw (`fault`, [R53](#104-the-deal)).
+Preemption withdraws sprint victims on a bench only when
+`total(r) - held_other(r) >= blocker.needs(r)` and `!any_paused`, and retains
+friend-row preemption.
 
-**Q10. The board's ready, done and ok% columns on a machine's row.** They
-count the cards each machine worked. Do they stay?
+**Q10. Board columns on Resources table.** Settled: Drop `ready`, `load`, and
+`width`. Move machine `ok%` internal for coordinator checks. Friends table
+remains 100% unchanged ([R59](#106-the-board), [R64](#106-the-board)).
 
-**Q11. A color for CI** on the board. It is a type of work the board has no
-color for.
+**Q11. Color for CI.** Settled: Steel blue / cyan (`#38bdf8`), distinct from
+the sprint card severity colors ([R62](#106-the-board)).
 
-**Q12. Does CI win over everything?** [R33](#8-ci-wins) says cards. A person
-holding the whole machine for a measurement is the hard case, and so is work
-waiting to hold the whole machine, which in nova-reserve today holds back new
-takers while it waits.
+**Q12. CI vs `--exclusive` / benchmark.** Settled: Calibration benchmarks run
+on an idle machine before enabling runners. If CI arrives during a benchmark,
+the benchmark aborts with non-zero exit status rather than recording an
+invalid measurement ([R27](#7-cpu-units)).
 
-**Q13. One hold for a consumer's whole run.** [R51a](#104-the-deal) keeps
-v2's hold per step. Between steps the consumer holds nothing on the machine,
-so a CI job or a friend's command can take the room, and the next step waits.
-One command that holds across the whole run would close that gap, and is a
-larger change to the worker.
+**Q13. Command yield gates.** Settled: Command boundaries serve as clean yield
+gates ([R51a](#104-the-deal)). Each step carries the consumer ID; unpausing
+consumers resume ahead of new waiters once CI clears ([R36](#8-ci-wins)).
 
-**Q14. One figure for the idle alarm.** v2 has one figure across benches and
-friends. [R54](#104-the-deal) gives two measures. How they join is not
-chosen.
+**Q14. Unified idle alarm.** Settled: Average of bench CPU unit utilization
+and friend working/width, suppressed when any bench is paused or cards are
+blocked on tags/resources ([R54](#104-the-deal)).
 
 ## 12. What has to hold
 
@@ -552,59 +608,53 @@ the models by trace checks, as in v2. These are the properties the models
 must check.
 
 1. **Never over.** On every machine, for every resource, the amounts all
-   holds count for ([R11](#5-what-work-needs)) come to at most the machine's
-   amount ([R35](#8-ci-wins)).
+   unpaused holds count for come to at most the machine's amount ([R35](#8-ci-wins)).
 2. **CI never waits.** A CI job's hold is taken in the step it is asked for.
-   With 1, this needs [R39a](#8-ci-wins): the runners on a machine fit in it.
-3. **Paused counts for no CPU**, keeps its other resources, and its size is
-   what it was ([R34](#8-ci-wins), [R38](#8-ci-wins)).
-4. **Unpause first.** While any hold on a machine is paused, no waiter is
-   given a hold there ([R36](#8-ci-wins)).
+   With 1, this needs [R39a](#8-ci-wins): runner scopes fit in the machine.
+3. **Paused counts for no resources** while paused, yields between commands,
+   and unpauses to its original size ([R34](#8-ci-wins), [R38](#8-ci-wins)).
+4. **Unpause first.** While any hold on a machine is paused, no waiter and no
+   new deal is given a hold there ([R36](#8-ci-wins), [R52](#104-the-deal)).
 5. **Arrival order.** Among waiters on a machine, none is given a hold before
    one that arrived earlier and is still waiting ([R18](#6-holds)).
 6. **Never-fit is refused,** not queued ([R12](#5-what-work-needs)).
 7. **Every hold ends.** A hold whose command has ended is released
-   ([R13](#6-holds), [R15](#6-holds)). A CI job's hold is outside this until
-   [Q1](#11-open-questions) is designed.
+   ([R13](#6-holds), [R15](#6-holds)).
 8. **Every paused hold is unpaused,** and every waiter that does not give up
-   is given its hold, provided CI jobs stop arriving for long enough. Without
-   that, neither is promised ([R37](#8-ci-wins)).
+   is given its hold, provided CI jobs stop arriving for long enough
+   ([R36](#8-ci-wins), [R37](#8-ci-wins)).
 9. **No double deal.** Two consumers dealt in one tick never count the same
-   room ([R50](#104-the-deal)).
-10. **No deal behind a pause** ([R52](#104-the-deal)).
-11. **Stopped work is dealt again.** A consumer stopped for a CI job's memory
-    ends with `fault` and is not lost ([R39](#8-ci-wins)).
+   room; dealer room uses the exact consumer-ID union sum ([R50](#104-the-deal)).
+10. **No deal behind a pause.** While `any_paused` is true on a bench, no new
+    cards are dealt to it ([R52](#104-the-deal)).
 
 Models that exist and change: nova-reserve's SlotCount, SlotFiles and
 Capacity (one number becomes named numbers; a paused state and a line are
-added) and JobControl (stopping and continuing a running command, if
-[Q3](#11-open-questions) is answered that way); nova-sprint's Runner (its
-width and slots), Steps (the deal's room) and CardMachine (the cut's guard on
-width).
+added); nova-sprint's Runner (its width and slots), Steps (the deal's room)
+and CardMachine (the cut's guard on width).
 
 ## 13. Order of building
 
-Not today. Bottom up, each layer secured before the next starts.
+Bottom up, each layer secured before the next starts.
 
 In nova-tools:
+1. `modules/config`: tags, resources, auto OS/arch tags, schema migration (Track 1).
+2. `cmd/nova-reserve`: named holds, measurement, `/var/tmp/nova-reserve`, FIFO line, paused holds, OS priority steering (Track 2).
+3. `cmd/nova-fleet`: atomic reservation `nova-fleet reserve`, fleet resources status, runner integration (Track 3).
 
-1. The benchmark ([R26](#7-cpu-units)).
-2. nova-config: a machine's tags, CPU units and memory ([R6](#4-tags-and-resources)).
-3. nova-reserve: named holds, refusal at once, the line ([6](#6-holds)).
-4. nova-reserve: paused holds, and CI runners taking holds ([8](#8-ci-wins)).
-5. Asking the whole fleet ([Q2](#11-open-questions)).
-
-In nova-sprint, on top of 1 to 4:
-
-6. The card's line and admission ([10.1](#101-the-card)).
-7. The roster and the heartbeat ([10.2](#102-the-roster), [10.3](#103-the-heartbeat)).
-8. The deal and policy ([10.4](#104-the-deal), [10.7](#107-policy)).
-9. The board ([10.6](#106-the-board)).
-
-Friends working across the fleet ([10.5](#105-friends)) follows 5.
+In nova-sprint:
+4. `modules/card`, `modules/roster`, `modules/store`: `RESOURCES:` parser, `card.Needs`, `roster.Machine`/`Worker`, `resources_json` store schema (Track 4).
+5. `modules/steps`, `modules/policy`: exact consumer-ID union sum dealer room, `any_paused` guard, Layer 5 `jointRows`/`inputs.go` (Track 5).
+6. `modules/edge`, `modules/run`, `modules/verbs`: worker per-step holds, yield gates, direct pgx config reads, deadline pause subtractions (Track 6).
+7. `modules/dash`: Resources table rendering, cyan CI, paused behind CI, untouched Friends table (Track 7).
 
 ## 14. Not in v3.0.0
 
+- **Mid-command process freezing or killing.** No `SIGSTOP`, `cgroup.freeze`,
+  or memory-based termination of in-flight commands.
+- **Native Windows benches or `nova-reserve.exe`.** Windows runs `nexus-client`
+  only; server tools run on Linux, macOS, and WSL2.
+- **`fast-core` single-core prioritization.**
 - **Work across several machines.** A card holding sets of needs on more than
   one machine at once.
 - **A deadline in place of an amount.** Work says "finish in two minutes" and
