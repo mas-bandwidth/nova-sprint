@@ -76,7 +76,7 @@ on its record (`sprint.streams.gates`, round 31). Each is parsed by
 `edge.ParseGate` as a DONE-WHEN is, and refused at `stream add` and
 `stream set` in the same words; `check` re-parses and prints each; `show
 <s>` lists them; take carries them (`stream_gates`, and a `STREAM GATE:`
-line per gate in its text).
+line per gate in its text for a work card).
 
 A bench's worker runs the stream's gates after the card's DONE-WHENs, at the
 same head, with the same bound and reason rules; a red one fails the
@@ -96,9 +96,10 @@ timeout, a kill signal, a stop) is a `fault`: the worker's, not the card's.
 A stream gate that timed out, was killed or did not run at the head fails
 or faults as a DONE-WHEN does, whatever the base. A worker below
 v2.0.37 ignores `stream_gates`: `stream add`, `stream set` and `check` warn,
-naming those bench rows. Friend rows and reads run the stream gates
+naming those bench rows. Friend rows run the stream gates on work cards
 themselves under the same rule, as they run DONE-WHENs: no program checks
-a friend's finish.
+a friend's finish. Reads do not run DONE-WHEN or stream gate commands: a
+read inspects the diff, code, invariants and tests as written.
 
 ## What the brief tells the worker
 

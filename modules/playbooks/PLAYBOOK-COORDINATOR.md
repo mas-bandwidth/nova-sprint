@@ -331,15 +331,15 @@ clean) is a stream gate, never a line each brief has to remember: `--gate "<comm
 for a shell). Given once or more, `--gate` replaces the stream's whole list; `--gate none`
 clears it. Each prints a `GATE <command>` line (`GATES none` when cleared), `show <s>` lists
 them under `gates`, `check` prints `stream <s> gate: <command>` for each, and take hands them to
-every row. A bench's worker runs them after the card's DONE-WHENs at the same head, with the
+work attempts. A bench's worker runs them after the card's DONE-WHENs at the same head, with the
 same bound; a red one fails the attempt and its reason names the stream gate and the lines that
 failed. A gate red at the card's head that is also red at its base (the stream tip the card was
 merged with) is the base's fault, not the card's: the attempt is not failed for it, and its
 reason says `stream gate <command> is red at base <sha>`; `check` prints a red line per such
 base with the cards it excused, and that base needs a card of its own. A base the worker cannot
 judge is a fault, dealt again. `stream set --gate` and `check` warn naming the bench rows whose
-worker is too old to run stream gates (`nova-fleet install` the current release there). Friend rows and
-reads run them as they run DONE-WHENs, under the same rule. Add cards
+worker is too old to run stream gates (`nova-fleet install` the current release there). Friend rows
+run them on work cards as they run DONE-WHENs, under the same rule; reads do not run DONE-WHEN or stream gate commands. Add cards
 with `nova-sprint add --stream <s> --brief-file <f>...` (`--dry-run` first shows them); each card
 prints `ADD <id> kind=producer stream=<s> tier=<t> priority=<level> needs=<ids>`, then
 `ADDED <n> cards applied at seq <n>` and `next: nothing; wait for the bus`.

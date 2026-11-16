@@ -147,8 +147,9 @@ func TestStreamGatesWarnOfWorkersThatDoNotRunThem(t *testing.T) {
 }
 
 // take's receipt carries the stream's gates for the bench worker, and its
-// text gives a friend row each as a STREAM GATE line and the rule for one
-// red at the base too; a stream with none adds nothing.
+// text gives a work card's friend row each as a STREAM GATE line and the
+// rule for one red at the base too; a read never runs DONE-WHEN or stream
+// gate commands, and a stream with none adds nothing.
 func TestTakeCarriesTheStreamGates(t *testing.T) {
 	t.Parallel()
 	s := sprint()
@@ -162,7 +163,15 @@ func TestTakeCarriesTheStreamGates(t *testing.T) {
 		t.Fatalf("receipt stream_gates %q", got.StreamGates)
 	}
 	want(t, w.do("alice", "take", "p1.w1@1"), 0, "\nSTREAM GATE: "+genGate+"\n", "Run every stream gate", "--reason \"stream gate <command> is red at base")
-	want(t, w.do("bob", "take", "p2.r1@1"), 0, "\nSTREAM GATE: "+genGate+"\n", "Name such a gate in the yes's --finding")
+	readOut := w.ok(t, "bob", "take", "p2.r1@1")
+	if !strings.Contains(readOut, "Do not run done-when or stream gate commands") {
+		t.Fatalf("read take does not forbid running gates:\n%s", readOut)
+	}
+	for _, bad := range []string{"STREAM GATE:", "Run every done-when", "Run every stream gate", "Name such a gate in the yes's --finding"} {
+		if strings.Contains(readOut, bad) {
+			t.Fatalf("read take carries %q:\n%s", bad, readOut)
+		}
+	}
 	plain := newWorld(t)
 	if err := json.Unmarshal([]byte(plain.ok(t, "alice", "take", "p1.w1@1", "--json")), &got); err != nil {
 		t.Fatal(err)

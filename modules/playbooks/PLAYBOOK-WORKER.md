@@ -276,16 +276,15 @@ A read is an independent review of someone else's finished head. You are never d
 your own head.
 
 1. Acknowledge it: the deal's `take` command. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex> ...`.
-   The brief follows, then `How this card finishes:` (read detached, edit and push nothing, and
-   the exact answer lines), then `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
+   The brief follows, then `How this card finishes:` (read detached, edit and push nothing, run no
+   gates, and the exact answer lines), then `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
 2. Check out that exact head detached in a fresh directory of your own. Do not edit it, commit
    on it or push from it.
-3. Read the diff against the base and the brief. Run the DONE-WHEN gates, then the stream gates
-   (`STREAM GATE:` lines), at that head, and keep each gate's command, exit code and log. A
-   stream gate red at the base as well is the base's, not this head's: name it in a yes's
-   `--finding`, never as a fix.
-4. Say yes only when every DONE-WHEN item is met at this head. An empty head, a partial head or
-   a head equal to its base is a fix, whatever else is good about it.
+3. Read the diff against the base and the brief: inspect the code, the invariants and rulings,
+   and the tests (that they cover what the brief asks and can fail). Do not run DONE-WHEN or
+   stream gate commands: the work attempt ran them before finishing, and landing runs CI.
+4. Say yes only when every DONE-WHEN item is met in the code and tests at this head. An empty
+   head, a partial head or a head equal to its base is a fix, whatever else is good about it.
 5. Say fix only for a real defect: an unmet DONE-WHEN item, a regression, a broken ruling, a
    build break, or a test that cannot fail. Anything else (style, a better name, a follow-up)
    is a note on a yes.
@@ -295,8 +294,8 @@ your own head.
    A fix finding names the file and line and what to change. Add `--cost <usd>` as finish
    takes it when you know what the read cost. It prints
    `READ <id> head=<40 hex> result=<result> applied at seq <n>`.
-7. Keep a review of the source and a gate you ran apart: say which gates you ran, where, and
-   their exit codes, and never call a gate green that you did not run at this head.
+7. Never call a gate green: a read does not run gates. Report what you read in the diff, the
+   surrounding code and the tests.
 
 ## The rules that bind you
 

@@ -168,6 +168,49 @@ func TestPlaybooksMergeNeverRebase(t *testing.T) {
 	}
 }
 
+// Reads inspect the diff, code, invariants and tests as written and never
+// execute DONE-WHEN or stream gate commands; the playbooks and card contract
+// agree.
+func TestDocsAndPlaybooksDoNotTellReadsToRunGates(t *testing.T) {
+	t.Parallel()
+	workerBytes, err := os.ReadFile("../playbooks/PLAYBOOK-WORKER.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerText := strings.Join(strings.Fields(string(workerBytes)), " ")
+	_, readSection, ok := strings.Cut(workerText, "## Read a card")
+	if !ok {
+		t.Fatal("PLAYBOOK-WORKER.md has no '## Read a card' section")
+	}
+	readSection, _, _ = strings.Cut(readSection, "## The rules that bind you")
+	if !strings.Contains(readSection, "Do not run DONE-WHEN or stream gate commands") {
+		t.Errorf("PLAYBOOK-WORKER.md 'Read a card' does not forbid running gates")
+	}
+	for _, bad := range []string{"Run the DONE-WHEN gates", "then the stream gates", "say which gates you ran"} {
+		if strings.Contains(readSection, bad) {
+			t.Errorf("PLAYBOOK-WORKER.md 'Read a card' still tells readers %q", bad)
+		}
+	}
+	for name, mustHave := range map[string]string{
+		"../playbooks/PLAYBOOK-COORDINATOR.md": "reads do not run DONE-WHEN or stream gate commands",
+		"../../docs/CARD-CONTRACT.md":          "Reads do not run DONE-WHEN or stream gate commands",
+	} {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.Join(strings.Fields(string(b)), " ")
+		if !strings.Contains(text, mustHave) {
+			t.Errorf("%s lacks %q", name, mustHave)
+		}
+		for _, bad := range []string{"Friend rows and reads run"} {
+			if strings.Contains(text, bad) {
+				t.Errorf("%s still says %q", name, bad)
+			}
+		}
+	}
+}
+
 // The checker refuses what the playbooks once taught (edit, drop --expect,
 // a bare subcommand) and passes what the binary takes.
 func TestCheckTaughtRefusesDrift(t *testing.T) {
