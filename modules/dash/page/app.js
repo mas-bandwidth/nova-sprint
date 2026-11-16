@@ -20,7 +20,7 @@ var TRACK_CELL = 1.6875, TRACK_GAP = 0.25; // rem: a fleet track cell and its ga
 var TRACK_SPAN = 16 * (TRACK_CELL + TRACK_GAP) - TRACK_GAP;
 function trackCell(scale) { scale = Math.max(1, scale); return (TRACK_SPAN - (scale - 1) * TRACK_GAP) / scale; }
 var $ = function (id) { return document.getElementById(id); };
-["streams", "fleet", "friends"].forEach(function (id) { var h = $(id).querySelector(".row.head"); if (h) h.remove(); });
+["streams", "resources", "fleet", "friends"].forEach(function (id) { var el = $(id); if (el) { var h = el.querySelector(".row.head"); if (h) h.remove(); } });
 
 // ---------- parsing (every value in the JSON is a string) ----------
 function int(s) { var n = parseInt(s, 10); return isNaN(n) ? 0 : n; }
@@ -106,7 +106,7 @@ function el(tag, cls, text) {
 // (setLiveHTML does not use these helpers).
 var flashCount = 0;
 ["all", "all2", "pct", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput",
- "streams-sub", "fleet-head", "friends-sub", "readers-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
+ "streams-sub", "resources-head", "fleet-head", "friends-sub", "readers-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
 function valEl(e) {
   if (!e._fv) {
     var v = document.createElement("span"); v.className = "fv";
@@ -271,12 +271,19 @@ function tableScale(table) { return Math.max(1, Object.keys(table || {}).reduce(
 function friendsShown() { var p = document.querySelector(".panel.friends"); return !!(p && getComputedStyle(p).display !== "none"); }
 // the widest "n / width" digit count across Fleet and Friends, so both tables' slashes align
 function sharedDigits(d) {
-  var tabs = friendsShown() ? [d.tables.fleet, d.tables.friends] : [d.tables.fleet];
+  var tabs = [];
+  if (d.tables.friends) tabs.push(d.tables.friends);
+  if (d.tables.fleet && !d.tables.resources) tabs.push(d.tables.fleet);
+  if (!tabs.length && d.tables.fleet) tabs.push(d.tables.fleet);
   return tabs.reduce(function (a, t) {
     return Object.keys(t || {}).reduce(function (b, n) { return Math.max(b, digitsOf(int(t[n].working)), digitsOf(int(t[n].width))); }, a);
   }, 1);
 }
-function sharedScale(d) { return friendsShown() ? Math.max(tableScale(d.tables.fleet), tableScale(d.tables.friends)) : tableScale(d.tables.fleet); }
+function sharedScale(d) {
+  var s = tableScale(d.tables.friends);
+  if (d.tables.fleet && !d.tables.resources) s = Math.max(s, tableScale(d.tables.fleet));
+  return s;
+}
 
 // ---------- sections ----------
 function streamOrder(d) {
@@ -494,11 +501,245 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   return { t: t, n: names.length };
 }
 
+var RES_LABEL_ORDER = ["ci", "blocker", "critical", "fix", "read", "work"];
+var RES_LABEL_COLORS = {
+  "ci": "#38bdf8",
+  "blocker": "var(--p-blocker, #ff1a1a)",
+  "critical": "var(--p-critical, #9b1c1c)",
+  "fix": "var(--p-fix, #8b5cf6)",
+  "read": "var(--p-reader, #fb8321)",
+  "work": "var(--s-working, #3d9bff)"
+};
+
+function makeResCell(unit) {
+  var cell = el("div", "res-cell");
+  var bar = el("div", "res-bar");
+  var underlay = el("div", "res-underlay");
+  var segments = el("div", "res-segments");
+  bar.appendChild(underlay);
+  bar.appendChild(segments);
+  var label = el("div", "res-label");
+  cell.appendChild(bar);
+  cell.appendChild(label);
+  return { cell: cell, bar: bar, underlay: underlay, segments: segments, label: label, unit: unit };
+}
+
+function updateResCell(rc, metric, customUnit) {
+  var total = metric ? int(metric.total) : 0;
+  var held = metric ? int(metric.held) : 0;
+  var byLabel = (metric && metric.by_label) ? metric.by_label : {};
+  var pausedByLabel = (metric && metric.paused_by_label) ? metric.paused_by_label : {};
+  var unit = customUnit !== undefined ? customUnit : rc.unit;
+
+  while (rc.underlay.firstChild) rc.underlay.firstChild.remove();
+  while (rc.segments.firstChild) rc.segments.firstChild.remove();
+
+  if (total <= 0) {
+    rc.bar.classList.add("unmeasured");
+    rc.label.classList.add("muted");
+    setText(rc.label, "unmeasured");
+    setTitle(rc.bar, "unmeasured capacity");
+    return;
+  }
+
+  rc.bar.classList.remove("unmeasured");
+  rc.label.classList.remove("muted");
+  var labelText = held + "/" + total + (unit ? " " + unit : "");
+  setText(rc.label, labelText);
+
+  // Paused work behind CI (R62):
+  var pausedTotal = 0;
+  var pausedLabels = [];
+  Object.keys(pausedByLabel).forEach(function (lbl) {
+    var amt = int(pausedByLabel[lbl]);
+    if (amt > 0) {
+      pausedTotal += amt;
+      pausedLabels.push(amt + " " + lbl);
+    }
+  });
+
+  if (pausedTotal > 0) {
+    var pausedPct = Math.min(100, (pausedTotal / total) * 100);
+    var pDiv = el("div", "res-paused");
+    pDiv.style.left = "0%";
+    pDiv.style.width = pausedPct.toFixed(2) + "%";
+    rc.underlay.appendChild(pDiv);
+  }
+
+  var labels = [];
+  RES_LABEL_ORDER.forEach(function (l) {
+    if (int(byLabel[l]) > 0) labels.push(l);
+  });
+  Object.keys(byLabel).forEach(function (l) {
+    if (RES_LABEL_ORDER.indexOf(l) === -1 && int(byLabel[l]) > 0) labels.push(l);
+  });
+
+  var curPct = 0;
+  var descParts = [];
+  labels.forEach(function (l) {
+    var amt = int(byLabel[l]);
+    var pct = (amt / total) * 100;
+    if (curPct + pct > 100) pct = 100 - curPct;
+    if (pct > 0) {
+      var seg = el("div", "res-seg " + l);
+      seg.style.width = pct.toFixed(2) + "%";
+      if (l === "ci") {
+        if (pausedTotal > 0) seg.classList.add("has-paused");
+        seg.style.backgroundColor = pausedTotal > 0 ? "rgba(56, 189, 248, 0.85)" : "#38bdf8";
+      } else if (RES_LABEL_COLORS[l]) {
+        seg.style.backgroundColor = RES_LABEL_COLORS[l];
+      } else {
+        seg.style.backgroundColor = "var(--res-other, #64748b)";
+      }
+      rc.segments.appendChild(seg);
+      curPct += pct;
+      descParts.push(amt + " " + l);
+    }
+  });
+
+  var tip = labelText;
+  if (descParts.length) tip += " (" + descParts.join(", ") + ")";
+  if (pausedLabels.length) tip += " [paused behind CI: " + pausedLabels.join(", ") + "]";
+  setTitle(rc.bar, tip);
+}
+
+function updateTagsCell(tc, tags) {
+  while (tc.firstChild) tc.firstChild.remove();
+  if (!tags || !tags.length) {
+    var m = el("span", "muted", "-");
+    tc.appendChild(m);
+    return;
+  }
+  tags.forEach(function (t) {
+    var badge = el("span", "tag-badge", String(t));
+    tc.appendChild(badge);
+  });
+}
+
+function renderResources(d) {
+  var box = $("resources") || $("fleet");
+  if (!box) return { t: { up: 0, held: 0, down: 0 }, n: 0 };
+  var table = d.tables.resources || d.tables.fleet || {};
+  var names = Object.keys(table || {});
+  var order = { up: 0, held: 1, down: 2 };
+  names.sort(function (a, b) {
+    var sa = shownStatus(table[a].status), sb = shownStatus(table[b].status);
+    var oa = order[sa] != null ? order[sa] : 3, ob = order[sb] != null ? order[sb] : 3;
+    if (oa !== ob) return oa - ob;
+    return a.localeCompare(b);
+  });
+
+  if (!box._head) {
+    var h = box.querySelector(".row.head");
+    if (!h) {
+      h = el("div", "row head");
+      var cols = ["machine", "status", "cpu", "memory", "tags"];
+      cols.forEach(function (c) {
+        var d = el("div", "", c);
+        h.appendChild(d);
+      });
+      box.insertBefore(h, box.firstChild);
+    }
+    box._head = h;
+  }
+
+  if (!box._total) {
+    var tot = el("div", "row total");
+    tot._c = [];
+    tot.appendChild(el("div", "name", "Total"));
+    tot._c.push(tot.lastChild);
+    tot.appendChild(el("div", ""));
+    tot._c.push(tot.lastChild);
+
+    var cpuCell = makeResCell("");
+    tot.appendChild(cpuCell.cell);
+    tot._cpuCell = cpuCell;
+    tot._c.push(cpuCell.cell);
+
+    var memCell = makeResCell("GB");
+    tot.appendChild(memCell.cell);
+    tot._memCell = memCell;
+    tot._c.push(memCell.cell);
+
+    tot.appendChild(el("div", ""));
+    tot._c.push(tot.lastChild);
+
+    box.appendChild(tot);
+    box._total = tot;
+  }
+
+  var t = { up: 0, held: 0, down: 0 };
+  var totalCPU = 0, heldCPU = 0, cpuByLabel = {}, cpuPausedByLabel = {};
+  var totalMem = 0, heldMem = 0, memByLabel = {}, memPausedByLabel = {};
+
+  syncRows(box, box._head, names, function () {
+    var r = { node: el("div", "row") };
+    r.name = el("div", "name");
+    r.pill = makePill();
+    r.cpu = makeResCell("");
+    r.memory = makeResCell("GB");
+    r.tags = el("div", "tags-cell");
+    [r.name, r.pill, r.cpu.cell, r.memory.cell, r.tags].forEach(function (c) {
+      r.node.appendChild(c);
+    });
+    return r;
+  }, function (r, k) {
+    var m = table[k];
+    var st = shownStatus(m.status);
+    if (st in t) t[st]++;
+    setText(r.name, budLabel(k, table));
+    setPill(r.pill, st || "-", STATUS_TONE[st] || "neutral");
+
+    updateResCell(r.cpu, m.cpu);
+    updateResCell(r.memory, m.memory);
+    updateTagsCell(r.tags, m.tags);
+
+    if (m.cpu && int(m.cpu.total) > 0) {
+      totalCPU += int(m.cpu.total);
+      heldCPU += int(m.cpu.held);
+      if (m.cpu.by_label) {
+        Object.keys(m.cpu.by_label).forEach(function (l) {
+          cpuByLabel[l] = (cpuByLabel[l] || 0) + int(m.cpu.by_label[l]);
+        });
+      }
+      if (m.cpu.paused_by_label) {
+        Object.keys(m.cpu.paused_by_label).forEach(function (l) {
+          cpuPausedByLabel[l] = (cpuPausedByLabel[l] || 0) + int(m.cpu.paused_by_label[l]);
+        });
+      }
+    }
+    if (m.memory && int(m.memory.total) > 0) {
+      totalMem += int(m.memory.total);
+      heldMem += int(m.memory.held);
+      if (m.memory.by_label) {
+        Object.keys(m.memory.by_label).forEach(function (l) {
+          memByLabel[l] = (memByLabel[l] || 0) + int(m.memory.by_label[l]);
+        });
+      }
+      if (m.memory.paused_by_label) {
+        Object.keys(m.memory.paused_by_label).forEach(function (l) {
+          memPausedByLabel[l] = (memPausedByLabel[l] || 0) + int(m.memory.paused_by_label[l]);
+        });
+      }
+    }
+  }, box._total);
+
+  if (box._total) {
+    var totCPU = { total: totalCPU, held: heldCPU, by_label: cpuByLabel, paused_by_label: cpuPausedByLabel };
+    var totMem = { total: totalMem, held: heldMem, by_label: memByLabel, paused_by_label: memPausedByLabel };
+    updateResCell(box._total._cpuCell, totCPU, "");
+    updateResCell(box._total._memCell, totMem, "GB");
+  }
+
+  var rh = $("resources-head") || $("fleet-head");
+  if (rh) setText(rh, t.up + " up · " + t.held + " held · " + t.down + " down" + sideWord(d.fleet_work, null));
+  setSideOff(box.closest("section"), d.fleet_work);
+
+  return { t: t, n: names.length };
+}
+
 function renderFleet(d) {
-  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d), false, sharedDigits(d));
-  setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
-  setSideOff($("fleet").closest("section"), d.fleet_work);
-  return r.t;
+  return renderResources(d);
 }
 
 function renderFriends(d) {
@@ -697,7 +938,7 @@ var DEBUG_FLASH = /(?:^|[?&])debug=flash(?:&|$)/.test(location.search), prevSig 
 // The full form of a table, unless any of its rows or cells would overflow: then the compact form.
 // Measured with the class removed and set again in the same task, so nothing flickers.
 function fitTables() {
-  ["streams", "fleet", "friends", "providers"].forEach(function (id) {
+  ["streams", "resources", "fleet", "friends", "providers"].forEach(function (id) {
     var panel = document.querySelector(".panel." + id), head = panel && panel.querySelector(".row.head");
     if (!head) return;
     panel.classList.remove("compact");
@@ -902,14 +1143,14 @@ function render(d) {
   renderOverall(s.sum, s.all);
   renderPie(d);
   renderTopStreams(d);
-  var ft = renderFleet(d);
+  var ft = renderResources(d);
   renderFriends(d);
   renderProviders(d);
   if (SHOW_ALL) renderReaders(d);
   renderHero(d, s, ft);
   fitTables();
   if (DEBUG_FLASH) { // ?debug=flash: one line per refresh, same=1 when the rendered data did not change
-    var sig = JSON.stringify([d.landed, d.all, d.summary, d.coordinator, d.epoch, d.machine, d.tables.work, d.tables.fleet, d.tables.friends || null,
+    var sig = JSON.stringify([d.landed, d.all, d.summary, d.coordinator, d.epoch, d.machine, d.tables.work, d.tables.resources || d.tables.fleet, d.tables.friends || null,
       (d.streams || []).map(function (x) { return [x.Stream, x.State]; }), d.tables.merge]);
     var line = "flashes=" + flashCount + " same=" + (sig === prevSig ? 1 : 0);
     prevSig = sig; console.log(line);

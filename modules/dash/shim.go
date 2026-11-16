@@ -27,6 +27,13 @@ type workRow struct {
 	Cost       *big.Int
 	ByTier     map[string]*big.Int
 }
+type ResourceMetric struct {
+	Total         int            `json:"total"`
+	Held          int            `json:"held"`
+	ByLabel       map[string]int `json:"by_label,omitempty"`
+	PausedByLabel map[string]int `json:"paused_by_label,omitempty"`
+}
+
 type fleetRow struct {
 	Status   string
 	Width    int
@@ -43,6 +50,12 @@ type fleetRow struct {
 	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
 	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
 	Tokens   int64  // every token its runs reported (package usage), kin and benches alike
+
+	// v3 Resources additions
+	Tags      []string           `json:"tags,omitempty"`
+	CPU       *ResourceMetric    `json:"cpu,omitempty"`
+	Memory    *ResourceMetric    `json:"memory,omitempty"`
+	Resources store.RowResources `json:"resources,omitempty"`
 }
 type streamLine struct{ Stream, State string }
 
@@ -134,7 +147,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time, stats *store
 		failed += w.Fail
 		all += w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "resources": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 
 // coordinatorOf is the name of the row whose role is coordinator; the first
@@ -174,7 +187,9 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 // friend) shows as down. The tables are maps, so the order is by name.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, w := range ros.Workers {
-		fleet[n] = &fleetRow{Status: "down", Width: w.Width}
+		tags := append([]string(nil), w.Tags...)
+		cpu, mem := buildResourceMetrics(store.Row{}, w)
+		fleet[n] = &fleetRow{Status: "down", Width: w.Width, Tags: tags, CPU: cpu, Memory: mem}
 	}
 	for n, k := range ros.Kin {
 		friends[n] = &fleetRow{Status: "down", Width: k.Width}
@@ -191,12 +206,80 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		if !found { // named but not a roster row, or the roster is empty: down, whatever the store says
 			status = "down"
 		}
-		f := &fleetRow{Status: status, Width: width}
+		var tags []string
+		var worker roster.Worker
+		if w, ok := ros.Workers[n]; ok {
+			tags = append([]string(nil), w.Tags...)
+			worker = w
+		}
+		f := &fleetRow{Status: status, Width: width, Tags: tags}
 		if kind != roster.KindKin { // load is only for fleet machines (the human, 2026-11-10)
 			f.Load, f.Slots = loadCells(r)
+			f.Resources = r.Resources
+			f.CPU, f.Memory = buildResourceMetrics(r, worker)
 		}
 		tableOf(kind, fleet, friends)[n] = f
 	}
+}
+
+// buildResourceMetrics computes the total, held, by-label, and paused-by-label CPU and memory metrics.
+func buildResourceMetrics(r store.Row, w roster.Worker) (cpu, mem *ResourceMetric) {
+	cpuTotal := resourceTotal(r.Resources.Total, w.Resources, "cpu")
+	memTotal := resourceTotal(r.Resources.Total, w.Resources, "memory")
+	cpuByLabel, memByLabel, cpuHeld, memHeld := heldMetrics(r.Resources)
+	cpuPaused := pausedMetrics(r.Resources.PausedByLabel, "cpu")
+	memPaused := pausedMetrics(r.Resources.PausedByLabel, "memory")
+
+	cpu = &ResourceMetric{Total: cpuTotal, Held: cpuHeld, ByLabel: cpuByLabel, PausedByLabel: cpuPaused}
+	mem = &ResourceMetric{Total: memTotal, Held: memHeld, ByLabel: memByLabel, PausedByLabel: memPaused}
+	return cpu, mem
+}
+
+func resourceTotal(tot, wRes map[string]int, key string) int {
+	if tot != nil && tot[key] > 0 {
+		return tot[key]
+	}
+	if wRes != nil {
+		return wRes[key]
+	}
+	return 0
+}
+
+func heldMetrics(res store.RowResources) (cpuBy, memBy map[string]int, cpuHeld, memHeld int) {
+	cpuBy, memBy = make(map[string]int), make(map[string]int)
+	for lbl, m := range res.HeldByLabel {
+		if c := m["cpu"]; c > 0 {
+			cpuBy[lbl] = c
+			cpuHeld += c
+		}
+		if g := m["memory"]; g > 0 {
+			memBy[lbl] = g
+			memHeld += g
+		}
+	}
+	if cpuHeld == 0 {
+		cpuHeld = res.HeldSprint["cpu"] + res.HeldOther["cpu"]
+		if cpuHeld > 0 {
+			cpuBy["work"] = cpuHeld
+		}
+	}
+	if memHeld == 0 {
+		memHeld = res.HeldSprint["memory"] + res.HeldOther["memory"]
+		if memHeld > 0 {
+			memBy["work"] = memHeld
+		}
+	}
+	return cpuBy, memBy, cpuHeld, memHeld
+}
+
+func pausedMetrics(paused map[string]map[string]int, key string) map[string]int {
+	out := make(map[string]int)
+	for lbl, m := range paused {
+		if amt := m[key]; amt > 0 {
+			out[lbl] = amt
+		}
+	}
+	return out
 }
 
 // loadCells is the board's load cell and its slots title from the row's last

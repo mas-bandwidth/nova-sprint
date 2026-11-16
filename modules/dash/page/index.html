@@ -53,6 +53,8 @@
   /* the Landings chart's two series (live/SPEC.md): fleet blue, friends violet; never a state */
   --series-fleet: #3987e5;
   --series-friends: #b48cff;
+  --res-ci: #38bdf8;
+  --res-other: #64748b;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -331,14 +333,14 @@ footer a:hover { color: var(--text); }
    column (pills right-aligned) takes whatever is left up to the shared edge, never less than --S */
 .panel .row { --name-w: min(var(--name-cap, 15rem), calc(var(--E) - var(--pad, 2rem) - var(--gap, 2.5rem) - var(--S, 9.5rem)));
   --status-w: calc(var(--E) - var(--pad, 2rem) - var(--gap, 2.5rem) - var(--name-w)); }
-.fleet .row, .friends .row { --name-cap: 15rem; }
+.resources .row, .fleet .row, .friends .row { --name-cap: 15rem; }
 .streams .row { --name-cap: 27.75rem; }
 .name { overflow: hidden; text-overflow: ellipsis; }
-/* Fleet and Friends names wrap, never ellipsized: rows named alike ("aws-schema-bench-1" to -4)
+/* Resources, Fleet and Friends names wrap, never ellipsized: rows named alike ("aws-schema-bench-1" to -4)
    differ only at the end (Glenn 2026-11-14: they showed as "aws-schema-benc" and could not be
    told apart). The column keeps its width and the shared status edge; a long name takes a
    second line, breaking at a hyphen first. */
-.fleet .name, .friends .name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.resources .name, .fleet .name, .friends .name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .alt { display: none; }
 /* Providers (SPEC.md, the owner 8:03 and 8:18 AM): provider | status | balance | spend/hour | note, the
    status column on the shared status edge */
@@ -398,6 +400,130 @@ footer a:hover { color: var(--text); }
 .friends.compact .row > :nth-child(3), .friends.compact .row > :nth-child(4), .friends.compact .row > :nth-child(6), .friends.compact .row > :nth-child(8) { display: none; }
 .fleet.compact .pill > span:last-child, .friends.compact .pill > span:last-child { display: none; }
 .fleet.compact .row.head .alt, .friends.compact .row.head .alt { display: inline; }
+
+/* Resources section (v3, SPEC-V3 R59-R64):
+   Columns: machine | status | cpu | memory | tags
+   Shared status edge with Work and Friends. */
+.resources .row {
+  --pad: 2rem; --gap: 2.5rem; --S: 9.5rem; column-gap: var(--gap); padding: 0 var(--pad);
+  grid-template-columns: var(--name-w) var(--status-w) minmax(13rem, 1.4fr) minmax(14rem, 1.6fr) minmax(12rem, 2fr);
+  align-items: center;
+}
+.resources .row > :nth-child(2) { justify-self: end; }
+.resources.compact .row {
+  grid-template-columns: minmax(0, 1fr) var(--status-w) minmax(10rem, 1fr);
+}
+.resources.compact .row > :nth-child(4),
+.resources.compact .row > :nth-child(5) {
+  display: none;
+}
+.resources.compact .pill > span:last-child { display: none; }
+
+/* Resource bars and cells */
+.res-cell {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+.res-bar {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 5rem;
+  height: 1.125rem;
+  background: var(--track, #262a31);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.res-bar.unmeasured {
+  opacity: 0.4;
+  background: var(--track, #262a31);
+}
+.res-underlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.res-paused {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(61, 155, 255, 0.45) 0,
+    rgba(61, 155, 255, 0.45) 3px,
+    rgba(20, 23, 27, 0.4) 3px,
+    rgba(20, 23, 27, 0.4) 6px
+  );
+}
+.res-segments {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  z-index: 2;
+}
+.res-seg {
+  height: 100%;
+  transition: width 0.2s ease-out;
+}
+.res-seg.ci {
+  background: #38bdf8;
+}
+.res-seg.ci.has-paused {
+  background: rgba(56, 189, 248, 0.85);
+}
+.res-seg.blocker {
+  background: var(--p-blocker, #ff1a1a);
+}
+.res-seg.critical {
+  background: var(--p-critical, #9b1c1c);
+}
+.res-seg.fix {
+  background: var(--p-fix, #8b5cf6);
+}
+.res-seg.read {
+  background: var(--p-reader, #fb8321);
+}
+.res-seg.work {
+  background: var(--s-working, #3d9bff);
+}
+.res-seg.other {
+  background: var(--res-other, #64748b);
+}
+.res-label {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+.res-label.muted {
+  color: var(--text-3);
+}
+
+.tags-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.tag-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  background: var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+}
 @media (max-width: 600px) {
   .panel.compact .row { --pad: 1rem; --gap: 1rem; column-gap: var(--gap); padding: 0 1rem; min-height: 4.5rem; }
   .panel.compact .panel-head, .panel.compact .empty { padding-left: 1rem; padding-right: 1rem; }
@@ -521,9 +647,9 @@ footer a:hover { color: var(--text); }
   <div class="scroll"><div class="rows" id="streams"><div class="row head"><div>stream</div><div>status</div><div class="num">waiting</div><div class="num">ready</div><div class="num">working</div><div class="num">review</div><div class="num">fix</div><div class="num">merging</div><div class="frac">landed</div><div class="num">cost</div></div></div></div>
 </section>
 
-<section class="panel fleet">
-  <div class="panel-head"><h2>Fleet</h2><span class="muted" id="fleet-head"></span></div>
-  <div class="scroll"><div class="rows" id="fleet"><div class="row head"><div>machine</div><div>status</div><div class="num">ready</div><div>working</div><div class="frac"><span class="alt">working</span></div><div class="num">done</div><div class="num">ok%</div><div class="num">load</div></div></div></div>
+<section class="panel resources">
+  <div class="panel-head"><h2>Resources</h2><span class="muted" id="resources-head"></span></div>
+  <div class="scroll"><div class="rows" id="resources"><div class="row head"><div>machine</div><div>status</div><div>cpu</div><div>memory</div><div>tags</div></div></div></div>
 </section>
 
 <section class="panel friends">
