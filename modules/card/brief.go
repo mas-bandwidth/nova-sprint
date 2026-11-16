@@ -1,15 +1,12 @@
 package card
 
 import (
-	"slices"
 	"strings"
 )
 
-// RouteField is the brief's metadata line a card that needs a device or a
-// route declares it with (CARD-CONTRACT "Routes"): `NEEDS-ROUTE: <name>`,
-// one name per line, the line repeated for more. It is read here only, so
-// add's admission, the deal (steps: only rows that serve every route) and a
-// fault naming a missing route all read one parse.
+// RouteField is the retired v2 metadata line (`NEEDS-ROUTE: <name>`), kept
+// so brief and card admission can recognize and refuse it with a remedy
+// naming RESOURCES.
 const RouteField = "NEEDS-ROUTE"
 
 // BriefField is every value of metadata field key in brief: the lines
@@ -26,18 +23,6 @@ func BriefField(brief, key string) []string {
 		k, v, ok := strings.Cut(strings.TrimSpace(line), ":")
 		if ok && strings.TrimSpace(k) == key {
 			out = append(out, strings.TrimSpace(v))
-		}
-	}
-	return out
-}
-
-// NeedsRoutes is the routes brief declares (RouteField), in brief order,
-// each once; none for a card that needs none.
-func NeedsRoutes(brief string) []string {
-	var out []string
-	for _, r := range BriefField(brief, RouteField) {
-		if r != "" && !slices.Contains(out, r) {
-			out = append(out, r)
 		}
 	}
 	return out

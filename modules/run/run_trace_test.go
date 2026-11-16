@@ -432,9 +432,9 @@ func tracePush(proc, stage string, lo, hi int) string {
 
 // --- the walk's actions --------------------------------------------------
 
-var traceRoster = roster.Roster{Workers: map[string]roster.Worker{
-	"r1": {Name: "r1", Resources: map[string]int{"cpu": 3, "memory": 6}, Tiers: []string{"pro"}}, // w0 and two jobs: the deal is the take
-	"r2": {Name: "r2", Resources: map[string]int{"cpu": 1, "memory": 2}, Tiers: []string{"flash"}},
+var traceRoster = roster.Roster{Kin: map[string]roster.Kin{
+	"r1": {Name: "r1", Model: "kin/pro", Harness: "claude", Width: 3, Tiers: []string{"pro"}}, // w0 and two jobs: the deal is the take
+	"r2": {Name: "r2", Model: "kin/flash", Harness: "claude", Width: 1, Tiers: []string{"flash"}},
 }}
 
 func (r *runTrace) outside(id string, ws ...store.Write) store.Receipt {
@@ -606,7 +606,7 @@ func traceSetup(t *testing.T, f *store.Fake, at time.Time) {
 	apply("setup-1",
 		store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"},
 		store.PutRow{Name: "r1", Session: "sess-1", Role: "worker"}, store.SetRowState{Row: "r1", State: "up"},
-		store.PutRow{Name: "r2"}, store.SetRowState{Row: "r2", State: "up"})
+		store.PutRow{Name: "r2", Session: "sess-2", Role: "worker"}, store.SetRowState{Row: "r2", State: "up"})
 	apply("setup-policy", activePolicy()...)
 	var ws []store.Write
 	for i, c := range append(slices.Clone(tracked), "p0", "p9") {
