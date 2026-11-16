@@ -140,6 +140,8 @@ ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS retired boolean NOT NULL DEFAUL
 -- name it as their holder (the foreign key above), but no read shows it and no write
 -- but a hook (PutRow, which brings it back) takes it; a clear does not carry it into
 -- the next epoch. Appended last.
+ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS resources_json jsonb NOT NULL DEFAULT '{}'::jsonb;
+-- resources_json (round 33, SEAM-CONTRACT §2.3): whole-number capacity, held, paused, and consumers. Appended last.
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by

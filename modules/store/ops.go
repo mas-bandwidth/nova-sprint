@@ -397,6 +397,7 @@ type SetRowLoad struct {
 	Tiers                                    string // the tiers the worker serves, a comma list of Tiers ("" none advertised)
 	CPUPeakDeci                              int    // the highest CPU busy percent over the last 10 s, across all cores, in tenths: 0 to 1000
 	Version                                  string // the release of the binary that beat ("" unknown)
+	Resources                                RowResources
 }
 
 // RetireRow retires a row nova-config no longer names (round 32; Glenn,
@@ -653,9 +654,6 @@ func rowSpec(w Write) spec {
 			c.num("load1_centi", v.Load1Centi).num("cores", v.Cores).num("slots_used", v.SlotsUsed).num("slots_total", v.SlotsTotal).num("cpu_peak_deci", v.CPUPeakDeci)
 			if v.CPUPeakDeci > 1000 {
 				c.fail("load needs cpu_peak_deci of at most 1000, got %d", v.CPUPeakDeci)
-			}
-			if v.Cores < 1 || v.SlotsUsed > v.SlotsTotal {
-				c.fail("load needs cores of at least 1 and slots_used no more than slots_total, got cores %d, slots %d of %d", v.Cores, v.SlotsUsed, v.SlotsTotal)
 			}
 			if v.Tiers != JoinTiers(SplitTiers(v.Tiers)) {
 				c.fail("load tiers %q are not a comma list of %s in that order, each once", v.Tiers, strings.Join(Tiers, ", "))

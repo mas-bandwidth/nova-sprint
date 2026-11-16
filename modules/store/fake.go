@@ -211,7 +211,11 @@ func (f *Fake) PoliciesNamed(_ context.Context, kind, name string, max int) ([]P
 }
 
 func (f *Fake) clone() *Fake {
-	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors), stop: f.stop, identity: f.identity}
+	clonedRows := make(map[key]Row, len(f.rows))
+	for k, v := range f.rows {
+		clonedRows[k] = rowCopy(v)
+	}
+	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: clonedRows, policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors), stop: f.stop, identity: f.identity}
 }
 
 // fakeTx is the txn of one Fake transaction: st is the working copy of the
@@ -262,7 +266,7 @@ func (t *fakeTx) stream(name string) (Stream, bool, error) {
 
 func (t *fakeTx) row(name string) (Row, bool, error) {
 	r, ok := t.st.rows[t.k(name)]
-	return r, ok, nil
+	return rowCopy(r), ok, nil
 }
 
 func (t *fakeTx) policy(v int) (PolicyVersion, bool, error) {
@@ -297,7 +301,7 @@ func (t *fakeTx) rows() ([]Row, error) {
 	var out []Row
 	for k, r := range t.st.rows {
 		if k.epoch == t.st.epoch && !r.Retired {
-			out = append(out, r)
+			out = append(out, rowCopy(r))
 		}
 	}
 	return out, nil
@@ -312,7 +316,7 @@ func (t *fakeTx) putStream(s Stream) error {
 	t.st.streams[t.k(s.Name)] = s
 	return nil
 }
-func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = r; return nil }
+func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = rowCopy(r); return nil }
 func (t *fakeTx) putPolicy(p PolicyVersion) error { t.st.policies[p.Version] = p; return nil }
 
 func (t *fakeTx) replay(opID string) (Receipt, bool, error) {

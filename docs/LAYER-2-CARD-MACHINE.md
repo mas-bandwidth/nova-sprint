@@ -631,3 +631,5 @@ brief declares with `NEEDS-ROUTE:` and a machine serves through its
 reason); the card machine and `CardMachine.tla` are unchanged. The consumer
 cut working at the deal carries the deal's model (round 23), so `take`
 reads it from the consumer as before.
+
+**V3.0.0 Resources (2026-11-15; SEAM-CONTRACT §2.1; Track 4).** `NEEDS-ROUTE:` is completely retired. Hardware requirements are declared using `RESOURCES: cpu 4, memory 8, mac, ps5`, parsed by `card.ParseBriefNeeds` and `card.ParseNeeds` into `card.Needs{Tags: []string, Amounts: map[string]int}`. `card.ParseBriefNeeds` refuses `NEEDS-ROUTE:`, directing callers to `RESOURCES:`. Read consumers (`kind == 'read'`) always receive `card.DefaultReadNeeds()` (`cpu: 1, memory: 1`, zero hardware/OS tags), as reads are pure reads (`SEAM-CONTRACT §0.4`, `Q4`).

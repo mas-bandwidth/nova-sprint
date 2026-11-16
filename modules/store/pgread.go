@@ -16,7 +16,7 @@ import (
 const (
 	streamCols = "name, repo, base, held, pos, mode, forge, gates, removed"
 	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding, red, model, usage, bounce_base`
-	rowCols    = "name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version, retired"
+	rowCols    = "name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version, retired, resources_json"
 	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
@@ -37,8 +37,17 @@ func scanCard(r pgx.Row) (Card, error) {
 
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
-	err := r.Scan(&w.Name, &w.State, &w.Session, &w.Role, &w.Flaps, &w.Held, &w.Gen, &w.Reason, &w.Load1Centi, &w.Cores, &w.SlotsUsed, &w.SlotsTotal, &w.Tiers, &w.CPUPeakDeci, &w.Version, &w.Retired)
-	return w, err
+	var resJSON []byte
+	err := r.Scan(&w.Name, &w.State, &w.Session, &w.Role, &w.Flaps, &w.Held, &w.Gen, &w.Reason, &w.Load1Centi, &w.Cores, &w.SlotsUsed, &w.SlotsTotal, &w.Tiers, &w.CPUPeakDeci, &w.Version, &w.Retired, &resJSON)
+	if err != nil {
+		return w, err
+	}
+	if len(resJSON) > 0 {
+		if err := json.Unmarshal(resJSON, &w.Resources); err != nil {
+			return w, fmt.Errorf("store: unmarshal row resources: %w", err)
+		}
+	}
+	return w, nil
 }
 
 func scanJudgement(r pgx.Row) (Judgement, error) {
@@ -362,11 +371,15 @@ func (t *pgTx) putCard(c Card) error {
 }
 
 func (t *pgTx) putRow(r Row) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version, retired) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+	resJSON, err := json.Marshal(r.Resources)
+	if err != nil {
+		return fmt.Errorf("store: marshal row resources: %w", err)
+	}
+	_, err = t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, state, session, role, flaps, held, gen, reason, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, version, retired, resources_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		ON CONFLICT (epoch, name) DO UPDATE SET state = EXCLUDED.state, session = EXCLUDED.session,
 		role = EXCLUDED.role, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen, reason = EXCLUDED.reason,
-		load1_centi = EXCLUDED.load1_centi, cores = EXCLUDED.cores, slots_used = EXCLUDED.slots_used, slots_total = EXCLUDED.slots_total, tiers = EXCLUDED.tiers, cpu_peak_deci = EXCLUDED.cpu_peak_deci, version = EXCLUDED.version, retired = EXCLUDED.retired`,
-		t.epoch, r.Name, r.State, r.Session, r.Role, r.Flaps, r.Held, r.Gen, r.Reason, r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.Tiers, r.CPUPeakDeci, r.Version, r.Retired)
+		load1_centi = EXCLUDED.load1_centi, cores = EXCLUDED.cores, slots_used = EXCLUDED.slots_used, slots_total = EXCLUDED.slots_total, tiers = EXCLUDED.tiers, cpu_peak_deci = EXCLUDED.cpu_peak_deci, version = EXCLUDED.version, retired = EXCLUDED.retired, resources_json = EXCLUDED.resources_json`,
+		t.epoch, r.Name, r.State, r.Session, r.Role, r.Flaps, r.Held, r.Gen, r.Reason, r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.Tiers, r.CPUPeakDeci, r.Version, r.Retired, resJSON)
 	return err
 }
 

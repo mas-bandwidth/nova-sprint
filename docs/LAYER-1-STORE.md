@@ -798,6 +798,13 @@ model and harness wherever they are named).
   `TestFunctionalMigrateRound32`, `TestViewFoldEqualsBuild`,
   `TestStreamRemove`, `TestStreamRemoveRefusals`,
   `TestStreamRemoveCardAddedBetween`.
+- Row resources (round 33, 2026-11-15; SEAM-CONTRACT §2.3; Track 4):
+  `Row` gains `Resources` (`RowResources`), stored as `resources_json jsonb NOT NULL DEFAULT '{}'::jsonb`
+  on `sprint.rows`. It holds coarse whole-number resources and telemetry from `nova-reserve status`:
+  `Total`, `HeldSprint`, `HeldOther`, `HeldByLabel`, `PausedByLabel`, `AnyPaused`,
+  `SprintConsumers`, `PausedConsumers`, and `PausedMillis`. `SetRowLoad` updates `Resources`
+  along with `CPUPeakDeci`, `Tiers`, and `Version`, dropping the legacy `cores >= 1` and
+  `slots_used <= slots_total` refusal so v3 resource beats succeed cleanly.
 - A policy version read by its name (2026-11-11, no schema change):
   `Store.PoliciesNamed(kind, name, max)`, the newest max versions of a kind
   under a name, newest first, read from `sprint.policy`, which grows with

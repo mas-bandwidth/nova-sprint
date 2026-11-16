@@ -2,7 +2,7 @@
 // machines (workers) and the enabled friends (kin), read from nova-config,
 // the one true source of that configuration. nova-sprint never copies it
 // into its store (round 22: a store row is sprint state only); the deal
-// guards take each row's width and tiers from a Roster value instead.
+// guards take each row's tiers and resources from a Roster value instead.
 //
 // The roster is read through a Source. The real one reads nova-config's
 // PostgreSQL through nova-tools' config package (source.go). Layer 6 owns
@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -34,10 +35,11 @@ const (
 
 // Machine is a fleet machine as nova-config holds it.
 type Machine struct {
-	Name     string
-	Roles    []string
-	Cores    int
-	OS, Arch string
+	Name      string
+	Roles     []string
+	OS, Arch  string
+	Tags      []string
+	Resources map[string]int // includes "cpu" and "memory" when measured
 }
 
 // Friend is a friend as nova-config holds it. Width is the friend's own
@@ -56,31 +58,22 @@ type Source interface {
 	Friends(ctx context.Context) ([]Friend, error)
 }
 
-// Worker is a bench machine dealt to: every tier, the worker harness.
-// Held is why the row is held at width 0 ("" when it is not): a bench
-// with no cores in nova-config loads at width 0, shown held with that
-// reason, and is dealt nothing until its cores are set.
+// Worker is a bench machine dealt to: every tier, the worker harness, tags
+// and resources. Held is UnmeasuredResources when cpu < 1 or memory < 1 in
+// nova-config ("unmeasured resources in nova-config").
 type Worker struct {
-	Name    string
-	Width   int
-	Tiers   []string
-	Routes  []string // the routes and devices it serves (RoutePrefix roles)
-	Harness string
-	Held    string
+	Name      string
+	Tiers     []string
+	Tags      []string       // includes EffectiveOS ("mac" for "darwin") and Arch
+	Resources map[string]int // "cpu", "memory", and custom resources
+	Harness   string
+	Held      string // UnmeasuredResources when cpu < 1 || memory < 1
 }
 
-// RoutePrefix is how a machine serves a route or a device in nova-config
-// today: a role `route:<name>` beside `bench` (nova-config has no routes
-// field; a first-class one on machines and friends is owed upstream, and a
-// friend serves no route until it exists). A card declares the routes it
-// needs (card.NeedsRoutes) and is dealt only to rows that serve them all.
-const RoutePrefix = "route:"
+// UnmeasuredResources is the Held reason of a bench with unmeasured resources in nova-config.
+const UnmeasuredResources = "unmeasured resources in nova-config"
 
-// NoCores is the Held reason of a bench with no cores in nova-config.
-const NoCores = "no cores in nova-config"
-
-// Kin is an enabled friend dealt to: its own width, tiers, model and
-// harness.
+// Kin is an enabled friend dealt to: its own width, tiers, model and harness.
 type Kin struct {
 	Name, Model, Harness string
 	Width                int
@@ -89,8 +82,8 @@ type Kin struct {
 
 // Refused is a machine or friend nova-config holds that this read could not
 // load, and why; it is skipped, never guessed, and the rest of the roster
-// loads (one bench with 0 cores once emptied the whole board). Kind is the
-// kind it was read as (KindWorker for a machine, KindKin for a friend).
+// loads. Kind is the kind it was read as (KindWorker for a machine, KindKin
+// for a friend).
 type Refused struct {
 	Name, Kind, Reason string
 }
@@ -131,7 +124,9 @@ func (r Roster) Empty() bool { return len(r.Workers) == 0 && len(r.Kin) == 0 }
 func (r Roster) Clone() Roster {
 	r.Workers = maps.Clone(r.Workers)
 	for n, w := range r.Workers {
-		w.Tiers, w.Routes = slices.Clone(w.Tiers), slices.Clone(w.Routes)
+		w.Tiers = slices.Clone(w.Tiers)
+		w.Tags = slices.Clone(w.Tags)
+		w.Resources = maps.Clone(w.Resources)
 		r.Workers[n] = w
 	}
 	r.Kin = maps.Clone(r.Kin)
@@ -154,19 +149,56 @@ func (r Roster) RefusedNamed(name string) (Refused, bool) {
 	return Refused{}, false
 }
 
-// Load reads src once: every machine with the bench role is a worker at
-// width min(cores, cap) serving every tier; every enabled friend is kin at
-// its own width and tiers. cap is policy's limits().fleet_width_cap (drift
-// row 26; the built-in says 8). A cap below 1 and a failed read are errors.
-// A bench with no cores loads at width 0, Held NoCores (Glenn,
-// 2026-11-07: a machine with no core count is held, never refused). A row
-// that cannot be loaded (no name, a name given twice, a negative width, an
-// unknown tier) is skipped and named in Refused: the roster is not
-// guessed, and one bad row never empties it.
-func Load(ctx context.Context, src Source, cap int) (Roster, error) {
-	if cap < 1 {
-		return Roster{}, fmt.Errorf("roster: width cap %d is below 1", cap)
+// FitsMax reports whether worker w has every tag in n.Tags and w.Resources[k] >= v
+// for every required resource in n.Amounts (R12).
+func (w Worker) FitsMax(n card.Needs) bool {
+	for _, tag := range n.Tags {
+		if !slices.Contains(w.Tags, tag) {
+			return false
+		}
 	}
+	for k, v := range n.Amounts {
+		if w.Resources[k] < v {
+			return false
+		}
+	}
+	return true
+}
+
+// EffectiveOS returns "mac" when os is "darwin", else lowercased os.
+func EffectiveOS(os string) string {
+	if strings.EqualFold(os, "darwin") {
+		return "mac"
+	}
+	return strings.ToLower(os)
+}
+
+// WorkerTags derives the sorted unique tags for a machine, including its
+// configured Tags, its EffectiveOS ("mac" for "darwin"), and its Arch.
+func WorkerTags(m Machine) []string {
+	var tags []string
+	for _, t := range m.Tags {
+		low := strings.ToLower(strings.TrimSpace(t))
+		if low != "" && !slices.Contains(tags, low) {
+			tags = append(tags, low)
+		}
+	}
+	if eos := EffectiveOS(m.OS); eos != "" && !slices.Contains(tags, eos) {
+		tags = append(tags, eos)
+	}
+	if arch := strings.ToLower(strings.TrimSpace(m.Arch)); arch != "" && !slices.Contains(tags, arch) {
+		tags = append(tags, arch)
+	}
+	slices.Sort(tags)
+	return tags
+}
+
+// Load reads src once: every machine with the bench role is a worker
+// serving every tier, with tags (including derived OS/arch) and resources;
+// every enabled friend is kin at its own width and tiers. A bench with
+// unmeasured resources (cpu < 1 || memory < 1) loads Held UnmeasuredResources.
+// Fleet-wide R5 is enforced: no name may be both a tag and a resource.
+func Load(ctx context.Context, src Source) (Roster, error) {
 	ms, err := src.Machines(ctx)
 	if err != nil {
 		return Roster{}, fmt.Errorf("roster: machines: %w", err)
@@ -183,7 +215,7 @@ func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 		r.Listed[f.Name] = true
 	}
 	delete(r.Listed, "")
-	r.addWorkers(ms, cap)
+	r.addWorkers(ms)
 	r.addKin(fs)
 	return r, nil
 }
@@ -192,7 +224,34 @@ func (r *Roster) refuse(name, kind, reason string) {
 	r.Refused = append(r.Refused, Refused{Name: name, Kind: kind, Reason: reason})
 }
 
-func (r *Roster) addWorkers(ms []Machine, cap int) {
+func (r *Roster) addWorkers(ms []Machine) {
+	// Fleet-wide R5 enforcement: collect tags and resources across all machines.
+	tagMachines := map[string][]string{}
+	resMachines := map[string][]string{}
+	for _, m := range ms {
+		tags := WorkerTags(m)
+		for _, t := range tags {
+			tagMachines[t] = append(tagMachines[t], m.Name)
+		}
+		for res := range m.Resources {
+			resLow := strings.ToLower(strings.TrimSpace(res))
+			if resLow != "" {
+				resMachines[resLow] = append(resMachines[resLow], m.Name)
+			}
+		}
+	}
+
+	conflicts := map[string]string{} // machine name -> conflicting token
+	for name, mNames := range tagMachines {
+		if resMNames, exists := resMachines[name]; exists {
+			for _, mn := range append(slices.Clone(mNames), resMNames...) {
+				if _, ok := conflicts[mn]; !ok {
+					conflicts[mn] = name
+				}
+			}
+		}
+	}
+
 	for _, m := range ms {
 		if !slices.Contains(m.Roles, "bench") {
 			continue
@@ -201,9 +260,25 @@ func (r *Roster) addWorkers(ms []Machine, cap int) {
 			r.refuse(m.Name, KindWorker, "machine "+why)
 			continue
 		}
-		w := Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Routes: routesOf(m.Roles), Harness: WorkerHarness}
-		if m.Cores < 1 {
-			w.Width, w.Held = 0, NoCores
+		if conflictName, conflicted := conflicts[m.Name]; conflicted {
+			r.refuse(m.Name, KindWorker, fmt.Sprintf("machine %s: %q appears as both a tag and a resource in the fleet (R5)", m.Name, conflictName))
+			continue
+		}
+		tags := WorkerTags(m)
+		resources := maps.Clone(m.Resources)
+		if resources == nil {
+			resources = map[string]int{}
+		}
+
+		w := Worker{
+			Name:      m.Name,
+			Tiers:     slices.Clone(store.Tiers),
+			Tags:      tags,
+			Resources: resources,
+			Harness:   WorkerHarness,
+		}
+		if w.Resources["cpu"] < 1 || w.Resources["memory"] < 1 {
+			w.Held = UnmeasuredResources
 		}
 		r.Workers[m.Name] = w
 	}
@@ -245,11 +320,11 @@ func (r Roster) fresh(name string) string {
 	return ""
 }
 
-// Row is what the deal guards read for a row: its kind (KindWorker or
-// KindKin), width and tiers; ok is false for a name not in the roster.
+// Row is what callers read for a row: its kind (KindWorker or KindKin), width
+// (for kin; 0 for worker) and tiers; ok is false for a name not in the roster.
 func (r Roster) Row(name string) (kind string, width int, tiers []string, ok bool) {
 	if w, ok := r.Workers[name]; ok {
-		return KindWorker, w.Width, slices.Clone(w.Tiers), true
+		return KindWorker, 0, slices.Clone(w.Tiers), true
 	}
 	if k, ok := r.Kin[name]; ok {
 		return KindKin, k.Width, slices.Clone(k.Tiers), true
@@ -257,59 +332,16 @@ func (r Roster) Row(name string) (kind string, width int, tiers []string, ok boo
 	return "", 0, nil, false
 }
 
-// Routes is the routes row name serves (none for kin, or a name not in the
-// roster).
-func (r Roster) Routes(name string) []string {
-	return slices.Clone(r.Workers[name].Routes)
-}
-
-// ServesRoutes is whether row name serves every route of routes (true for
-// none).
-func (r Roster) ServesRoutes(name string, routes []string) bool {
-	for _, x := range routes {
-		if !slices.Contains(r.Workers[name].Routes, x) {
-			return false
-		}
-	}
-	return true
-}
-
-// routesOf is the routes a machine's roles name (RoutePrefix), sorted.
-func routesOf(roles []string) []string {
-	var out []string
-	for _, role := range roles {
-		if name, ok := strings.CutPrefix(strings.TrimSpace(role), RoutePrefix); ok && name != "" && !slices.Contains(out, name) {
-			out = append(out, name)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
-// Advertised is r with each worker's width and tiers as its own row says
-// it can serve (defect 74): a worker's heartbeat advertises the tiers its
-// harness adapter serves and its nova-reserve slots (store.Row Tiers and
-// SlotsTotal). A worker that advertised serves exactly those tiers, at width
-// min(its width, its slots) when it read its slots (0 of 0 when it could
-// not: its width stays). A worker that advertised nothing keeps
-// nova-config's shape (every tier, width min(cores, cap)). An advertisement
-// holds for the session that made it (the store clears it at unhook and at
-// a new hook), so a worker probing before its hook is asked every tier's
-// models, never only last session's.
+// Advertised is r with each worker's tiers as its own row says it can serve:
+// a worker's heartbeat advertises the tiers its harness adapter serves (store.Row Tiers).
 // A worker whose row's binary is behind version, the run's release (Behind),
-// serves no tier: its take receipt may not be the run's (defect D3,
-// 2026-11-07: a stale bench faulted every card it took). version "" (or any
-// build that is not a release) pins nothing; the probe and the board pass "".
-// Kin are untouched: a friend's width and tiers are its own in nova-config.
+// serves no tier. Kin are untouched.
 func (r Roster) Advertised(rows map[string]store.Row, version string) Roster {
 	out := r.Clone()
 	for name, w := range out.Workers {
 		row, ok := rows[name]
 		if ok && row.Tiers != "" {
 			w.Tiers = store.SplitTiers(row.Tiers)
-			if row.SlotsTotal > 0 {
-				w.Width = min(w.Width, row.SlotsTotal)
-			}
 		}
 		if Behind(row.Version, version) {
 			w.Tiers = nil
