@@ -149,7 +149,8 @@ func (w *work) setRowLoad(v SetRowLoad) (string, error) {
 	}
 	next := old
 	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.CPUPeakDeci, next.Tiers, next.Version = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal, v.CPUPeakDeci, v.Tiers, v.Version
-	if next == old {
+	next.Resources = v.Resources.Clone()
+	if rowLoadEqual(old, next) {
 		return "row " + v.Row + " already has the given load", nil
 	}
 	w.before.Rows, w.after.Rows = touch(w.before.Rows, w.after.Rows, v.Row, old, true, next)
@@ -168,6 +169,7 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if ok && !old.Retired { // a retired row comes back as a new one: down, not held, no flaps or heartbeat; its gen goes on
 		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
 		next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.CPUPeakDeci = old.Load1Centi, old.Cores, old.SlotsUsed, old.SlotsTotal, old.CPUPeakDeci
+		next.Resources = old.Resources.Clone()
 		if old.Session == v.Session { // an advertisement holds for the session that made it
 			next.Tiers, next.Version = old.Tiers, old.Version
 		}

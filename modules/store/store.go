@@ -261,6 +261,8 @@ type Row struct {
 	// but PutRow refuses it as absent, PutRow brings it back, and a clear does
 	// not carry it. Only an after-image carries it, so a fold drops the row.
 	Retired bool `json:"retired,omitempty"`
+	// Resources holds whole-number resources, active holds, pause state and consumers (round 33).
+	Resources RowResources `json:"resources,omitempty"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,
