@@ -5,12 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 )
+
+var runIDRe = regexp.MustCompile(`/actions/runs/(\d+)`)
 
 // LandOutcome is what one landing pass found (LANDING.md). landed is the
 // only automatic move; pending, unfinished, absent, base-moved and
@@ -96,6 +100,9 @@ type LandResult struct {
 	// no landing: the runs of merging cards' branches and of replaced group
 	// heads (LANDING.md, "The landing's CI comes first").
 	Cancelled []int64
+	// StoppedRuns is the workflow run ids of the stopped checks on the gated
+	// head: the run edge reruns them a bounded number of times on no verdict.
+	StoppedRuns []int64
 	// CancelFault is why a run could not be read or cancelled ("" none): the
 	// run says it as an edge fault, and the pass went on.
 	CancelFault string
@@ -104,18 +111,38 @@ type LandResult struct {
 	// (sharedRed_internal). Only then does the tick send a card alone
 	// straight back to fix; any other red stays the coordinator's.
 	OwnRed bool
+	// BaseRunning is whether LandOnSharedRed could not compare a completed
+	// red gate against the base tip because the base tip's checks are still
+	// pending or running: the run edge polls until wait before judging.
+	BaseRunning bool
 }
 
 // Kept is the gate the next pass of the same request reads: this pass's
 // while its CI has no verdict yet (pending, unfinished, absent, a rested
-// forge), else none: a verdict ends the request, and a green gate whose
-// base moved is built again on the new tip.
+// forge, or a red gate waiting for its base tip's checks to finish), else
+// none: a verdict ends the request, and a green gate whose base moved is
+// built again on the new tip.
 func (r LandResult) Kept() Gate {
 	switch r.Outcome {
 	case OutcomePending, OutcomeUnfinished, OutcomeAbsent, OutcomeRested:
 		return r.Gate
+	case OutcomeRed:
+		if r.BaseRunning {
+			return r.Gate
+		}
 	}
 	return Gate{}
+}
+
+func lockRepo_internal(ctx context.Context, dir string) (func() error, error) {
+	if dir == "" {
+		return func() error { return nil }, nil
+	}
+	lock, err := LockClone(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	return lock.Close, nil
 }
 
 // LandPass is one pass of the landing (LANDING.md, "The ladder"). Heads all
@@ -137,18 +164,23 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 		return LandResult{}, err
 	}
 	res := LandResult{Rung: min(len(req.Heads), 2)}
-	baseTip, tips, err := fetchHeads_internal(ctx, g, req)
+	unlock, err := lockRepo_internal(ctx, req.RepoDir)
 	if err != nil {
 		return res, err
+	}
+	baseTip, tips, err := fetchHeads_internal(ctx, g, req)
+	if err != nil {
+		return res, errors.Join(err, unlock())
 	}
 	res.BaseTip = baseTip
 	for i, b := range req.Branches {
 		if tips[i] == "" {
 			res.Outcome, res.Reason = OutcomeMissing, fmt.Sprintf("branch %s is not on origin: push it, then answer retry", b)
-			return res, nil
+			return res, unlock()
 		}
 	}
-	if all, err := allAncestors_internal(ctx, g, req.RepoDir, req.Heads, baseTip); err != nil || all {
+	all, err := allAncestors_internal(ctx, g, req.RepoDir, req.Heads, baseTip)
+	if err = errors.Join(err, unlock()); err != nil || all {
 		if all {
 			res.Outcome, res.MergeSHA, res.LandedHeads = OutcomeLanded, baseTip, slices.Clone(req.Heads)
 		}
@@ -162,20 +194,24 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 		return res, err
 	}
 	if kept {
-		out, err := gateAndMerge_internal(ctx, g, fg, req, req.Gate.Branch, keptResult_internal(req.Gate, res))
+		out, err := gateAndMerge_internal(ctx, g, fg, req, req.Gate.Branch, baseTip, keptResult_internal(req.Gate, res))
 		if err != nil || out.Outcome != OutcomeConflict || req.Gate.Base == baseTip {
 			return out, err
 		}
 
 	}
+	unlockBuild, err := lockRepo_internal(ctx, req.RepoDir)
+	if err != nil {
+		return res, err
+	}
 	prHead, gated, done, err := gatedHead_internal(ctx, g, req, baseTip, &res)
-	if err != nil || done {
+	if err = errors.Join(err, unlockBuild()); err != nil || done {
 		return res, err
 	}
 	res.GatedSHA = gated
 	res.Gate = Gate{Branch: prHead, SHA: gated, Base: baseTip, Rung: res.Rung}
 	quietRuns_internal(ctx, fg, req, &res)
-	return gateAndMerge_internal(ctx, g, fg, req, prHead, res)
+	return gateAndMerge_internal(ctx, g, fg, req, prHead, baseTip, res)
 }
 
 // quietRuns_internal cancels, once per gate pushed, every unfinished
@@ -325,50 +361,62 @@ func PromotePass(ctx context.Context, g Git, fg forge.Forge, req PromoteRequest)
 	if fg == nil {
 		return LandResult{}, fmt.Errorf("promote refused: stream %s has no forge, so nothing lands automatically: land each card by hand with nova-sprint land <card> --reason <why>", req.Stream)
 	}
-	main, mainTip, err := g.Main(ctx, req.RepoDir)
+	unlock, err := lockRepo_internal(ctx, req.RepoDir)
 	if err != nil {
 		return LandResult{}, err
+	}
+	main, mainTip, onBase, res, done, err := promotePrep_internal(ctx, g, req)
+	if err = errors.Join(err, unlock()); err != nil || done {
+		return res, err
+	}
+	return gateAndMerge_internal(ctx, g, fg, LandRequest{RepoDir: req.RepoDir, Repo: req.Repo, Stream: req.Stream, Base: main, Heads: onBase, Branches: []string{req.Base}}, req.Base, mainTip, res)
+}
+
+func promotePrep_internal(ctx context.Context, g Git, req PromoteRequest) (string, string, []string, LandResult, bool, error) {
+	main, mainTip, err := g.Main(ctx, req.RepoDir)
+	if err != nil {
+		return "", "", nil, LandResult{}, true, err
 	}
 	res := LandResult{Rung: 1, BaseTip: mainTip}
 	baseTip, based, err := g.LsRemote(ctx, req.RepoDir, "refs/heads/"+req.Base)
 	if err != nil {
-		return res, err
+		return "", "", nil, res, true, err
 	}
 	refs := []string{"refs/heads/" + main}
 	if based {
 		refs = append(refs, "refs/heads/"+req.Base)
 	}
 	if err := g.Fetch(ctx, req.RepoDir, refs...); err != nil {
-		return res, err
+		return "", "", nil, res, true, err
 	}
 	on, err := onTip_internal(ctx, g, req.RepoDir, req.Merges, mainTip)
 	switch {
 	case err != nil:
-		return res, err
+		return "", "", nil, res, true, err
 	case len(on) > 0:
 		res.Outcome, res.MergeSHA, res.LandedHeads = OutcomeLanded, mainTip, on
-		return res, nil
+		return "", "", nil, res, true, nil
 	case !based:
-		return res, fmt.Errorf("promote refused: base branch %s is not on origin", req.Base)
+		return "", "", nil, res, true, fmt.Errorf("promote refused: base branch %s is not on origin", req.Base)
 	}
 	onBase, err := onTip_internal(ctx, g, req.RepoDir, req.Merges, baseTip)
 	if err != nil {
-		return res, err
+		return "", "", nil, res, true, err
 	}
 	if len(onBase) == 0 {
 		res.Outcome, res.Reason = OutcomeMissing, fmt.Sprintf("none of the merges %s is on %s at %s: was it force-pushed or reset?", strings.Join(req.Merges, ", "), req.Base, baseTip)
-		return res, nil
+		return "", "", nil, res, true, nil
 	}
 	up, err := g.IsAncestor(ctx, req.RepoDir, mainTip, baseTip)
 	if err != nil {
-		return res, err
+		return "", "", nil, res, true, err
 	}
 	if !up {
 		res.Outcome, res.Reason = OutcomeBehind, fmt.Sprintf("%s at %s does not contain %s at %s: merge %s into it, then answer retry", req.Base, baseTip, main, mainTip, main)
-		return res, nil
+		return "", "", nil, res, true, nil
 	}
 	res.GatedSHA = baseTip
-	return gateAndMerge_internal(ctx, g, fg, LandRequest{RepoDir: req.RepoDir, Repo: req.Repo, Stream: req.Stream, Base: main, Heads: onBase, Branches: []string{req.Base}}, req.Base, res)
+	return main, mainTip, onBase, res, false, nil
 }
 
 // onTip_internal is the shas that are tip or its ancestors.
@@ -402,20 +450,43 @@ func checkRequest_internal(req LandRequest, fg forge.Forge) error {
 }
 
 // fetchHeads_internal reads base's tip and each card branch's tip ("" when
-// the branch is not on origin), and fetches base and the heads.
+// the branch is not on origin), in one multi-ref ls-remote when g supports
+// RefsReader, and fetches base and the heads.
 func fetchHeads_internal(ctx context.Context, g Git, req LandRequest) (string, []string, error) {
 	baseRef := "refs/heads/" + req.Base
-	baseTip, ok, err := g.LsRemote(ctx, req.RepoDir, baseRef)
-	if err != nil {
-		return "", nil, err
-	}
-	if !ok {
-		return "", nil, fmt.Errorf("land refused: base branch %s is not on origin", req.Base)
-	}
 	tips := make([]string, len(req.Branches))
-	for i, b := range req.Branches {
-		if tips[i], _, err = g.LsRemote(ctx, req.RepoDir, "refs/heads/"+b); err != nil {
+	var baseTip string
+	if rr, ok := g.(RefsReader); ok {
+		refs := make([]string, 0, 1+len(req.Branches))
+		refs = append(refs, baseRef)
+		for _, b := range req.Branches {
+			refs = append(refs, "refs/heads/"+b)
+		}
+		found, err := rr.LsRemoteRefs(ctx, req.RepoDir, refs...)
+		if err != nil {
 			return "", nil, err
+		}
+		baseTip = found[baseRef]
+		if baseTip == "" {
+			return "", nil, fmt.Errorf("land refused: base branch %s is not on origin", req.Base)
+		}
+		for i, b := range req.Branches {
+			tips[i] = found["refs/heads/"+b]
+		}
+	} else {
+		var ok bool
+		var err error
+		baseTip, ok, err = g.LsRemote(ctx, req.RepoDir, baseRef)
+		if err != nil {
+			return "", nil, err
+		}
+		if !ok {
+			return "", nil, fmt.Errorf("land refused: base branch %s is not on origin", req.Base)
+		}
+		for i, b := range req.Branches {
+			if tips[i], _, err = g.LsRemote(ctx, req.RepoDir, "refs/heads/"+b); err != nil {
+				return "", nil, err
+			}
 		}
 	}
 	if slices.Contains(tips, "") {
@@ -476,7 +547,7 @@ func buildGroup_internal(ctx context.Context, g Git, req LandRequest, baseTip st
 
 // gateAndMerge_internal is the PR against base, its checks at the gated
 // sha, and the merge of a green one while base is still the gated tip.
-func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, prHead string, res LandResult) (LandResult, error) {
+func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, prHead, passBaseTip string, res LandResult) (LandResult, error) {
 	pr, ok, err := fg.PR(ctx, req.Repo, prHead, req.Base)
 	if err == nil && !ok {
 		pr, err = fg.OpenPR(ctx, req.Repo, prHead, req.Base, fmt.Sprintf("%s: land %d card(s)", req.Stream, len(req.Heads)), "Opened by nova-sprint's landing. "+strings.Join(req.Branches, ", "))
@@ -493,6 +564,14 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 		res.Outcome, res.Reason = OutcomePending, "the PR's head is "+pr.HeadSHA+", not yet the gated "+res.GatedSHA
 		return res, nil
 	case pr.Mergeable == "CONFLICTING":
+		now, ok, err := g.LsRemote(ctx, req.RepoDir, "refs/heads/"+req.Base)
+		if err != nil || !ok {
+			return res, fmt.Errorf("land: ls-remote %s on conflicting PR: %w", req.Base, cmp.Or(err, ErrMissingRef))
+		}
+		if now != passBaseTip {
+			res.Outcome, res.Reason = OutcomeBaseMoved, "base moved from "+passBaseTip+" to "+now+" after the gate"
+			return res, nil
+		}
 		res.Outcome, res.Reason = OutcomeConflict, "GitHub says "+res.PR+" conflicts with "+req.Base
 		return res, nil
 	}
@@ -505,6 +584,10 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 	}
 	if now != res.BaseTip {
 		res.Outcome, res.Reason = OutcomeBaseMoved, "base moved from "+res.BaseTip+" to "+now+" after the gate"
+		return res, nil
+	}
+	if strings.EqualFold(pr.Mergeable, "UNKNOWN") {
+		res.Outcome, res.Reason = OutcomePending, "GitHub is still computing whether "+res.PR+" merges cleanly (mergeable is UNKNOWN)"
 		return res, nil
 	}
 	sha, err := fg.Merge(ctx, req.Repo, pr.Number, res.GatedSHA)
@@ -586,6 +669,11 @@ func verdict_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 	own, stopped := split_internal(fails, r)
 	for _, f := range stopped {
 		res.Stopped = append(res.Stopped, f.Name+" "+f.Stop)
+		if m := runIDRe.FindStringSubmatch(f.URL); len(m) == 2 {
+			if id, err := strconv.ParseInt(m[1], 10, 64); err == nil && id > 0 && !slices.Contains(res.StoppedRuns, id) {
+				res.StoppedRuns = append(res.StoppedRuns, id)
+			}
+		}
 	}
 	if len(own) == 0 {
 		res.Outcome, res.FailingCI, res.CIURL = OutcomeNoVerdict, nil, stopped[0].URL
@@ -606,23 +694,28 @@ func verdict_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 	res.Outcome = OutcomeRed
 	res.FailingLines = failedLines_internal(ctx, fg, req.Repo, own[0].URL)
 	bc := baseRed_internal(ctx, fg, req, res)
-	switch {
-	case !req.LandOnSharedRed || res.Outcome != OutcomeRed:
-	case len(stopped) > 0:
-		res.Reason += "; not landed on the base's reds: a failing check of the head was stopped, not failed (no verdict about it)"
-	default:
+	if req.LandOnSharedRed && res.Outcome == OutcomeRed {
 		sharedRed_internal(ctx, fg, req, res, own, bc)
+		if len(stopped) > 0 {
+			if len(res.SharedRed) > 0 {
+				res.SharedRed, res.SharedProof = nil, ""
+				res.Outcome = OutcomeNoVerdict
+				res.Reason += "; not landed on the base's reds: every non-shared failing check of the head was stopped, not failed (no verdict about it)"
+			} else if !strings.Contains(res.Reason, "not landed on the base's reds") {
+				res.Reason += "; not landed on the base's reds: a failing check of the head was stopped, not failed (no verdict about it)"
+			}
+		}
 	}
 }
 
 // baseChecks_internal is the base tip's checks as baseRed_internal read
 // them: complete (every check completed and, when red, how each stopped
-// read), its own failures (failing: the stopped ones apart), every check
-// it read (ran), and partial when GitHub's counts settled it without every
-// page read (a check missing from ran may have run).
+// read), its own failures (failing: the stopped ones apart), its stopped
+// checks, every check it read (ran), and partial when GitHub's counts
+// settled it without every page read (a check missing from ran may have run).
 type baseChecks_internal struct {
-	complete, partial bool
-	failing, ran      []string
+	complete, partial     bool
+	failing, stopped, ran []string
 }
 
 // sharedRed_internal is the rule that lands a red gate without the
@@ -645,21 +738,25 @@ func sharedRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, re
 		return
 	}
 	var names, prOnly []string
+	unnamed := false
 	for _, f := range own {
 		switch {
 		case f.Name == "":
-			no("a failing check has no name")
-			return
+			unnamed = true
 		case slices.Contains(bc.failing, f.Name):
-		case slices.Contains(bc.ran, f.Name) || bc.partial:
-			res.OwnRed = slices.Contains(bc.ran, f.Name)
+			names = append(names, f.Name)
+		case slices.Contains(bc.ran, f.Name):
+			res.OwnRed = !slices.Contains(bc.stopped, f.Name)
 			no(f.Name + " is red on the card's head, not on the base tip " + res.BaseTip)
 			return
-
 		default:
 			prOnly = append(prOnly, f.Name)
+			names = append(names, f.Name)
 		}
-		names = append(names, f.Name)
+	}
+	if unnamed {
+		no("a failing check has no name")
+		return
 	}
 	proof := ""
 	if shared := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(prOnly, n) }); len(shared) > 0 {
@@ -705,6 +802,10 @@ func prPathRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, re
 		return "", "the checks of " + at + "'s head could not be read: " + edge.RedactN(err.Error(), edge.FailureMax)
 	}
 	r := rollups[pr.HeadSHA]
+	if !r.Waiting && r.State == forge.CheckGreen {
+		res.OwnRed = true
+		return "", which + " never ran on the base tip " + res.BaseTip + ", and " + at + " that merged it is not red with its checks complete (" + string(r.State) + ")"
+	}
 	if r.State != forge.CheckRed || r.Waiting {
 		return "", which + " never ran on the base tip " + res.BaseTip + ", and " + at + " that merged it is not red with its checks complete (" + string(cmp.Or(r.State, forge.CheckAbsent)) + ")"
 	}
@@ -715,9 +816,12 @@ func prPathRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, re
 		}
 		return "", "how the checks of " + at + "'s head stopped was not read: " + edge.RedactN(err.Error(), edge.FailureMax)
 	}
-	red, _ := split_internal(fails, r)
+	red, stopped := split_internal(fails, r)
 	for _, c := range checks {
 		if !slices.ContainsFunc(red, func(f forge.Failure) bool { return f.Name == c }) {
+			if !slices.ContainsFunc(stopped, func(f forge.Failure) bool { return f.Name == c }) && (slices.Contains(r.Ran, c) || !r.RanPartial) {
+				res.OwnRed = true
+			}
 			return "", c + " is red on the card's head; it runs only on PRs, and " + at + " that merged the base tip did not fail it"
 		}
 	}
@@ -767,6 +871,9 @@ func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 	b := base[res.BaseTip]
 	switch {
 	case b.State == forge.CheckPending || b.Waiting:
+		if req.LandOnSharedRed {
+			res.BaseRunning = true
+		}
 		red := []string{}
 		if b.State == forge.CheckRed {
 			red = b.Failing
@@ -790,9 +897,12 @@ func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 		return baseChecks_internal{}
 	}
 	own, stopped := split_internal(fails, b)
-	var names []string
+	var names, stoppedNames []string
 	for _, f := range stopped {
 		names = append(names, f.Name+" "+f.Stop)
+		if f.Name != "" {
+			stoppedNames = append(stoppedNames, f.Name)
+		}
 	}
 	for _, f := range own {
 		if f.Name != "" {
@@ -811,7 +921,7 @@ func baseRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, res 
 			ran = append(ran, f.Name)
 		}
 	}
-	return baseChecks_internal{complete: true, partial: b.RanPartial, failing: res.BaseFailing, ran: ran}
+	return baseChecks_internal{complete: true, partial: b.RanPartial, failing: res.BaseFailing, stopped: stoppedNames, ran: ran}
 }
 
 // failedLines_internal is the first failing lines of the check at url; a

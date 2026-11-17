@@ -452,10 +452,15 @@ GateKept ==
 \* an outcome, the same gate (LiveSpec: CI that runs completes), unless the
 \* stream's base was switched under it (stream set --base lets it go).
 GateReachesVerdict ==
-  \A s \in Streams, n \in 1..8 :
+  \A s \in Streams, n \in 1..(K + 4) :
     (req[s].st = "sent" /\ req[s].ci \in {"running", "partial"} /\ req[s].gbase = n)
       ~> \/ req[s].gbase = n /\ (req[s].ci = "done" \/ req[s].st = "done")
          \/ \E i \in (n + 1)..Len(base) : base[i].how = "switch"
+
+\* LiveBound bounds total passes in LandEdgeLive.cfg so the Flaky liveness
+\* tableau stays tight (build pass + kept-gate pass on a moved base) while
+\* Spec/LandEdge.cfg still explores MaxPass = 6 without constraint.
+LiveBound == passes <= 2
 
 \* A gate in flight on a base that moved, whose CI no runner has taken, is
 \* let go and rebuilt on the tip (Glenn 2026-11-15: a base move lets the

@@ -26,7 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
-    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
+    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "OnePerLane", "ExpiryNeverSilent",
     "LapsedReleased", "HandEmptyWhenClosed", "OfferedIsAccepted",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
@@ -115,8 +115,8 @@ WITNESSES = [
     ("StepsUndealtSilent", "DealtWithinKTicks", "burst",
      "The tick never opens the undealt judgement: a producer the budget\n"
      "leaves ready with room tick after tick sits unworked unseen.",
-     [("        /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"} \\cup {p \\in und : rdy[p] + 1 >= UndealtTicks}",
-       "        /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"}   \\* FAULT: no new undealt judgement", 1)]),
+     [("           /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"} \\cup {p \\in und : rdy[p] + 1 >= UndealtTicks}",
+       "           /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"}   \\* FAULT: no new undealt judgement", 1)]),
     ("StepsBlockerQueued", "BlockerPreemptsInOneTick", "pre",
      "The preemption step counts queue room (ready plus working under width\n"
      "plus ahead) as free width, so a ready blocker is queued behind full\n"
@@ -161,14 +161,14 @@ WITNESSES = [
     ("StepsCarryDropped", "CarryFIFO", "burst",
      "The carry drops what the budget left: only the items of refused ops\n"
      "stay in the inbox.",
-     [("        /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
-       "        /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps   \\* FAULT\n"
-       "                                                 /\\ it.stamp \\in {g.stamp : g \\in admIn})", 1)]),
+     [("           /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
+       "           /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps   \\* FAULT\n"
+       "                                                    /\\ it.stamp \\in {g.stamp : g \\in admIn})", 1)]),
     ("StepsCarryNewestFirst", "CarryFIFO", "burst",
      "The carry is put back newest first.",
-     [("        /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
-       "        /\\ inbox' = LET X == SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)   \\* FAULT\n"
-       "                    IN [i \\in 1..Len(X) |-> X[Len(X) + 1 - i]]", 1)]),
+     [("           /\\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)",
+       "           /\\ inbox' = LET X == SelectSeq(inbox, LAMBDA it : it.stamp \\notin ustamps)   \\* FAULT\n"
+       "                       IN [i \\in 1..Len(X) |-> X[Len(X) + 1 - i]]", 1)]),
     ("StepsStopEarly", "EdgeAfterAccepted", "pre",
      "A stop request is dispatched from every op, refused ones included\n"
      "(After ignored): a runner is stopped for a consumer never withdrawn.",
@@ -209,6 +209,13 @@ WITNESSES = [
      "onto a workstream base records landed before it is on main.",
      [("LandKind(k, p) == IF k = \"promote\" \\/ MainBase[Stream[p]] THEN \"landed\" ELSE \"onbase\"",
        "LandKind(k, p) == \"landed\"   \\* FAULT: was onbase off a main base", 1)]),
+    ("StepsTwoOnLane", "OnePerLane", "burst",
+     "The old rule (v2.0.53): each stream dispatches its own land or promote\n"
+     "request independently on a shared (repo, base) lane, racing two merges\n"
+     "onto main at once.",
+     [("     IN \\E lands \\in LaneChoices(V, cl4, inflight, jv) :",
+       "     IN \\E lands \\in {{LandReq(V, p) : p \\in LandPicks(V, cl4, inflight, jv)}\n"
+       "                      \\cup {PromReq(V, p) : p \\in PromPicks(V, cl4, inflight, jv)}} :   \\* FAULT", 1)]),
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",

@@ -166,13 +166,14 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		wait = CIWait
 	}
 	absent, rested := time.Duration(0), false
+	reruns, rerunGate := 0, ""
 	for {
 		if e.Streams != nil {
 			if cur, ok := e.Streams()[r.Stream]; ok && cur.Base != "" && cur.Base != s.Base {
 				s.Base, gate = cur.Base, git.Gate{} // the base changed (stream set --base): a gate built on the old one is let go
 			}
 		}
-		res, err := e.pass(ctx, dir, pass)
+		res, err := pass()
 		gate = res.Kept()
 		if res.CancelFault != "" {
 			e.fault("land "+r.ID+" stream "+r.Stream+" cancel", errors.New(res.CancelFault))
@@ -193,6 +194,43 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 				return
 			}
 			continue
+		}
+		if err == nil && r.SharedRed && res.Outcome == git.OutcomeNoVerdict && len(res.StoppedRuns) > 0 && e.Forge != nil {
+			if res.GatedSHA != "" && res.GatedSHA != rerunGate {
+				reruns, rerunGate = 0, res.GatedSHA
+			}
+			maxReruns := 2
+			if len(r.Heads) > 1 {
+				maxReruns = 1
+			}
+			if reruns < maxReruns {
+				rerr := rerunStopped_internal(ctx, e.Forge, s.Repo, res.StoppedRuns)
+				var fe *forge.FaultError
+				switch {
+				case errors.As(rerr, &fe) && fe.Kind == forge.FaultRateLimit:
+					if !rested {
+						rested = true
+						e.fault("land "+r.ID+" stream "+r.Stream+" waits", rerr)
+					}
+					gate = res.Gate
+					if e.Pause(ctx, LandPoll) != nil {
+						return
+					}
+					continue
+				case rerr != nil:
+					e.fault("land "+r.ID+" stream "+r.Stream+" rerun", rerr)
+				default:
+					reruns++
+					rested = false
+					gate, absent = res.Gate, 0
+					if e.Pause(ctx, LandPoll) != nil {
+						return
+					}
+					continue
+				}
+			} else if len(r.Heads) == 1 {
+				res.OwnRed = true
+			}
 		}
 		it := landItem(r.ID, res, err, wait)
 		it.Main = r.Kind == "promote" || it.Landed != nil && e.isMain(ctx, dir, s.Base)
@@ -235,8 +273,22 @@ func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration
 	case git.OutcomeAbsent, git.OutcomeUnfinished:
 		absent += LandPoll
 		return absent < wait, absent
+	case git.OutcomeRed:
+		if res.BaseRunning {
+			absent += LandPoll
+			return absent < wait, absent
+		}
 	}
 	return false, 0
+}
+
+func rerunStopped_internal(ctx context.Context, fg forge.Forge, repo string, runs []int64) error {
+	for _, id := range runs {
+		if err := fg.RerunFailed(ctx, repo, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // landItem is LandResult as layer 3 reads it (SEAMS 6): landed with the
@@ -328,22 +380,6 @@ func (e *Edges) clone(ctx context.Context, s store.Stream) (string, error) {
 		return "", err
 	}
 	return dir, errors.Join(e.Git.Clone(ctx, url, dir), lock.Close())
-}
-
-// pass is one LandPass or PromotePass under the clone's lock
-// (git.LockClone): streams on one repository share the clone, one land
-// goroutine each, and a pass's fetch, MergeGroup (checkout and merge in the
-// work tree) and push must not meet another stream's, nor nova-sprint
-// check's fetch; two streams on one base promote one after the other, so
-// the second reads main after the first merged. The pass's own fetch and
-// push do not lock again; the Pause between passes holds nothing.
-func (e *Edges) pass(ctx context.Context, dir string, pass func() (git.LandResult, error)) (git.LandResult, error) {
-	lock, err := git.LockClone(ctx, dir)
-	if err != nil {
-		return git.LandResult{}, err
-	}
-	res, err := pass()
-	return res, errors.Join(err, lock.Close())
 }
 
 // isMain is whether base is origin's default branch; a read that fails is

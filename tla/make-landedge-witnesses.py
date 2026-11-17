@@ -26,7 +26,9 @@ def consts(spec, shared="TRUE", flaky="TRUE"):
 
 CONSTS = consts("Spec")
 HELD_CONSTS = consts("Spec", shared="FALSE")
-LIVE_CONSTS = consts("LiveSpec")
+LIVE_CONSTS = ("CONSTANT K = 1\nCONSTANT BackedUp = 2\nCONSTANT MaxPass = 2\n"
+               "CONSTANT SharedRed = TRUE\nCONSTANT Flaky = TRUE\n"
+               "CONSTRAINT LiveBound\nSPECIFICATION LiveSpec\n")
 SHARED_LIVE_CONSTS = consts("SharedLiveSpec", flaky="FALSE")
 QUEUED_LIVE_CONSTS = consts("QueuedLiveSpec", flaky="FALSE")
 

@@ -348,3 +348,40 @@ func TestLandPassWaitsForTheClonesLock(t *testing.T) {
 		t.Fatalf("a pass with the clone locked elsewhere: %d fetches, %+v", g.fetched, res)
 	}
 }
+
+type probeForge struct {
+	pendingForge
+	t      *testing.T
+	dir    string
+	locked []bool
+}
+
+func (f *probeForge) Runs(context.Context, string) ([]forge.Run, error) {
+	f.locked = append(f.locked, cloneLocked(f.t, f.dir))
+	return nil, nil
+}
+
+func (f *probeForge) PR(ctx context.Context, repo, head, base string) (forge.PRInfo, bool, error) {
+	f.locked = append(f.locked, cloneLocked(f.t, f.dir))
+	return f.pendingForge.PR(ctx, repo, head, base)
+}
+
+// TestLandPassReleasesCloneLockBeforeForgeCalls ensures <clone>.lock is held
+// during local git worktree/push operations and released before slow GitHub
+// API calls (Runs, PR, Checks, Merge).
+func TestLandPassReleasesCloneLockBeforeForgeCalls(t *testing.T) {
+	t.Parallel()
+	g := &passGit{t: t, head: strings.Repeat("b", 40)}
+	dir := t.TempDir()
+	s := store.Stream{Name: "s1", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"}
+	sum := sha256.Sum256([]byte(s.Repo))
+	clone := filepath.Join(dir, fmt.Sprintf("%x", sum[:8]))
+	pf := &probeForge{t: t, dir: clone}
+	e := &Edges{Git: g, Forge: pf, ReposDir: dir, Pause: func(context.Context, time.Duration) error {
+		return context.Canceled
+	}}
+	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{g.head}, Branches: []string{"card/x"}}, s)
+	if !slices.Equal(g.merged, []bool{true}) || !slices.Equal(g.pushed, []bool{true}) || !slices.Equal(pf.locked, []bool{false, false}) {
+		t.Fatalf("git locked merge=%v push=%v, forge locked=%v; want [true] [true] [false false]", g.merged, g.pushed, pf.locked)
+	}
+}

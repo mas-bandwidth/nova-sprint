@@ -114,3 +114,89 @@ func TestLandStoppedChecksAreNoVerdictAtOnce(t *testing.T) {
 		}
 	}
 }
+
+type basePollForge struct {
+	stopForge
+	baseCalls int
+}
+
+func (f *basePollForge) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
+	sha := shas[0]
+	if sha == strings.Repeat("a", 40) {
+		return map[string]forge.CheckRollup{sha: {SHA: sha, State: forge.CheckRed, Failing: []string{"corpus"}, Ran: []string{"corpus"}}}, nil
+	}
+	f.baseCalls++
+	if f.baseCalls == 1 {
+		return map[string]forge.CheckRollup{sha: {SHA: sha, State: forge.CheckPending, Pending: 3}}, nil
+	}
+	return map[string]forge.CheckRollup{sha: {SHA: sha, State: forge.CheckGreen, Ran: []string{"corpus"}}}, nil
+}
+
+func (f *basePollForge) Failures(_ context.Context, _, sha string) ([]forge.Failure, error) {
+	return []forge.Failure{{Name: "corpus", URL: "https://github.com/o/r/actions/runs/7/job/8"}}, nil
+}
+
+// With SharedRed enabled, a red head whose base tip CI is still pending polls
+// until the base tip's CI completes, then classifies OwnRed cleanly.
+func TestLandPollsWhenBaseCIIsStillRunning(t *testing.T) {
+	t.Parallel()
+	landed := false
+	f := &basePollForge{}
+	pauses := 0
+	e := &Edges{Git: restGit{landed: &landed}, Forge: f, ReposDir: t.TempDir(),
+		Pause: func(context.Context, time.Duration) error { pauses++; return nil }}
+	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", SharedRed: true, Heads: []string{strings.Repeat("a", 40)}, Branches: []string{"sprint/s1/x"}},
+		store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
+	got := e.Results()
+	if len(got) != 1 || got[0].Outcome != "ci_red" || !got[0].OwnRed || pauses != 1 {
+		t.Fatalf("results %+v after %d pauses, want ci_red with OwnRed=true after 1 poll", got, pauses)
+	}
+}
+
+type rerunForge struct {
+	stopForge
+	reruns    []int64
+	greenFrom int
+}
+
+func (f *rerunForge) PR(_ context.Context, _, _, _ string) (forge.PRInfo, bool, error) {
+	return forge.PRInfo{Number: 1}, true, nil
+}
+
+func (f *rerunForge) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
+	sha := shas[0]
+	if f.greenFrom > 0 && len(f.reruns) >= f.greenFrom {
+		return map[string]forge.CheckRollup{sha: {SHA: sha, State: forge.CheckGreen}}, nil
+	}
+	return map[string]forge.CheckRollup{sha: {SHA: sha, State: forge.CheckRed, Failing: []string{"corpus"}}}, nil
+}
+
+func (f *rerunForge) RerunFailed(_ context.Context, _ string, id int64) error {
+	f.reruns = append(f.reruns, id)
+	return nil
+}
+
+func TestLandRerunsStoppedChecksBounded(t *testing.T) {
+	t.Parallel()
+	landed := false
+	rf := &rerunForge{greenFrom: 1}
+	e := &Edges{Git: restGit{landed: &landed}, Forge: rf, ReposDir: t.TempDir(),
+		Pause: func(context.Context, time.Duration) error { return nil }}
+	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.1", Kind: "land", Stream: "s1", SharedRed: true, Heads: []string{strings.Repeat("a", 40)}, Branches: []string{"sprint/s1/x"}},
+		store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
+	got := e.Results()
+	if len(got) != 1 || got[0].Outcome != "landed" || len(rf.reruns) != 1 || rf.reruns[0] != 7 {
+		t.Fatalf("transient solo rerun: %+v reruns=%v, want landed after 1 rerun of 7", got, rf.reruns)
+	}
+
+	landed = false
+	rf = &rerunForge{}
+	e = &Edges{Git: restGit{landed: &landed}, Forge: rf, ReposDir: t.TempDir(),
+		Pause: func(context.Context, time.Duration) error { return nil }}
+	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.2", Kind: "land", Stream: "s1", SharedRed: true, Heads: []string{strings.Repeat("a", 40)}, Branches: []string{"sprint/s1/x"}},
+		store.Stream{Name: "s1", Repo: "o/r", Base: "main", Forge: "github"})
+	got = e.Results()
+	if len(got) != 1 || got[0].Outcome != "ci_no_verdict" || !got[0].OwnRed || len(rf.reruns) != 2 {
+		t.Fatalf("persistent solo rerun: %+v reruns=%v, want ci_no_verdict OwnRed=true after 2 reruns", got, rf.reruns)
+	}
+}

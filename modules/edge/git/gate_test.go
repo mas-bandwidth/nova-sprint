@@ -132,3 +132,31 @@ func TestLandGroupConflictNamesTheHead(t *testing.T) {
 		t.Fatalf("pass = %+v err=%v, want a conflict naming %s and b.go", res, err, c2)
 	}
 }
+
+// A PR GitHub reports CONFLICTING because base moved after fetchHeads_internal
+// returns base_moved (so the next pass rebuilds on the new tip) instead of a
+// spurious conflict; and a PR whose mergeable state is still UNKNOWN after
+// green checks stays pending instead of calling Merge prematurely.
+func TestLandConflictingWhenBaseMovedMidPassAndUnknownMergeable(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	gf, ff, root, c1, _ := landWorld_internal()
+	ff.OnCall = func(op string) {
+		if op == "PR" {
+			gf.AddCommit(root, map[string]string{"a.go": "package other\n"}, "v2")
+			ff.Mergeable = "CONFLICTING"
+		}
+	}
+	res, err := LandPass(ctx, gf, ff, one_internal(c1))
+	if err != nil || res.Outcome != OutcomeBaseMoved {
+		t.Fatalf("mid-pass base move with CONFLICTING = %+v err=%v, want base_moved", res, err)
+	}
+
+	gf, ff, _, c1, _ = landWorld_internal()
+	ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckGreen})
+	ff.Mergeable = "UNKNOWN"
+	res, err = LandPass(ctx, gf, ff, one_internal(c1))
+	if err != nil || res.Outcome != OutcomePending || slices.Contains(ff.calls_internal(), "Merge") {
+		t.Fatalf("mergeable UNKNOWN = %+v err=%v calls=%v, want ci_pending with no Merge call", res, err, ff.calls_internal())
+	}
+}

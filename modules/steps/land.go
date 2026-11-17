@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -34,8 +35,8 @@ func (t *tick) landResults() {
 		case it.Outcome == "landed":
 			t.landGroup(it, req)
 		case it.Outcome == "conflict" && req.Kind == "land" && req.SharedRed && t.conflictFix(it, req):
-		case (it.Outcome == "ci_red" || it.Outcome == "conflict") && req.Kind == "land" && req.SharedRed && len(req.Cards) > 1 && t.peel(it, req):
-		case it.Outcome == "ci_red" && it.OwnRed && req.Kind == "land" && req.SharedRed && len(req.Cards) == 1 && t.redFix(it, req):
+		case (it.Outcome == "ci_red" || it.Outcome == "conflict" || it.Outcome == "ci_no_verdict") && req.Kind == "land" && req.SharedRed && len(req.Cards) > 1 && t.peel(it, req):
+		case (it.Outcome == "ci_red" || it.Outcome == "ci_no_verdict") && it.OwnRed && req.Kind == "land" && req.SharedRed && len(req.Cards) == 1 && t.redFix(it, req):
 		default:
 			t.landJudge(it, req)
 			t.consume(it.ID)
@@ -154,6 +155,10 @@ func (t *tick) conflictFix(it InboxItem, req EdgeRequest) bool {
 // found in at most group_max solo passes, and never holds the others in a
 // judgement. False when no card of the group is still merging and free.
 func (t *tick) peel(it InboxItem, req EdgeRequest) bool {
+	if t.lanePlanned(t.laneOf(req.Stream, "land")) {
+		t.consume(it.ID)
+		return true
+	}
 	for i, p := range req.Cards {
 		c, ok := t.v.Cards[p]
 		if !ok || c.State != "merging" || c.Head != req.Heads[i] || !t.free(p) || t.judged(p) || t.afterHeld(c) {
@@ -172,35 +177,69 @@ func (t *tick) peel(it InboxItem, req EdgeRequest) bool {
 
 // redFix sends a card whose own landing came back red on a check proven
 // the card's own (InboxItem.OwnRed: it completed on the base tip and was
-// not red there) back to fix, with the failing checks as its finding, in a
-// group that consumes the item (land_on_shared_red; LANDING.md "One
-// card's red never holds the others"): no judgement. False when the card
-// is no longer merging at the head: the judgement as before.
+// not red there, or timed out persistently across bounded reruns) back to
+// fix, with the failing checks as its finding, in a group that consumes the
+// item (land_on_shared_red; LANDING.md "One card's red never holds the
+// others"): no judgement. Persistent timeouts are bounded by limits.bounces.
 func (t *tick) redFix(it InboxItem, req EdgeRequest) bool {
 	p := req.Cards[0]
 	c, ok := t.v.Cards[p]
 	if !ok || c.State != "merging" || c.Head != req.Heads[0] || !t.free(p) {
 		return false
 	}
+	if it.Outcome == "ci_no_verdict" && t.redBounces(c) >= t.lim.Bounces {
+		return false
+	}
 	reason := fmt.Sprintf("red: head %s of branch %s is red onto %s at %s on checks the base does not share: %s; fix them and finish again",
 		c.Head, req.Branches[0], t.v.Streams[req.Stream].Base, req.Base, cmp.Or(it.Reason, "no facts given"))
+	if it.Outcome == "ci_no_verdict" {
+		reason = fmt.Sprintf("no verdict: head %s of branch %s timed out or stopped repeatedly onto %s at %s: %s; fix the hang or timeout and finish again",
+			c.Head, req.Branches[0], t.v.Streams[req.Stream].Base, req.Base, cmp.Or(it.Reason, "no facts given"))
+	}
 	if g := t.group("land", p, t.producerMove(p, card.Red{Head: c.Head, Reason: reason})); g != nil {
 		g.key.Item = it.ID
 	}
 	return true
 }
 
-// quiet is the branches of stream s's merging producers but those named:
-// no CI on them gates a landing, so the landing cancels their runs
-// (EdgeRequest.Quiet; LANDING.md "The landing's CI comes first").
-func (t *tick) quiet(s string, except []string) []string {
-	var out []string
-	for _, p := range t.v.Producers("merging") {
-		if c := t.v.Cards[p]; c.Stream == s && !slices.Contains(except, p) {
-			out = append(out, branch(c))
+func (t *tick) redBounces(c store.Card) int {
+	cons := t.v.Consumers(c.ID)
+	if len(cons) == 0 {
+		return max(0, c.Review-max(c.Attempt, 1))
+	}
+	ok := 0
+	for _, w := range cons {
+		if w.Kind == "work" && w.State == "done" && w.Result == "ok" {
+			ok++
 		}
 	}
+	return max(0, c.Review-ok)
+}
+
+// quiet is the branches of merging producers across all streams on stream s's
+// repository except those named (or gated on rung 1): no CI on them gates a
+// landing, so the landing cancels their runs (EdgeRequest.Quiet; LANDING.md
+// "The landing's CI comes first").
+func (t *tick) quiet(s string, except []string) []string {
+	repo := repoKey(t.v.Streams[s].Repo)
+	var out []string
+	for _, p := range t.v.Producers("merging") {
+		c := t.v.Cards[p]
+		if repoKey(t.v.Streams[c.Stream].Repo) != repo || slices.Contains(except, p) || t.rungOneActive(p) {
+			continue
+		}
+		out = append(out, branch(c))
+	}
 	return out
+}
+
+func (t *tick) rungOneActive(p string) bool {
+	for _, r := range slices.Concat(t.in.Inflight, t.edges) {
+		if r.Kind == "land" && !r.Fresh && slices.Contains(r.Cards, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // judged is whether card p has a land judgement open, or opened this tick.
@@ -236,17 +275,29 @@ func onBase(c store.Card) bool {
 // loses none (defect 51). Per stream with no promotion in flight, its
 // producers on base not under a land judgement are one promote request
 // (the model's PromPicks).
+type laneCandidate struct {
+	kind, stream, lane string
+	cards              []store.Card
+	landing            LandingAnswer
+	since              time.Time
+}
+
 func (t *tick) landRequests() {
+	byLane := map[string][]laneCandidate{}
 	for _, s := range sortedKeys(t.v.Streams) {
 		queued := slices.DeleteFunc(t.queued(s), func(c store.Card) bool { return t.judged(c.ID) })
-		if based := slices.DeleteFunc(slices.Clone(queued), func(c store.Card) bool { return !onBase(c) }); len(based) > 0 && !t.busy(s, "promote") {
-			t.landRequest("promote", s, based, t.o.landing(t.streamFacts(s)).CIWait)
-		}
-		if t.busy(s, "land") || t.plannedIn(s, "land") {
-			continue
+		if based := slices.DeleteFunc(slices.Clone(queued), func(c store.Card) bool { return !onBase(c) }); len(based) > 0 {
+			if lane := t.laneOf(s, "promote"); !t.laneBusy(lane) && !t.lanePlanned(lane) {
+				l := t.o.landing(t.streamFacts(s))
+				byLane[lane] = append(byLane[lane], laneCandidate{kind: "promote", stream: s, lane: lane, cards: based, landing: l, since: t.earliestMerging(based)})
+			}
 		}
 		picks := t.eligible(slices.DeleteFunc(queued, onBase))
 		if len(picks) == 0 {
+			continue
+		}
+		lane := t.laneOf(s, "land")
+		if t.laneBusy(lane) || t.lanePlanned(lane) {
 			continue
 		}
 		l := t.o.landing(t.streamFacts(s))
@@ -256,37 +307,85 @@ func (t *tick) landRequests() {
 		if max := cmp.Or(l.GroupMax, Engine.Landing.GroupMax); len(picks) > max {
 			picks = picks[:max] // a group never grows past group_max: it lands within one CI run
 		}
-		t.landRequest("land", s, picks, l.CIWait)
-		t.edges[len(t.edges)-1].SharedRed = !l.HoldSharedRed
-		t.edges[len(t.edges)-1].Quiet = t.quiet(s, t.edges[len(t.edges)-1].Cards)
-		t.edges[len(t.edges)-1].Fresh = true
-
+		byLane[lane] = append(byLane[lane], laneCandidate{kind: "land", stream: s, lane: lane, cards: picks, landing: l, since: t.earliestMerging(picks)})
+	}
+	for _, lane := range sortedKeys(byLane) {
+		cands := byLane[lane]
+		slices.SortFunc(cands, func(a, b laneCandidate) int {
+			if c := a.since.Compare(b.since); c != 0 {
+				return c
+			}
+			if a.kind != b.kind {
+				if a.kind == "promote" {
+					return -1
+				}
+				return 1
+			}
+			return cmp.Compare(a.stream, b.stream)
+		})
+		win := cands[0]
+		t.landRequest(win.kind, win.stream, win.cards, win.landing.CIWait)
+		if win.kind == "land" {
+			t.edges[len(t.edges)-1].SharedRed = !win.landing.HoldSharedRed
+			t.edges[len(t.edges)-1].Quiet = t.quiet(win.stream, t.edges[len(t.edges)-1].Cards)
+			t.edges[len(t.edges)-1].Fresh = true
+		}
 	}
 	t.unlanded()
 }
 
+func (t *tick) earliestMerging(cards []store.Card) time.Time {
+	var minAt time.Time
+	for _, c := range cards {
+		at := t.v.MergingAt[c.ID]
+		if at.IsZero() {
+			at = t.v.Since
+		}
+		if minAt.IsZero() || at.Before(minAt) {
+			minAt = at
+		}
+	}
+	return minAt
+}
+
 // unlanded reports, as an engine judgement, a merging producer the tick
 // leaves with no land request (a promote request for one on base) in
-// flight or planned for its stream, no land judgement, and no after target
-// holding it: a card that would sit in merging unexplained (intent rule
-// 32). By construction landRequests leaves none; this is the check that it
-// did.
+// flight or planned on its (repo, base) lane, no land judgement, and no
+// after target holding it: a card that would sit in merging unexplained
+// (intent rule 32). By construction landRequests leaves none; this is the
+// check that it did.
 func (t *tick) unlanded() {
 	for _, p := range t.v.Producers("merging") {
 		c, kind := t.v.Cards[p], "land"
 		if onBase(c) {
 			kind = "promote"
 		}
-		if !t.free(p) || t.judged(p) || t.busy(c.Stream, kind) || t.plannedIn(c.Stream, kind) || kind == "land" && t.afterHeld(c) {
+		lane := t.laneOf(c.Stream, kind)
+		if !t.free(p) || t.judged(p) || t.laneBusy(lane) || t.lanePlanned(lane) || kind == "land" && t.afterHeld(c) {
 			continue
 		}
 		t.engine(p, "card "+p+" is merging with no "+kind+" request and no land judgement: answer retry to ask the landing again")
 	}
 }
 
-// plannedIn is whether this tick planned a request of kind for stream s.
-func (t *tick) plannedIn(s, kind string) bool {
-	return slices.ContainsFunc(t.edges, func(r EdgeRequest) bool { return r.Kind == kind && r.Stream == s })
+// laneOf is the canonical <repo>@<base> lane a land or promote request on
+// stream s merges onto.
+func (t *tick) laneOf(s, kind string) string {
+	st, ok := t.v.Streams[s]
+	if !ok {
+		return s + "@" + kind
+	}
+	target := st.Base
+	if kind == "promote" {
+		target = "main"
+	}
+	return BaseAbout(repoKey(st.Repo), target)
+}
+
+func (t *tick) lanePlanned(lane string) bool {
+	return slices.ContainsFunc(t.edges, func(r EdgeRequest) bool {
+		return (r.Kind == "land" || r.Kind == "promote") && t.laneOf(r.Stream, r.Kind) == lane
+	})
 }
 
 // afterHeld is whether c waits for an after target that is merging.
@@ -294,9 +393,36 @@ func (t *tick) afterHeld(c store.Card) bool {
 	return slices.ContainsFunc(c.After, func(a string) bool { x, ok := t.v.Cards[a]; return ok && x.State == "merging" })
 }
 
-// busy is whether a request of kind for stream s is in flight.
-func (t *tick) busy(s, kind string) bool {
-	return slices.ContainsFunc(t.in.Inflight, func(r EdgeRequest) bool { return r.Kind == kind && r.Stream == s })
+func (t *tick) laneBusy(lane string) bool {
+	return slices.ContainsFunc(t.in.Inflight, func(r EdgeRequest) bool {
+		return (r.Kind == "land" || r.Kind == "promote") && t.laneOf(r.Stream, r.Kind) == lane
+	})
+}
+
+func repoKey(repo string) string {
+	repo = strings.TrimSpace(repo)
+	host, path := "", ""
+	if _, rest, ok := strings.Cut(repo, "://"); ok {
+		host, path, _ = strings.Cut(rest, "/")
+	} else if at, colon := strings.Index(repo, "@"), strings.Index(repo, ":"); at >= 0 && colon > at {
+		host, path = repo[:colon], repo[colon+1:]
+	} else {
+		return repo
+	}
+	if _, h, ok := strings.Cut(host, "@"); ok {
+		host = h
+	}
+	if h, _, ok := strings.Cut(host, ":"); ok {
+		host = h
+	}
+	if !strings.EqualFold(host, "github.com") {
+		return repo
+	}
+	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	if owner, name, ok := strings.Cut(path, "/"); ok && owner != "" && name != "" && !strings.Contains(name, "/") {
+		return path
+	}
+	return repo
 }
 
 // queued is the unclaimed merging producers of s in score order, then id.
