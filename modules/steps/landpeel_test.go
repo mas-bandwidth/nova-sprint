@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,7 @@ func landEdges(p Plan) []EdgeRequest {
 // Peel). A conflict that names no card peels the same way.
 func TestTickGroupRedPeels(t *testing.T) {
 	t.Parallel()
-	for _, outcome := range []string{"ci_red", "conflict"} {
+	for _, outcome := range []string{"ci_red", "conflict", "ci_no_verdict"} {
 		s, req := threeMerging(t, false)
 		s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: outcome, Reason: "failing unit"})
 		p := s.tick()
@@ -112,4 +113,84 @@ func TestTickGroupNeverPastGroupMax(t *testing.T) {
 	require.Len(t, req.Cards, Engine.Landing.GroupMax)
 	assert.Equal(t, ps[:4], req.Cards)
 	assert.ElementsMatch(t, []string{"sprint/s1/p5", "sprint/s1/p6"}, req.Quiet)
+}
+
+// A solo persistent timeout (ci_no_verdict with OwnRed after bounded reruns)
+// bounces back to fix up to limits.bounces times, then opens a land judgement;
+// an unproven ci_no_verdict (no-ci or infra) opens a land judgement at once.
+func TestTickSoloNoVerdictBouncesBoundedByLimit(t *testing.T) {
+	t.Parallel()
+	u := newSim(t)
+	unproven := toMerging(u)
+	u.arrive(InboxItem{Kind: "land", Request: unproven.ID, Outcome: "ci_no_verdict", Reason: "no verdict after 45m"})
+	u.tick()
+	assert.Len(t, u.openJudgements("land"), 1, "unproven ci_no_verdict opens a land judgement")
+
+	s := newSim(t)
+	req := toMerging(s)
+	for b := 1; b <= Engine.Limits.Bounces; b++ {
+		s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "ci_no_verdict", OwnRed: true, Reason: "stopped: unit timed out"})
+		s.tick()
+		require.Empty(t, s.rejected)
+		s.requireState("p1", "ready")
+		assert.Empty(t, s.openJudgements("land"), "bounce %d goes to fix", b)
+		s.run(2)
+		wID := fmt.Sprintf("p1.w%d", b+1)
+		s.take(wID)
+		s.report(wID, "ok", sha(b+1), "fixed")
+		s.tick()
+		rID := fmt.Sprintf("p1.r%d.1", s.card("p1").Review)
+		s.take(rID)
+		s.report(rID, "ok", sha(b+1), "fine")
+		s.run(2)
+		req = s.request("land", "s1")
+	}
+	s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "ci_no_verdict", OwnRed: true, Reason: "stopped: unit timed out"})
+	s.tick()
+	s.requireState("p1", "merging")
+	assert.Equal(t, []string{"land.p1.1"}, s.openJudgements("land"), "past bounce limit opens land judgement")
+}
+
+// Multiple streams sharing the same (repo, base) lane dispatch at most one
+// land request at a time in fair MergingAt FIFO order, quieting merging card
+// branches across all streams on that repo without firing engine judgements.
+func TestTickSerializesSharedRepoBaseLaneFIFO(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.must("streams",
+		store.PutStream{Name: "s-main", Repo: "mas-bandwidth/schema", Base: "main", Forge: "github", Pos: 1},
+		store.PutStream{Name: "s-py", Repo: "https://github.com/mas-bandwidth/schema.git", Base: "main", Forge: "github", Pos: 2},
+		store.PutStream{Name: "s-unity", Repo: "git@github.com:mas-bandwidth/schema.git", Base: "main", Forge: "github", Pos: 3},
+	)
+	s.row("r1", 6, "pro")
+	s.row("r2", 6, "pro", "heavy")
+	s.producer("pm", "s-main", "pro", "a/m")
+	s.producer("pp", "s-py", "pro", "a/p")
+	s.producer("pu", "s-unity", "pro", "a/u")
+	s.run(2)
+	for i, id := range []string{"pu", "pp", "pm"} {
+		s.take(id + ".w1")
+		s.report(id+".w1", "ok", sha(i+1), "done")
+		s.tick()
+		s.take(id + ".r1.1")
+		s.report(id+".r1.1", "ok", sha(i+1), "fine")
+		s.tick()
+	}
+	s.run(2)
+	assert.Empty(t, s.openJudgements("engine"))
+	var active []EdgeRequest
+	for _, r := range s.inflight {
+		if r.Kind == "land" {
+			active = append(active, r)
+		}
+	}
+	require.Len(t, active, 1, "at most one land request on shared mas-bandwidth/schema@main lane")
+	assert.Equal(t, "s-unity", active[0].Stream)
+
+	s.arrive(InboxItem{Kind: "land", Request: active[0].ID, Outcome: "landed", Landed: active[0].Heads, Merge: sha(50), Main: true})
+	s.run(2)
+	assert.Empty(t, s.openJudgements("engine"))
+	reqPy := s.request("land", "s-py")
+	assert.Equal(t, []string{"pp"}, reqPy.Cards)
+	assert.Contains(t, reqPy.Quiet, "sprint/s-main/pm")
 }

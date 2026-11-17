@@ -312,6 +312,11 @@ func (f *fakeForge) CancelRun(_ context.Context, _ string, id int64) error {
 	return nil
 }
 
+func (f *fakeForge) RerunFailed(_ context.Context, _ string, id int64) error {
+	f.log("RerunFailed %d", id)
+	return nil
+}
+
 func (f *fakeForge) BasePR(_ context.Context, _, sha string) (forge.BasePR, bool, error) {
 
 	f.log("BasePR %s", sha)

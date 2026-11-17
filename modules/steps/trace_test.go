@@ -121,6 +121,11 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	landLike := scen == "land" || scen == "burst"
 	w.stream("s1")
 	w.stream("s2")
+	if landLike {
+		s2 := w.snap().Streams["s2"]
+		s2.Base = "sprint/s2"
+		w.must("s2 base", store.PutStream{Name: s2.Name, Repo: s2.Repo, Base: s2.Base, Pos: s2.Pos})
+	}
 	w.row("r1", 1, "pro")
 	w.row("r2", 2, "pro", "heavy")
 	qStream, qPath := "s1", "a/z"

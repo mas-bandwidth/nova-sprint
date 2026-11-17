@@ -38,7 +38,8 @@ CONSTANTS GroupMax, Runners, OtherMax,
           Cancel   \* FALSE: no run is cancelled when a gate is pushed
 
 Cards == {"c1", "c2", "c3"}
-Red == {"c2"}      \* its head is red on its own checks
+Red == {"c2"}        \* its head is red on its own checks
+NoVerdict == {"c3"}  \* its head persistently times out (ci_no_verdict)
 
 VARIABLES st,      \* card -> idle | merging | fix
           line,    \* the merging cards in landing order
@@ -136,7 +137,9 @@ FinishOther ==
 FinishGate ==
   /\ "g" \in running
   /\ running' = running \ {"g"}
-  /\ gate' = IF group \cap Red = {} THEN "green" ELSE "red"
+  /\ gate' = IF group \cap Red # {} THEN "red"
+             ELSE IF group \cap NoVerdict # {} THEN "noverdict"
+             ELSE "green"
   /\ UNCHANGED <<st, line, queue, orun, group, quietAt, jd>>
 
 Leave(S, to) ==
@@ -149,11 +152,11 @@ Leave(S, to) ==
 \* The tick reads the gate's verdict.
 Verdict ==
   \/ gate = "green" /\ Leave(group, "idle")
-  \/ gate = "red" /\ Cardinality(group) = 1 /\ Leave(group, "fix")
-  \/ /\ gate = "red" /\ Cardinality(group) > 1 /\ Peel
+  \/ gate \in {"red", "noverdict"} /\ Cardinality(group) = 1 /\ Leave(group, "fix")
+  \/ /\ gate \in {"red", "noverdict"} /\ Cardinality(group) > 1 /\ Peel
      /\ PushOn(queue, {FirstIn(group)}, Range(line))
      /\ UNCHANGED <<st, line, jd>>
-  \/ /\ gate = "red" /\ Cardinality(group) > 1 /\ ~Peel /\ ~jd
+  \/ /\ gate \in {"red", "noverdict"} /\ Cardinality(group) > 1 /\ ~Peel /\ ~jd
      /\ jd' = TRUE
      /\ UNCHANGED <<st, line, queue, running, orun, group, gate, quietAt>>
 
@@ -176,7 +179,7 @@ TypeOK ==
   /\ orun \in 0..Runners
   /\ Free >= 0
   /\ group \subseteq Range(line)
-  /\ gate \in {"none", "queued", "running", "green", "red"}
+  /\ gate \in {"none", "queued", "running", "green", "red", "noverdict"}
   /\ (gate = "none") = (group = {})
   /\ (gate = "queued") = ("g" \in Range(queue))
   /\ (gate = "running") = ("g" \in running)

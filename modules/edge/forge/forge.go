@@ -132,6 +132,7 @@ type Forge interface {
 	// whether a kept gate's CI has started (git.queuedOnly_internal).
 	RunsAt(ctx context.Context, repo, branch, sha string) ([]Run, error)
 	CancelRun(ctx context.Context, repo string, id int64) error
+	RerunFailed(ctx context.Context, repo string, id int64) error
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on
@@ -180,6 +181,7 @@ type Config struct {
 	Exec     edge.Exec
 	Timeout  time.Duration
 	Now      func() int64
+	Sleep    func(context.Context, time.Duration) error
 }
 type Client struct {
 	cfg      Config
@@ -204,7 +206,21 @@ func NewClient(ex edge.Exec, cfg Config) *Client {
 	if cfg.Now == nil {
 		cfg.Now = func() int64 { return time.Now().Unix() }
 	}
+	if cfg.Sleep == nil {
+		cfg.Sleep = defaultSleep_internal
+	}
 	return &Client{cfg: cfg, methods: map[string]string{}, restTill: map[string]int64{}}
+}
+
+func defaultSleep_internal(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // RestedUntil is the latest time either bucket rests until.
@@ -582,6 +598,11 @@ func classifyStates_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 // the PR's head is still sha (--match-head-commit), and returns the merge
 // commit GitHub recorded. A PR left open (a merge queue took it) is a
 // refusal: the landing records only a merge it saw.
+const (
+	mergeUnknownTries   = 3
+	mergeUnknownBackoff = 2 * time.Second
+)
+
 func (c *Client) Merge(ctx context.Context, repo string, pr int, sha string) (string, error) {
 	if pr <= 0 || !isFullSHA_internal(sha) || repo == "" {
 		return "", fmt.Errorf("forge refused: Merge requires a repo, pr > 0 and a 40-hex sha")
@@ -591,7 +612,17 @@ func (c *Client) Merge(ctx context.Context, repo string, pr int, sha string) (st
 		return "", err
 	}
 	n := strconv.Itoa(pr)
-	if _, _, err := c.runGH_internal(ctx, "pr", "merge", n, "--repo", repo, "--"+method, "--match-head-commit", sha); err != nil {
+	for attempt := 0; ; attempt++ {
+		_, stderr, err := c.runGH_internal(ctx, "pr", "merge", n, "--repo", repo, "--"+method, "--match-head-commit", sha)
+		if err == nil {
+			break
+		}
+		if attempt < mergeUnknownTries && strings.Contains(strings.ToLower(stderr), "is not mergeable") && c.mergeableUnknown_internal(ctx, repo, n) {
+			if serr := c.cfg.Sleep(ctx, mergeUnknownBackoff); serr != nil {
+				return "", serr
+			}
+			continue
+		}
 		return "", err
 	}
 	stdout, _, err := c.runGH_internal(ctx, "pr", "view", n, "--repo", repo, "--json", "state,mergeCommit")
@@ -611,6 +642,17 @@ func (c *Client) Merge(ctx context.Context, repo string, pr int, sha string) (st
 		return "", fmt.Errorf("forge: gh pr merge %d on %s returned, but the PR is %s with no merge commit (a merge queue or an auto-merge holds it)", pr, repo, cmp.Or(v.State, "in no state"))
 	}
 	return strings.ToLower(v.MergeCommit.OID), nil
+}
+
+func (c *Client) mergeableUnknown_internal(ctx context.Context, repo, pr string) bool {
+	stdout, _, err := c.runGH_internal(ctx, "pr", "view", pr, "--repo", repo, "--json", "mergeable")
+	if err != nil {
+		return false
+	}
+	var v struct {
+		Mergeable string `json:"mergeable"`
+	}
+	return json.Unmarshal([]byte(stdout), &v) == nil && strings.EqualFold(v.Mergeable, "UNKNOWN")
 }
 
 // method_internal is the first merge method repo allows, read once per repo.

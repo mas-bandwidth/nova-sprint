@@ -80,8 +80,12 @@ func TestOwnRedIsNeverLanded(t *testing.T) {
 			headFails: []forge.Failure{{Name: "corpus", URL: sharedJob}, {URL: sharedJob}}},
 	} {
 		res, landed := w.pass(t)
-		if landed || res.Outcome != OutcomeRed || len(res.SharedRed) != 0 {
-			t.Fatalf("%s: %+v landed=%v, want ci_red, never landed", name, res, landed)
+		wantOut := OutcomeRed
+		if name == "a check stopped on the head" {
+			wantOut = OutcomeNoVerdict
+		}
+		if landed || res.Outcome != wantOut || len(res.SharedRed) != 0 {
+			t.Fatalf("%s: %+v landed=%v, want %s, never landed", name, res, landed, wantOut)
 		}
 		if !w.off && !strings.Contains(res.Reason, "not landed on the base's reds") {
 			t.Errorf("%s: the reason says nothing of why it was not landed: %s", name, res.Reason)
@@ -150,5 +154,34 @@ func TestSharedRedReadRestedIsAskedAgain(t *testing.T) {
 	res, err := LandPass(context.Background(), gf, ff, req)
 	if err != nil || res.Outcome != OutcomeRested || gf.OriginRef("v2") != root {
 		t.Fatalf("%+v err=%v, want forge_rested and nothing landed", res, err)
+	}
+}
+
+// On a repo with >100 checks (RanPartial true on a green base tip), a check
+// off the first page is proven the card's own via the BasePR of the same
+// tree when that PR completed green (or completed red without failing it);
+// and an own red accompanied by a stopped check still keeps OwnRed true.
+func TestOwnRedWhenBaseHasPartialRanAndBasePRIsGreen(t *testing.T) {
+	t.Parallel()
+	prHead := strings.Repeat("d", 40)
+	pr := &forge.BasePR{Number: 9, URL: "https://github.com/o/r/pull/9", HeadSHA: prHead, SameTree: true}
+	res, landed := sharedWorld{
+		head:     red("unit-shard-150"),
+		base:     forge.CheckRollup{State: forge.CheckGreen, Ran: []string{"lint"}, RanPartial: true},
+		pr:       pr,
+		prChecks: forge.CheckRollup{State: forge.CheckGreen, Ran: []string{"lint"}, RanPartial: true},
+	}.pass(t)
+	if landed || res.Outcome != OutcomeRed || !res.OwnRed {
+		t.Fatalf("green BasePR with RanPartial: %+v landed=%v, want ci_red with OwnRed=true", res, landed)
+	}
+
+	// Mixed own failure (green on base) + stopped check: stays OutcomeRed with OwnRed=true.
+	res, landed = sharedWorld{
+		head:      red("unit", "slow"),
+		base:      forge.CheckRollup{State: forge.CheckGreen, Ran: []string{"unit", "slow"}},
+		headFails: []forge.Failure{{Name: "unit", URL: sharedJob}, {Name: "slow", URL: sharedJob, Stop: "timed out"}},
+	}.pass(t)
+	if landed || res.Outcome != OutcomeRed || !res.OwnRed {
+		t.Fatalf("mixed own red + stopped: %+v landed=%v, want ci_red with OwnRed=true", res, landed)
 	}
 }

@@ -2,7 +2,6 @@ package steps
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 )
@@ -28,39 +27,45 @@ type BaseMove struct {
 	Streams        []string
 }
 
-// baseMoved opens the base-moved judgement of each stream with cards in
-// review or merging on a base a foreigner moved.
+// baseMoved opens one base-moved judgement per watched repository and base
+// (about = repo@base) when a foreigner moved it while cards wait in review or
+// merging on its streams.
 func (t *tick) baseMoved() {
 	for _, about := range sortedKeys(t.in.Moves) {
 		m := t.in.Moves[about]
+		var streams []string
+		waiting := 0
 		for _, s := range m.Streams {
-			waiting := t.waitingToLand(s)
-			if waiting == 0 {
-				continue
+			if w := t.waitingToLand(s); w > 0 {
+				streams = append(streams, s)
+				waiting += w
 			}
-			t.detect("base-moved", s)
-			if t.pending("base-moved", s) {
-				continue
-			}
-			n := t.episodes("base-moved", s)
-			last := t.v.Judgements[fmt.Sprintf("base-moved.%s.%d", s, n)]
-			same := strings.Contains(last.Question, " was moved to "+shortSHA(m.To)+" ")
-			q := baseMovedQuestion(s, m, waiting)
-			switch {
-			case last.State == "open" && same:
-				t.held("base-moved", s)
-				continue
-			case last.State == "open":
-				t.expires[last.ID] = fmt.Sprintf("the base was moved again (to %s): reopened as base-moved.%s.%d", shortSHA(m.To), s, n+1)
-			case last.State == "answered" && same:
-				if since, quiet := t.answeredQuiet("base-moved", s); quiet {
-					continue
-				} else if since > 0 {
-					q = fmt.Sprintf("STILL HOLDS %s after your answer: %s", since.Truncate(time.Second), q)
-				}
-			}
-			t.addJudge(judgement{kind: "base-moved", about: s, question: q})
 		}
+		if waiting == 0 {
+			continue
+		}
+		t.detect("base-moved", about)
+		if t.pending("base-moved", about) {
+			continue
+		}
+		n := t.episodes("base-moved", about)
+		last := t.v.Judgements[fmt.Sprintf("base-moved.%s.%d", about, n)]
+		same := strings.Contains(last.Question, " was moved to "+shortSHA(m.To)+" ")
+		q := baseMovedQuestion(streams, m, waiting)
+		switch {
+		case last.State == "open" && same:
+			t.held("base-moved", about)
+			continue
+		case last.State == "open":
+			t.expires[last.ID] = fmt.Sprintf("the base was moved again (to %s): reopened as base-moved.%s.%d", shortSHA(m.To), about, n+1)
+		case last.State == "answered" && same:
+			if since, quiet := t.answeredQuiet("base-moved", about); quiet {
+				continue
+			} else if since > 0 {
+				q = fmt.Sprintf("STILL HOLDS %s after your answer: %s", since.Truncate(time.Second), q)
+			}
+		}
+		t.addJudge(judgement{kind: "base-moved", about: about, question: q})
 	}
 }
 
@@ -77,27 +82,37 @@ func (t *tick) waitingToLand(s string) int {
 	return n
 }
 
-func baseMovedQuestion(s string, m BaseMove, waiting int) string {
+func baseMovedQuestion(streams []string, m BaseMove, waiting int) string {
 	cards := fmt.Sprintf("%d cards wait", waiting)
 	if waiting == 1 {
 		cards = "1 card waits"
 	}
-	return fmt.Sprintf("stream %s's base %s was moved to %s by something other than this sprint's landing (%s to land on it): "+
+	who := "stream " + streams[0]
+	if len(streams) > 1 {
+		who = "streams " + firstIDs(streams)
+	}
+	return fmt.Sprintf("%s %s (%s) was moved to %s by something other than this sprint's landing (%s to land on it): "+
 		"a stream lands into its own branch, which only its landings move; stop merging into %s; "+
-		"put other work on its own branch and merge the stream into main once it is green", s, m.Base, shortSHA(m.To), cards, m.Base)
+		"put other work on its own branch and merge the stream into main once it is green", m.Repo, m.Base, who, shortSHA(m.To), cards, m.Base)
 }
 
-// clearedMoved is why an open base-moved judgement about stream s no longer
-// holds: no foreign move of its base within one CIWait, or no card of it
-// waits to land.
-func (t *tick) clearedMoved(s string) string {
-	for _, about := range sortedKeys(t.in.Moves) {
-		if m := t.in.Moves[about]; slices.Contains(m.Streams, s) {
-			if t.waitingToLand(s) == 0 {
-				return "cleared: no card of stream " + s + " waits to land"
-			}
-			return ""
-		}
+// clearedMoved is why an open base-moved judgement about repo@base no longer
+// holds: no foreign move of that base within one CIWait, no card on its
+// streams waits to land, or a legacy per-stream judgement was superseded.
+func (t *tick) clearedMoved(about string) string {
+	if !strings.Contains(about, "@") {
+		return "cleared: per-stream base-moved judgements are now one per repo@base"
 	}
-	return fmt.Sprintf("cleared: stream %s's base %s has not been moved by anything but the sprint's landing for one CIWait", s, t.v.Streams[s].Base)
+	if m, ok := t.in.Moves[about]; ok {
+		waiting := 0
+		for _, s := range m.Streams {
+			waiting += t.waitingToLand(s)
+		}
+		if waiting == 0 {
+			return fmt.Sprintf("cleared: no card on %s %s waits to land", m.Repo, m.Base)
+		}
+		return ""
+	}
+	repo, base, _ := strings.Cut(about, "@")
+	return fmt.Sprintf("cleared: %s %s has not been moved by anything but the sprint's landing for one CIWait", repo, base)
 }
