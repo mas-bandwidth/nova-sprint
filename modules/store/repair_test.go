@@ -22,7 +22,7 @@ func TestFunctionalRestoreLostRows(t *testing.T) {
 	h.clear() // a later epoch, as the live store's
 	h.seed()
 	h.ok(h.op("hook", nil, PutRow{Name: "lost", Session: "sess-l", Role: "worker"}, SetRowState{"lost", "up"}, SetRowHeld{Row: "lost", Held: true, Reason: "measurement machine; held"}))
-	h.ok(h.op("beat", nil, SetRowLoad{Row: "lost", Load1Centi: 564, Cores: 25, SlotsTotal: 6, CPUPeakDeci: 168, Tiers: "flash,pro", Version: "v2.0.42"}))
+	h.ok(h.op("beat", nil, SetRowLoad{Row: "lost", CPUPeakDeci: 168, Tiers: "flash,pro", Version: "v2.0.42"}))
 	h.ok(h.op("unhook", nil, PutRow{Name: "lost"}))
 	h.ok(h.op("gone", nil, PutRow{Name: "gone"}))
 	h.ok(h.op("retire", nil, RetireRow{Row: "gone", Reason: "not in nova-config"}))
@@ -59,7 +59,7 @@ func TestFunctionalRestoreLostRows(t *testing.T) {
 	next := old
 	next.Gen = back.Gen
 	assert.Equal(t, next, back, "the row as the log last had it, hold and heartbeat included, at the next gen")
-	assert.True(t, old.Held && old.Load1Centi == 564, "the fixture row is held and has beaten")
+	assert.True(t, old.Held && old.CPUPeakDeci == 168, "the fixture row is held and has beaten")
 	assert.Equal(t, want.Seq+1, after.Seq, "put back through one op, so a running view folds it")
 	last := h.events()[len(h.events())-1]
 	assert.Equal(t, "store-repair", last.Actor)

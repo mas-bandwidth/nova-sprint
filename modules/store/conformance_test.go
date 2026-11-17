@@ -461,7 +461,7 @@ func clearReleasesHolds(h *harness) {
 // else accepted since: what the backup taken at that seq would lack.
 func clearFencedOnRows(h *harness) {
 	h.seed()
-	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", Load1Centi: 1, Cores: 8}))
+	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", CPUPeakDeci: 10}))
 	h.refused(h.op("nothing", nil, SetCardState{"c9", "ready"}), "card c9 does not exist")
 	h.ok(h.op("reason", nil, SetCardReason{"c1", "r"}))
 	r, err := h.s.Clear(h.ctx, h.op("clear", []Expect{RowsOnlySince{1}}))
@@ -475,12 +475,12 @@ func clearFencedOnRows(h *harness) {
 	require.NoError(h.t, err)
 	assert.Equal(h.t, "the store is at seq 5, before seq 99", r.Reason, "a seq not reached yet holds nothing")
 	seq := h.snap().Seq
-	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", Load1Centi: 2, Cores: 8}))
+	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", CPUPeakDeci: 20}))
 	h.refused(h.op("nothing", nil, SetCardState{"c9", "ready"}), "card c9 does not exist")
 	h.clear(RowsOnlySince{seq})
 	got := h.snap()
 	assert.Equal(h.t, 2, got.Epoch)
-	assert.Equal(h.t, 2, got.Rows["w1"].Load1Centi, "the beat after the fence's seq is carried")
+	assert.Equal(h.t, 20, got.Rows["w1"].CPUPeakDeci, "the beat after the fence's seq is carried")
 }
 
 // UnchangedSince holds over a beat, a row's state, flaps and hold, and a
@@ -489,7 +489,7 @@ func clearFencedOnRows(h *harness) {
 func unchangedSince(h *harness) {
 	h.seed()
 	all := UnchangedSince{Seq: 1, Streams: true, Cards: true, Policies: true, Judgements: true, Stop: true, Identity: true, Hooks: true}
-	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", Load1Centi: 1, Cores: 8}))
+	h.ok(h.op("beat", nil, SetRowLoad{Row: "w1", CPUPeakDeci: 10}))
 	h.ok(h.op("row", nil, SetRowState{"w1", "down"}, SetRowFlaps{"w1", 2}, SetRowHeld{"w1", true, "x"}))
 	h.refused(h.op("nothing", nil, SetCardState{"c9", "ready"}), "card c9 does not exist")
 	h.ok(h.op("fence", []Expect{all}))
@@ -768,37 +768,28 @@ func rowGenRace(h *harness) {
 func rowLoad(h *harness) {
 	h.seed()
 	g := h.snap().Rows["w1"].Gen
-	r := h.ok(h.op("beat", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 250, 8, 2, 8, "", 0, "", RowResources{}}))
+	r := h.ok(h.op("beat", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", "", 250, ""}))
 	row := r.After.Rows["w1"]
-	assert.Equal(h.t, []int{250, 8, 2, 8, g}, []int{row.Load1Centi, row.Cores, row.SlotsUsed, row.SlotsTotal, row.Gen}, "the beat is stored and the gen did not move")
-	h.refused(h.op("same", nil, SetRowLoad{"w1", 250, 8, 2, 8, "", 0, "", RowResources{}}), "row w1 already has the given load")
-	h.ok(h.op("next", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 300, 8, 3, 8, "", 0, "", RowResources{}}))
-	h.ok(h.op("advertise", nil, SetRowLoad{"w1", 300, 8, 3, 8, "flash,pro", 873, "v2.0.6", RowResources{}}))
+	assert.Equal(h.t, []int{250, g}, []int{row.CPUPeakDeci, row.Gen}, "the beat is stored and the gen did not move")
+	h.refused(h.op("same", nil, SetRowLoad{"w1", "", 250, ""}), "row w1 already has the given load")
+	h.ok(h.op("next", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", "", 300, ""}))
+	h.ok(h.op("advertise", nil, SetRowLoad{"w1", "flash,pro", 873, "v2.0.6"}))
 	assert.Equal(h.t, "flash,pro", h.snap().Rows["w1"].Tiers, "the beat carries the advertised tiers (defect 74)")
 	h.ok(h.op("hook again", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}))
-	assert.Equal(h.t, []any{300, "flash,pro", 873, "v2.0.6"}, []any{h.snap().Rows["w1"].Load1Centi, h.snap().Rows["w1"].Tiers, h.snap().Rows["w1"].CPUPeakDeci, h.snap().Rows["w1"].Version}, "PutRow keeps the beat")
+	assert.Equal(h.t, []any{"flash,pro", 873, "v2.0.6"}, []any{h.snap().Rows["w1"].Tiers, h.snap().Rows["w1"].CPUPeakDeci, h.snap().Rows["w1"].Version}, "PutRow keeps the beat")
 	h.ok(h.op("unhook", nil, PutRow{Name: "w1"}))
-	assert.Equal(h.t, []any{300, "", ""}, []any{h.snap().Rows["w1"].Load1Centi, h.snap().Rows["w1"].Tiers, h.snap().Rows["w1"].Version}, "an unhook keeps the load and clears the advertisement and the version")
+	assert.Equal(h.t, []any{873, "", ""}, []any{h.snap().Rows["w1"].CPUPeakDeci, h.snap().Rows["w1"].Tiers, h.snap().Rows["w1"].Version}, "an unhook keeps cpu_peak_deci and clears the advertisement and the version")
 	h.ok(h.op("hook", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}))
-	h.ok(h.op("with a state", nil, SetRowState{"w1", "down"}, SetRowLoad{"w1", 100, 8, 0, 8, "", 0, "", RowResources{}}))
+	h.ok(h.op("with a state", nil, SetRowState{"w1", "down"}, SetRowLoad{"w1", "", 100, ""}))
 	assert.Equal(h.t, g+4, h.snap().Rows["w1"].Gen, "an op that also writes the row still moves its gen once (the hooks above moved it three times)")
-	res := RowResources{
-		Total:      map[string]int{"cpu": 16, "memory": 64},
-		HeldSprint: map[string]int{"cpu": 4, "memory": 8},
-		AnyPaused:  false,
-	}
-	h.ok(h.op("resource beat", nil, SetRowLoad{Row: "w1", Cores: 0, SlotsUsed: 10, SlotsTotal: 5, Resources: res}))
-	assert.True(h.t, h.snap().Rows["w1"].Resources.Equal(res), "resource beat stored")
 	h.refusedAll([]refusal{
-		{SetRowLoad{"w9", 100, 8, 0, 8, "", 0, "", RowResources{}}, "row w9 does not exist"},
+		{SetRowLoad{"w9", "", 100, ""}, "row w9 does not exist"},
 	})
 	h.invalidAll([]refusal{
-		{SetRowLoad{"w1", -1, 8, 0, 8, "", 0, "", RowResources{}}, "load1_centi -1 is outside"},
-		{SetRowLoad{"w1", 100, 8, math.MaxInt32 + 1, 8, "", 0, "", RowResources{}}, "slots_used 2147483648 is outside"},
-		{SetRowLoad{"w1", 100, 8, 0, 8, "pro,flash", 0, "", RowResources{}}, "not a comma list of flash, pro, heavy, frontier in that order"},
-		{SetRowLoad{"w1", 100, 8, 0, 8, "flash,turbo", 0, "", RowResources{}}, "not a comma list"},
-		{SetRowLoad{"w1", 100, 8, 0, 8, "", 1001, "", RowResources{}}, "cpu_peak_deci of at most 1000"},
-		{SetRowLoad{"w1", 100, 8, 0, 8, "", -1, "", RowResources{}}, "cpu_peak_deci -1 is outside"},
+		{SetRowLoad{"w1", "pro,flash", 0, ""}, "not a comma list of flash, pro, heavy, frontier in that order"},
+		{SetRowLoad{"w1", "flash,turbo", 0, ""}, "not a comma list"},
+		{SetRowLoad{"w1", "", 1001, ""}, "cpu_peak_deci of at most 1000"},
+		{SetRowLoad{"w1", "", -1, ""}, "cpu_peak_deci -1 is outside"},
 	})
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the beat")
 }
@@ -1853,7 +1844,7 @@ func coldRead4(h *harness) {
 // carry a retired row into the next epoch.
 func retireRow(h *harness) {
 	h.seed()
-	h.ok(h.op("work", nil, SetCardState{"u1", "working"}, SetRowHeld{"w1", true, "held"}, SetRowFlaps{"w1", 2}, SetRowLoad{"w1", 100, 8, 1, 8, "pro", 50, "v2.0.6", RowResources{}}))
+	h.ok(h.op("work", nil, SetCardState{"u1", "working"}, SetRowHeld{"w1", true, "held"}, SetRowFlaps{"w1", 2}, SetRowLoad{"w1", "pro", 50, "v2.0.6"}))
 	g := h.snap().Rows["w1"].Gen
 	h.refused(h.op("retire", []Expect{RowGen{"w1", g}}, RetireRow{"w1", "gone"}), "row w1 holds card u1; return its hand before it is retired")
 	h.ok(h.op("retire", []Expect{RowGen{"w1", g}}, SetCardState{"u1", "done"}, RetireRow{"w1", "retired: nova-config no longer names it"}))
@@ -1867,7 +1858,7 @@ func retireRow(h *harness) {
 		{SetRowState{"w1", "up"}, retired},
 		{SetRowHeld{"w1", false, "x"}, retired},
 		{SetRowFlaps{"w1", 0}, retired},
-		{SetRowLoad{"w1", 200, 8, 1, 8, "", 0, "", RowResources{}}, retired},
+		{SetRowLoad{"w1", "", 200, ""}, retired},
 		{RetireRow{"w1", "again"}, retired},
 		{PutCard{Tier: "pro", ID: "u4", Kind: "work", Of: "c2", Stream: "s1", Holder: "w1"}, retired},
 		{RetireRow{"w9", "never"}, "row w9 does not exist"},

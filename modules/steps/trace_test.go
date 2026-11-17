@@ -198,7 +198,7 @@ func (w *traceWalk) record(action string, args []string) {
 	}
 	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
 	fields = append(fields, args...)
-	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
+	fields = append(fields, StoreTLA(v, w.reserve, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
 		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA(), "admitted |-> "+w.admTLA(v))
 	w.records = append(w.records, "["+strings.Join(fields, ", ")+"]")
 }
@@ -374,7 +374,7 @@ func (w *traceWalk) envOne() {
 	v := w.truthView()
 	switch w.scen {
 	case "pre":
-		switch w.rng.Intn(4) {
+		switch w.rng.Intn(5) {
 		case 0:
 			if v.Streams["s2"].Held {
 				w.unhold("s2")
@@ -387,6 +387,11 @@ func (w *traceWalk) envOne() {
 			}
 		case 2:
 			if w.phase == "idle" && w.otherLoad("r2") {
+				return
+			}
+		case 3:
+			if w.phase == "idle" {
+				w.claimLoad("r2")
 				return
 			}
 		}
@@ -442,18 +447,31 @@ func (w *traceWalk) flip(row string) {
 	}
 }
 
+func rebuildNonSprint(res *BenchReserve) {
+	sum := map[string]int{}
+	for k, v := range res.ExternalHeld {
+		sum[k] += v
+	}
+	for k, v := range res.SoftClaimed {
+		sum[k] += v
+	}
+	if len(sum) == 0 {
+		res.NonSprintUsed = nil
+	} else {
+		res.NonSprintUsed = sum
+	}
+}
+
 func (w *traceWalk) pauseFlip(row string) {
-	v := w.truthView()
-	res := v.Rows[row].Resources.Clone()
+	res := w.reserve[row]
 	res.AnyPaused = !res.AnyPaused
+	w.reserve[row] = res
 	action := "Pause"
 	if !res.AnyPaused {
 		action = "Unpause"
 	}
-	if w.apply("load", nil, store.SetRowLoad{Row: row, Tiers: "pro,heavy", Resources: res}).Accepted {
-		w.ok()
-		w.moved(action, nil)
-	}
+	w.ok()
+	w.moved(action, nil)
 }
 
 func (w *traceWalk) otherLoad(row string) bool {
@@ -468,7 +486,8 @@ func (w *traceWalk) otherLoad(row string) bool {
 			}
 		}
 	}
-	cur := v.Rows[row].Resources.HeldOther["cpu"]
+	res := w.reserve[row]
+	cur := res.ExternalHeld["cpu"]
 	var choices []int
 	for _, lv := range []int{0, 1, 2} {
 		if lv != cur && lv+sprintCPU <= 3 {
@@ -479,18 +498,34 @@ func (w *traceWalk) otherLoad(row string) bool {
 		return false
 	}
 	lv := choices[w.rng.Intn(len(choices))]
-	res := v.Rows[row].Resources.Clone()
 	if lv == 0 {
-		res.HeldOther = nil
+		res.ExternalHeld = nil
 	} else {
-		res.HeldOther = map[string]int{"cpu": lv, "memory": lv}
+		res.ExternalHeld = map[string]int{"cpu": lv, "memory": lv}
 	}
-	if w.apply("load", nil, store.SetRowLoad{Row: row, Tiers: "pro,heavy", Resources: res}).Accepted {
-		w.ok()
-		w.moved("OtherLoad", nil)
-		return true
+	rebuildNonSprint(&res)
+	w.reserve[row] = res
+	w.ok()
+	w.moved("OtherLoad", nil)
+	return true
+}
+
+func (w *traceWalk) claimLoad(row string) {
+	res := w.reserve[row]
+	cur := res.SoftClaimed["cpu"]
+	lv := 2
+	if cur == 2 {
+		lv = 0
 	}
-	return false
+	if lv == 0 {
+		res.SoftClaimed = nil
+	} else {
+		res.SoftClaimed = map[string]int{"cpu": lv, "memory": lv}
+	}
+	rebuildNonSprint(&res)
+	w.reserve[row] = res
+	w.ok()
+	w.moved("ClaimLoad", nil)
 }
 
 func (w *traceWalk) readyOf(stream string) []card.Card {

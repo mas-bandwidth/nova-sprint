@@ -120,7 +120,7 @@ func TestFunctionalIdlePollBytes(t *testing.T) {
 		before := proxy.down.Load()
 		want(t, w.do("alice", "next", "--json"), 0, `"row":"alice"`)
 		mid := proxy.down.Load()
-		want(t, w.do("alice", "beat", "--load1", "0.5", "--cores", "8", "--slots-used", "0", "--slots-total", "4"), 0, "BEAT alice")
+		want(t, w.do("alice", "beat", "--cpu-peak", "5"), 0, "BEAT alice")
 		return mid - before, proxy.down.Load() - mid
 	}
 	poll() // the first beat writes; every poll after it is idle

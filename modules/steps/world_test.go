@@ -24,12 +24,13 @@ type world struct {
 	cursor     int64
 	n          int
 	now        time.Time
-	headless   set                 // streams the inputs carry no head for (the edge's read failed)
-	away       set                 // rows the inputs do not see on the bus this tick (their hook is down)
-	lapse      time.Duration       // how long ago the last good who read saw the rest (0: this tick)
-	unadmitted map[string]string   // producers layer 6's admission re-proof refuses, and why (Inputs.Unadmitted)
-	bases      map[string]BaseCI   // each watched base's last completed CI read (Inputs.Bases)
-	moves      map[string]BaseMove // each watched base moved by something other than the sprint's landing (Inputs.Moves)
+	headless   set                     // streams the inputs carry no head for (the edge's read failed)
+	away       set                     // rows the inputs do not see on the bus this tick (their hook is down)
+	lapse      time.Duration           // how long ago the last good who read saw the rest (0: this tick)
+	unadmitted map[string]string       // producers layer 6's admission re-proof refuses, and why (Inputs.Unadmitted)
+	bases      map[string]BaseCI       // each watched base's last completed CI read (Inputs.Bases)
+	moves      map[string]BaseMove     // each watched base moved by something other than the sprint's landing (Inputs.Moves)
+	reserve    map[string]BenchReserve // live nova-reserve subscribe state per bench (Inputs.Reserve)
 }
 
 var t0 = time.Unix(1000, 0).UTC()
@@ -40,7 +41,7 @@ const base = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 func sha(n int) string { return fmt.Sprintf("%040x", n+1) }
 
 func newWorld(t *testing.T) *world {
-	w := &world{t: t, f: store.NewFake(), now: t0, roster: roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{}}}
+	w := &world{t: t, f: store.NewFake(), now: t0, roster: roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{}}, reserve: map[string]BenchReserve{}}
 	w.v = Build(w.snap(), t0)
 	return w
 }
@@ -203,7 +204,7 @@ func (w *world) reportPlan(c, result, head, reason string) (card.Plan, *card.Ref
 // inputs is the tick's inputs at the world's clock: every row seen now but
 // the away ones, every stream at base.
 func (w *world) inputs() Inputs {
-	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}, Roster: w.roster, Unadmitted: w.unadmitted, Bases: w.bases, Moves: w.moves}
+	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}, Roster: w.roster, Unadmitted: w.unadmitted, Bases: w.bases, Moves: w.moves, Reserve: w.reserve}
 	for s := range w.v.Streams {
 		if _, no := w.headless[s]; !no {
 			in.Heads[s] = base

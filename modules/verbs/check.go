@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -88,8 +89,18 @@ func runCheck(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (stri
 			r.ok("history rebuilds the tables")
 		}
 	}
+	var resSnap reserve.FleetSnapshot
+	if e.Reserve != nil {
+		rs, rerr := e.Reserve(ctx)
+		if rerr != nil {
+			r.red(RefusalOr(rerr, broken("nova-reserve subscribe failed ("+errText(rerr)+")", "check NOVA_RESERVE_ADDR and NOVA_RESERVE_PASSWORD, then nova-reserve status")))
+		} else {
+			resSnap = rs
+			r.ok("reserve answering (%d machines)", len(rs.Machines))
+		}
+	}
 	if current {
-		e.checkSprint(ctx, r, who)
+		e.checkSprint(ctx, r, who, resSnap)
 	}
 	return r.result("nova-sprint next --as " + orWord(in.actor, "<you>"))
 }

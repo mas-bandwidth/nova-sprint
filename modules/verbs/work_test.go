@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 
@@ -476,10 +475,10 @@ func TestShowAndQueueRefusals(t *testing.T) {
 func TestBeat(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	args := []string{"beat", "--load1", "2.505", "--cpu-peak", "87.25", "--cores", "8", "--slots-used", "3", "--slots-total", "8"}
+	args := []string{"beat", "--cpu-peak", "87.25"}
 	want(t, w.do("alice", args...), 0, "BEAT alice applied at seq", "next: ")
 	r := w.snap(t).Rows["alice"]
-	if r.Load1Centi != 251 || r.CPUPeakDeci != 873 || r.Cores != 8 || r.SlotsUsed != 3 || r.SlotsTotal != 8 || r.Version != "v2.0.0-test" {
+	if r.CPUPeakDeci != 873 || r.Version != "v2.0.0-test" {
 		t.Fatalf("the row after the beat (the version is the beating build's, defect D3): %+v", r)
 	}
 	seq := w.snap(t).Seq
@@ -487,8 +486,8 @@ func TestBeat(t *testing.T) {
 	if w.snap(t).Seq != seq {
 		t.Fatalf("a repeated beat wrote to the log")
 	}
-	want(t, w.do("alice", "beat", "--load1", "0", "--cores", "8", "--slots-used", "0", "--slots-total", "8"), 0, "applied")
-	want(t, w.do("alice", "beat", "--load1", "0", "--cores", "8", "--slots-used", "0", "--slots-total", "8", "--tiers", "pro,flash"), 0, "applied")
+	want(t, w.do("alice", "beat", "--cpu-peak", "0"), 0, "applied")
+	want(t, w.do("alice", "beat", "--cpu-peak", "0", "--tiers", "pro,flash"), 0, "applied")
 	if r := w.snap(t).Rows["alice"]; r.Tiers != "flash,pro" {
 		t.Fatalf("the advertised tiers are kept in the store's order: %q", r.Tiers)
 	}
@@ -501,7 +500,7 @@ func TestBeatRecordsTheWorkerProcessBuild(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	w.e.WorkerBuild = "v1.9.9"
-	want(t, w.do("alice", "beat", "--load1", "1", "--cores", "8", "--slots-used", "0", "--slots-total", "8"), 0, "BEAT alice applied at seq")
+	want(t, w.do("alice", "beat", "--cpu-peak", "10"), 0, "BEAT alice applied at seq")
 	if r := w.snap(t).Rows["alice"]; r.Version != "v1.9.9" {
 		t.Fatalf("the row's build is the worker process's: %q", r.Version)
 	}
@@ -509,22 +508,13 @@ func TestBeatRecordsTheWorkerProcessBuild(t *testing.T) {
 
 func TestBeatRefusals(t *testing.T) {
 	t.Parallel()
-	good := []string{"--load1", "1", "--cores", "4", "--slots-used", "1", "--slots-total", "4"}
-	with := func(flag, val string) []string {
-		out := slices.Clone(good)
-		out[slices.Index(out, flag)+1] = val
-		return append([]string{"beat"}, out...)
-	}
 	runCases(t, []tcase{
-		{name: "not a load", as: "alice", args: with("--load1", "fast"), exit: 2, want: []string{"--load1 takes the 1-minute load average"}},
-		{name: "a negative load", as: "alice", args: with("--load1", "-1"), exit: 2, want: []string{"--load1 takes"}},
-		{name: "a cpu peak over 100", as: "alice", args: append(with("--load1", "1"), "--cpu-peak", "100.1"), exit: 2, want: []string{"--cpu-peak takes the CPU busy percent as a number from 0 to 100"}},
-		{name: "a cpu peak that is not a number", as: "alice", args: append(with("--load1", "1"), "--cpu-peak", "hot"), exit: 2, want: []string{"--cpu-peak takes"}},
-		{name: "no cores", as: "alice", args: with("--cores", "0"), exit: 2, want: []string{"--cores takes a whole number, 1 or more"}},
-		{name: "slots over the total", as: "alice", args: with("--slots-used", "5"), exit: 2, want: []string{"--slots-used 5 is more than --slots-total 4"}},
-		{name: "an unknown tier", as: "alice", args: append(with("--load1", "1"), "--tiers", "flash,turbo"), exit: 2, want: []string{"--tiers takes a comma list of flash, pro, heavy, frontier"}},
-		{name: "a flag missing", as: "alice", args: []string{"beat", "--load1", "1"}, exit: 2, want: []string{"--cores takes a whole number"}},
-		{name: "not hooked", as: "dave", args: append([]string{"beat"}, good...), exit: 1, want: []string{"hook in first", "nova-sprint hook --as dave --role worker"}},
+		{name: "a cpu peak over 100", as: "alice", args: []string{"beat", "--cpu-peak", "100.1"}, exit: 2, want: []string{"--cpu-peak takes the CPU busy percent as a number from 0 to 100"}},
+		{name: "a negative cpu peak", as: "alice", args: []string{"beat", "--cpu-peak", "-1"}, exit: 2, want: []string{"--cpu-peak takes the CPU busy percent as a number from 0 to 100"}},
+		{name: "a cpu peak that is not a number", as: "alice", args: []string{"beat", "--cpu-peak", "hot"}, exit: 2, want: []string{"--cpu-peak takes"}},
+		{name: "an unknown tier", as: "alice", args: []string{"beat", "--tiers", "flash,turbo"}, exit: 2, want: []string{"--tiers takes a comma list of flash, pro, heavy, frontier"}},
+		{name: "legacy shadow flag refused", as: "alice", args: []string{"beat", "--resources", "{}"}, exit: 2, want: []string{"nova-sprint help beat"}},
+		{name: "not hooked", as: "dave", args: []string{"beat", "--cpu-peak", "10"}, exit: 1, want: []string{"hook in first", "nova-sprint hook --as dave --role worker"}},
 	})
 }
 

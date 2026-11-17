@@ -171,7 +171,7 @@ func (b *beating) Clear(ctx context.Context, op store.Op) (store.Receipt, error)
 func beat(t *testing.T, f *store.Fake, row string, load int) {
 	t.Helper()
 	op := store.Op{ID: fmt.Sprintf("beat.%s.%d", row, load), Epoch: 1, Actor: row, Kind: "beat", At: t0,
-		Writes: []store.Write{store.SetRowLoad{Row: row, Load1Centi: load, Cores: 8}}}
+		Writes: []store.Write{store.SetRowLoad{Row: row, CPUPeakDeci: load}}}
 	if r, err := f.Apply(context.Background(), op); err != nil || !r.Accepted {
 		t.Fatalf("beat %s: %+v %v", row, r, err)
 	}
@@ -190,7 +190,7 @@ func TestClearWithWorkersBeating(t *testing.T) {
 	w.arch.during = func() { beat(t, w.f, "alice", 1); beat(t, w.f, "bob", 2); beat(t, w.f, "alice", 3) }
 	w.e.Store = &beating{Fake: w.f, t: t}
 	want(t, w.do("carol", "clear", "--confirm", "1"), 0, "CLEARED epoch=2 opened; backup /b/1.dump")
-	if got := w.snap(t); got.Epoch != 2 || len(got.Cards) != 0 || got.Rows["alice"].Load1Centi != 99 {
+	if got := w.snap(t); got.Epoch != 2 || len(got.Cards) != 0 || got.Rows["alice"].CPUPeakDeci != 99 {
 		t.Fatalf("snapshot %+v", got)
 	}
 
@@ -238,7 +238,7 @@ func TestClearFencedOnRowsNotTheSeq(t *testing.T) {
 	load := 100
 	w.e.Store = &racing{Fake: w.f, before: func() { load++; beat(t, w.f, "alice", load) }}
 	want(t, w.do("carol", "clear", "--confirm", "1"), 0, "CLEARED epoch=2 opened; backup /b/1.dump")
-	if got := w.snap(t); got.Epoch != 2 || len(got.Cards) != 0 || got.Rows["alice"].Load1Centi != load {
+	if got := w.snap(t); got.Epoch != 2 || len(got.Cards) != 0 || got.Rows["alice"].CPUPeakDeci != load {
 		t.Fatalf("snapshot %+v, want epoch 2 with alice's last beat %d", got, load)
 	}
 

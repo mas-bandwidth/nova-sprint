@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -27,7 +28,7 @@ type widthFacts struct {
 // the fleet works under its width with nothing ready it warns "nothing
 // dealable" with the chains the waiting producers sit on (ws,
 // the steps' own Waits, as the idle judgement says them).
-func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snapshot, heads map[string]string, running bool, ws []steps.StreamWaits) {
+func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snapshot, heads map[string]string, running bool, ws []steps.StreamWaits, resSnap reserve.FleetSnapshot) {
 	lim, _, err := e.rules(ctx, snap)
 	if err != nil {
 		r.red(err)
@@ -38,7 +39,9 @@ func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snap
 		r.red(err)
 		return
 	}
-	f := widthOf(snap, ro, e.Now())
+	ro = reserve.OverlayRoster(ro, resSnap)
+	now := e.Now()
+	f := widthOf(snap, ro, reserve.ToBenchReserve(resSnap, now), now)
 	line := fmt.Sprintf("width: working %d (%d dealt) of %d open on %d rows; %d ready", f.working, f.dealt, f.open, f.rows, len(f.ready))
 	causes := undealt(snap, f, heads, running)
 	switch {
@@ -61,7 +64,7 @@ func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snap
 
 // widthOf reads the facts through the steps' own view (Open, Working,
 // Live), so a row counts as the deal counts it.
-func widthOf(snap store.Snapshot, ro roster.Roster, now time.Time) widthFacts {
+func widthOf(snap store.Snapshot, ro roster.Roster, res map[string]steps.BenchReserve, now time.Time) widthFacts {
 	v := steps.Build(snap, now)
 	f := widthFacts{serves: map[string]bool{}}
 	for name, row := range snap.Rows {
@@ -72,9 +75,9 @@ func widthOf(snap store.Snapshot, ro roster.Roster, now time.Time) widthFacts {
 		openCap := width
 		if kind == roster.KindWorker {
 			w := ro.Workers[name]
-			if w.Held == "" && !row.Resources.AnyPaused {
-				cpuTotal := max(row.Resources.Total["cpu"], w.Resources["cpu"])
-				openCap = max(0, cpuTotal-row.Resources.HeldOther["cpu"])
+			br := res[name]
+			if w.Held == "" && !br.Offline && !br.AnyPaused {
+				openCap = max(0, w.Resources["cpu"]-br.NonSprintUsed["cpu"])
 			}
 		}
 		f.rows++

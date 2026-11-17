@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -64,6 +65,11 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 	env := verbs.ExecEnvironment{DSN: creds.dsn, Password: creds.password, Choices: verbs.Choices{Store: st, Actor: actor, Now: time.Now}, Command: toolCommand}
 	e.Setup, e.Lock = buildProductionSetup(st, env, actor, toolPin)
 	e.Doctor = fleetDoctor(creds, e.Setup)
+	if rcfg := reserve.ConfigFromEnv("check@" + actor); rcfg.Configured() {
+		e.Reserve = func(ctx context.Context) (reserve.FleetSnapshot, error) {
+			return reserve.FetchOnce(ctx, rcfg)
+		}
+	}
 	if len(args) > 0 && args[0] == "up" {
 		e.Bus = setupPresence{}
 	}

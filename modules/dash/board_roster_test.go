@@ -78,7 +78,7 @@ func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 	}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
 		"amd-1": {Name: "amd-1", State: "up"}, "stella": {Name: "stella", State: "up"},
-		"aws-schema-bench-1": {Name: "aws-schema-bench-1", State: "up", Cores: 8, CPUPeakDeci: 500},
+		"aws-schema-bench-1": {Name: "aws-schema-bench-1", State: "up", CPUPeakDeci: 500, Version: "v3.0.0"},
 		"aws-schema-bench-2": {Name: "aws-schema-bench-2", State: "down"},
 		"old-friend":         {Name: "old-friend", State: "up", Session: "x", Role: "worker"},
 		"rowan":              {Name: "rowan", State: "up", Session: "y", Role: "coordinator"},
@@ -164,8 +164,8 @@ func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 		"c": {Name: "c", Resources: map[string]int{"cpu": 4, "memory": 8}},
 	}}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
-		"a": {Name: "a", State: "up", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
-		"b": {Name: "b", State: "down", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
+		"a": {Name: "a", State: "up", CPUPeakDeci: 873, Version: "v3.0.0"},
+		"b": {Name: "b", State: "down", CPUPeakDeci: 873, Version: "v3.0.0"},
 		"c": {Name: "c", State: "up"},
 	}}
 	body, err := json.Marshal(mapSnapshot(snap, ros, time.Time{}, nil).Tables["fleet"])
@@ -180,12 +180,8 @@ func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 	if v, ok := cells["a"]["load"]; ok && v != nil {
 		loadVal = v.(string)
 	}
-	slotsVal := ""
-	if v, ok := cells["a"]["slots"]; ok && v != nil {
-		slotsVal = v.(string)
-	}
-	if loadVal != "87.3%" || slotsVal != "3 / 8" {
-		t.Errorf("a = %v: want load 87.3%% and slots 3 / 8", cells["a"])
+	if loadVal != "87.3%" {
+		t.Errorf("a = %v: want load 87.3%%", cells["a"])
 	}
 	for _, n := range []string{"b", "c"} {
 		if _, ok := cells[n]["load"]; ok {

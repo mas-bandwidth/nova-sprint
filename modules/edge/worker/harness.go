@@ -626,15 +626,16 @@ func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
 	}
 	bin := cmp.Or(cfg.ReserveBin, "nova-reserve")
 	argv = append(argv, bin, "run")
-	if cfg.ReserveDir != "" {
-		argv = append(argv, "--dir", cfg.ReserveDir)
-	}
 	if reserveSupportsNeeds_internal(bin) {
+		host := strings.TrimSpace(j.Row)
+		if host != "" {
+			argv = append(argv, "--host", host)
+		}
 		needs := "cpu 1, memory 1"
 		if j.Kind != "read" && j.Resources != "" {
 			needs = j.Resources
 		}
-		argv = append(argv, "--needs", needs, "--holder", "bench")
+		argv = append(argv, "--needs", needs, "--holder", "bench", "--source", cmp.Or(host, "bench"))
 		consumerRef := cmp.Or(j.Consumer, "probe")
 		if j.Epoch > 0 && j.Consumer != "" {
 			consumerRef = fmt.Sprintf("%s@%d", j.Consumer, j.Epoch)
@@ -658,10 +659,15 @@ func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
 			prio = j.Priority
 		}
 		argv = append(argv, "--priority", prio)
-	} else if j.SlotWeight > 0 {
-		argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
 	} else {
-		argv = append(argv, "--slots", "1")
+		if cfg.ReserveDir != "" {
+			argv = append(argv, "--dir", cfg.ReserveDir)
+		}
+		if j.SlotWeight > 0 {
+			argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
+		} else {
+			argv = append(argv, "--slots", "1")
+		}
 	}
 	if cfg.ReserveWait > 0 {
 		argv = append(argv, "--wait", cfg.ReserveWait.String())
@@ -762,8 +768,12 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 			clean = append(clean, kv)
 		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME" || u == "DOTNET_CLI_HOME") && jobDir == "":
 			clean = append(clean, kv)
-		case (u == "NOVA_RESERVE_CPUS" || u == "CARGO_BUILD_JOBS" || u == "RUST_TEST_THREADS") && positiveIntEnv_internal(v):
+		case (u == "NOVA_RESERVE_LEASE" || u == "NOVA_RESERVE_HOST") && safeReserveToken_internal(v):
 			clean = append(clean, u+"="+strings.TrimSpace(v))
+		case (u == "NOVA_RESERVE_CPUS" || u == "GOMAXPROCS" || u == "CARGO_BUILD_JOBS" || u == "RAYON_NUM_THREADS" || u == "CMAKE_BUILD_PARALLEL_LEVEL" || u == "RUST_TEST_THREADS") && positiveIntEnv_internal(v):
+			clean = append(clean, u+"="+strings.TrimSpace(v))
+		case u == "MAKEFLAGS" && safeMakeflagsEnv_internal(v):
+			clean = append(clean, "MAKEFLAGS="+strings.TrimSpace(v))
 		case slices.Contains(allowed, u):
 			if u == "DOTNET_CLI_TELEMETRY_OPTOUT" {
 				hasDotnetOptout = true
@@ -789,6 +799,27 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 func positiveIntEnv_internal(v string) bool {
 	n, err := strconv.Atoi(strings.TrimSpace(v))
 	return err == nil && n >= 1
+}
+
+func safeReserveToken_internal(v string) bool {
+	s := strings.TrimSpace(v)
+	if len(s) == 0 || len(s) > 128 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		ok := (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+			ch == '.' || ch == '_' || ch == ':' || ch == '@' || ch == '-'
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func safeMakeflagsEnv_internal(v string) bool {
+	s := strings.TrimSpace(v)
+	return strings.HasPrefix(s, "-j") && positiveIntEnv_internal(s[2:])
 }
 
 // CheckWallReads is the operator's --wall-read directories as the wall

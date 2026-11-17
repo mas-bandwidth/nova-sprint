@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -29,6 +30,8 @@ type Feed struct {
 	// (Ticker.Stats); nil when none is set or it could not be read, and the
 	// Fleet and Friends counts are then the epoch's.
 	Stats *store.StatsMark
+	// Reserve is the live fleet resource state from nova-reserve subscribe.
+	Reserve reserve.FleetSnapshot
 }
 
 // NewFromFeed is the run-host dashboard: it reads no store; run publishes.
@@ -55,18 +58,30 @@ func (c *Cache) Publish(f Feed) error {
 func (c *Cache) publish(f Feed) {
 	c.state = store.Snapshot{Seq: f.Snap.Seq, Epoch: f.Snap.Epoch}
 	c.at, c.err, c.alarm = f.At, nil, false
-	ro := f.Roster
 	c.rosterNote.note("the roster read", f.RosterErr)
-	if f.RosterErr != nil {
-		ro = roster.Roster{}
-	}
 	c.landings, c.landingsOK = nil, f.Landings != nil
 	if c.landingsOK {
 		c.landings = append([]time.Time{}, f.Landings...)
 	}
-	c.view = mapSnapshot(f.Snap, ro, f.At, f.Stats)
-	if f.RosterErr != nil {
-		c.view.Error = "roster: " + f.RosterErr.Error()
+	c.hasFeed = true
+	c.lastSnap = f.Snap
+	c.lastRoster = f.Roster.Clone()
+	c.lastRosterErr = f.RosterErr
+	c.lastStats = f.Stats
+	if f.Reserve.Connected || len(f.Reserve.Machines) > 0 {
+		c.reserve = f.Reserve.Clone()
+	}
+	c.renderFeedLocked()
+}
+
+func (c *Cache) renderFeedLocked() {
+	ro := c.lastRoster
+	if c.lastRosterErr != nil {
+		ro = roster.Roster{}
+	}
+	c.view = mapSnapshotWithReserve(c.lastSnap, ro, c.reserve, c.at, c.lastStats)
+	if c.lastRosterErr != nil {
+		c.view.Error = "roster: " + c.lastRosterErr.Error()
 	}
 }
 

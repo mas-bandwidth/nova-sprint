@@ -480,28 +480,25 @@ func (t *tick) rowUtilization(n string, r store.Row) (float64, bool) {
 		if rr.Held != "" {
 			return 0, false
 		}
-		totalCPU := r.Resources.Total["cpu"]
-		if totalCPU <= 0 {
-			totalCPU = rr.Resources["cpu"]
-		}
+		totalCPU := rr.Resources["cpu"]
 		if totalCPU <= 0 {
 			return 0, false
 		}
-		heldSprint := r.Resources.HeldSprint["cpu"]
-		if r.Resources.Total == nil && r.Resources.HeldSprint == nil {
-			heldSprint = t.benchSprintUsed(n)["cpu"]
-		}
-		return min(1.0, float64(heldSprint+r.Resources.HeldOther["cpu"])/float64(totalCPU)), true
+		res := t.in.Reserve[n]
+		usedCPU := max(res.ActiveClaimedCPU, t.benchUsed(n)["cpu"])
+		return min(1.0, float64(usedCPU)/float64(totalCPU)), true
 	}
 	return 0, false
 }
 
-// suppressIdle returns true when any open present bench has AnyPaused or when
-// an undealt ready card is waiting on a busy resource across its serving rows.
+// suppressIdle returns true when any open present bench is paused/offline or
+// when an undealt ready card is waiting on a busy/claimed resource across its
+// serving rows (R54).
 func (t *tick) suppressIdle() bool {
 	for _, n := range t.rowNames {
 		r := t.v.Rows[n]
-		if t.v.Open(r) && t.present(n) && t.kind(n) == roster.KindWorker && r.Resources.AnyPaused {
+		res := t.in.Reserve[n]
+		if t.v.Open(r) && t.present(n) && t.kind(n) == roster.KindWorker && (res.AnyPaused || res.Offline) {
 			return true
 		}
 	}

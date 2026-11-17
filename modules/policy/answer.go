@@ -125,6 +125,7 @@ func catalogAsk(ctx context.Context) ask {
 // argument-free ones, width for every row, then the per-subject ones. The
 // validators that loop over what a policy returns check ctx.
 func (ix *index) asks(ctx context.Context, q Questions) []ask {
+	ix.applyBenchFree(q.BenchFree)
 	out := []ask{
 		askOf("limits", "", nil, checkLimits, func(a *Answers, l Limits) { a.Limits = l }),
 		askOf("timeouts", "", nil, checkTimeouts, func(a *Answers, t Timeouts) { a.Timeouts = t; a.Timeouts.BaseRegate = slices.Clone(t.BaseRegate) }),

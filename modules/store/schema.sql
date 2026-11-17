@@ -112,36 +112,23 @@ ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT ''
 -- (a session and a role are both set or both empty), and hooks again.
 UPDATE sprint.rows SET session = '' WHERE role = '' AND session <> '';
 
--- The worker's heartbeat (round 23, SetRowLoad): its 1-minute load average in
--- hundredths, the cores it was measured over (0: never beaten) and the
--- nova-reserve slots in use and in all; telemetry for the board, read by no
--- rule. tiers is the comma list of model tiers the worker's probe proved it
--- serves (empty: never advertised), cleared when the row's session changes;
--- the roster deals a worker exactly these. Added by ALTER, as cards.model is, so a round-22 store that Migrate
--- upgrades gets them the same way as a new one; IF NOT EXISTS skips a column
--- a store already has.
-ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS load1_centi integer NOT NULL DEFAULT 0 CHECK (load1_centi >= 0),
-    ADD COLUMN IF NOT EXISTS cores integer NOT NULL DEFAULT 0 CHECK (cores >= 0),
-    ADD COLUMN IF NOT EXISTS slots_used integer NOT NULL DEFAULT 0 CHECK (slots_used >= 0),
-    ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0),
+-- The worker's heartbeat (SetRowLoad, R40, R48): beat carries only row liveness,
+-- harness tiers, binary version, and internal health cpu_peak_deci (0..1000).
+-- Live machine resources, leases, claims, and pause state come directly from
+-- nova-reserve subscribe (R48), never copied into sprint.rows or sprint.events.
+ALTER TABLE sprint.rows
     ADD COLUMN IF NOT EXISTS tiers text NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS cpu_peak_deci integer NOT NULL DEFAULT 0 CHECK (cpu_peak_deci BETWEEN 0 AND 1000);
--- cpu_peak_deci (round 27): the highest CPU busy percent the worker measured over the
--- last 10 seconds before the beat, across all its cores, in tenths of a percent (1000 is
--- every core busy); telemetry for the board, read by no rule. Appended last so a migrated
--- store and a new one list the columns in the same order.
 ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS version text NOT NULL DEFAULT '';
--- version (round 28): the release of the nova-sprint binary that beat, the one that
--- takes the row's cards ('' when it did not say in this session; cleared with tiers);
--- the tick deals a worker row behind the run's release nothing (defect D3). Appended last.
 ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS retired boolean NOT NULL DEFAULT false;
--- retired (round 32, RetireRow): nova-config no longer names the row, so it is not in
--- the fleet (Glenn, 2026-11-15). The record stays, since the epoch's consumers still
--- name it as their holder (the foreign key above), but no read shows it and no write
--- but a hook (PutRow, which brings it back) takes it; a clear does not carry it into
--- the next epoch. Appended last.
-ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS resources_json jsonb NOT NULL DEFAULT '{}'::jsonb;
--- resources_json (round 33, SEAM-CONTRACT §2.3): whole-number capacity, held, paused, and consumers. Appended last.
+-- Round 34 (v3.0.0 client/server R48): drop legacy v2/early-v3 shadow resource columns
+-- on Migrate so upgraded stores and fresh stores have identical columns in the same order.
+ALTER TABLE sprint.rows
+    DROP COLUMN IF EXISTS load1_centi,
+    DROP COLUMN IF EXISTS cores,
+    DROP COLUMN IF EXISTS slots_used,
+    DROP COLUMN IF EXISTS slots_total,
+    DROP COLUMN IF EXISTS resources_json;
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by

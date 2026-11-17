@@ -798,13 +798,12 @@ model and harness wherever they are named).
   `TestFunctionalMigrateRound32`, `TestViewFoldEqualsBuild`,
   `TestStreamRemove`, `TestStreamRemoveRefusals`,
   `TestStreamRemoveCardAddedBetween`.
-- Row resources (round 33, 2026-11-15; SEAM-CONTRACT §2.3; Track 4):
-  `Row` gains `Resources` (`RowResources`), stored as `resources_json jsonb NOT NULL DEFAULT '{}'::jsonb`
-  on `sprint.rows`. It holds coarse whole-number resources and telemetry from `nova-reserve status`:
-  `Total`, `HeldSprint`, `HeldOther`, `HeldByLabel`, `PausedByLabel`, `AnyPaused`,
-  `SprintConsumers`, `PausedConsumers`, and `PausedMillis`. `SetRowLoad` updates `Resources`
-  along with `CPUPeakDeci`, `Tiers`, and `Version`, dropping the legacy `cores >= 1` and
-  `slots_used <= slots_total` refusal so v3 resource beats succeed cleanly.
+- Row heartbeat pared to liveness, tiers, version, and peak CPU (round 33/34, 2026-11-16; SPEC-V3 R48):
+  `nova-reserve serve` in `nova-tools` is the single live source of resource truth (`subscribe`),
+  so the duplicate PostgreSQL resource shadow ledger (`load1_centi`, `cores`, `slots_used`,
+  `slots_total`, `resources_json`) is removed from `sprint.rows`, `Row`, and `SetRowLoad`.
+  `SetRowLoad` carries only `CPUPeakDeci` (`0..1000`, for R40 runaway-process health checks),
+  `Tiers`, and `Version`.
 - A policy version read by its name (2026-11-11, no schema change):
   `Store.PoliciesNamed(kind, name, max)`, the newest max versions of a kind
   under a name, newest first, read from `sprint.policy`, which grows with
@@ -929,11 +928,10 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
 
 ## Built: the row's heartbeat (stitch, 2026-11-07)
 
-- A row carries its worker's last heartbeat for the board's load cell: `Row.Load1Centi`
-  (the 1-minute load average in hundredths), `Cores` (0: never beaten), `SlotsUsed` and
-  `SlotsTotal` (nova-reserve). One write sets them, `SetRowLoad{Row, Load1Centi, Cores,
-  SlotsUsed, SlotsTotal}`: cores at least 1, slots used no more than the total, every number
-  in `0..2147483647`, refused as every set write is when it changes nothing. It moves no gen,
+- A row carries its worker's last heartbeat for internal health and capability checks (R40, R48):
+  `Row.CPUPeakDeci`, `Row.Tiers`, and `Row.Version` (live machine resources and holds come
+  from `nova-reserve subscribe`, never `sprint.rows`). One write sets them, `SetRowLoad{Row,
+  CPUPeakDeci, Tiers, Version}`, refused as every set write is when it changes nothing. It moves no gen,
   so a beat never fences out a plan made from an earlier snapshot (`RowGen`); round 27 adds
   `Row.CPUPeakDeci`, `SetRowLoad.CPUPeakDeci` (the highest CPU busy percent of the last 10
   seconds, in tenths, `0..1000`), the board's CPU cell; the log's

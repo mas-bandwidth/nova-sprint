@@ -345,8 +345,8 @@ func TestFunctionalMigrateRound26(t *testing.T) {
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
 	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity, "the identity is kept")
 	r := h.snap().Rows["w1"]
-	assert.Equal(t, []int{250, 8, 2, 8, 0}, []int{r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.CPUPeakDeci}, "the beat is kept and the peak starts at 0")
-	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873, "", RowResources{}}))
+	assert.Equal(t, []any{"flash", 0}, []any{r.Tiers, r.CPUPeakDeci}, "the tiers are kept and the peak starts at 0")
+	h.ok(h.op("beat", nil, SetRowLoad{"w1", "flash", 873, ""}))
 	assert.Equal(t, 873, h.snap().Rows["w1"].CPUPeakDeci)
 	fresh := newDatabase(t, dsn, "fresh")
 	openPG(t, fresh)
@@ -377,8 +377,8 @@ func TestFunctionalMigrateRound27(t *testing.T) {
 	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
 	r := h.snap().Rows["w1"]
-	assert.Equal(t, []any{250, 873, "flash", ""}, []any{r.Load1Centi, r.CPUPeakDeci, r.Tiers, r.Version}, "the beat is kept and the version starts empty")
-	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873, "v2.0.6", RowResources{}}))
+	assert.Equal(t, []any{873, "flash", ""}, []any{r.CPUPeakDeci, r.Tiers, r.Version}, "the beat is kept and the version starts empty")
+	h.ok(h.op("beat", nil, SetRowLoad{"w1", "flash", 873, "v2.0.6"}))
 	assert.Equal(t, "v2.0.6", h.snap().Rows["w1"].Version)
 	fresh := newDatabase(t, dsn, "fresh")
 	openPG(t, fresh)

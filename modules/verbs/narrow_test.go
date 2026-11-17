@@ -30,7 +30,7 @@ func (s *wholeReads) Read(ctx context.Context, scope store.Scope) (store.Snapsho
 // hetzner1, hetzner2 and space; beats timed out and deals expired untaken).
 func TestWorkerVerbsReadOnlyTheirCards(t *testing.T) {
 	t.Parallel()
-	beat := []string{"beat", "--load1", "1", "--cores", "8", "--slots-used", "1", "--slots-total", "8"}
+	beat := []string{"beat", "--cpu-peak", "10"}
 	for _, c := range []struct {
 		name  string
 		steps [][]string // name, then the command line

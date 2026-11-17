@@ -194,9 +194,11 @@ type Runner struct {
 	// KillJob ends every process of the job at a job directory
 	// (endJobTree_internal; OSKillJob in the binary) before the worker lets
 	// the job go: the clean, a retire, a quarantine. nil: none.
-	KillJob                   func(jobDir string) (int, error)
+	KillJob func(jobDir string) (int, error)
+	// LivePausedMillis returns cumulative queued/paused milliseconds observed
+	// on nova-reserve subscribe for (row, consumer, epoch) when available.
+	LivePausedMillis          func(row, consumer string, epoch int) int64
 	pauseTracker              *PauseTracker
-	beatWake                  chan struct{}
 	mu                        *sync.Mutex
 	gone                      map[string]int  // per consumer: its jobs of a lower gen hold no branch (holds_internal)
 	jobs                      *sync.WaitGroup // every detached job, waited for when the wake loop ends
@@ -235,20 +237,13 @@ func NewRunner(cfg Runner) (*Runner, error) {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
 	}
 	cfg.pauseTracker = NewPauseTracker()
-	cfg.beatWake = make(chan struct{}, 1)
 	if w, ok := cfg.Wall.(*OSReserveWall); ok && w != nil {
 		if w.PauseTracker == nil {
 			w.PauseTracker = cfg.pauseTracker
 		}
-	}
-	if m, ok := cfg.Meter.(OSMeter); ok {
-		if m.PauseTracker == nil {
-			m.PauseTracker = cfg.pauseTracker
+		if w.LivePausedMillis == nil {
+			w.LivePausedMillis = cfg.LivePausedMillis
 		}
-		if m.OnStateChange == nil {
-			m.OnStateChange = (&cfg).TriggerBeat
-		}
-		cfg.Meter = m
 	}
 	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
 	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
@@ -1128,13 +1123,26 @@ func nothingNew_internal() Outcome {
 // is a guess, not measured. Zero or less: no gate starts. A record with no
 // deadline (written before they were recorded) keeps the step bound, so no
 // gate runs unbounded.
+func (r *Runner) totalPausedMillis_internal(row, consumer string, epoch int) int64 {
+	var ms int64
+	if r.pauseTracker != nil {
+		ms = r.pauseTracker.TotalMillis(consumer)
+	}
+	if r.LivePausedMillis != nil && consumer != "" {
+		if live := r.LivePausedMillis(row, consumer, epoch); live > ms {
+			if r.pauseTracker != nil {
+				r.pauseTracker.SetFloorMillis(consumer, live)
+			}
+			ms = live
+		}
+	}
+	return ms
+}
+
 func (r *Runner) rebaseTimeout_internal(consumer string) time.Duration {
 	base := r.Timeouts.RebaseAndTest
-	if r.pauseTracker != nil && consumer != "" {
-		pausedMs := r.pauseTracker.TotalMillis(consumer, r.Now())
-		if pausedMs > 0 {
-			base += time.Duration(pausedMs) * time.Millisecond
-		}
+	if pausedMs := r.totalPausedMillis_internal("", consumer, 0); pausedMs > 0 {
+		base += time.Duration(pausedMs) * time.Millisecond
 	}
 	return base
 }
@@ -1145,11 +1153,8 @@ func (r *Runner) doneWhenBound_internal(rec JobRecord) (bound, left time.Duratio
 		return to, to, "the worker's step bound (the job record carries no deadline)"
 	}
 	left = time.Unix(rec.DeadlineAt, 0).Sub(r.Now())
-	if r.pauseTracker != nil {
-		pausedMs := r.pauseTracker.TotalMillis(rec.Consumer, r.Now())
-		if delta := pausedMs - rec.PausedMillis; delta > 0 {
-			left += time.Duration(delta) * time.Millisecond
-		}
+	if pausedMs := r.totalPausedMillis_internal(rec.Row, rec.Consumer, rec.Epoch); pausedMs > rec.PausedMillis {
+		left += time.Duration(pausedMs-rec.PausedMillis) * time.Millisecond
 	}
 	return left - r.Timeouts.Push, left, fmt.Sprintf("what was left of the card's deadline less the %s kept for the push and the report", r.Timeouts.Push)
 }
@@ -2241,8 +2246,9 @@ type OSReserveWall struct {
 	// KillJob ends every process of the job at a job directory (OSKillJob
 	// in the binary), after every wall command: the command's own group is
 	// nova-reserve's child's, not the one KillGroup reaches. nil: none.
-	KillJob      func(jobDir string) (int, error)
-	PauseTracker *PauseTracker
+	KillJob          func(jobDir string) (int, error)
+	PauseTracker     *PauseTracker
+	LivePausedMillis func(row, consumer string, epoch int) int64
 }
 
 // OSKillGroup kills process group pgid (a wall command's, whose leader has
@@ -2474,12 +2480,58 @@ func fileExists_internal(p string) bool { _, err := os.Stat(p); return err == ni
 // slotHeld_internal: nova-reserve printed its HELD line (stderr, before
 // the command starts), so the command ran.
 func slotHeld_internal(res edge.Result) bool {
-	return strings.Contains(res.Stderr, "nova-reserve: HELD ")
+	return strings.Contains(res.Stderr, "nova-reserve: HELD ") || strings.Contains(res.Stderr, "nova-reserve: GRANTED ")
 }
 
 func noSlot_internal(res edge.Result) bool {
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
-	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") || strings.HasPrefix(first, "nova-reserve: no exclusive hold within "))
+	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") ||
+		strings.HasPrefix(first, "nova-reserve: no exclusive hold within ") ||
+		strings.HasPrefix(first, "nova-reserve: NO ROOM") ||
+		strings.HasPrefix(first, "nova-reserve: no room within ") ||
+		strings.HasPrefix(first, "nova-reserve: timeout"))
+}
+
+func parseReserveWaitMillis_internal(stderr string) int64 {
+	var total int64
+	for line := range strings.Lines(stderr) {
+		if !strings.HasPrefix(strings.TrimSpace(line), "nova-reserve:") {
+			continue
+		}
+		for _, tok := range strings.Fields(line) {
+			switch {
+			case strings.HasPrefix(tok, "waited="):
+				if d, err := time.ParseDuration(strings.TrimPrefix(tok, "waited=")); err == nil && d > 0 {
+					total += d.Milliseconds()
+				}
+			case strings.HasPrefix(tok, "paused="):
+				if d, err := time.ParseDuration(strings.TrimPrefix(tok, "paused=")); err == nil && d > 0 {
+					total += d.Milliseconds()
+				}
+			case strings.HasPrefix(tok, "paused_ms="):
+				if n, err := strconv.ParseInt(strings.TrimPrefix(tok, "paused_ms="), 10, 64); err == nil && n > 0 {
+					total += n
+				}
+			}
+		}
+	}
+	return total
+}
+
+func (w *OSReserveWall) totalPausedMillis_internal(j Job) int64 {
+	var ms int64
+	if w.PauseTracker != nil {
+		ms = w.PauseTracker.TotalMillis(j.Consumer)
+	}
+	if w.LivePausedMillis != nil && j.Consumer != "" {
+		if live := w.LivePausedMillis(j.Row, j.Consumer, j.Epoch); live > ms {
+			if w.PauseTracker != nil {
+				w.PauseTracker.SetFloorMillis(j.Consumer, live)
+			}
+			ms = live
+		}
+	}
+	return ms
 }
 
 // reserveFault_internal: nova-reserve exited non-zero on its own error before
@@ -2546,12 +2598,8 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	} else {
 		wait = 30 * time.Minute
 	}
-	if w.PauseTracker != nil {
-		pausedMs := w.PauseTracker.TotalMillis(j.Consumer, time.Now())
-		if pausedMs > 0 {
-			stepTimeout += time.Duration(pausedMs) * time.Millisecond
-		}
-		w.PauseTracker.StartLineWait(j.Consumer, time.Now())
+	if pausedMs := w.totalPausedMillis_internal(j); pausedMs > 0 {
+		stepTimeout += time.Duration(pausedMs) * time.Millisecond
 	}
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
 		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: wait + stepTimeout,
@@ -2566,17 +2614,22 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 			}
 		},
 	})
-	if w.PauseTracker != nil {
-		w.PauseTracker.EndLineWait(j.Consumer, time.Now())
-		totalPausedMs := w.PauseTracker.TotalMillis(j.Consumer, time.Now())
-		if totalPausedMs > 0 && j.JobDir != "" {
-			if rec, rerr := ReadJobRecord(j.JobDir); rerr == nil {
-				delta := totalPausedMs - rec.PausedMillis
-				if delta > 0 {
-					rec.DeadlineAt += delta / 1000
-					rec.PausedMillis = totalPausedMs
-					reportTo(nil, "job record "+filepath.Base(j.JobDir), WriteJobRecord(j.JobDir, rec))
-				}
+	waitMs := parseReserveWaitMillis_internal(res.Stderr)
+	if !slotHeld_internal(res) && res.Duration > 0 {
+		var xe *edge.ExecError
+		if noSlot_internal(res) || (errors.As(err, &xe) && xe.Kind == edge.ErrTimeout) {
+			waitMs = max(waitMs, res.Duration.Milliseconds())
+		}
+	}
+	if w.PauseTracker != nil && waitMs > 0 {
+		w.PauseTracker.AddMillis(j.Consumer, waitMs)
+	}
+	if totalPausedMs := w.totalPausedMillis_internal(j); totalPausedMs > 0 && j.JobDir != "" {
+		if rec, rerr := ReadJobRecord(j.JobDir); rerr == nil {
+			if steps := (totalPausedMs - rec.PausedMillis) / 1000; steps > 0 {
+				rec.DeadlineAt += steps
+				rec.PausedMillis += steps * 1000
+				reportTo(nil, "job record "+filepath.Base(j.JobDir), WriteJobRecord(j.JobDir, rec))
 			}
 		}
 	}

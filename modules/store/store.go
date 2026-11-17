@@ -233,22 +233,13 @@ type Row struct {
 	Held    bool   `json:"held"`   // the coordinator's hold: no deals while true
 	Reason  string `json:"reason"` // why it was held or released (SetRowHeld)
 	Gen     int    `json:"gen"`
-	// The worker's last heartbeat (SetRowLoad): its 1-minute load average
-	// in hundredths, the logical cores it was measured over (0: the row has
-	// never beaten), and the nova-reserve slots in use and in all. Telemetry
-	// for the board: no store rule reads it and a write of it moves no gen.
-	Load1Centi int `json:"load1_centi"`
-	Cores      int `json:"cores"`
-	SlotsUsed  int `json:"slots_used"`
-	SlotsTotal int `json:"slots_total"`
 	// CPUPeakDeci is the highest CPU busy percent over the last 10 seconds before the
-	// beat, in tenths (1000: every core busy); the board's CPU cell.
+	// beat, in tenths (1000: every core busy; R40, R48).
 	CPUPeakDeci int `json:"cpu_peak_deci"`
 	// Tiers is what the worker's harness adapter serves, as it advertised in
 	// its heartbeat: a comma list in Tiers' order, "" when it advertised
-	// none in this session (a PutRow that changes the session clears it).
-	// With SlotsTotal it is the roster's input for the row (defect 74:
-	// roster.Advertised); no store rule reads it.
+	// none in this session (a PutRow that changes the session clears it;
+	// roster.Advertised). No store rule reads it.
 	Tiers string `json:"tiers"`
 	// Version is the release of the nova-sprint binary that beat (the one
 	// that takes the row's cards), "" when it did not say in this session
@@ -261,8 +252,6 @@ type Row struct {
 	// but PutRow refuses it as absent, PutRow brings it back, and a clear does
 	// not carry it. Only an after-image carries it, so a fold drops the row.
 	Retired bool `json:"retired,omitempty"`
-	// Resources holds whole-number resources, active holds, pause state and consumers (round 33).
-	Resources RowResources `json:"resources,omitempty"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,

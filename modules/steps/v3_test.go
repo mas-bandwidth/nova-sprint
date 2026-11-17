@@ -22,7 +22,7 @@ func (a *captureQuestionsAsker) Ask(q Questions) Answers {
 	return a.inner.Ask(q)
 }
 
-func TestV3R50ConsumerUnionRoomFormula(t *testing.T) {
+func TestV3R50ConsumerUnionAndSoftClaimRoomFormula(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
@@ -41,40 +41,43 @@ func TestV3R50ConsumerUnionRoomFormula(t *testing.T) {
 	s.requireState("p2.w1", "working")
 	s.requireState("p3", "ready")
 
-	// Withdraw p1.w1 in the store, but keep p1.w1@0 in SprintConsumers (winding down on bench b1)
-	// AND include p2.w1@0 in SprintConsumers to verify @epoch deduplication with working p2.w1!
+	// Withdraw p1.w1 in the store, while p1.w1@epoch is still holding its lease in nova-reserve
+	// AND p2.w1@epoch is also holding its lease (verifying @epoch deduplication and max(declared, live_held)).
 	ep := s.snap().Epoch
 	wPlan, r := card.MoveConsumer(card.FromStore(s.card("p1.w1")), card.FromStore(s.card("p1")), []card.Card{card.FromStore(s.card("p1.w1"))}, s.cardRow(s.snap().Rows["b1"]), card.Withdraw{Reason: "released: test", Stream: card.Stream{Name: "s1"}})
 	require.Nil(t, r)
 	s.move(wPlan, nil)
 	s.must("hold-p1", store.SetCardState{Card: "p1", State: "waiting"}, store.SetCardReason{Card: "p1", Reason: "held: pause p1"})
-	s.must("beat-winding-down", store.SetRowLoad{
-		Row:   "b1",
-		Tiers: "pro",
-		Resources: store.RowResources{
-			Total:           map[string]int{"cpu": 12, "memory": 16},
-			HeldSprint:      map[string]int{"cpu": 2, "memory": 12}, // stale beat before p2 grabbed hold
-			SprintConsumers: []string{"p1.w1@" + itoa(ep), "p2.w1@" + itoa(ep)},
+	s.reserve["b1"] = BenchReserve{
+		SprintHolding: map[string]map[string]int{
+			"p1.w1@" + itoa(ep): {"cpu": 2, "memory": 12},
+			"p2.w1@" + itoa(ep): {"cpu": 6, "memory": 2},
 		},
-	})
+	}
 
-	// Under R50 union: C_active = {p1.w1, p2.w1} -> cpu = 2+6 = 8, memory = 12+2 = 14.
-	// Only 2 GiB memory is free, so p3 (needs 4 GiB) MUST stay ready (max() would have seen 12 GiB and over-committed to 18 GiB!).
+	// Under R50 union: C_sprint = {p1.w1, p2.w1} -> cpu = 2+6 = 8, memory = 12+2 = 14.
+	// Only 2 GiB memory is free, so p3 (needs 4 GiB) MUST stay ready.
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p3", "ready")
 
-	// Now p1.w1 exits; HeldOther takes 2 GiB memory, SprintConsumers has only p2.w1@ep -> used memory = 2 + 2 = 4, free = 12 >= 4.
-	s.must("beat-cleared", store.SetRowLoad{
-		Row:   "b1",
-		Tiers: "pro",
-		Resources: store.RowResources{
-			Total:           map[string]int{"cpu": 12, "memory": 16},
-			HeldSprint:      map[string]int{"cpu": 6, "memory": 2},
-			HeldOther:       map[string]int{"cpu": 1, "memory": 2},
-			SprintConsumers: []string{"p2.w1@" + itoa(ep)},
-		},
-	})
+	// Place a soft person claim for 14 GiB memory while p2.w1 (2 GiB) is still running ->
+	// total used+claimed = 16 GiB (or even 18 GiB over-claim): running p2.w1 is NEVER killed,
+	// and p3 still waits until the soft claim releases!
+	s.reserve["b1"] = BenchReserve{
+		NonSprintUsed: map[string]int{"cpu": 8, "memory": 15},
+		SprintHolding: map[string]map[string]int{"p2.w1@" + itoa(ep): {"cpu": 6, "memory": 2}},
+	}
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p2.w1", "working")
+	s.requireState("p3", "ready")
+
+	// Soft claim releases, leaving only 2 GiB external hold + p2.w1 (2 GiB) -> free memory = 12 >= 4!
+	s.reserve["b1"] = BenchReserve{
+		NonSprintUsed: map[string]int{"cpu": 1, "memory": 2},
+		SprintHolding: map[string]map[string]int{"p2.w1@" + itoa(ep): {"cpu": 6, "memory": 2}},
+	}
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p3", "working")
@@ -115,14 +118,8 @@ func TestV3R52NoDealOrPreemptBehindAnyPaused(t *testing.T) {
 	s.run(2)
 	s.take("p1.w1")
 
-	// Mark b1 as AnyPaused (e.g., paused person/sprint hold behind CI).
-	s.must("beat-paused", store.SetRowLoad{
-		Row: "b1", Tiers: "pro",
-		Resources: store.RowResources{
-			Total:     map[string]int{"cpu": 8, "memory": 16},
-			AnyPaused: true,
-		},
-	})
+	// Mark b1 as AnyPaused in live nova-reserve state (displaced behind CI).
+	s.reserve["b1"] = BenchReserve{AnyPaused: true}
 	s.producer("p2", "s1", "pro", "a/2")
 	s.producer("blk", "s1", "pro", "a/3")
 	s.must("prio", store.SetCardPriority{Card: "blk", Priority: "blocker"})
@@ -139,13 +136,7 @@ func TestV3R52NoDealOrPreemptBehindAnyPaused(t *testing.T) {
 	}
 
 	// Clear AnyPaused: both blk and p2 now deal onto b1 without preemption because b1 has 7 free cpu.
-	s.must("beat-unpaused", store.SetRowLoad{
-		Row: "b1", Tiers: "pro",
-		Resources: store.RowResources{
-			Total:     map[string]int{"cpu": 8, "memory": 16},
-			AnyPaused: false,
-		},
-	})
+	s.reserve["b1"] = BenchReserve{AnyPaused: false}
 	s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("blk", "working")
@@ -162,10 +153,10 @@ func TestV3RankedBottleneckFractionWidthKinOnlyAndNudge(t *testing.T) {
 	s.bench("b2", []string{"linux"}, map[string]int{"cpu": 8, "memory": 8}, "pro")
 	s.kin("f1", "friend/pro", 2, "pro")
 
-	// Put CI load on both benches so neither is idle: b1 has 7/8 mem used (1/8 = 0.125 free),
-	// b2 has 4/8 cpu and 4/8 mem used (0.5 free), f1 has 1 working consumer (1/2 = 0.5 free, after b2? f1 is idle initially!).
-	s.must("b1-load", store.SetRowLoad{Row: "b1", Tiers: "pro", Resources: store.RowResources{HeldOther: map[string]int{"cpu": 1, "memory": 7}}})
-	s.must("b2-load", store.SetRowLoad{Row: "b2", Tiers: "pro", Resources: store.RowResources{HeldOther: map[string]int{"cpu": 4, "memory": 4}}})
+	// Live non-sprint load on both benches so neither is idle: b1 has 7/8 mem used (0.125 free),
+	// b2 has 4/8 cpu and 4/8 mem used (0.5 free), f1 is idle initially.
+	s.reserve["b1"] = BenchReserve{NonSprintUsed: map[string]int{"cpu": 1, "memory": 7}}
+	s.reserve["b2"] = BenchReserve{NonSprintUsed: map[string]int{"cpu": 4, "memory": 4}}
 
 	s.producer("p1", "s1", "pro", "a/1")
 	s.producer("p2", "s1", "pro", "a/2")
@@ -177,12 +168,9 @@ func TestV3RankedBottleneckFractionWidthKinOnlyAndNudge(t *testing.T) {
 	require.Len(t, capAsk.last.Width, 1)
 	assert.Equal(t, "f1", capAsk.last.Width[0].Name)
 
-	// p1 picks f1 first because f1 is idle (used == 0); then f1 has frac 1/2 = 0.5, b2 has frac 4/8 = 0.5, b1 has bottleneck 1/8 = 0.125.
-	// Between b2 (0.5) and f1 (0.5), alphabetical name picks "b2" before "f1" (and never "b1" at 0.125!).
 	assert.Equal(t, "f1", s.card("p1.w1").Holder)
 	assert.Equal(t, "b2", s.card("p2.w1").Holder)
 
-	// Next tick nudges both unacknowledged consumers: f1 gets width nudge, b2 gets resource nudge!
 	p = s.tick()
 	require.Len(t, p.Nudges, 2)
 	byRow := map[string]string{}
@@ -211,18 +199,17 @@ func TestV3R53MultiVictimPreemptionAndGuards(t *testing.T) {
 		s.take("phigh.w1")
 		s.take("pcrit.w1")
 
-		// Blocker needs cpu 4, memory 8: freeing pcrit (2, 8) + plow (2, 1) suffices (4, 9 >= 4, 8), sparing phigh!
 		s.must("add-blk", store.PutCard{
 			ID: "blk", Kind: "producer", Stream: "s1", Tier: "pro", Priority: "blocker",
 			Brief: "tier: pro\nRESOURCES: cpu 4, memory 8\n\nblk", Paths: []string{"a/4"},
 		})
-		s.tick() // resolve blk
+		s.tick()
 		p := s.tick()
 		require.Empty(t, s.rejected)
 		s.requireState("blk", "working")
 		s.requireState("plow.w1", "fail")
 		s.requireState("pcrit.w1", "fail")
-		s.requireState("phigh.w1", "working") // spared by backward minimal pruning!
+		s.requireState("phigh.w1", "working")
 		var stopped []string
 		for _, e := range p.Edges {
 			if e.Kind == "stop" {
@@ -233,7 +220,7 @@ func TestV3R53MultiVictimPreemptionAndGuards(t *testing.T) {
 		assert.Equal(t, []string{"pcrit.w1", "plow.w1"}, stopped)
 	})
 
-	t.Run("HeldOther CI guard prevents futile victim kills", func(t *testing.T) {
+	t.Run("NonSprintUsed CI/claim guard prevents futile victim kills", func(t *testing.T) {
 		t.Parallel()
 		s := newSim(t)
 		s.stream("s1")
@@ -242,18 +229,15 @@ func TestV3R53MultiVictimPreemptionAndGuards(t *testing.T) {
 		s.run(2)
 		s.take("p1.w1")
 
-		// CI holds 6 of 8 CPU on b1; blocker needs 4 CPU, so even killing p1.w1 only leaves 2 CPU!
-		s.must("ci-hold", store.SetRowLoad{
-			Row: "b1", Tiers: "pro",
-			Resources: store.RowResources{HeldOther: map[string]int{"cpu": 6, "memory": 4}},
-		})
+		// CI or person soft claim holds 6 of 8 CPU on b1; blocker needs 4 CPU -> futile!
+		s.reserve["b1"] = BenchReserve{NonSprintUsed: map[string]int{"cpu": 6, "memory": 4}}
 		s.must("add-blk", store.PutCard{
 			ID: "blk", Kind: "producer", Stream: "s1", Tier: "pro", Priority: "blocker",
 			Brief: "tier: pro\nRESOURCES: cpu 4, memory 4\n\nblk", Paths: []string{"a/2"},
 		})
 		s.run(2)
 		require.Empty(t, s.rejected)
-		s.requireState("p1.w1", "working") // NOT killed!
+		s.requireState("p1.w1", "working")
 		s.requireState("blk", "ready")
 	})
 
@@ -268,13 +252,13 @@ func TestV3R53MultiVictimPreemptionAndGuards(t *testing.T) {
 		)
 		s.run(2)
 		s.take("p1.w1")
-		s.take("p2.w1") // p2 is younger, but higher priority than p1!
+		s.take("p2.w1")
 		s.must("add-blk", store.PutCard{ID: "blk", Kind: "producer", Stream: "s1", Tier: "pro", Priority: "blocker", Brief: "blk", Paths: []string{"a/3"}})
 		s.run(2)
 		require.Empty(t, s.rejected)
 		s.requireState("blk", "working")
-		s.requireState("p1.w1", "fail")    // lowest priority preempted
-		s.requireState("p2.w1", "working") // higher priority spared
+		s.requireState("p1.w1", "fail")
+		s.requireState("p2.w1", "working")
 	})
 }
 
@@ -291,13 +275,9 @@ func TestV3R39bPausedMillisExcludesWorkingMaxAndLandingStall(t *testing.T) {
 	dealt := s.v.TakenAt["p1.w1"]
 	ep := s.snap().Epoch
 
-	// p1.w1 was paused behind CI for 500s (500_000 ms).
-	s.must("paused-work", store.SetRowLoad{
-		Row: "b1", Tiers: "pro",
-		Resources: store.RowResources{PausedMillis: map[string]int64{"p1.w1@" + itoa(ep): 500_000}},
-	})
+	s.reserve["b1"] = BenchReserve{PausedMillis: map[string]int64{"p1.w1@" + itoa(ep): 500_000}}
 	limit := Engine.Timeouts.ReadyTake + Engine.Timeouts.Consumer["pro"]
-	s.now = dealt.Add(seconds(limit + 200)) // 200s past nominal bound, but 300s under paused-adjusted bound!
+	s.now = dealt.Add(seconds(limit + 200))
 	s.tick()
 	s.requireState("p1.w1", "working")
 
@@ -305,26 +285,22 @@ func TestV3R39bPausedMillisExcludesWorkingMaxAndLandingStall(t *testing.T) {
 	s.tick()
 	s.requireState("p1.w1", "fail")
 
-	// Now verify landing_stall subtracts PausedMillis on a review consumer.
-	s.tick() // re-deal p1.w2
+	s.tick()
 	s.requireState("p1.w2", "working")
 	s.report("p1.w2", "ok", sha(2), "done")
 	s.must("land-stamp", store.PutCard{ID: "p0", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "p0"},
 		store.SetCardState{Card: "p0", State: "landed"})
-	s.tick() // deal read p1.r1.1 to b2 (or b1)
+	s.tick()
 	readHolder := s.card("p1.r1.1").Holder
 	s.ack("p1.r1.1")
 	s.fold()
 	landedAt := s.v.Landed["s1"]
-	s.must("paused-read", store.SetRowLoad{
-		Row: readHolder, Tiers: s.snap().Rows[readHolder].Tiers,
-		Resources: store.RowResources{PausedMillis: map[string]int64{"p1.r1.1@" + itoa(ep): 40_000}},
-	})
-	s.now = landedAt.Add(time.Duration(Engine.Timeouts.LandingStall+20) * time.Second) // 80s - 40s = 40s < 60s
+	s.reserve[readHolder] = BenchReserve{PausedMillis: map[string]int64{"p1.r1.1@" + itoa(ep): 40_000}}
+	s.now = landedAt.Add(time.Duration(Engine.Timeouts.LandingStall+20) * time.Second)
 	s.tick()
 	assert.Empty(t, s.openJudgements("stall"), "PausedMillis excluded from landing_stall")
 
-	s.now = landedAt.Add(time.Duration(Engine.Timeouts.LandingStall+45) * time.Second) // 105s - 40s = 65s >= 60s
+	s.now = landedAt.Add(time.Duration(Engine.Timeouts.LandingStall+45) * time.Second)
 	s.tick()
 	assert.Equal(t, []string{"stall.s1.1"}, s.openJudgements("stall"))
 }
@@ -336,10 +312,7 @@ func TestV3R54IdleUtilizationAndSuppression(t *testing.T) {
 		s := newSim(t)
 		s.stream("s1")
 		s.bench("b1", []string{"linux"}, map[string]int{"cpu": 8, "memory": 16}, "pro")
-		s.must("paused", store.SetRowLoad{
-			Row: "b1", Tiers: "pro",
-			Resources: store.RowResources{Total: map[string]int{"cpu": 8, "memory": 16}, AnyPaused: true},
-		})
+		s.reserve["b1"] = BenchReserve{AnyPaused: true}
 		s.must("add",
 			store.PutCard{ID: "p0", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "p0"},
 			store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "p1", Needs: []string{"p0"}},
@@ -348,7 +321,7 @@ func TestV3R54IdleUtilizationAndSuppression(t *testing.T) {
 		assert.Empty(t, s.openJudgements("idle"), "AnyPaused suppresses fleet idle alarm")
 	})
 
-	t.Run("suppressed when ready card waits on busy exclusive resource", func(t *testing.T) {
+	t.Run("suppressed when ready card waits on busy exclusive resource or soft claim", func(t *testing.T) {
 		t.Parallel()
 		s := newSim(t)
 		s.stream("s1")
@@ -357,17 +330,12 @@ func TestV3R54IdleUtilizationAndSuppression(t *testing.T) {
 			store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "tier: pro\nRESOURCES: cpu 2, memory 4, ps5\n\np1", Paths: []string{"a/1"}},
 			store.PutCard{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "tier: pro\nRESOURCES: cpu 2, memory 4, ps5\n\np2", Paths: []string{"a/2"}},
 		)
-		s.tick() // resolve p1, p2 (resolved non-empty; p1 not yet working)
-		// Clear any initial resolve-tick idle and set b1 beat showing 2/32 CPU (6.25% < 50%), ps5 held by p1.w1.
-		s.tick() // p1 starts on b1 (holds ps5 1); p2 stays ready waiting on ps5 1!
-		s.must("beat", store.SetRowLoad{
-			Row: "b1", Tiers: "pro",
-			Resources: store.RowResources{
-				Total:           map[string]int{"cpu": 32, "memory": 64, "ps5": 1},
-				HeldSprint:      map[string]int{"cpu": 2, "memory": 4, "ps5": 1},
-				SprintConsumers: []string{"p1.w1"},
-			},
-		})
+		s.tick()
+		s.tick()
+		s.reserve["b1"] = BenchReserve{
+			SprintHolding:    map[string]map[string]int{"p1.w1": {"cpu": 2, "memory": 4, "ps5": 1}},
+			ActiveClaimedCPU: 2,
+		}
 		for _, id := range s.openJudgements("idle") {
 			s.must("exp", store.ExpireJudgement{ID: id, Reason: "clear"})
 		}

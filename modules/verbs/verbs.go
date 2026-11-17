@@ -17,6 +17,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
@@ -41,6 +42,7 @@ type Engine struct {
 	Services Services // run, worker and dash
 	Setup    Setup    // up's steps
 	Lock     SetupLock
+	Reserve  func(context.Context) (reserve.FleetSnapshot, error) // live nova-reserve snapshot for check
 
 	// ReportContinuation, SetupObserver: the up walk's handoff and trace (setup.go).
 	ReportContinuation func(context.Context, string, SetupInput) error

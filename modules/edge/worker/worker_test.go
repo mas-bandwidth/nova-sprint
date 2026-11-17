@@ -400,6 +400,7 @@ func TestBuildWallArgv_Needs(t *testing.T) {
 		SandboxBin: "nova-sandbox",
 	}
 	j := Job{
+		Row:       "b1",
 		Consumer:  "p1.w1",
 		Epoch:     2,
 		Kind:      "work",
@@ -407,22 +408,33 @@ func TestBuildWallArgv_Needs(t *testing.T) {
 		Priority:  "critical",
 		JobDir:    t.TempDir(),
 	}
-	argv := BuildWallArgv(cfg, j, nil, []string{"echo", "hi"})
+	envIn := SanitizeWallEnv([]string{
+		"PATH=/usr/bin",
+		"NOVA_RESERVE_LEASE=L-9041",
+		"NOVA_RESERVE_HOST=b1",
+		"NOVA_RESERVE_CPUS=4",
+		"GOMAXPROCS=4",
+		"CARGO_BUILD_JOBS=4",
+		"RAYON_NUM_THREADS=4",
+		"CMAKE_BUILD_PARALLEL_LEVEL=4",
+		"MAKEFLAGS=-j4",
+		"NOVA_RESERVE_LEASE_BAD=bad;rm -rf /",
+		"MAKEFLAGS_BAD=--eval=evil",
+	}, j.JobDir)
+	for _, wantKV := range []string{"NOVA_RESERVE_LEASE=L-9041", "NOVA_RESERVE_HOST=b1", "NOVA_RESERVE_CPUS=4", "GOMAXPROCS=4", "RAYON_NUM_THREADS=4", "CMAKE_BUILD_PARALLEL_LEVEL=4", "MAKEFLAGS=-j4"} {
+		if !slices.Contains(envIn, wantKV) {
+			t.Fatalf("SanitizeWallEnv missing %s in %v", wantKV, envIn)
+		}
+	}
+	argv := BuildWallArgv(cfg, j, envIn, []string{"echo", "hi"})
 	joined := strings.Join(argv, " ")
-	if !strings.Contains(joined, "--needs cpu 4, memory 8") {
-		t.Fatalf("expected --needs in argv: %s", joined)
+	for _, want := range []string{"--host b1", "--needs cpu 4, memory 8", "--holder bench", "--source b1", "--consumer p1.w1@2", "--label critical", "--priority critical", "--env NOVA_RESERVE_LEASE", "--env NOVA_RESERVE_HOST"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected %q in argv: %s", want, joined)
+		}
 	}
-	if !strings.Contains(joined, "--holder bench") {
-		t.Fatalf("expected --holder bench in argv: %s", joined)
-	}
-	if !strings.Contains(joined, "--consumer p1.w1@2") {
-		t.Fatalf("expected --consumer p1.w1@2 in argv: %s", joined)
-	}
-	if !strings.Contains(joined, "--label critical") {
-		t.Fatalf("expected --label critical in argv: %s", joined)
-	}
-	if !strings.Contains(joined, "--priority critical") {
-		t.Fatalf("expected --priority critical in argv: %s", joined)
+	if strings.Contains(joined, "--dir") {
+		t.Fatalf("v3 nova-reserve run must not pass --dir: %s", joined)
 	}
 
 	// Read job uses DefaultReadNeeds ("cpu 1, memory 1"), label read, priority read
@@ -1075,5 +1087,59 @@ func TestSealNoteCountsWhatItDrops(t *testing.T) {
 	}
 	if note := sealNote_internal([]byte("a\nb\n")); note != "a\nb" {
 		t.Fatalf("a short list is kept whole, got %q", note)
+	}
+}
+
+func TestR39bPausedMillisAdvancesJobDeadlineAndDoneWhenBound(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	rec := JobRecord{
+		Epoch: 2, Consumer: "p1.w1", Kind: "work", Row: "b1", Gen: 1,
+		State: JobRunning, StartedAt: 1000, DeadlineAt: 1900,
+	}
+	if err := WriteJobRecord(dir, rec); err != nil {
+		t.Fatal(err)
+	}
+	fx := edge.NewFakeExec()
+	fx.On("nova-reserve", func(edge.FakeCall) edge.FakeOutcome {
+		return edge.FakeOutcome{
+			Stderr:   "nova-reserve: GRANTED lease=L-1 waited=12s paused_ms=8000\n",
+			Stdout:   "ok\n",
+			Duration: 25 * time.Second,
+		}
+	})
+	liveMs := int64(0)
+	pt := NewPauseTracker()
+	w := &OSReserveWall{
+		Exec:             fx,
+		PauseTracker:     pt,
+		LivePausedMillis: func(_, _ string, _ int) int64 { return liveMs },
+		Config:           WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox"},
+	}
+	j := Job{Row: "b1", Consumer: "p1.w1", Epoch: 2, Kind: "work", JobDir: dir, WorktreeDir: dir}
+	if _, err := w.RunStep(context.Background(), j, []string{"true"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	after, err := ReadJobRecord(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.DeadlineAt != 1920 || after.PausedMillis != 20_000 {
+		t.Fatalf("DeadlineAt=%d PausedMillis=%d, want 1920 and 20000", after.DeadlineAt, after.PausedMillis)
+	}
+	liveMs = 35_000
+	r, err := NewRunner(Runner{
+		Host: "b1", RootDir: dir,
+		Now:              func() time.Time { return time.Unix(1900, 0) },
+		Sleep:            func(time.Duration) {},
+		LivePausedMillis: func(_, _ string, _ int) int64 { return liveMs },
+		Wall:             w,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, left, _ := r.doneWhenBound_internal(after)
+	if left != 35*time.Second {
+		t.Fatalf("left=%s, want 35s (20s recorded + 15s live delta)", left)
 	}
 }

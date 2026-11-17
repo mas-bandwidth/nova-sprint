@@ -1288,14 +1288,14 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   pass stages from, the repos at once, under the work clone's write lock;
   staging takes the read lock, so no fetch runs on a clone while another
   job clones from it. Test: `TestLiveOneFetchPerRepoPerPass`.
-- **Advertised tiers and slots (65, 74).** The probe records the tiers whose
-  policy model the harness serves; at hook the worker beats once before its
-  first pass and every beat carries `--tiers` with its nova-reserve slots.
-  The store keeps them on the row (`Row.Tiers` beside `SlotsTotal`, the
-  heartbeat's columns; cleared at unhook and at a new session).
-  `roster.Advertised` gives an advertising worker those tiers at width
-  min(nova-config width, slots); the run tick, every verb's roster read and
-  the board use it. Why not a tier list in each adapter: the worker may hold
+- **Advertised tiers and live reserve subscription (65, 74, R48).** The probe
+  records the tiers whose policy model the harness serves; at hook the worker
+  beats once before its first pass and every beat carries `--tiers` and
+  `--cpu-peak` (never machine resource holds, which stream live from
+  `nova-reserve subscribe` in `modules/edge/reserve`). The store keeps `Row.Tiers`
+  on the row (cleared at unhook and at a new session), while `roster.Advertised`
+  gives an advertising bench worker those tiers with its configured `Tags` and
+  `Resources` from `nova-config` (`Width` applies only to friends, R65). Why not a tier list in each adapter: the worker may hold
   no tier literal (rows 14, 15,
   `TestStitchNoDeadlineModelHostOrTierLiteralsInTheWorker`); an adapter
   declares what it reaches (provider, model list, proxy routes) and the

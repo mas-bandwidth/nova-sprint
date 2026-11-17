@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -47,15 +50,13 @@ type fleetRow struct {
 	OK       int
 	Failed   int
 	OKPct    float64
-	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
-	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
+	Load     string // the bench's last heartbeat CPU peak ("18.6%"), "" when it has none
 	Tokens   int64  // every token its runs reported (package usage), kin and benches alike
 
-	// v3 Resources additions
-	Tags      []string           `json:"tags,omitempty"`
-	CPU       *ResourceMetric    `json:"cpu,omitempty"`
-	Memory    *ResourceMetric    `json:"memory,omitempty"`
-	Resources store.RowResources `json:"resources,omitempty"`
+	// v3 Resources additions (live from nova-reserve subscribe + nova-config)
+	Tags   []string        `json:"tags,omitempty"`
+	CPU    *ResourceMetric `json:"cpu,omitempty"`
+	Memory *ResourceMetric `json:"memory,omitempty"`
 }
 type streamLine struct{ Stream, State string }
 
@@ -93,6 +94,10 @@ type envelope struct {
 // for none: with it, Fleet and Friends done, ok and failed count only the
 // consumers done after it.
 func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time, stats *store.StatsMark) envelope {
+	return mapSnapshotWithReserve(s, ros, reserve.FleetSnapshot{}, at, stats)
+}
+
+func mapSnapshotWithReserve(s store.Snapshot, ros roster.Roster, res reserve.FleetSnapshot, at time.Time, stats *store.StatsMark) envelope {
 	work := map[string]*workRow{}
 	fleet := map[string]*fleetRow{}
 	friends := map[string]*fleetRow{}
@@ -111,7 +116,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time, stats *store
 		streams = append(streams, streamLine{n, state})
 	}
 	sort.Slice(streams, func(i, j int) bool { return streams[i].Stream < streams[j].Stream })
-	mapRows(s.Rows, ros, fleet, friends)
+	mapRows(s.Rows, ros, res, at, fleet, friends)
 	for _, c := range s.Cards {
 		if c.Kind == "producer" {
 			if w := work[c.Stream]; w != nil {
@@ -185,11 +190,23 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 // judged absent: every store row shows, down, at width 0. A row nova-config
 // names that is not a roster row (a machine that is not a bench, a disabled
 // friend) shows as down. The tables are maps, so the order is by name.
-func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
+func mapRows(rows map[string]store.Row, ros roster.Roster, res reserve.FleetSnapshot, at time.Time, fleet, friends map[string]*fleetRow) {
+	byHost := res.ByHost()
 	for n, w := range ros.Workers {
-		tags := append([]string(nil), w.Tags...)
-		cpu, mem := buildResourceMetrics(store.Row{}, w)
-		fleet[n] = &fleetRow{Status: "down", Tags: tags, CPU: cpu, Memory: mem}
+		var mh *reserve.MachineSnapshot
+		if m, ok := byHost[n]; ok {
+			mh = &m
+		}
+		tags := benchTags(w, mh)
+		cpu, mem := buildResourceMetrics(w, mh, at)
+		status := "down"
+		if mh != nil && mh.Online {
+			status = "up"
+			if w.Held != "" {
+				status = "held"
+			}
+		}
+		fleet[n] = &fleetRow{Status: status, Tags: tags, CPU: cpu, Memory: mem}
 	}
 	for n, k := range ros.Kin {
 		friends[n] = &fleetRow{Status: "down", Width: k.Width}
@@ -206,32 +223,98 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		if !found { // named but not a roster row, or the roster is empty: down, whatever the store says
 			status = "down"
 		}
+		var mh *reserve.MachineSnapshot
+		if m, ok := byHost[n]; ok {
+			mh = &m
+			if !mh.Online && kind != roster.KindKin {
+				status = "down"
+			}
+		}
 		var tags []string
 		var worker roster.Worker
 		if w, ok := ros.Workers[n]; ok {
-			tags = append([]string(nil), w.Tags...)
 			worker = w
+		}
+		if kind != roster.KindKin {
+			tags = benchTags(worker, mh)
 		}
 		f := &fleetRow{Status: status, Width: width, Tags: tags}
 		if kind != roster.KindKin { // load is only for fleet machines (the human, 2026-11-10)
-			f.Load, f.Slots = loadCells(r)
-			f.Resources = r.Resources
-			f.CPU, f.Memory = buildResourceMetrics(r, worker)
+			f.Load = loadCell(r)
+			f.CPU, f.Memory = buildResourceMetrics(worker, mh, at)
 		}
 		tableOf(kind, fleet, friends)[n] = f
 	}
 }
 
-// buildResourceMetrics computes the total, held, by-label, and paused-by-label CPU and memory metrics.
-func buildResourceMetrics(r store.Row, w roster.Worker) (cpu, mem *ResourceMetric) {
-	cpuTotal := resourceTotal(r.Resources.Total, w.Resources, "cpu")
-	memTotal := resourceTotal(r.Resources.Total, w.Resources, "memory")
-	cpuByLabel, memByLabel, cpuHeld, memHeld := heldMetrics(r.Resources)
-	cpuPaused := pausedMetrics(r.Resources.PausedByLabel, "cpu")
-	memPaused := pausedMetrics(r.Resources.PausedByLabel, "memory")
+func benchTags(w roster.Worker, mh *reserve.MachineSnapshot) []string {
+	if mh != nil && len(mh.Tags) > 0 {
+		return slices.Clone(mh.Tags)
+	}
+	if len(w.Tags) > 0 {
+		return slices.Clone(w.Tags)
+	}
+	return nil
+}
 
-	cpu = &ResourceMetric{Total: cpuTotal, Held: cpuHeld, ByLabel: cpuByLabel, PausedByLabel: cpuPaused}
-	mem = &ResourceMetric{Total: memTotal, Held: memHeld, ByLabel: memByLabel, PausedByLabel: memPaused}
+// buildResourceMetrics computes total, held, by-label, and paused-by-label CPU
+// and memory metrics directly from live nova-reserve subscribe state (falling
+// back to nova-config capacity when no live snapshot has arrived yet).
+func buildResourceMetrics(w roster.Worker, mh *reserve.MachineSnapshot, at time.Time) (cpu, mem *ResourceMetric) {
+	var liveTot map[string]int
+	if mh != nil {
+		liveTot = mh.Resources
+	}
+	cpuTotal := resourceTotal(liveTot, w.Resources, "cpu")
+	memTotal := resourceTotal(liveTot, w.Resources, "memory")
+	cpuBy, memBy := map[string]int{}, map[string]int{}
+	cpuPaused, memPaused := map[string]int{}, map[string]int{}
+	cpuHeld, memHeld := 0, 0
+
+	if mh != nil {
+		capTot := map[string]int{"cpu": cpuTotal, "memory": memTotal}
+		for _, l := range mh.Leases {
+			if l.Sublease {
+				continue
+			}
+			amt := l.ResolvedNeeds(capTot)
+			lbl := reserve.DisplayLabel(l.Holder, l.Label, l.Priority)
+			if strings.EqualFold(l.State, "paused") {
+				if c := amt["cpu"]; c > 0 {
+					cpuPaused[lbl] += c
+				}
+				if g := amt["memory"]; g > 0 {
+					memPaused[lbl] += g
+				}
+				continue
+			}
+			if c := amt["cpu"]; c > 0 {
+				cpuBy[lbl] += c
+				cpuHeld += c
+			}
+			if g := amt["memory"]; g > 0 {
+				memBy[lbl] += g
+				memHeld += g
+			}
+		}
+		for _, cl := range mh.Claims {
+			if cl.Expired(at) {
+				continue
+			}
+			amt := cl.ResolvedNeeds(capTot)
+			if c := amt["cpu"]; c > 0 {
+				cpuBy["claim"] += c
+				cpuHeld += c
+			}
+			if g := amt["memory"]; g > 0 {
+				memBy["claim"] += g
+				memHeld += g
+			}
+		}
+	}
+
+	cpu = &ResourceMetric{Total: cpuTotal, Held: cpuHeld, ByLabel: cpuBy, PausedByLabel: cpuPaused}
+	mem = &ResourceMetric{Total: memTotal, Held: memHeld, ByLabel: memBy, PausedByLabel: memPaused}
 	return cpu, mem
 }
 
@@ -245,57 +328,13 @@ func resourceTotal(tot, wRes map[string]int, key string) int {
 	return 0
 }
 
-func heldMetrics(res store.RowResources) (cpuBy, memBy map[string]int, cpuHeld, memHeld int) {
-	cpuBy, memBy = make(map[string]int), make(map[string]int)
-	for lbl, m := range res.HeldByLabel {
-		if c := m["cpu"]; c > 0 {
-			cpuBy[lbl] = c
-			cpuHeld += c
-		}
-		if g := m["memory"]; g > 0 {
-			memBy[lbl] = g
-			memHeld += g
-		}
+// loadCell is the row's last heartbeat CPU peak ("87.3%"), "" when down or
+// never beaten.
+func loadCell(r store.Row) string {
+	if r.State != "up" || (r.CPUPeakDeci <= 0 && r.Tiers == "" && r.Version == "") {
+		return ""
 	}
-	if cpuHeld == 0 {
-		cpuHeld = res.HeldSprint["cpu"] + res.HeldOther["cpu"]
-		if cpuHeld > 0 {
-			cpuBy["work"] = cpuHeld
-		}
-	}
-	if memHeld == 0 {
-		memHeld = res.HeldSprint["memory"] + res.HeldOther["memory"]
-		if memHeld > 0 {
-			memBy["work"] = memHeld
-		}
-	}
-	return cpuBy, memBy, cpuHeld, memHeld
-}
-
-func pausedMetrics(paused map[string]map[string]int, key string) map[string]int {
-	out := make(map[string]int)
-	for lbl, m := range paused {
-		if amt := m[key]; amt > 0 {
-			out[lbl] = amt
-		}
-	}
-	return out
-}
-
-// loadCells is the board's load cell and its slots title from the row's last
-// heartbeat: the highest CPU busy percent of the 10 seconds before it, across
-// all the cores (100% is every core busy), and the nova-reserve slots in use of
-// the total. A row that is down shows none, and so does one that has never
-// beaten (no cores).
-func loadCells(r store.Row) (load, slots string) {
-	if r.State != "up" || r.Cores < 1 {
-		return "", ""
-	}
-	load = fmt.Sprintf("%.1f%%", float64(r.CPUPeakDeci)/10)
-	if r.SlotsTotal > 0 {
-		slots = fmt.Sprintf("%d / %d", r.SlotsUsed, r.SlotsTotal)
-	}
-	return load, slots
+	return fmt.Sprintf("%.1f%%", float64(r.CPUPeakDeci)/10)
 }
 
 // tableOf is the table a row of this roster kind belongs in: Friends for

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
@@ -22,7 +23,7 @@ import (
 // open judgements by kind, who runs the sprint, the width and why nothing
 // deals, why each stream's producers wait and its long NEEDS chains, and
 // each landing's wait.
-func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string]bus.Presence) {
+func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string]bus.Presence, resSnap reserve.FleetSnapshot) {
 	snap, err := e.snapshot(ctx)
 	if err != nil {
 		r.red(err)
@@ -43,7 +44,7 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 	checkJudgements(r, snap)
 	running := e.checkRun(ctx, r, who)
 	ws := steps.Waits(snap.Cards)
-	e.checkWidth(ctx, r, snap, heads, running, ws)
+	e.checkWidth(ctx, r, snap, heads, running, ws, resSnap)
 	e.checkWaits(ctx, r, snap, ws)
 	e.checkLandings(ctx, r, snap, heads, running)
 }

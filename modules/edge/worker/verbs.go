@@ -283,13 +283,9 @@ func (c *CLISprintClient) Release(ctx context.Context, row, consumer string, gen
 	return c.classifyCLIError_internal(out, code, err)
 }
 func (c *CLISprintClient) Beat(ctx context.Context, row string, hb Heartbeat) error {
-	args := []string{"beat", "--as", row, "--load1", strconv.FormatFloat(hb.Load1, 'f', 2, 64), "--cpu-peak", strconv.FormatFloat(hb.CPUPeak, 'f', 1, 64),
-		"--cores", strconv.Itoa(hb.Cores), "--slots-used", strconv.Itoa(hb.SlotsUsed), "--slots-total", strconv.Itoa(hb.SlotsTotal)}
+	args := []string{"beat", "--as", row, "--cpu-peak", strconv.FormatFloat(hb.CPUPeak, 'f', 1, 64)}
 	if hb.Tiers != "" {
 		args = append(args, "--tiers", hb.Tiers)
-	}
-	if b, err := json.Marshal(hb.Resources); err == nil && len(b) > 2 && string(b) != "{}" {
-		args = append(args, "--resources", string(b))
 	}
 	out, code, err := c.run_internal(ctx, c.argv_internal(args...))
 	return c.classifyCLIError_internal(out, code, err)

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -134,9 +135,9 @@ func TestResourcesColors(t *testing.T) {
 		t.Errorf("app.js does not use #38bdf8 for CI")
 	}
 
-	// Board colors for card types
+	// Board colors for card types + CI + person soft claims
 	for _, cls := range []string{
-		".res-seg.ci", ".res-seg.blocker", ".res-seg.critical",
+		".res-seg.ci", ".res-seg.claim", ".res-seg.blocker", ".res-seg.critical",
 		".res-seg.fix", ".res-seg.read", ".res-seg.work", ".res-seg.other",
 	} {
 		if !strings.Contains(h, cls) {
@@ -147,6 +148,7 @@ func TestResourcesColors(t *testing.T) {
 	// Check JS mapping for board colors
 	for _, pattern := range []string{
 		`"ci": "#38bdf8"`,
+		`"claim": "var(--res-claim, #f59e0b)"`,
 		`"blocker": "var(--p-blocker, #ff1a1a)"`,
 		`"critical": "var(--p-critical, #9b1c1c)"`,
 		`"fix": "var(--p-fix, #8b5cf6)"`,
@@ -221,7 +223,7 @@ func TestResourcesUnmeasuredHandling(t *testing.T) {
 	}
 }
 
-func sampleResourcesSnapshot() (store.Snapshot, roster.Roster) {
+func sampleResourcesSnapshot() (store.Snapshot, roster.Roster, reserve.FleetSnapshot) {
 	ros := roster.Roster{
 		Workers: map[string]roster.Worker{
 			"bench-1": {
@@ -243,44 +245,50 @@ func sampleResourcesSnapshot() (store.Snapshot, roster.Roster) {
 	snap := store.Snapshot{
 		Epoch: 1,
 		Rows: map[string]store.Row{
-			"bench-1": {
-				Name:  "bench-1",
-				State: "up",
-				Resources: store.RowResources{
-					Total: map[string]int{"cpu": 16, "memory": 64},
-					HeldByLabel: map[string]map[string]int{
-						"ci":   {"cpu": 4, "memory": 16},
-						"work": {"cpu": 8, "memory": 24},
-					},
-					PausedByLabel: map[string]map[string]int{
-						"work": {"cpu": 4, "memory": 8},
-					},
-				},
-			},
-			"bench-2": {
-				Name:  "bench-2",
-				State: "up",
-				Resources: store.RowResources{
-					Total: map[string]int{"cpu": 8, "memory": 32},
-					HeldByLabel: map[string]map[string]int{
-						"blocker": {"cpu": 2, "memory": 8},
-						"fix":     {"cpu": 1, "memory": 4},
-						"read":    {"cpu": 1, "memory": 2},
-					},
-				},
-			},
+			"bench-1":          {Name: "bench-1", State: "up"},
+			"bench-2":          {Name: "bench-2", State: "up"},
 			"bench-unmeasured": {Name: "bench-unmeasured", State: "down"},
 			"friend-1":         {Name: "friend-1", State: "up"},
 		},
 	}
-	return snap, ros
+	res := reserve.FleetSnapshot{
+		Connected: true,
+		Machines: []reserve.MachineSnapshot{
+			{
+				Host:      "bench-1",
+				Online:    true,
+				Tags:      []string{"linux", "amd64", "gpu"},
+				Resources: map[string]int{"cpu": 16, "memory": 64},
+				Leases: []reserve.Lease{
+					{LeaseID: "L-ci", Host: "bench-1", State: "active", Holder: "ci", Label: "ci", Needs: reserve.NeedsMap{"cpu": 4, "memory": 16}},
+					{LeaseID: "L-w", Host: "bench-1", State: "active", Holder: "bench", Label: "work", Needs: reserve.NeedsMap{"cpu": 8, "memory": 24}},
+					{LeaseID: "L-p", Host: "bench-1", State: "paused", Holder: "bench", Label: "work", Needs: reserve.NeedsMap{"cpu": 4, "memory": 8}},
+				},
+			},
+			{
+				Host:      "bench-2",
+				Online:    true,
+				Tags:      []string{"linux", "arm64", "metal"},
+				Resources: map[string]int{"cpu": 8, "memory": 32},
+				Leases: []reserve.Lease{
+					{LeaseID: "L-b", Host: "bench-2", State: "active", Holder: "bench", Label: "blocker", Priority: "blocker", Needs: reserve.NeedsMap{"cpu": 2, "memory": 8}},
+					{LeaseID: "L-f", Host: "bench-2", State: "active", Holder: "bench", Label: "fix", Needs: reserve.NeedsMap{"cpu": 1, "memory": 4}},
+					{LeaseID: "L-r", Host: "bench-2", State: "active", Holder: "bench", Label: "read", Priority: "read", Needs: reserve.NeedsMap{"cpu": 1, "memory": 2}},
+				},
+				Claims: []reserve.Claim{
+					{LeaseID: "C-1", Host: "bench-2", Source: "glenn", Needs: reserve.NeedsMap{"cpu": 2, "memory": 8}},
+				},
+			},
+		},
+	}
+	return snap, ros, res
 }
 
-// Verify mapSnapshot correctly constructs and maps Resources and Fleet data.
+// Verify mapSnapshotWithReserve correctly constructs and maps Resources and Fleet data.
 func TestMapSnapshotResourcesBenches(t *testing.T) {
 	t.Parallel()
-	snap, ros := sampleResourcesSnapshot()
-	d := mapSnapshot(snap, ros, time.Time{}, nil)
+	snap, ros, res := sampleResourcesSnapshot()
+	d := mapSnapshotWithReserve(snap, ros, res, time.Time{}, nil)
 
 	resTable, ok := d.Tables["resources"].(map[string]*fleetRow)
 	if !ok || resTable == nil {
@@ -301,7 +309,7 @@ func TestMapSnapshotResourcesBenches(t *testing.T) {
 	}
 
 	b2 := resTable["bench-2"]
-	if b2 == nil || b2.CPU.Total != 8 || b2.CPU.Held != 4 || b2.CPU.ByLabel["blocker"] != 2 {
+	if b2 == nil || b2.CPU.Total != 8 || b2.CPU.Held != 6 || b2.CPU.ByLabel["blocker"] != 2 || b2.CPU.ByLabel["claim"] != 2 {
 		t.Errorf("bench-2 cpu mismatch: %+v", b2.CPU)
 	}
 	bUnm := resTable["bench-unmeasured"]
@@ -312,8 +320,8 @@ func TestMapSnapshotResourcesBenches(t *testing.T) {
 
 func TestMapSnapshotResourcesJSON(t *testing.T) {
 	t.Parallel()
-	snap, ros := sampleResourcesSnapshot()
-	d := mapSnapshot(snap, ros, time.Time{}, nil)
+	snap, ros, res := sampleResourcesSnapshot()
+	d := mapSnapshotWithReserve(snap, ros, res, time.Time{}, nil)
 
 	resTable := d.Tables["resources"].(map[string]*fleetRow)
 	body, err := json.Marshal(resTable["bench-1"])

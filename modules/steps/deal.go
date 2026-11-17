@@ -212,25 +212,42 @@ func (t *tick) recordDeal(row string, needs card.Needs) {
 	}
 }
 
-// benchSprintUsed computes sprint_used(B, r) per R50: the consumer-ID union of
-// working consumers on B and row.Resources.SprintConsumers, plus earlier deals
-// made to B in this tick.
-func (t *tick) benchSprintUsed(row string) map[string]int {
+// sprintUsedExcept computes sprint_used(B, r) per R50 excluding drop: the
+// consumer-ID union C_sprint(B) of working sprint consumers on B and live
+// sprint leases in Reserve[B].SprintHolding (taking max(declared, live_held)
+// per consumer and resource), plus earlier deals made to B in this tick.
+func (t *tick) sprintUsedExcept(row string, drop set) map[string]int {
+	res := t.in.Reserve[row]
+	heldByID := map[string]map[string]int{}
 	active := set{}
 	for id := range t.v.liveOnRow[row] {
-		if t.v.Cards[id].State == "working" {
+		if _, skip := drop[id]; !skip && t.v.Cards[id].State == "working" {
 			active[id] = struct{}{}
 		}
 	}
-	for _, raw := range t.v.Rows[row].Resources.SprintConsumers {
-		if id := canonicalConsumerID(raw, t.v.Epoch); id != "" {
-			active[id] = struct{}{}
+	for raw, m := range res.SprintHolding {
+		id := canonicalConsumerID(raw, t.v.Epoch)
+		if _, skip := drop[id]; id == "" || skip {
+			continue
+		}
+		active[id] = struct{}{}
+		if heldByID[id] == nil {
+			heldByID[id] = map[string]int{}
+		}
+		for k, v := range m {
+			heldByID[id][k] += v
 		}
 	}
 	out := map[string]int{}
 	for id := range active {
-		for k, v := range t.consumerNeedsByID(id).Amounts {
-			out[k] += v
+		decl, live := t.consumerNeedsByID(id).Amounts, heldByID[id]
+		for k, dv := range decl {
+			out[k] += max(dv, live[k])
+		}
+		for k, lv := range live {
+			if _, ok := decl[k]; !ok {
+				out[k] += lv
+			}
 		}
 	}
 	for _, needs := range t.dealtNeeds[row] {
@@ -241,21 +258,27 @@ func (t *tick) benchSprintUsed(row string) map[string]int {
 	return out
 }
 
-// benchUsed computes used(B, r) = HeldOther[r] + sprint_used(B, r) per R50.
+// benchSprintUsed computes sprint_used(B, r) per R50.
+func (t *tick) benchSprintUsed(row string) map[string]int {
+	return t.sprintUsedExcept(row, nil)
+}
+
+// benchUsed computes used(B, r) = NonSprintUsed[r] + sprint_used(B, r) per R50.
 func (t *tick) benchUsed(row string) map[string]int {
 	used := t.benchSprintUsed(row)
-	for k, v := range t.v.Rows[row].Resources.HeldOther {
+	for k, v := range t.in.Reserve[row].NonSprintUsed {
 		used[k] += v
 	}
 	return used
 }
 
 // benchFree returns available bench resources per R50/R52 (zero for all keys
-// when unmeasured or AnyPaused).
+// when held, offline, or AnyPaused).
 func (t *tick) benchFree(row string) map[string]int {
 	rr := t.rowOf(row)
+	res := t.in.Reserve[row]
 	out := make(map[string]int, len(rr.Resources))
-	if rr.Held != "" || t.v.Rows[row].Resources.AnyPaused {
+	if rr.Held != "" || res.Offline || res.AnyPaused {
 		for k := range rr.Resources {
 			out[k] = 0
 		}
@@ -276,7 +299,8 @@ func (t *tick) hasRoom(row string, needs card.Needs) bool {
 		return t.used(row) < t.room(row)
 	case roster.KindWorker:
 		rr := t.rowOf(row)
-		if rr.Held != "" || t.v.Rows[row].Resources.AnyPaused || !t.rowFitsMax(row, needs) {
+		res := t.in.Reserve[row]
+		if rr.Held != "" || res.Offline || res.AnyPaused || !t.rowFitsMax(row, needs) {
 			return false
 		}
 		used := t.benchUsed(row)

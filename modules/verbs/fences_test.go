@@ -13,7 +13,7 @@ import (
 
 // The beat every worker sends every few ms: it writes only alice's row
 // telemetry, and moves the store's seq.
-var aliceBeat = store.SetRowLoad{Row: "alice", Load1Centi: 7, Cores: 8}
+var aliceBeat = store.SetRowLoad{Row: "alice", CPUPeakDeci: 70}
 
 // between is the store of w with ws landing, as one op by another actor,
 // right before the verb's op of kind reaches it.
@@ -75,7 +75,7 @@ func TestVerbsFencedOnRecordsNotTheSeq(t *testing.T) {
 			w := c.world(t)
 			w.e.Store = between(w, c.kind, aliceBeat)
 			want(t, w.do(c.as, c.args...), 0, c.ok)
-			if got := w.snap(t).Rows["alice"].Load1Centi; got != aliceBeat.Load1Centi {
+			if got := w.snap(t).Rows["alice"].CPUPeakDeci; got != aliceBeat.CPUPeakDeci {
 				t.Fatalf("alice's load %d: the beat did not land between", got)
 			}
 		})

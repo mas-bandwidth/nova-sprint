@@ -605,7 +605,7 @@ func (s *tickingStore) Apply(ctx context.Context, op store.Op) (store.Receipt, e
 		s.n--
 		var w store.Write = store.PutPolicy{Kind: "data", Name: fmt.Sprintf("tick:%d", s.n), Body: "x"}
 		if s.beat {
-			w = store.SetRowLoad{Row: "alice", Load1Centi: s.n, Cores: 8}
+			w = store.SetRowLoad{Row: "alice", CPUPeakDeci: s.n}
 		}
 		tick := store.Op{ID: fmt.Sprintf("tick-%d", s.n), Epoch: op.Epoch, Actor: "sprint", Kind: "tick", At: op.At, Writes: []store.Write{w}}
 		if r, err := s.Fake.Apply(ctx, tick); err != nil || !r.Accepted {

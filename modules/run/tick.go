@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
@@ -303,6 +304,8 @@ type Observed struct {
 	// Moves is each watched base a foreigner moved within the last CIWait
 	// (BaseWatch.Moves).
 	Moves map[string]steps.BaseMove
+	// Reserve is the live fleet resource state from nova-reserve subscribe.
+	Reserve reserve.FleetSnapshot
 }
 
 // Tick is one tick: check the lock, fold, and, unless the sprint is stopped,
@@ -338,11 +341,12 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	if t.snap.Stopped {
 		return nil, nil
 	}
+	o.Roster = reserve.OverlayRoster(o.Roster, o.Reserve)
 	o.Roster = o.Roster.Advertised(t.snap.Rows, o.Version) // a worker's own width and tiers (defect 74), none when its binary is behind the run's (D3)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
 		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster, Unadmitted: o.Unadmitted, Bases: o.Bases,
-		Moves: o.Moves, Broken: t.broken}
-	a := t.asker(ctx, o.Roster)
+		Moves: o.Moves, Broken: t.broken, Reserve: reserve.ToBenchReserve(o.Reserve, o.Now)}
+	a := t.askerWithFree(ctx, o.Roster, steps.BenchFreeMap(t.view, in))
 	plan := steps.Tick(t.view, in, a)
 	t.broken = plan.Broken
 	t.push.Nudge(plan.Nudges)

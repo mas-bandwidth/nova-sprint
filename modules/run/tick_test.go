@@ -629,7 +629,7 @@ func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
 func TestTickDealsNothingToAStaleRow(t *testing.T) {
 	t.Parallel()
 	f, ro := seeded(t)
-	must(t, f, "beat", store.SetRowLoad{Row: "alice", Load1Centi: 100, Cores: 8, SlotsTotal: 8, Tiers: "flash,pro", Version: "v2.0.5"})
+	must(t, f, "beat", store.SetRowLoad{Row: "alice", CPUPeakDeci: 100, Tiers: "flash,pro", Version: "v2.0.5"})
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
 		t.Fatal(err)
@@ -645,7 +645,7 @@ func TestTickDealsNothingToAStaleRow(t *testing.T) {
 	if s := tk.Snapshot(); s.Cards["p1"].State != "ready" {
 		t.Fatalf("p1 is %s: dealt to a row below the run's release", s.Cards["p1"].State)
 	}
-	must(t, f, "beat at the run's release", store.SetRowLoad{Row: "alice", Load1Centi: 100, Cores: 8, SlotsTotal: 8, Tiers: "flash,pro", Version: "v2.0.6"})
+	must(t, f, "beat at the run's release", store.SetRowLoad{Row: "alice", CPUPeakDeci: 100, Tiers: "flash,pro", Version: "v2.0.6"})
 	for i := 3; i < 6; i++ {
 		if _, err := tk.Tick(context.Background(), observe(i)); err != nil {
 			t.Fatal(err)

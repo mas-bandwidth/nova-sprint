@@ -163,7 +163,7 @@ What each judgement kind asks of you, and where to look before you choose:
   that fits it; or configure a machine with the tags and resources in nova-config and
   `unhold`; or `drop` it. (In v3.0.0, `NEEDS-ROUTE:` is completely retired in favor of `RESOURCES:`;
   pure light reads run under `cpu 1, memory 1` with zero tags regardless of the producer card's line,
-  and friends lock machines atomically before SSHing via `nova-fleet reserve --needs ...` per R55–R58, Q2). A `held` whose reason reads `reads faulted <n> times running at review
+  and friends acquire peer leases from `nova-reserve serve` via `nova-reserve hold --needs "<spec>" --holder friend --source <friend>` + `NOVA_RESERVE_LEASE`/`NOVA_RESERVE_HOST` or `nova-reserve ssh --needs "<spec>" ...` per R55–R58). A `held` whose reason reads `reads faulted <n> times running at review
   <r>` is a review whose reads all faulted policy's `faults` limit in a row (the reason ends with
   the newest fault): fix that cause (a route, a tool on the reading rows), then `unhold`; the card
   is dealt again as work and its next review counts afresh. A `held` that says an attempt

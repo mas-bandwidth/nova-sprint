@@ -35,6 +35,36 @@ type Inputs struct {
 	// (layer 6 keeps it; none after a restart, when an answer from before
 	// the view began is no quiet at all). Their quiet is over (judge.go).
 	Broken map[string]bool
+	// Reserve is each bench's live resource state from nova-reserve subscribe
+	// (R48-R54, R39b). Zero/missing entries represent online, unpaused benches
+	// with zero external holds or soft claims.
+	Reserve map[string]BenchReserve
+}
+
+// BenchReserve is one bench's live state from nova-reserve subscribe (R48-R54, R39b).
+type BenchReserve struct {
+	Offline          bool                      // bench is offline in nova-reserve
+	AnyPaused        bool                      // at least one lease on bench is paused behind CI (R52)
+	NonSprintUsed    map[string]int            // unpaused non-sprint leases + unexpired person soft claims (R50)
+	ExternalHeld     map[string]int            // hard unpaused non-sprint leases only (for trace projection)
+	SoftClaimed      map[string]int            // unexpired person soft claims only (for trace projection)
+	SprintHolding    map[string]map[string]int // sprint consumer ID -> live unpaused held amounts on bench (R50)
+	ActiveClaimedCPU int                       // sum of all unpaused CPU leases + unexpired person CPU claims (R54)
+	PausedMillis     map[string]int64          // consumer ID -> cumulative queued/paused ms (R39b)
+}
+
+// BenchFreeMap computes each bench row's live R50/R52 free resource map from v
+// and in, matching the exact room calculation used by Tick and RowFacts.
+func BenchFreeMap(v *View, in Inputs) map[string]map[string]int {
+	if len(in.Roster.Workers) == 0 {
+		return nil
+	}
+	t := newTick(v, in)
+	out := make(map[string]map[string]int, len(in.Roster.Workers))
+	for name := range in.Roster.Workers {
+		out[name] = t.benchFree(name)
+	}
+	return out
 }
 
 // InboxItem is one thing that arrived for the tick: a row's report or take

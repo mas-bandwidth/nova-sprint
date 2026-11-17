@@ -462,12 +462,12 @@ func TestLiveWorkerAdvertisesProvedTiersAtHook(t *testing.T) {
 	r.Warn = func(string) {}
 	rec := &beatRecorder{}
 	ctx, cancel := context.WithCancel(context.Background())
-	r.Meter, r.Beater = meterFake{hb: Heartbeat{Load1: 1, Cores: 16, SlotsTotal: 3}}, cancelBeater{rec, cancel}
+	r.Meter, r.Beater = meterFake{hb: Heartbeat{CPUPeak: 25}}, cancelBeater{rec, cancel}
 	if err := r.ServeRow(ctx, "b1", "opencode"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rec.beats) != 1 || rec.beats[0].Tiers != "flash" || rec.beats[0].SlotsTotal != 3 || sp.hooks != 1 {
-		t.Fatalf("want one beat advertising flash and 3 slots after the hook, got %+v (hooks %d)", rec.beats, sp.hooks)
+	if len(rec.beats) != 1 || rec.beats[0].Tiers != "flash" || sp.hooks != 1 {
+		t.Fatalf("want one beat advertising flash after the hook, got %+v (hooks %d)", rec.beats, sp.hooks)
 	}
 }
 

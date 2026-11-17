@@ -386,18 +386,16 @@ type SetRowFlaps struct {
 	Flaps int
 }
 
-// SetRowLoad sets a row's heartbeat: its 1-minute load average in hundredths, its CPU busy peak,
-// the logical cores it was measured over (at least 1), and the nova-reserve
-// slots in use and in all (in use at most in all). It is telemetry: a write
-// that changes nothing is refused like any set write, and it moves no gen,
-// so a beat never fences out a deal made from an earlier snapshot.
+// SetRowLoad sets a row's heartbeat (R40, R48): its advertised harness tiers,
+// internal health CPU busy peak (0..1000 tenths of a percent), and binary
+// version. Machine resource holds live in nova-reserve serve, never in the
+// store. A write that changes nothing is refused like any set write, and it
+// moves no gen, so a beat never fences out a deal made from an earlier snapshot.
 type SetRowLoad struct {
-	Row                                      string
-	Load1Centi, Cores, SlotsUsed, SlotsTotal int
-	Tiers                                    string // the tiers the worker serves, a comma list of Tiers ("" none advertised)
-	CPUPeakDeci                              int    // the highest CPU busy percent over the last 10 s, across all cores, in tenths: 0 to 1000
-	Version                                  string // the release of the binary that beat ("" unknown)
-	Resources                                RowResources
+	Row         string
+	Tiers       string // the tiers the worker serves, a comma list of Tiers ("" none advertised)
+	CPUPeakDeci int    // the highest CPU busy percent over the last 10 s, across all cores, in tenths: 0 to 1000
+	Version     string // the release of the binary that beat ("" unknown)
 }
 
 // RetireRow retires a row nova-config no longer names (round 32; Glenn,
@@ -651,7 +649,7 @@ func rowSpec(w Write) spec {
 		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) })
 	case SetRowLoad:
 		return put("row", v.Row, func(c *checker) {
-			c.num("load1_centi", v.Load1Centi).num("cores", v.Cores).num("slots_used", v.SlotsUsed).num("slots_total", v.SlotsTotal).num("cpu_peak_deci", v.CPUPeakDeci)
+			c.num("cpu_peak_deci", v.CPUPeakDeci).text(v.Version)
 			if v.CPUPeakDeci > 1000 {
 				c.fail("load needs cpu_peak_deci of at most 1000, got %d", v.CPUPeakDeci)
 			}

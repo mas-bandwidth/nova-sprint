@@ -151,36 +151,13 @@ func (t *tick) fitsAfterFreeing(row string, needs card.Needs, freed []string) bo
 		return len(freed) >= max(1, t.v.Working(row)-t.width(row)+1)
 	}
 	rr := t.rowOf(row)
-	sr := t.v.Rows[row]
 	drop := set{}
 	for _, id := range freed {
 		drop[id] = struct{}{}
 	}
-	active := set{}
-	for id := range t.v.liveOnRow[row] {
-		if _, dropped := drop[id]; !dropped && t.v.Cards[id].State == "working" {
-			active[id] = struct{}{}
-		}
-	}
-	for _, raw := range sr.Resources.SprintConsumers {
-		id := canonicalConsumerID(raw, t.v.Epoch)
-		if _, dropped := drop[id]; id != "" && !dropped {
-			active[id] = struct{}{}
-		}
-	}
-	used := map[string]int{}
-	for k, v := range sr.Resources.HeldOther {
+	used := t.sprintUsedExcept(row, drop)
+	for k, v := range t.in.Reserve[row].NonSprintUsed {
 		used[k] += v
-	}
-	for id := range active {
-		for k, v := range t.consumerNeedsByID(id).Amounts {
-			used[k] += v
-		}
-	}
-	for _, d := range t.dealtNeeds[row] {
-		for k, v := range d.Amounts {
-			used[k] += v
-		}
 	}
 	for k, need := range needs.Amounts {
 		if rr.Resources[k]-used[k] < need {
@@ -195,12 +172,12 @@ func (t *tick) fitsAfterFreeing(row string, needs card.Needs, freed []string) bo
 func (t *tick) victims(row, b string, needs card.Needs) []string {
 	if t.kind(row) == roster.KindWorker {
 		rr := t.rowOf(row)
-		sr := t.v.Rows[row]
-		if rr.Held != "" || sr.Resources.AnyPaused || !t.rowFitsMax(row, needs) {
+		res := t.in.Reserve[row]
+		if rr.Held != "" || res.Offline || res.AnyPaused || !t.rowFitsMax(row, needs) {
 			return nil
 		}
 		for k, need := range needs.Amounts {
-			if rr.Resources[k]-sr.Resources.HeldOther[k] < need {
+			if rr.Resources[k]-res.NonSprintUsed[k] < need {
 				return nil
 			}
 		}

@@ -128,7 +128,8 @@ func TestSchemaObjects(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(schemaSQL, createSchema))
 	assert.NotContains(t, schemaObjects, "CREATE SCHEMA")
 	assert.Equal(t, len(schemaSQL)-len(createSchema), len(schemaObjects))
-	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS load1_centi integer")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS cpu_peak_deci integer")
+	assert.Contains(t, schemaSQL, "DROP COLUMN IF EXISTS load1_centi")
 }
 
 // The least-privilege setup: an admin role with CREATE on the database makes

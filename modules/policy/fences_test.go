@@ -40,7 +40,7 @@ func (s *betweenStore) Apply(ctx context.Context, op store.Op) (store.Receipt, e
 // judgement opened, between and it is still refused, naming it.
 func TestPolicyVerbsFencedOnPoliciesNotTheSeq(t *testing.T) {
 	t.Parallel()
-	beat := store.SetRowLoad{Row: "r1", Load1Centi: 7, Cores: 8}
+	beat := store.SetRowLoad{Row: "r1", CPUPeakDeci: 70}
 	data := store.PutPolicy{Kind: "data", Name: "setup:run-on", Body: "studio"}
 	judged := store.PutJudgement{ID: "j9", Kind: "red"}
 	verbs := []struct {
@@ -68,7 +68,7 @@ func TestPolicyVerbsFencedOnPoliciesNotTheSeq(t *testing.T) {
 			t.Parallel()
 			w := fakeWorld(t)
 			require.NoError(t, v.run(w, &betweenStore{Store: w.st, kind: v.kind, between: []store.Write{beat}}))
-			assert.Equal(t, 7, w.snap().Rows["r1"].Load1Centi, "the beat landed between")
+			assert.Equal(t, 70, w.snap().Rows["r1"].CPUPeakDeci, "the beat landed between")
 		})
 		for _, m := range []struct {
 			what  string

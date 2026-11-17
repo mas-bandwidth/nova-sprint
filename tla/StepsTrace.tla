@@ -49,7 +49,7 @@ VARIABLE l
 traceVars == <<vars, l>>
 
 TraceActions == {"Init", "Snap", "Tick", "Report", "Hold", "Unhold", "Gone", "Seen",
-                 "Leave", "Return", "Refuse", "Admit", "Pause", "Unpause", "OtherLoad",
+                 "Leave", "Return", "Refuse", "Admit", "Pause", "Unpause", "OtherLoad", "ClaimLoad",
                  "EnvMove", "EdgeResult", "Answer"}
 
 Has(r, f) == f \in DOMAIN r
@@ -64,6 +64,7 @@ Parts(W, r) ==
   /\ Has(r, "ob")     => W.ob = r.ob
   /\ Has(r, "paused") => W.paused = r.paused
   /\ Has(r, "other")  => W.other = r.other
+  /\ Has(r, "claim")  => W.claim = r.claim
   /\ Has(r, "cs")     => /\ \A c \in DOMAIN r.cs : c \in CIds /\ W.cs[c] = r.cs[c]
                          /\ \A c \in CIds \ DOMAIN r.cs : W.cs[c].st = "none"
 
@@ -106,6 +107,7 @@ EnvKind(r) ==
     [] r.action = "Pause"     -> \E x \in Rows : ~w.paused[x] /\ w'.paused[x]
     [] r.action = "Unpause"   -> \E x \in Rows : w.paused[x] /\ ~w'.paused[x]
     [] r.action = "OtherLoad" -> \E x \in Rows : w.other[x] # w'.other[x]
+    [] r.action = "ClaimLoad" -> \E x \in Rows : w.claim[x] # w'.claim[x]
     [] OTHER               -> TRUE
 
 \* The model action a record names, with its arguments.
@@ -116,7 +118,7 @@ StepAs(r) ==
                                     /\ Has(r, "offered") => r.offered = OfferedTo(snap)   \* what the code's questions offered
                                     /\ Tick(a, due)
     [] r.action = "Report"     -> Report(r.card, r.res)
-    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "Refuse", "Admit", "Pause", "Unpause", "OtherLoad", "EnvMove"} -> EnvMove /\ EnvKind(r)
+    [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "Leave", "Return", "Refuse", "Admit", "Pause", "Unpause", "OtherLoad", "ClaimLoad", "EnvMove"} -> EnvMove /\ EnvKind(r)
     [] r.action = "EdgeResult" -> \E f \in inflight : f.id = r.id /\ EdgeResult(f, r.out, r.n)
     [] r.action = "Answer"     -> Answer(r.p, r.choice)
     [] OTHER                   -> FALSE

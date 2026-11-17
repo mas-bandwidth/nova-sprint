@@ -41,10 +41,8 @@ func (f fleetRow) MarshalJSON() ([]byte, error) {
 		"ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct,
 		"tokens": usage.Compact(f.Tokens), "tokens_n": strconv.FormatInt(f.Tokens, 10),
 	}
-	for k, v := range map[string]string{"load": f.Load, "slots": f.Slots} {
-		if v != "" {
-			m[k] = v
-		}
+	if f.Load != "" {
+		m["load"] = f.Load
 	}
 	if f.Tags != nil {
 		m["tags"] = f.Tags
@@ -54,9 +52,6 @@ func (f fleetRow) MarshalJSON() ([]byte, error) {
 	}
 	if f.Memory != nil {
 		m["memory"] = f.Memory
-	}
-	if f.Resources.Total != nil || len(f.Resources.HeldByLabel) > 0 {
-		m["resources"] = f.Resources
 	}
 	return json.Marshal(m)
 }

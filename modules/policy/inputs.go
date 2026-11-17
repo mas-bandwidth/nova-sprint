@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -191,18 +190,6 @@ func (ix *index) count(c store.Card) {
 	}
 }
 
-func canonicalConsumerID(raw string, epoch int) string {
-	raw = strings.TrimSpace(raw)
-	base, ep, ok := strings.Cut(raw, "@")
-	if !ok {
-		return base
-	}
-	if n, err := strconv.Atoi(ep); err == nil && n == epoch {
-		return base
-	}
-	return raw
-}
-
 func (ix *index) resolveNeeds(kind, brief string) card.Needs {
 	if kind == "read" || brief == "" {
 		return defaultNeeds
@@ -214,32 +201,23 @@ func (ix *index) resolveNeeds(kind, brief string) card.Needs {
 	return card.ResolveNeeds(kind, brief, ix.knownTags, ix.knownResources)
 }
 
-// benchFree computes available resources on bench r using the exact R50/R52
-// consumer-ID union room formula.
+// benchFree computes baseline available resources on bench r when live
+// Questions.BenchFree is not supplied (e.g. cold policy check).
 func (ix *index) benchFree(r rostered) map[string]int {
 	if len(r.resources) == 0 {
 		return nil
 	}
 	free := make(map[string]int, len(r.resources))
-	if r.held != "" || r.Resources.AnyPaused {
+	if r.held != "" {
 		for k := range r.resources {
 			free[k] = 0
 		}
 		return free
 	}
-	active := map[string]bool{}
-	for _, id := range ix.workingByRow[r.Name] {
-		active[id] = true
-	}
-	for _, raw := range r.Resources.SprintConsumers {
-		if id := canonicalConsumerID(raw, ix.snap.Epoch); id != "" {
-			active[id] = true
-		}
-	}
 	var sprintUsed map[string]int
-	if len(active) > 0 {
+	if ids := ix.workingByRow[r.Name]; len(ids) > 0 {
 		sprintUsed = map[string]int{}
-		for id := range active {
+		for _, id := range ids {
 			needs := defaultNeeds
 			if cons, ok := ix.snap.Cards[id]; ok {
 				needs = ix.resolveNeeds(cons.Kind, cons.Brief)
@@ -250,10 +228,41 @@ func (ix *index) benchFree(r rostered) map[string]int {
 		}
 	}
 	for k, total := range r.resources {
-		used := r.Resources.HeldOther[k] + sprintUsed[k]
-		free[k] = max(0, total-used)
+		free[k] = max(0, total-sprintUsed[k])
 	}
 	return free
+}
+
+func (ix *index) applyBenchFree(override map[string]map[string]int) {
+	if len(override) == 0 {
+		return
+	}
+	changed := false
+	for i, r := range ix.rows {
+		if r.kind != roster.KindWorker {
+			continue
+		}
+		ov, ok := override[r.Name]
+		if !ok {
+			continue
+		}
+		free := make(map[string]int, len(r.resources))
+		for k := range r.resources {
+			if r.held != "" {
+				free[k] = 0
+			} else {
+				free[k] = max(0, ov[k])
+			}
+		}
+		r.free = free
+		ix.rows[i] = r
+		ix.facts[r.Name] = r
+		delete(ix.candVals, r.Name)
+		changed = true
+	}
+	if changed {
+		clear(ix.sets)
+	}
 }
 
 func rosteredFitsMax(r rostered, n card.Needs) bool {

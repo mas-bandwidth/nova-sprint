@@ -73,8 +73,8 @@ func TestFleetRowsCarryTheCPUPeakFriendsNone(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{Workers: map[string]roster.Worker{"w": {Name: "w", Resources: map[string]int{"cpu": 4, "memory": 8}}}, Kin: map[string]roster.Kin{"k": {Name: "k", Width: 2}}}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
-		"w": {Name: "w", State: "up", Load1Centi: 900, CPUPeakDeci: 412, Cores: 8},
-		"k": {Name: "k", State: "up", Load1Centi: 900, CPUPeakDeci: 1000, Cores: 4},
+		"w": {Name: "w", State: "up", CPUPeakDeci: 412, Version: "v3.0.0"},
+		"k": {Name: "k", State: "up", CPUPeakDeci: 1000, Version: "v3.0.0"},
 	}}
 	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	for table, want := range map[string]map[string]string{"fleet": {"w": "41.2%"}, "friends": {"k": ""}} {

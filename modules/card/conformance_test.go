@@ -644,7 +644,7 @@ func TestConformanceHoldStreamLandsOverABeat(t *testing.T) {
 		Reason: "release freeze", Ready: []Card{FromStore(snap.Cards["p1"])}, Seq: snap.Seq,
 	})
 	require.Nil(t, r)
-	w.raw("beat", store.SetRowLoad{Row: "r1", Load1Centi: 7, Cores: 8})
+	w.raw("beat", store.SetRowLoad{Row: "r1", CPUPeakDeci: 70})
 	w.op("hold", plan)
 	assert.True(t, w.snap().Streams["s1"].Held)
 	w.is("p1", Waiting)

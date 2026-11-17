@@ -18,7 +18,7 @@ INVARIANTS = [
     "ResolveFromState", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
     "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
     "LapsedReleased", "HandEmptyWhenClosed", "OfferedIsAccepted",
-    "NoDealBehindPause", "NoFutilePreempt", "PreemptMultiStops",
+    "NoDealBehindPause", "NoDealOverClaim", "NoFutilePreempt", "PreemptMultiStops",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -277,6 +277,11 @@ WITNESSES = [
      "that already has a paused holder queued behind CI.",
      [("  /\\ ~W.paused[r]\n",
        "  /\\ TRUE   \\* FAULT: ignored W.paused[r] (R52)\n", 1)]),
+    ("StepsDealsOverClaim", "NoDealOverClaim", "pre",
+     "R50 soft person claim headroom omitted: NonSprintUsed ignores\n"
+     "W.claim[r] and deals new sprint work onto claimed bench room.",
+     [("NonSprintUsed(W, r) == AddRes(W.other[r], W.claim[r])\n",
+       "NonSprintUsed(W, r) == W.other[r]   \\* FAULT: ignored W.claim[r]\n", 1)]),
     ("StepsFutilePreempt", "NoFutilePreempt", "pre",
      "R53 HeldOther headroom guard omitted: preemption kills a sprint\n"
      "victim on a bench held by CI where the blocker still cannot fit.",

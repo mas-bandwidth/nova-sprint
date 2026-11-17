@@ -501,9 +501,10 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   return { t: t, n: names.length };
 }
 
-var RES_LABEL_ORDER = ["ci", "blocker", "critical", "fix", "read", "work"];
+var RES_LABEL_ORDER = ["ci", "claim", "blocker", "critical", "fix", "read", "work"];
 var RES_LABEL_COLORS = {
   "ci": "#38bdf8",
+  "claim": "var(--res-claim, #f59e0b)",
   "blocker": "var(--p-blocker, #ff1a1a)",
   "critical": "var(--p-critical, #9b1c1c)",
   "fix": "var(--p-fix, #8b5cf6)",

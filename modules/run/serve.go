@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/dash"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
@@ -46,6 +47,8 @@ type Config struct {
 	// Admit is check's admission of a stream's waiting and ready producers
 	// (Admission.Admit); nil proves nothing again after add.
 	Admit func(ctx context.Context, snap store.Snapshot, stream string) (map[string]string, error)
+	// Reserve configures the live nova-reserve subscribe stream (R48).
+	Reserve reserve.Config
 }
 
 // Serve is the `run` verb: the chooser lock and the sprint hook, the cold
@@ -67,9 +70,26 @@ type loop struct {
 	admit   *Admission
 	bases   *BaseWatch
 	board   *dash.Cache
+	reserve *reserve.Subscriber
 	log     *WriterLogger
 	mu      sync.Mutex
 	streams map[string]store.Stream
+}
+
+type reserveClockAdapter struct{ c Clock }
+
+func (a reserveClockAdapter) Now() time.Time { return a.c.Now() }
+
+func (a reserveClockAdapter) After(d time.Duration) <-chan time.Time {
+	ch := make(chan time.Time, 1)
+	b := a.c.Every(d)
+	go func() {
+		defer b.Stop()
+		if t, ok := <-b.C(); ok {
+			ch <- t
+		}
+	}()
+	return ch
 }
 
 func serve(ctx context.Context, cfg Config, h Health) error {
@@ -79,6 +99,9 @@ func serve(ctx context.Context, cfg Config, h Health) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if l.cfg.Reserve.Configured() {
+		go l.reserve.Watch(ctx)
+	}
 	read := make(chan struct{})
 	go l.edges.WatchHeads(ctx, cfg.Clock, l.streamsCopy, read)
 	served := make(chan error, 1)
@@ -135,14 +158,31 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 			return nil
 		}
 	}
+	var initRoster roster.Roster
+	if cfg.Roster != nil {
+		if ro, rerr := cfg.Roster.ReadRoster(ctx); rerr == nil {
+			initRoster = ro
+		}
+	}
 	l := &loop{cfg: cfg, ticker: t, log: NewWriterLogger(cfg.Log),
 		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
-		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Landings: t.Landings(), Stats: t.Stats(), At: now}, cfg.Clock.Now)}
+		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Roster: initRoster, Landings: t.Landings(), Stats: t.Stats(), At: now}, cfg.Clock.Now)}
 	l.edges.Fault = l.log.EdgeFault
 	l.edges.Streams = l.streamsCopy
 	l.admit = &Admission{Admit: cfg.Admit, Fault: l.log.EdgeFault}
 	l.bases = &BaseWatch{Forge: cfg.Forge, Fault: l.log.EdgeFault}
 	l.edges.BaseRed = l.bases.LandSawRed
+	rcfg := cfg.Reserve
+	if rcfg.Clock == nil && rcfg.Dial != nil {
+		rcfg.Clock = reserveClockAdapter{cfg.Clock}
+	}
+	if rcfg.OnUpdate == nil {
+		rcfg.OnUpdate = func(snap reserve.FleetSnapshot) { l.board.SetReserve(snap) }
+	}
+	if rcfg.Log == nil {
+		rcfg.Log = func(msg string) { l.log.EdgeFault("nova-reserve subscribe", errors.New(msg)) }
+	}
+	l.reserve = reserve.NewSubscriber(rcfg)
 	l.setStreams(t.snap.Streams)
 	return l, nil
 }
@@ -171,6 +211,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 		l.log.RosterRefused(ro.Refused)
 	}
 	present, werr := l.present(ctx)
+	resSnap := l.reserve.Snapshot()
 	budget := BudgetDeadline{Duration: func() time.Duration { return time.Duration(l.ticker.Timeouts().Tick) * time.Second }}
 	tctx, cancel := budget.Begin(ctx)
 	var err error
@@ -185,7 +226,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	} else {
 		var reqs []steps.EdgeRequest
 		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Unread: werr != nil, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version,
-			Unadmitted: l.admit.Unadmitted(), Bases: l.bases.Read(), Moves: l.bases.Moves()})
+			Unadmitted: l.admit.Unadmitted(), Bases: l.bases.Read(), Moves: l.bases.Moves(), Reserve: resSnap})
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
 	cancel()
@@ -200,7 +241,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	l.setStreams(snap.Streams)
 	l.admit.Prove(ctx, snap, l.edges.Heads())
 	l.bases.Watch(ctx, snap, l.edges.Heads(), start)
-	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows, ""), RosterErr: rerr, Landings: l.ticker.Landings(), Stats: l.ticker.Stats(), At: start}); perr != nil && err == nil {
+	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows, ""), RosterErr: rerr, Landings: l.ticker.Landings(), Stats: l.ticker.Stats(), At: start, Reserve: resSnap}); perr != nil && err == nil {
 		err = perr
 	}
 	l.log.Log(TickMetrics{Number: n, Seq: snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})

@@ -5,7 +5,7 @@
 (* NoDealBehindPause (R52), and multi-victim blocker preemption with       *)
 (* non-sprint HeldOther headroom guard (R53).                              *)
 (***************************************************************************)
-EXTENDS Naturals, FiniteSets, Sequences
+EXTENDS Integers, FiniteSets, Sequences
 
 CONSTANTS
   Scenario,   \* "pre", "deal", "land" or "burst"
@@ -31,8 +31,8 @@ TwoRes    == [cpu |-> 2, mem |-> 2]
 ThreeRes  == [cpu |-> 3, mem |-> 3]
 AddRes(a, b) == [cpu |-> a.cpu + b.cpu, mem |-> a.mem + b.mem]
 FitsRes(cap, used, need) ==
-  /\ cap.cpu - used.cpu >= need.cpu
-  /\ cap.mem - used.mem >= need.mem
+  /\ used.cpu + need.cpu <= cap.cpu
+  /\ used.mem + need.mem <= cap.mem
 RowCap == [r \in Rows |-> IF r = "r1" THEN UnitRes
                           ELSE IF Scenario = "pre" THEN ThreeRes ELSE TwoRes]
 RowTiers  == [r \in Rows |-> IF r = "r1" THEN {1} ELSE {1, 2}]
@@ -88,7 +88,8 @@ W0 == [ps     |-> [p \in Prods |-> P0(p)],
        pol    |-> TRUE,
        ob     |-> {},
        paused |-> [r \in Rows |-> FALSE],
-       other  |-> [r \in Rows |-> ZeroRes]]
+       other  |-> [r \in Rows |-> ZeroRes],
+       claim  |-> [r \in Rows |-> ZeroRes]]
 
 Answers == {[rows |-> "r1"], [rows |-> "r2"], [rows |-> "failed"]}
 Unasked == [rows |-> "failed"]
@@ -122,8 +123,9 @@ SumTko(W, r, drop, i) ==
           THEN AddRes(rest, SlotNeeds(W, c))
           ELSE rest
 
+NonSprintUsed(W, r) == AddRes(W.other[r], W.claim[r])
 SprintUsed(W, r)    == SumTko(W, r, {}, 1)
-UsedRes(W, r, t)    == AddRes(AddRes(W.other[r], SprintUsed(W, r)), t[r])
+UsedRes(W, r, t)    == AddRes(AddRes(NonSprintUsed(W, r), SprintUsed(W, r)), t[r])
 FitsMaxRes(r, need) == RowCap[r].cpu >= need.cpu /\ RowCap[r].mem >= need.mem
 Serves(r, kind, p)  == Tier[p] \in RowTiers[r] /\ FitsMaxRes(r, ConsNeeds(kind, p))
 ServingOpen(W, kind, p) == {r \in Rows : W.up[r] /\ bus[r] /\ Serves(r, kind, p)}
@@ -294,10 +296,10 @@ ConsPrio(W, c) ==
   ELSE IF W.ps[c[1]].prio = "blocker" THEN 5
   ELSE 1
 
-CanFitWithoutSprint(W, r, need) == FitsRes(RowCap[r], W.other[r], need)
+CanFitWithoutSprint(W, r, need) == FitsRes(RowCap[r], NonSprintUsed(W, r), need)
 
 FitsAfterFreeing(W, r, need, drop) ==
-  FitsRes(RowCap[r], AddRes(W.other[r], SumTko(W, r, drop, 1)), need)
+  FitsRes(RowCap[r], AddRes(NonSprintUsed(W, r), SumTko(W, r, drop, 1)), need)
 
 \* Collect working consumers on r for prio in youngest-first order directly from tko.
 RECURSIVE CollectYoungest(_, _, _, _, _)
@@ -391,9 +393,10 @@ Desired(V, x) ==
   THEN IF Rank[V.ps[x.p].author] < MaxRank THEN Rank[V.ps[x.p].author] + 1 ELSE MaxRank
   ELSE IF V.ps[x.p].bounces >= EscalateAfter /\ Tier[x.p] < MaxRank THEN Tier[x.p] + 1 ELSE Tier[x.p]
 
+FreeAmt(cap, u) == IF cap > u THEN cap - u ELSE 0
 BottleneckPermille(V, r, u) ==
-  LET fcpu == ((RowCap[r].cpu - u.cpu) * 1000) \div RowCap[r].cpu
-      fmem == ((RowCap[r].mem - u.mem) * 1000) \div RowCap[r].mem
+  LET fcpu == (FreeAmt(RowCap[r].cpu, u.cpu) * 1000) \div RowCap[r].cpu
+      fmem == (FreeAmt(RowCap[r].mem, u.mem) * 1000) \div RowCap[r].mem
   IN IF fcpu <= fmem THEN fcpu ELSE fmem
 
 Eligible(V, x, r, t) ==
@@ -618,6 +621,9 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl
               \A x \in RowsAsked(V) : \A r \in Rows : PolicyOffered(V, x, r) => Offered(V, x, r))
      \cup Chk("NoDealBehindPause",
               \A g \in accd : g.kind \in {"pre", "start", "read"} => ~V.paused[g.r])
+     \cup Chk("NoDealOverClaim",
+              \A r \in Rows : (\E g \in accd : g.kind \in {"pre", "start", "read"} /\ g.r = r)
+                => FitsRes(RowCap[r], AddRes(V.other[r], V.claim[r]), SprintUsed(ap.pv, r)))
      \cup Chk("NoFutilePreempt",
               \A g \in pres : CanFitWithoutSprint(V, g.r, CardRes[g.p]) /\ FitsAfterFreeing(V, g.r, CardRes[g.p], g.vs))
      \cup Chk("PreemptMultiStops",
@@ -787,6 +793,7 @@ AdmFlipsOf == CASE Scenario = "deal" -> {"p"} [] OTHER -> {}
 PolFlips == Scenario = "pre"
 PauseFlipsOf == IF Scenario = "pre" THEN {"r2"} ELSE {}
 OtherRowsOf == IF Scenario = "pre" THEN {"r2"} ELSE {}
+ClaimRowsOf == IF Scenario = "pre" THEN {"r2"} ELSE {}
 HandLandsOf == IF Scenario = "deal" THEN {"p"} ELSE {}
 LapsesOf == IF Scenario \in {"pre", "deal"} THEN CIds ELSE {}
 
@@ -820,6 +827,8 @@ EnvMove ==
            \/ \E r \in PauseFlipsOf : phase = "idle" /\ w' = [w EXCEPT !.paused[r] = ~@]
            \/ \E r \in OtherRowsOf, lv \in {0, 1, 2} :
                 OtherMoveOK(r, lv) /\ w' = [w EXCEPT !.other[r] = [cpu |-> lv, mem |-> lv]]
+           \/ \E r \in ClaimRowsOf, lv \in {0, 2} :
+                phase = "idle" /\ lv # w.claim[r].cpu /\ w' = [w EXCEPT !.claim[r] = [cpu |-> lv, mem |-> lv]]
            \/ \E p \in HandLandsOf : HandLandOK(p) /\ w' = [w EXCEPT !.ps[p].st = "landed"]
      \/ \E r \in BusFlipsOf : bus' = [bus EXCEPT ![r] = ~@] /\ w' = w /\ admitted' = admitted /\ lapsed' = lapsed
      \/ \E p \in AdmFlipsOf : admitted' = [admitted EXCEPT ![p] = ~@] /\ w' = w /\ bus' = bus /\ lapsed' = lapsed
@@ -903,6 +912,7 @@ TypeOK ==
        /\ w.up[r] \in BOOLEAN
        /\ w.paused[r] \in BOOLEAN
        /\ w.other[r].cpu \in 0..3 /\ w.other[r].mem \in 0..3
+       /\ w.claim[r].cpu \in 0..2 /\ w.claim[r].mem \in 0..2
        /\ bus[r] \in BOOLEAN
        /\ w.rg[r] \in 0..MaxEnv
   /\ \A p \in Prods : admitted[p] \in BOOLEAN /\ rdy[p] \in 0..UndealtTicks
@@ -977,6 +987,7 @@ ExpiryNeverSilent        == "ExpiryNeverSilent" \notin last.bad
 LapsedReleased           == "LapsedReleased" \notin last.bad
 OfferedIsAccepted        == "OfferedIsAccepted" \notin last.bad
 NoDealBehindPause        == "NoDealBehindPause" \notin last.bad
+NoDealOverClaim          == "NoDealOverClaim" \notin last.bad
 NoFutilePreempt          == "NoFutilePreempt" \notin last.bad
 PreemptMultiStops        == "PreemptMultiStops" \notin last.bad
 

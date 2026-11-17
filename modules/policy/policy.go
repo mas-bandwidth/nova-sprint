@@ -63,6 +63,10 @@ type Questions struct {
 	// entry (check, which runs no tick and reads no bus) is offered the rows
 	// the store and the roster show open and serving.
 	Candidates map[RowsQuestion][]string
+	// BenchFree is each bench row's live R50/R52 free resources from
+	// nova-reserve subscribe (steps.BenchFreeMap). When nil (cold policy check),
+	// newIndex computes free room from working sprint cards and static capacity.
+	BenchFree map[string]map[string]int
 }
 
 // RowsQuestion asks which rows take producer Card's next consumer of Kind.

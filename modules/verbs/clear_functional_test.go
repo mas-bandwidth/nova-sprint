@@ -64,7 +64,7 @@ func TestFunctionalClearWhileWorkersBeat(t *testing.T) {
 			default:
 			}
 			op := store.Op{ID: fmt.Sprintf("beat.%d", i), Epoch: 1, Actor: "alice", Kind: "beat", At: time.Unix(1000, 0),
-				Writes: []store.Write{store.SetRowLoad{Row: "alice", Load1Centi: i, Cores: 8}}}
+				Writes: []store.Write{store.SetRowLoad{Row: "alice", CPUPeakDeci: i % 1000, Tiers: "pro"}}}
 			if r, err := pg.Apply(ctx, op); err == nil && r.Accepted {
 				n++
 				if n == 1 {
@@ -82,7 +82,7 @@ func TestFunctionalClearWhileWorkersBeat(t *testing.T) {
 	n := <-beats
 	want(t, res, 0, "CLEARED epoch=2 opened")
 	s, err := pg.Snapshot(ctx)
-	if err != nil || s.Epoch != 2 || len(s.Cards) != 0 || s.Rows["alice"].Cores != 8 {
+	if err != nil || s.Epoch != 2 || len(s.Cards) != 0 || s.Rows["alice"].Tiers != "pro" {
 		t.Fatalf("after %d beats: %+v %v", n, s, err)
 	}
 	if n == 0 {

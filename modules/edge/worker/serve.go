@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 )
 
 // Config is one worker as `nova-sprint worker` starts it from its flags
@@ -124,6 +125,29 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 			out("worker: every job gets what " + envSh + " exports")
 		}
 	}
+	var livePaused func(row, consumer string, epoch int) int64
+	if rcfg := reserve.ConfigFromEnv("worker@" + c.Row); rcfg.Configured() {
+		rcfg.Log = out
+		sub := reserve.NewSubscriber(rcfg)
+		go sub.Watch(ctx)
+		livePaused = func(row, consumer string, epoch int) int64 {
+			snap := sub.Snapshot()
+			keyEp := consumer
+			if epoch > 0 && consumer != "" {
+				keyEp = fmt.Sprintf("%s@%d", consumer, epoch)
+			}
+			var best int64
+			if row != "" {
+				best = max(snap.PausedMillis[row][keyEp], snap.PausedMillis[row][consumer])
+			}
+			if best <= 0 {
+				for _, pm := range snap.PausedMillis {
+					best = max(best, pm[keyEp], pm[consumer])
+				}
+			}
+			return best
+		}
+	}
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint"), Version: c.Version}
 	killJob := func(jobDir string) (int, error) { return OSKillJob(root, jobDir, timeouts.TerminateGrace) }
 	return NewRunner(Runner{
@@ -133,11 +157,12 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 		Git: &OSGitOps{WorkRoot: workRoot, MirrorRoot: mirrorRoot, SiblingsRoot: filepath.Join(filepath.Dir(mirrorRoot), "siblings"), Exec: ex, Timeouts: timeouts,
 			Token: c.lookupEnv_internal(forge.TokenEnv), GitHubCredential: "gh"},
 		Now: time.Now, Sleep: time.Sleep, After: time.After, WakeEvery: WakeEvery,
-		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
-		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, KillJob: killJob, Config: wall},
-		KillJob: killJob,
-		Procs:   OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
-		Warn: out, Meter: OSMeter{Exec: ex, ReserveBin: "nova-reserve", ReserveDir: DefaultReserveDir, CPU: NewOSCPUSampler(ex)},
+		BusHook:          OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
+		Wall:             &OSReserveWall{UseSandbox: true, Exec: ex, KillGroup: OSKillGroup, KillJob: killJob, Config: wall, LivePausedMillis: livePaused},
+		KillJob:          killJob,
+		LivePausedMillis: livePaused,
+		Procs:            OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,
+		Warn: out, Meter: OSMeter{CPU: NewOSCPUSampler(ex)},
 	})
 }
 

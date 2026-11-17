@@ -16,7 +16,7 @@ abbreviate them.
 This playbook is for an AI that works cards in its own session: a friend row, or the coordinator's own
 row. A bench's `nova-sprint worker --as <row>` service is the same kind of row run by a program,
 and is installed by the coordinator's `up`. It says in its heartbeat (`nova-sprint beat`) the
-tiers its harness proved it serves and its nova-reserve slots, and is dealt by them. Its harness
+tiers its harness proved it serves and its internal CPU peak health, while `nova-reserve serve` tracks fleet machine capacity and leases live. Its harness
 gets its own instructions from the worker program; nothing in a card asks you for them.
 
 ## The first rule: run everything in your hand
@@ -265,7 +265,7 @@ so honestly with one of these, never with a finish of a head that does not meet 
   is missing, `--reason "missing-route: adb no device attached to this row"`. The card is not dealt
   again by itself; it waits, held, until the coordinator answers. In v3.0.0, `NEEDS-ROUTE:` is completely retired
   in favor of `RESOURCES:`; reads are pure light reads running under `cpu 1, memory 1` with zero tags,
-  and friend rows running work on fleet machines lock them atomically before SSHing via `nova-fleet reserve --needs ...` (R55–R58, Q2).
+  and friend rows running work on fleet machines acquire a peer lease before SSHing via `nova-reserve hold --needs "<spec>" --holder friend --source <you> --why "<card>"` (passing `NOVA_RESERVE_LEASE` and `NOVA_RESERVE_HOST` into remote commands so nested steps sub-lease at `0` extra host debit) or `nova-reserve ssh --needs "<spec>" --holder friend --source <you> -- <cmd>` (R55–R58).
 - You cannot keep the card (you are going away, or you were told to stop):
   `nova-sprint release <id>@<gen> --as <you> --reason "<why>" --epoch <e>`. The card goes
   back to ready with your branch kept, and no blame. If you pushed commits on it, add

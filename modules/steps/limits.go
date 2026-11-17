@@ -192,11 +192,16 @@ func (t *tick) rowLimits(n string) {
 // consumerPaused returns cumulative pause+wait duration reported for consumer
 // id on row (R39b).
 func (t *tick) consumerPaused(row, id string) time.Duration {
-	pm := t.v.Rows[row].Resources.PausedMillis
-	if len(pm) == 0 {
-		return 0
+	keyEp := id + "@" + itoa(t.v.Epoch)
+	var ms int64
+	if pm := t.in.Reserve[row].PausedMillis; len(pm) > 0 {
+		ms = max(pm[keyEp], pm[id])
 	}
-	ms := max(pm[id+"@"+itoa(t.v.Epoch)], pm[id])
+	if ms <= 0 {
+		for _, res := range t.in.Reserve {
+			ms = max(ms, res.PausedMillis[keyEp], res.PausedMillis[id])
+		}
+	}
 	if ms <= 0 {
 		return 0
 	}

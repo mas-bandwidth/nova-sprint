@@ -56,18 +56,9 @@ func TestV3BenchCandidatesAndCardResources(t *testing.T) {
 		Epoch:   1,
 		Streams: map[string]store.Stream{"s1": {Name: "s1"}},
 		Rows: map[string]store.Row{
-			"b1": {
-				Name: "b1", State: "up", Session: "s-b1", Role: "worker",
-				Resources: store.RowResources{
-					HeldOther:       map[string]int{"cpu": 1, "memory": 1},
-					SprintConsumers: []string{"p-wind.w1@1", "p-act.w1@1"},
-				},
-			},
+			"b1": {Name: "b1", State: "up", Session: "s-b1", Role: "worker"},
 			"b2": {Name: "b2", State: "up", Session: "s-b2", Role: "worker"},
-			"b3": {
-				Name: "b3", State: "up", Session: "s-b3", Role: "worker",
-				Resources: store.RowResources{AnyPaused: true},
-			},
+			"b3": {Name: "b3", State: "up", Session: "s-b3", Role: "worker"},
 			"k1": {Name: "k1", State: "up", Session: "s-k1", Role: "worker"},
 		},
 		Cards: map[string]store.Card{
@@ -113,7 +104,14 @@ func TestV3BenchCandidatesAndCardResources(t *testing.T) {
 	f := &fakeChild{begin: make(chan struct{}), clock: newFakeClock()}
 	close(f.begin)
 	e := childEngine(newFakeClock(), f)
-	q := Questions{Rows: []RowsQuestion{{"p1", KindWork}}}
+	q := Questions{
+		Rows: []RowsQuestion{{"p1", KindWork}},
+		BenchFree: map[string]map[string]int{
+			"b1": {"cpu": 2, "memory": 1, "ps5": 1},
+			"b2": {"cpu": 8, "memory": 32, "ps5": 1},
+			"b3": {"cpu": 0, "memory": 0, "ps5": 0},
+		},
+	}
 	a, fs := e.Answer(Versions{Active: pv(2, inspect)}, snap, ro, q)
 	require.Empty(t, fs)
 	assert.Equal(t, 2, a.Version)

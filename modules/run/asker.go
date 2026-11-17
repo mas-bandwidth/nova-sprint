@@ -20,18 +20,23 @@ import (
 // carries the deal's own candidates, by name. A version that fails is in the
 // failures, whose judgements the tick applies.
 type asker struct {
-	ctx      context.Context
-	policy   Asking
-	vs       policy.Versions
-	snap     store.Snapshot
-	ro       roster.Roster
-	failures []policy.Failure
-	answers  policy.Answers
-	asked    bool
-	stored   int // the newest stored policy version while none is active (noDeal's fix), else 0
+	ctx       context.Context
+	policy    Asking
+	vs        policy.Versions
+	snap      store.Snapshot
+	ro        roster.Roster
+	benchFree map[string]map[string]int
+	failures  []policy.Failure
+	answers   policy.Answers
+	asked     bool
+	stored    int // the newest stored policy version while none is active (noDeal's fix), else 0
 }
 
 func (t *Ticker) asker(ctx context.Context, ro roster.Roster) *asker {
+	return t.askerWithFree(ctx, ro, nil)
+}
+
+func (t *Ticker) askerWithFree(ctx context.Context, ro roster.Roster, benchFree map[string]map[string]int) *asker {
 	vs := policy.Versions{Seq: t.snap.Seq}
 	if v, ok := t.policyVersion(ctx, t.snap.Policy); ok {
 		vs.Active = &v
@@ -39,7 +44,7 @@ func (t *Ticker) asker(ctx context.Context, ro roster.Roster) *asker {
 	if v, ok := t.policyVersion(ctx, t.prev); ok && t.prev != t.snap.Policy {
 		vs.Prev = &v
 	}
-	a := &asker{ctx: ctx, policy: t.policy, vs: vs, snap: t.snap, ro: ro}
+	a := &asker{ctx: ctx, policy: t.policy, vs: vs, snap: t.snap, ro: ro, benchFree: benchFree}
 	if vs.Active == nil {
 		a.stored = t.storedPolicy(ctx)
 	}
@@ -69,7 +74,7 @@ func (t *Ticker) policyVersion(ctx context.Context, v int) (store.PolicyVersion,
 
 // Ask is steps.Asker.
 func (a *asker) Ask(q steps.Questions) steps.Answers {
-	pq := policy.Questions{Candidates: map[policy.RowsQuestion][]string{}}
+	pq := policy.Questions{Candidates: map[policy.RowsQuestion][]string{}, BenchFree: a.benchFree}
 	for _, c := range q.Order {
 		pq.Order = append(pq.Order, c.ID)
 	}
