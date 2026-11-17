@@ -331,6 +331,7 @@ func (s *Subscriber) runSession(ctx context.Context) error {
 	}()
 
 	rd := bufio.NewReaderSize(conn, 64*1024)
+	refreshPending := false
 	for {
 		line, err := rd.ReadBytes('\n')
 		if err != nil {
@@ -350,6 +351,7 @@ func (s *Subscriber) runSession(ctx context.Context) error {
 		case "refused":
 			return fmt.Errorf("refused (%s): %s", frame.Code, frame.Message)
 		case "snapshot":
+			refreshPending = false
 			s.clearWarn()
 			snap := s.applySnapshot(frame.ReconnectUntil, frame.Machines)
 			if s.cfg.OnUpdate != nil {
@@ -361,21 +363,15 @@ func (s *Subscriber) runSession(ctx context.Context) error {
 				if s.cfg.OnUpdate != nil {
 					s.cfg.OnUpdate(snap)
 				}
-			} else if fresh, ferr := FetchOnce(ctx, s.cfgWithoutCallback()); ferr == nil {
-				snap := s.applySnapshot(fresh.ReconnectUntil, fresh.Machines)
-				if s.cfg.OnUpdate != nil {
-					s.cfg.OnUpdate(snap)
+			} else if !refreshPending {
+				refreshPending = true
+				if err := sendLine(SubscribeMsg{Op: "subscribe", Host: s.cfg.Host}); err != nil {
+					return fmt.Errorf("refresh snapshot on event: %w", err)
 				}
 			}
 		case "pong":
 		}
 	}
-}
-
-func (s *Subscriber) cfgWithoutCallback() Config {
-	c := s.cfg
-	c.OnUpdate = nil
-	return c
 }
 
 func (s *Subscriber) applySnapshot(reconnectUntil string, machines []MachineSnapshot) FleetSnapshot {
@@ -427,7 +423,7 @@ func (s *Subscriber) updateHostPausesLocked(m MachineSnapshot, now time.Time) {
 		if l.Consumer == "" {
 			continue
 		}
-		if strings.EqualFold(l.State, "paused") {
+		if l.IsPaused() {
 			pausedNow[l.Consumer] = max(pausedNow[l.Consumer], l.PausedMs)
 		} else if sp, ok := byCons[l.Consumer]; ok {
 			sp.seenAt = now

@@ -60,6 +60,9 @@ func parseScriptMode_internal(j Job, mode string) (op, a1, a2 string) {
 	case strings.HasPrefix(mode, "dirty:"):
 		return "dirty", strings.TrimPrefix(mode, "dirty:"), ""
 	default:
+		if j.Kind == "read" {
+			return "readok", "", ""
+		}
 		if f, c, ok := strings.Cut(strings.TrimPrefix(mode, "commit:"), ":"); ok && f != "" {
 			return "commit", f, c
 		}

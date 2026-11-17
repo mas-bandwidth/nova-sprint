@@ -343,3 +343,67 @@ func TestFunctionalRestartActsOnlyOnTheKeptRecord(t *testing.T) {
 		})
 	}
 }
+
+func TestFunctionalRunnerReadSkipsDoneWhenGates(t *testing.T) {
+	t.Parallel()
+	pg := startFunctionalPG_internal(t)
+	gb := setupGitBench_internal(t)
+	seedFunctionalWork_internal(t, pg, gb.originDir, gb.baseSHA)
+
+	gitOps := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
+	r, err := NewRunner(Runner{
+		Host:      "b1",
+		RootDir:   t.TempDir(),
+		Sprint:    &StoreSprintClient{Store: pg, Origin: gitOps},
+		Git:       gitOps,
+		Wall:      &OSReserveWall{Config: WallConfig{WorkRoot: gitOps.WorkRoot, MirrorRoot: gitOps.MirrorRoot, ReserveDir: t.TempDir()}},
+		Harnesses: map[string]Harness{"script": &ScriptHarness{}},
+		Now:       time.Now, Sleep: time.Sleep,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	require.NoError(t, r.ProbeRow(ctx, "b1.script", "script"))
+	require.NoError(t, r.StepRow(ctx, "b1.script"))
+
+	rec, err := pg.Apply(ctx, store.Op{
+		ID: "arm-read-gate", Epoch: 1, Actor: "test", Kind: "edit", At: time.Unix(1005, 0).UTC(),
+		Writes: []store.Write{
+			store.SetCardDoneWhen{Card: "p1", DoneWhen: []string{"/bin/false"}},
+			store.PutRow{Name: "b2.script"},
+			store.SetRowState{Row: "b2.script", State: "up"},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, rec.Accepted)
+
+	snap, err := pg.Snapshot(ctx)
+	require.NoError(t, err)
+	rowsMap := map[string]card.Row{
+		"b1.script": card.RowFromStore(snap.Rows["b1.script"], 1, []string{"pro"}),
+		"b2.script": card.RowFromStore(snap.Rows["b2.script"], 1, []string{"pro"}),
+	}
+	planAsk, ref := card.Move(
+		card.FromStore(snap.Cards["p1"]),
+		[]card.Card{card.FromStore(snap.Cards["p1.w1"])},
+		rowsMap,
+		card.StreamFromStore(snap.Streams["s1"]),
+		nil,
+		card.AskReads{Rows: []string{"b2.script"}, Models: []string{""}},
+	)
+	require.Nil(t, ref)
+	rec, err = pg.Apply(ctx, store.Op{
+		ID: "ask-read", Epoch: 1, Actor: "test", Kind: "read", At: time.Unix(1006, 0).UTC(),
+		Expect: planAsk.Expect, Writes: planAsk.Writes,
+	})
+	require.NoError(t, err)
+	require.True(t, rec.Accepted)
+
+	require.NoError(t, r.ProbeRow(ctx, "b2.script", "script"))
+	require.NoError(t, r.StepRow(ctx, "b2.script"))
+
+	snap, err = pg.Snapshot(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "done", snap.Cards["p1.r1.1"].State)
+	assert.Equal(t, "ok", snap.Cards["p1.r1.1"].Result, "reason=%s", snap.Cards["p1.r1.1"].Reason)
+}

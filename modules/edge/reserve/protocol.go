@@ -90,7 +90,8 @@ type Lease struct {
 	Exclusive   bool     `json:"exclusive,omitempty"`
 	Sublease    bool     `json:"sublease,omitempty"`
 	ParentLease string   `json:"parent_lease,omitempty"`
-	State       string   `json:"state,omitempty"` // "active" or "paused"
+	Paused      bool     `json:"paused,omitempty"` // true when displaced by CI in snapshot LeaseView
+	State       string   `json:"state,omitempty"`  // "active" or "paused" on state frames
 	Holder      string   `json:"holder,omitempty"`
 	Source      string   `json:"source,omitempty"`
 	Consumer    string   `json:"consumer,omitempty"`
@@ -100,8 +101,14 @@ type Lease struct {
 	Cores       int      `json:"cores,omitempty"`
 	CPUs        []int    `json:"cpus,omitempty"`
 	PID         int      `json:"pid,omitempty"`
+	Since       string   `json:"since,omitempty"`
 	StartedAt   string   `json:"started_at,omitempty"`
 	PausedMs    int64    `json:"paused_ms,omitempty"`
+}
+
+// IsPaused reports whether l is currently paused behind CI.
+func (l Lease) IsPaused() bool {
+	return l.Paused || strings.EqualFold(l.State, "paused")
 }
 
 // Clone returns a deep copy of l.

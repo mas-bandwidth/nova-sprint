@@ -8,6 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/reserve"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"io"
 	"maps"
@@ -2300,7 +2301,13 @@ func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeo
 	if why != "" {
 		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
-	env, release, err := gateJobserver_internal(SanitizeWallEnv(w.environ_internal(), j.JobDir), j.JobDir)
+	baseEnv := SanitizeWallEnv(w.environ_internal(), j.JobDir)
+	if _, has := envPositiveInt_internal(baseEnv, "NOVA_RESERVE_CPUS"); !has && j.Kind != "read" && j.Resources != "" {
+		if parsed, perr := card.ParseNeeds(j.Resources, nil, nil); perr == nil && parsed.Amounts["cpu"] >= 1 {
+			baseEnv = append(baseEnv, fmt.Sprintf("NOVA_RESERVE_CPUS=%d", parsed.Amounts["cpu"]))
+		}
+	}
+	env, release, err := gateJobserver_internal(baseEnv, j.JobDir)
 	if err != nil {
 		return WallRunResult{}, err
 	}
@@ -2483,19 +2490,31 @@ func slotHeld_internal(res edge.Result) bool {
 	return strings.Contains(res.Stderr, "nova-reserve: HELD ") || strings.Contains(res.Stderr, "nova-reserve: GRANTED ")
 }
 
+func stripReservePrefix_internal(line string) (string, bool) {
+	s := strings.TrimSpace(line)
+	for _, p := range []string{"nova-reserve run: ", "nova-reserve: "} {
+		if rest, ok := strings.CutPrefix(s, p); ok {
+			return rest, true
+		}
+	}
+	return "", false
+}
+
 func noSlot_internal(res edge.Result) bool {
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
-	return res.ExitCode == 1 && (strings.HasPrefix(first, "nova-reserve: no slot within ") ||
-		strings.HasPrefix(first, "nova-reserve: no exclusive hold within ") ||
-		strings.HasPrefix(first, "nova-reserve: NO ROOM") ||
-		strings.HasPrefix(first, "nova-reserve: no room within ") ||
-		strings.HasPrefix(first, "nova-reserve: timeout"))
+	rest, ok := stripReservePrefix_internal(first)
+	return res.ExitCode == 1 && ok && (strings.HasPrefix(rest, "no slot within ") ||
+		strings.HasPrefix(rest, "no hold within ") ||
+		strings.HasPrefix(rest, "no exclusive hold within ") ||
+		strings.HasPrefix(rest, "NO ROOM") ||
+		strings.HasPrefix(rest, "no room within ") ||
+		strings.HasPrefix(rest, "timeout"))
 }
 
 func parseReserveWaitMillis_internal(stderr string) int64 {
 	var total int64
 	for line := range strings.Lines(stderr) {
-		if !strings.HasPrefix(strings.TrimSpace(line), "nova-reserve:") {
+		if _, ok := stripReservePrefix_internal(line); !ok {
 			continue
 		}
 		for _, tok := range strings.Fields(line) {
@@ -2542,7 +2561,8 @@ func reserveFault_internal(res edge.Result) bool {
 		return false
 	}
 	first, _, _ := strings.Cut(strings.TrimLeft(res.Stderr, "\n"), "\n")
-	return strings.HasPrefix(first, "nova-reserve: ")
+	_, ok := stripReservePrefix_internal(first)
+	return ok
 }
 
 // sdkWallKeeps_internal are the names the wall sets itself, which the
@@ -2574,7 +2594,34 @@ func (w *OSReserveWall) sdkWallEnv_internal(ctx context.Context, env []string, t
 	return env, nil
 }
 
+func ensureLocalReserveCapacity_internal(ctx context.Context, ex edge.Exec, cfg WallConfig) error {
+	if !customReserveDir_internal(cfg.ReserveDir) {
+		return nil
+	}
+	bin := cmp.Or(cfg.ReserveBin, "nova-reserve")
+	if !reserveSupportsNeeds_internal(bin) {
+		return nil
+	}
+	capFile := filepath.Join(cfg.ReserveDir, "capacity.json")
+	if _, err := os.Stat(capFile); err == nil {
+		return nil
+	}
+	cpus := strconv.Itoa(max(4, runtime.NumCPU()))
+	argv := []string{bin, "set", "--dir", cfg.ReserveDir, "--cpu", cpus, "--memory", "16"}
+	res, err := cmp.Or[edge.Exec](ex, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: argv, Timeout: 5 * time.Second})
+	if err != nil || res.ExitCode != 0 {
+		if _, stErr := os.Stat(capFile); stErr == nil {
+			return nil
+		}
+		return fmt.Errorf("worker: initializing nova-reserve capacity in %s: %w", cfg.ReserveDir, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
+	}
+	return nil
+}
+
 func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg WallConfig, cmdArgv, env []string, timeout time.Duration) (WallRunResult, error) {
+	if err := ensureLocalReserveCapacity_internal(ctx, w.Exec, cfg); err != nil {
+		return WallRunResult{}, err
+	}
 	fallbackPID := nextWallPID_internal()
 	nonce := fmt.Sprintf("n-%d", fallbackPID)
 	env, err := w.sdkWallEnv_internal(ctx, slices.Clone(env), timeout)
@@ -2587,6 +2634,19 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 	}
 	env = append(env, "NOVA_WORKER_NONCE="+nonce)
 	argv := BuildWallArgv(cfg, j, env, cmdArgv)
+	// Forward nova-reserve connection variables to the trusted outer nova-reserve
+	// wrapper only (after BuildWallArgv has already locked nova-sandbox's --env
+	// whitelist, so nova-sandbox strips credentials before execing inside the wall).
+	outerEnv := slices.Clone(env)
+	for _, kv := range w.environ_internal() {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || v == "" {
+			continue
+		}
+		if k == reserve.AddrEnv || k == reserve.PasswordEnv || k == reserve.SocketEnv {
+			outerEnv = append(slices.DeleteFunc(outerEnv, func(e string) bool { return strings.HasPrefix(e, k+"=") }), kv)
+		}
+	}
 	// In v3, when cfg.ReserveWait is unset/0, we wait in line in nova-reserve (R51).
 	// Bounded by timeout plus remaining deadline or configured ReserveWait.
 	stepTimeout := timeout
@@ -2602,7 +2662,7 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg Wall
 		stepTimeout += time.Duration(pausedMs) * time.Millisecond
 	}
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
-		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: wait + stepTimeout,
+		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: outerEnv, CleanEnv: true, Timeout: wait + stepTimeout,
 		OnStart: func(pid int) {
 			if pid <= 0 || pid == os.Getpid() {
 				pid = fallbackPID

@@ -95,7 +95,7 @@ func ToBenchReserve(snap FleetSnapshot, now time.Time) map[string]steps.BenchRes
 				}
 				br.PausedMillis[l.Consumer] = max(br.PausedMillis[l.Consumer], l.PausedMs)
 			}
-			if strings.EqualFold(l.State, "paused") {
+			if l.IsPaused() {
 				br.AnyPaused = true
 				continue
 			}

@@ -627,15 +627,18 @@ func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
 	bin := cmp.Or(cfg.ReserveBin, "nova-reserve")
 	argv = append(argv, bin, "run")
 	if reserveSupportsNeeds_internal(bin) {
-		host := strings.TrimSpace(j.Row)
-		if host != "" {
+		row := strings.TrimSpace(j.Row)
+		host, _, _ := strings.Cut(row, ".")
+		if customReserveDir_internal(cfg.ReserveDir) {
+			argv = append(argv, "--dir", cfg.ReserveDir)
+		} else if host != "" {
 			argv = append(argv, "--host", host)
 		}
 		needs := "cpu 1, memory 1"
 		if j.Kind != "read" && j.Resources != "" {
 			needs = j.Resources
 		}
-		argv = append(argv, "--needs", needs, "--holder", "bench", "--source", cmp.Or(host, "bench"))
+		argv = append(argv, "--needs", needs, "--holder", "bench", "--source", cmp.Or(row, "bench"))
 		consumerRef := cmp.Or(j.Consumer, "probe")
 		if j.Epoch > 0 && j.Consumer != "" {
 			consumerRef = fmt.Sprintf("%s@%d", j.Consumer, j.Epoch)
@@ -695,9 +698,32 @@ func sandboxFlags_internal(cfg WallConfig, j Job, env []string) []string {
 			flags = append(flags, "--net-allow", j.ProxyAddr)
 		}
 	}
+	seenEnv := map[string]bool{}
+	addEnv := func(name string) {
+		u := strings.ToUpper(name)
+		if name == "" || slices.Contains(wallKeeps_internal, u) || seenEnv[u] {
+			return
+		}
+		seenEnv[u] = true
+		flags = append(flags, "--env", name)
+	}
 	for _, kv := range env {
-		if name, _, ok := strings.Cut(kv, "="); ok && name != "" && !slices.Contains(wallKeeps_internal, strings.ToUpper(name)) && !slices.Contains(flags, name) {
-			flags = append(flags, "--env", name)
+		if name, _, ok := strings.Cut(kv, "="); ok {
+			addEnv(name)
+		}
+	}
+	if reserveSupportsNeeds_internal(cmp.Or(cfg.ReserveBin, "nova-reserve")) {
+		for _, name := range []string{
+			"NOVA_RESERVE_LEASE",
+			"NOVA_RESERVE_HOST",
+			"NOVA_RESERVE_CPUS",
+			"GOMAXPROCS",
+			"CARGO_BUILD_JOBS",
+			"RAYON_NUM_THREADS",
+			"CMAKE_BUILD_PARALLEL_LEVEL",
+			"MAKEFLAGS",
+		} {
+			addEnv(name)
 		}
 	}
 	return flags
@@ -1012,4 +1038,9 @@ func reserveSupportsNeeds_internal(bin string) bool {
 	}
 	reserveSupportsNeedsCache_internal.Store(bin, supports)
 	return supports
+}
+
+func customReserveDir_internal(dir string) bool {
+	d := strings.TrimSpace(dir)
+	return d != "" && filepath.Clean(d) != "/var/tmp/nova-reserve"
 }

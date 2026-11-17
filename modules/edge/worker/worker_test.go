@@ -1143,3 +1143,23 @@ func TestR39bPausedMillisAdvancesJobDeadlineAndDoneWhenBound(t *testing.T) {
 		t.Fatalf("left=%s, want 35s (20s recorded + 15s live delta)", left)
 	}
 }
+
+func TestReserveRunPrefixNoHoldAndFaultClassification(t *testing.T) {
+	t.Parallel()
+	timeoutRes := edge.Result{
+		ExitCode: 1,
+		Stderr:   "nova-reserve run: no hold within 600ms: L-3 (b1:p1.w1@1 on b1); run: nova-reserve status\n",
+	}
+	if !noSlot_internal(timeoutRes) || reserveFault_internal(timeoutRes) {
+		t.Fatalf("expected nova-reserve run timeout to classify as noSlot (not fault): noSlot=%v fault=%v",
+			noSlot_internal(timeoutRes), reserveFault_internal(timeoutRes))
+	}
+	faultRes := edge.Result{
+		ExitCode: 2,
+		Stderr:   "nova-reserve run: cannot reach arbitrator at 127.0.0.1:7680: connection refused; run: nova-reserve status\n",
+	}
+	if noSlot_internal(faultRes) || !reserveFault_internal(faultRes) {
+		t.Fatalf("expected nova-reserve run dial error to classify as reserveFault: noSlot=%v fault=%v",
+			noSlot_internal(faultRes), reserveFault_internal(faultRes))
+	}
+}

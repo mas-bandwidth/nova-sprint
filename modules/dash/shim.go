@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"slices"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -279,7 +278,7 @@ func buildResourceMetrics(w roster.Worker, mh *reserve.MachineSnapshot, at time.
 			}
 			amt := l.ResolvedNeeds(capTot)
 			lbl := reserve.DisplayLabel(l.Holder, l.Label, l.Priority)
-			if strings.EqualFold(l.State, "paused") {
+			if l.IsPaused() {
 				if c := amt["cpu"]; c > 0 {
 					cpuPaused[lbl] += c
 				}
