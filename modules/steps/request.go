@@ -71,6 +71,12 @@ func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) {
 	// judgement condition is not one the machine makes).
 	g.plan.Expect = append(g.plan.Expect, answer.Expect...)
 	g.plan.Writes = append(g.plan.Writes, answer.Writes...)
+	switch r.Event.(type) {
+	case card.Cancel, card.Replace:
+		closed := t.dropped(g.plan.Writes, r)
+		g.plan.Expect = append(g.plan.Expect, closed.Expect...)
+		g.plan.Writes = append(g.plan.Writes, closed.Writes...)
+	}
 	kind := g.kind
 	op := t.storeOp("", []group{g})
 	op.ID = fmt.Sprintf("v%d.%d.%s", v.Epoch, v.Seq, hashBody(op.Expect, op.Writes))
@@ -310,6 +316,32 @@ func relinkTo(e card.Event) []string {
 		return []string{x.To}
 	}
 	return nil
+}
+
+// dropped answers every open judgement about a card a drop's writes fail
+// (the dropped producer and each dependant that fails with it), in the
+// drop's own op and by its actor, as `judge <id> drop` answers the one it
+// names (r.Judgement, answered already): a land judgement offers no drop,
+// and one left open about a failed card can only be answered by hand (seen
+// 2026-11-16). Each is fenced open, so one a tick closed first is a refusal
+// the verb plans again.
+func (t *tick) dropped(writes []store.Write, r Request) card.Plan {
+	failed := set{}
+	for _, w := range writes {
+		if s, ok := w.(store.SetCardState); ok && s.State == card.Fail {
+			failed[s.Card] = struct{}{}
+		}
+	}
+	var p card.Plan
+	for _, id := range sortedKeys(t.v.Judgements) {
+		j := t.v.Judgements[id]
+		if _, gone := failed[j.About]; !gone || j.State != "open" || id == r.Judgement || !aboutCard(j) {
+			continue
+		}
+		p.Expect = append(p.Expect, store.JudgementOpen{ID: id})
+		p.Writes = append(p.Writes, store.AnswerJudgement{ID: id, Answer: "drop", Actor: r.Actor})
+	}
+	return p
 }
 
 // answerPlan answers an open judgement: refused when it is not open, naming

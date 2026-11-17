@@ -96,7 +96,7 @@ func (t *tick) baseRed() {
 		case t.held("base-red", about) && same:
 			continue
 		case last.State == "open":
-			t.expires[last.ID] = fmt.Sprintf("the red set changed (%s at %s): reopened as base-red.%s.%d", RedChecks(f.Failing), shortSHA(f.Tip), about, n+1)
+			t.expires[last.ID] = fmt.Sprintf("the red set changed (%s at %s): reopened as base-red.%s.%d", RedChecks(f.Failing), shortSHA(f.Tip), about, t.nextEpisode("base-red", about))
 		case last.State == "answered" && same:
 			if f.Since.After(last.ClosedAt) || last.ClosedAt.Before(t.v.Since) {
 				break // a red stretch the watch began after the answer (green between, or the base watched again), or an answer this run did not watch from: news, said plain

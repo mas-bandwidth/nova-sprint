@@ -1664,3 +1664,138 @@ friend and a bench; the closing op read from the store's log, red when
 handMoves keeps the hand). Trace binding is owed: the code's walk does not
 emit RowAlive traces, so the model is checked against the code by hand and by
 those tests only, as KinAlive was before it.
+
+# A judgement's id (JudgementId.tla, layer 3)
+
+`JudgementId.tla` is the layout model of a judgement's identity,
+`kind.about.episode` (modules/steps/judge.go `lastEpisodes`, `nextEpisode`,
+`judgeAt`, `put`, `judgements` and `lapse`). `Steps.tla` holds the judgements
+as a set of `[kind, about]` with no episode, so a judgement that expires and
+reopens is the same element there: it cannot say which id the reopened
+episode takes, and it passed while the code named an id that existed. This
+model carries the code's arithmetic: `js` is one kind and subject's
+judgements as the store holds them (an episode number, a state, and the count
+the question reports), the next episode is `Highest + 1`, a count's
+judgement takes `max(count, next)`, and a tick's op is the set of its puts
+and expiries, checked against the store's two rules: one write to a judgement
+in an op (else the op is invalid: the tick ends there, nothing applied, and
+the next tick plans it again) and no put of an id that exists (refused).
+
+`ByCount` picks the cause: a count that only grows, detected from `Limit` on
+and asked once per count (a row's flaps, `judgeAt`), or a cause a step detects
+or not (`judge`). For both, the deadline of an open judgement whose cause
+still holds expires it and reopens it as the next episode in one op. `Init`
+starts from `Stores`: empty, ids from 1, a count's own ids (3, 4 and 5 at 5
+flaps) all open, the same with one answered and one expired, and ids with a
+gap, as a store written by an older planner holds them. The environment
+flaps the row, turns the cause on and off, answers any open judgement (the
+latest or not) and passes the deadline.
+
+Invariants: `IdsUnique` (one judgement per id), `NoDoubleWrite` (no op writes
+a judgement twice), `PutIsFresh` (no put names an id that exists),
+`OneOpenAfterTick` (a tick leaves at most one episode open: the others expire
+superseded), `LapseNeverSilent` (the op that expires what still holds opens
+its next episode), `CountIsAsked` (every count from the limit on is asked
+within a tick, though a reopened episode holds the count's own number),
+`CauseIsOpen`; liveness `DueIsServed` (a deadline that passed is served: the
+judgement is open again as its next episode, superseded or cleared, never due
+for ever), under weak fairness of the tick.
+
+`Variant` is the planner, and the reversed witnesses are cfgs on the module:
+`"by-count"` is the first planner (the next episode is the number of
+judgements plus one, a count names its own episode, every open one past its
+deadline reopens), `"by-highest"` the one after it (one past the highest, a
+count still naming its own episode, every open one past its deadline still
+reopening).
+
+Results, tla2tools v1.8.0 (the CI jar), 2026-11-16, Limit 3, MaxCount 7,
+MaxEnv 7 (each run under 3 s; the nightly `ci-tlc.sh` runs them all):
+
+    JudgementId.cfg               the count's kind, fixed            pass (8,540 states, depth 15)
+    JudgementIdEpisode.cfg        the detected cause's kind, fixed   pass (14,047 states, depth 16)
+    JudgementIdByCount.cfg        by-count, the count's kind         NoDoubleWrite violated
+    JudgementIdByCountWedged.cfg  by-count, the count's kind         DueIsServed violated
+    JudgementIdByCountEpisode.cfg by-count, ids with a gap           NoDoubleWrite violated
+    JudgementIdByCountExists.cfg  by-count, ids with a gap           PutIsFresh violated
+    JudgementIdByHighest.cfg      by-highest, the count's kind       NoDoubleWrite violated
+    JudgementIdByHighestUnasked   by-highest, the count's kind       CountIsAsked violated
+    JudgementIdNeverReopens       reach: a lapse reopens             violated
+    JudgementIdNeverSuperseded    reach: an open one is superseded   violated
+    JudgementIdNeverPastCount     reach: a count asked past its own number   violated
+
+## The counterexamples, checked by hand against the code
+
+- `JudgementIdByCount` (3 states): the store `{3, 4, 5}` all open at 5
+  flaps; Deadline; Tick. The count of judgements is 3, so every open one
+  reopens as episode 4: the op expires 3, 4 and 5 and puts 4 three times,
+  two writes to judgement 4 (it is expired and put) and more. In the code
+  before the fix (`lapse`: `n := t.episodes(...)`, the count from
+  `jindex`'s `episodes[k]++`, reopened as `n+1`; `judgementOp` appends an
+  ExpireJudgement per expiry and a PutJudgement per reopened one) this is one
+  op with ExpireJudgement{flap.r.4} and PutJudgement{flap.r.4}, which the
+  store's check refuses: "a second write to judgement flap.r.4 field state"
+  (modules/store/check.go). `TestSeveralOpenFlapEpisodesLapseAsOne` fails
+  with exactly that error on that code; with 24 judgements numbered 3 to 26
+  the id is 25 (`TestLiveStoreShapeSettles`).
+- `JudgementIdByCountWedged` (11 states, then stuttering): the count reaches
+  3 and is asked as episode 3; it reaches 5; episode 3 is answered; the tick
+  asks 5 as episode 5; its deadline passes; the tick reopens it as the count
+  of judgements plus one, 3, which exists (answered). The store refuses the
+  op (the judgement exists), the expiry in it is not applied either, and
+  every later tick plans the same op: `due` for ever. In the code this is
+  `lapse` naming flap.r.3 at two judgements, as above.
+- `JudgementIdByCountEpisode` (3 states): `{1, 4, 7}` open, the cause on;
+  Deadline; Tick: three judgements, so all three reopen as 4, which is one
+  of them.
+- `JudgementIdByCountExists` (4 states): `{1, 4, 7}` open with the cause
+  off; the tick clears all three; the cause comes on; the tick opens the
+  count of judgements plus one, episode 4, which exists: refused every
+  tick, and the cause is never judged (`put`: `n = t.episodes(...) + 1`).
+- `JudgementIdByHighest` (3 states): the same store and moves as ByCount.
+  One past the highest is 6, which does not exist, but each of the three
+  open ones reopens: three puts of episode 6 in one op. In the code after
+  the first fix (`jindex` keeping the highest episode, `lapse` unchanged)
+  the op holds three PutJudgement{flap.r.6}: "a second write to judgement
+  flap.r.6 field state", the error `TestSeveralOpenFlapEpisodesLapseAsOne`
+  fails with on that code.
+- `JudgementIdByHighestUnasked` (5 states): `{3 open, 4 answered}` at 4
+  flaps; Deadline; the tick reopens 3 as episode 5; a flap, to 5; the tick
+  asks nothing, because the id the count names, 5, exists (`judgeAt`:
+  `if _, exists := t.v.Judgements[id]; exists ... return`): 5 flaps are never
+  asked. The fixed planner asks them as episode 6
+  (`JudgementIdNeverPastCount`'s trace is this one, with that tick;
+  `TestFlapRaisedOncePerCountPastReopenedEpisodes`).
+
+## Trace validation
+
+`JudgementIdTrace.tla` constrains the model to a recording of the code:
+`TestJudgementIdTraceWalk` (modules/steps/episodes_trace_test.go) runs the
+steps' own `Tick` on the Fake, every op applied through the store's check (an
+invalid op fails the walk), from stores of random episode numbers and states.
+The `count` walks are one row's flap judgements (`judgementid-walk-count-<n>`,
+`ByCount = TRUE`), the `episode` walks one stream's admission judgements
+(`judgementid-walk-episode-<n>`, each with its own cfg, `ByCount = FALSE`):
+a scripted walk each (the collided store, its deadline, the tick that reopens
+one and supersedes two, a flap asked past its count) and six random walks of
+50 moves. `make-traces.sh check steps-fixtures` checks them.
+
+The mapping: `js` is the store's judgements of the kind and subject, read
+back after every move: `ep` from the id (`episodeOf`), `st` the state, `cnt`
+the count in the question (`has flapped <n> times`; 0 for admission). `count`
+is the row's flaps, `cause` whether the walk's admission cause is on, `due`
+whether an open judgement's deadline has passed on the walk's clock. `last`
+is not recorded: it is the model's account of the tick's op, so a trace
+matches only when the code's tick left what the model's valid op leaves.
+What the trace module adds: `TraceInit` takes `js` and `count` from the first
+record (any store, not only `Stores`); `MaxCount` and `MaxEnv` are 1000.
+What the walk leaves out: an answered watch judgement's quiet
+(`AnsweredQuiet.tla` owns it), so the walk answers an admission judgement
+only when it is the one open and moves the clock past the quiet; a judgement
+with no detected cause closing at its deadline (`cleared: no step detects`),
+which is one expiry and no put; and the model's stores with an open flap
+judgement below the limit, which the code never writes.
+
+The breaker (`tla/traces/judgementid-breaker`, a committed fixture,
+`TestJudgementIdTraceRefusesDivergence`) is the collided store, its deadline,
+and the tick as the first planner left it: its op invalid, the store as it
+was. Refused at 3 of 3 (Tick).
