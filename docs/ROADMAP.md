@@ -31,6 +31,7 @@ Ideas and future work for nova-sprint. Nothing here is scheduled; the owner deci
 | Every coordinator verb checks at commit that the caller still holds the seat: judge, land, hold, drop, policy, add, clear and unhook <row> check it only on the read, so after a take-over the old coordinator's op in flight commits; stream add, stop, start and identity are fenced (UnchangedSince Hooks) | ❌ |
 | A card that repairs a red base lands on its own gates: when main is red, a card whose stream exists to make it green is gated on its own DONE-WHENs and its CI checks that were green at the base or that it names, never refused because the base is red | ❌ |
 | A bench run's verdict comes from the pushed head and the DONE-WHENs the worker runs, as in v1, never from a result.json the model must write; bench ok% near 100% on a real board is the release bar | ❌ |
+| A tick op the store's check refuses as invalid ends only itself: the tick's later ops still apply, as after a refusal, and the run still says so | ❌ |
 | complete | 0% |
 
 [Source data](roadmap.sexp)

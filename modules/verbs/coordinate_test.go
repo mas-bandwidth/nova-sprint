@@ -410,3 +410,62 @@ func TestJudgeAGroupRefusesBeforeAnswering(t *testing.T) {
 		t.Fatalf("a refused group answered stall.p1.1: %+v", j)
 	}
 }
+
+// TestDropClosesTheJudgementsAboutIt: a drop fails its card and, in the same
+// op, answers every open judgement about a card the op fails (the dropped
+// one and the dependants that fail with it), so none is left open about a
+// failed card: a land judgement offers no drop of its own, and a judgement
+// nobody can act on stayed open until answered by hand. The dry run says
+// each one; a judgement of a kind that is not about a card is left alone,
+// whatever its subject is called.
+func TestDropClosesTheJudgementsAboutIt(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	dependant(&s)
+	withJudgement("land.p4.1", "land", "land", "p4", "land | fix | retry")(&s)
+	withJudgement("held.p3.1", "held", "held", "p3", "unhold | drop")(&s)
+	withJudgement("flap.p4.3", "flap", "flap", "p4", "retry")(&s) // a row named as the card is
+	w := worldFrom(t, s)
+	want(t, w.do("carol", "drop", "p4", "--reason", "not needed", "--dry-run"), 0,
+		"p4->fail", "p3->fail", "judgement held.p3.1 answered drop", "judgement land.p4.1 answered drop", "(dry run)")
+	for _, id := range []string{"land.p4.1", "held.p3.1"} {
+		if j := w.snap(t).Judgements[id]; j.State != "open" {
+			t.Fatalf("a dry run closed %s: %+v", id, j)
+		}
+	}
+	want(t, w.do("carol", "drop", "p4", "--reason", "not needed"), 0,
+		"p4->fail", "p3->fail", "judgement held.p3.1 answered drop", "judgement land.p4.1 answered drop")
+	after := w.snap(t)
+	for _, id := range []string{"land.p4.1", "held.p3.1"} {
+		if j := after.Judgements[id]; j.State != "answered" || j.Answer != "drop" || j.Actor != "carol" {
+			t.Fatalf("judgement %s: %+v", id, j)
+		}
+	}
+	if j := after.Judgements["flap.p4.3"]; j.State != "open" {
+		t.Fatalf("a judgement about a row was closed: %+v", j)
+	}
+	for _, j := range after.Judgements {
+		if c, ok := after.Cards[j.About]; ok && c.State == "fail" && j.State == "open" && j.Kind != "flap" {
+			t.Fatalf("judgement %s is open about failed card %s", j.ID, c.ID)
+		}
+	}
+}
+
+// TestJudgeDropClosesTheOtherJudgementsAboutIt: a judgement answered drop
+// fails its card; a second judgement open about the same card is answered
+// in the same op, once each.
+func TestJudgeDropClosesTheOtherJudgementsAboutIt(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	dependant(&s)
+	withJudgement("held.p4.1", "held", "held", "p4", "unhold | drop")(&s)
+	withJudgement("cannot-read.p4.1", "cannot-read", "cannot-read", "p4", "retry | drop")(&s)
+	w := worldFrom(t, s)
+	want(t, w.do("carol", "judge", "held.p4.1", "drop", "--reason", "not needed"), 0, "p4->fail", "judgement held.p4.1 answered drop", "judgement cannot-read.p4.1 answered drop")
+	after := w.snap(t)
+	for _, id := range []string{"held.p4.1", "cannot-read.p4.1"} {
+		if j := after.Judgements[id]; j.State != "answered" || j.Answer != "drop" {
+			t.Fatalf("judgement %s: %+v", id, j)
+		}
+	}
+}

@@ -19,6 +19,12 @@
 #   AnsweredQuiet.tla with AnsweredQuiet.cfg (an answered watch judgement's
 #     quiet) must pass; its witnesses AnsweredQuiet{Reopens,Swallows} and
 #     reach check AnsweredQuietNeverReopens must be violated
+#   JudgementId.tla with JudgementId.cfg and JudgementIdEpisode.cfg (a
+#     judgement's id: the next episode, one write a judgement an op, one open
+#     after a tick) must pass; its witnesses JudgementIdByCount{,Wedged,Episode,
+#     Exists} and JudgementIdByHighest{,Unasked} and reach checks
+#     JudgementIdNever{Reopens,Superseded,PastCount}, each a cfg on
+#     JudgementId.tla, must be violated
 #   RowAlive.tla with RowAlive.cfg (every row up on its hook, down off it,
 #     its hand returned and dealt again, retired when nova-config stops naming
 #     it and back when it names it again: docs/README.md "Hard
@@ -226,6 +232,8 @@ run BaseRed pass . BaseRed.cfg BaseRed.tla 2
 run MergeNag pass . MergeNag.cfg MergeNag.tla 2
 run MergeFlow pass . MergeFlow.cfg MergeFlow.tla 2
 run AnsweredQuiet pass . AnsweredQuiet.cfg AnsweredQuiet.tla 2
+run JudgementId pass . JudgementId.cfg JudgementId.tla 2
+run JudgementIdEpisode pass . JudgementIdEpisode.cfg JudgementId.tla 2
 run Hook pass . Hook.cfg Hook.tla 2
 
 # Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
@@ -274,6 +282,18 @@ done
 # violated on VerbFence.tla.
 for m in VerbFenceOneTry VerbFenceOneTryCoarse VerbFenceNoOwn VerbFenceNeverRetried VerbFenceNeverDealt; do
     run "witness-$m" violate . "$m.cfg" VerbFence.tla 1
+done
+# JudgementId's reversed witnesses (the next episode named by the count of
+# judgements: an id that exists, the tick thrown away for ever; one past the
+# highest with every lapse still reopening: one new id put twice, and a count
+# never asked) and reach checks (a lapse reopens; an open episode is
+# superseded; a count is asked past its own number), each a cfg on
+# JudgementId.tla.
+for m in ByCount ByCountWedged ByCountEpisode ByCountExists ByHighest ByHighestUnasked; do
+    run "witness-JudgementId$m" violate . "JudgementId$m.cfg" JudgementId.tla 1
+done
+for m in NeverReopens NeverSuperseded NeverPastCount; do
+    run "reach-JudgementId$m" violate . "JudgementId$m.cfg" JudgementId.tla 1
 done
 # BaseRed's reach checks (a judgement opens; a changed red set opens the next).
 for m in NeverOpens NeverReplaced; do

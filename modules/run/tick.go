@@ -92,25 +92,49 @@ func judgementOp(a *asker, o Observed) (store.Op, bool) {
 // carries the judgement deadline and expires there (steps' judgements). The
 // refusals the last plan left are kept for the next plan.
 func (t *Ticker) RosterUnread(ctx context.Context, now time.Time, cause error) error {
-	n := 1
+	return t.engineJudgement(ctx, now, "roster", "the roster read from nova-config failed, so nothing is planned or dealt: "+edge.RedactN(cause.Error(), edge.FailureMax))
+}
+
+// tickInvalid opens the engine judgement for a tick the store's check ended:
+// an op of the plan was invalid (store.ErrInvalid), which is a defect in the
+// planner, never a refusal, so apply stopped there and no later op of the
+// tick was applied. The plan is a function of the store, so the next tick
+// plans the same op and ends the same way, every tick, until the store
+// changes under it (seen 2026-11-16: 25,000 ticks in a row, nothing landed,
+// and the only sign was status=error in the run's log). The run still stops
+// at the invalid op, loudly: skipping it would apply a plan the planner did
+// not make. This says so where the coordinator is pushed (NEEDS YOU, then
+// UNSEEN, and check's open judgement): one judgement, once while one is
+// open; one answered while ticks still end so is opened again by the next
+// tick. Any other tick error (the store away, the lock lost) is not a
+// planner defect and opens nothing.
+func (t *Ticker) tickInvalid(ctx context.Context, now time.Time, cause error) error {
+	if !errors.Is(cause, store.ErrInvalid) {
+		return nil
+	}
+	return t.engineJudgement(ctx, now, "tick", "the tick ends at an op the store's check refuses as invalid, every tick, and no op planned after it is applied (nothing behind it deals, lands or is judged): "+
+		edge.RedactN(cause.Error(), edge.FailureMax)+". This is a defect in the planner: report it; changing the record the op names (answering the judgement, moving the card) lets the next tick plan another op")
+}
+
+// engineJudgement opens the run's own engine judgement about about, once
+// while one is open, as the next episode (steps.NextEpisode). It carries the
+// judgement deadline and expires there (steps' judgements: no step detects
+// it), so a cause that still holds opens the next one.
+func (t *Ticker) engineJudgement(ctx context.Context, now time.Time, about, question string) error {
 	for _, j := range t.snap.Judgements {
-		if j.Kind != "engine" || j.About != "roster" {
-			continue
-		}
-		if j.State == "open" {
+		if j.Kind == "engine" && j.About == about && j.State == "open" {
 			return nil
 		}
-		n++
 	}
 	tmo := t.timeouts.Judgement
 	if tmo <= 0 {
 		tmo = steps.Engine.Timeouts.Judgement
 	}
-	id := fmt.Sprintf("engine.roster.%d", n)
-	op := store.Op{ID: fmt.Sprintf("judge.engine.roster.%d.%d", t.snap.Epoch, t.snap.Seq), Epoch: t.snap.Epoch, Actor: "sprint", Kind: "judgement", At: now,
-		Writes: []store.Write{store.PutJudgement{ID: id, Kind: "engine", About: "roster", Group: "engine",
-			Question: "the roster read from nova-config failed, so nothing is planned or dealt: " + edge.RedactN(cause.Error(), edge.FailureMax),
-			Command:  "nova-sprint judge " + id + " <choice> --reason <why>   choices: retry", Deadline: now.Add(time.Duration(tmo) * time.Second)}}}
+	n := steps.NextEpisode(t.snap.Judgements, "engine", about)
+	id := fmt.Sprintf("engine.%s.%d", about, n)
+	op := store.Op{ID: fmt.Sprintf("judge.engine.%s.%d.%d", about, t.snap.Epoch, t.snap.Seq), Epoch: t.snap.Epoch, Actor: "sprint", Kind: "judgement", At: now,
+		Writes: []store.Write{store.PutJudgement{ID: id, Kind: "engine", About: about, Group: "engine", Question: question,
+			Command: "nova-sprint judge " + id + " <choice> --reason <why>   choices: retry", Deadline: now.Add(time.Duration(tmo) * time.Second)}}}
 	refused := t.refused
 	_, err := t.apply(ctx, []store.Op{op}, false)
 	t.refused = refused
@@ -315,6 +339,14 @@ type Observed struct {
 // lands while stopped), and up's steps 9-10 wait on a fresh, never-started
 // store for the hooked rows to come up.
 func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, error) {
+	reqs, err := t.tick(ctx, o)
+	if err != nil { // an invalid op is judged (tickInvalid); the tick's own error stands
+		err = errors.Join(err, t.tickInvalid(ctx, o.Now, err))
+	}
+	return reqs, err
+}
+
+func (t *Ticker) tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, error) {
 	t.counts = TickCounts{}
 	t.inbox = append(t.inbox, t.fresh(o.Results)...) // kept even if this tick ends early
 	if err := t.health.Check(ctx); err != nil {
