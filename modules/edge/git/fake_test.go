@@ -22,6 +22,7 @@ type fakeForgeWorld_internal struct {
 	runs     []forge.Run // the repo's unfinished workflow runs (one repo per fake)
 	runsErr  error       // Runs fails with it
 	cancel   []int64     // the runs CancelRun cancelled, in order
+	rerun    []int64     // the runs RerunFailed reran, in order
 }
 
 func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
@@ -63,6 +64,18 @@ func (f *fakeForge_internal) CancelRun(_ context.Context, _ string, id int64) er
 	defer f.world.mu.Unlock()
 	f.world.cancel = append(f.world.cancel, id)
 	f.world.runs = slices.DeleteFunc(f.world.runs, func(r forge.Run) bool { return r.ID == id })
+	return nil
+}
+
+// RerunFailed records run id as rerun.
+func (f *fakeForge_internal) RerunFailed(_ context.Context, _ string, id int64) error {
+	f.call_internal("RerunFailed")
+	if f.world == nil {
+		return nil
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	f.world.rerun = append(f.world.rerun, id)
 	return nil
 }
 
@@ -339,6 +352,18 @@ func computeTreeHash_internal(files map[string]string) string {
 	}
 	return fmt.Sprintf("tree-%016x", h)
 }
+func (f *Fake) LsRemoteRefs(_ context.Context, _ string, refs ...string) (map[string]string, error) {
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	out := make(map[string]string, len(refs))
+	for _, r := range refs {
+		if sha, ok := f.world.originRefs[r]; ok {
+			out[r] = sha
+		}
+	}
+	return out, nil
+}
+
 func (f *Fake) Fetch(_ context.Context, _ string, refs ...string) error {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()

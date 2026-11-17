@@ -127,3 +127,25 @@ func (c *Client) CancelRun(ctx context.Context, repo string, id int64) error {
 func finished_internal(out string) bool {
 	return strings.Contains(out, "Cannot cancel a workflow run that is completed") || strings.Contains(out, "HTTP 409")
 }
+
+// RerunFailed reruns the failed jobs of workflow run id of repo. GitHub's 409
+// (already running or no longer rerunnable) is no fault: the caller bounds its
+// rerun attempts.
+func (c *Client) RerunFailed(ctx context.Context, repo string, id int64) error {
+	if repo == "" || id <= 0 {
+		return fmt.Errorf("forge refused: RerunFailed requires a repo and a run id")
+	}
+	path, err := RepoPath(repo)
+	if err != nil {
+		return err
+	}
+	stdout, stderr, err := c.runGH_internal(ctx, "api", "--method", "POST", "repos/"+path+"/actions/runs/"+strconv.FormatInt(id, 10)+"/rerun-failed-jobs")
+	if err != nil && rerunConflict_internal(stdout+stderr) {
+		return nil
+	}
+	return err
+}
+
+func rerunConflict_internal(out string) bool {
+	return strings.Contains(out, "HTTP 409") || strings.Contains(out, "already running")
+}

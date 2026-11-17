@@ -426,7 +426,7 @@ func TestTickBudgetAndCarry(t *testing.T) {
 	s.row("r1", 4, "pro")
 	s.row("r2", 4, "pro", "heavy")
 	for i := 1; i <= 3; i++ {
-		s.stream(fmt.Sprintf("s%d", i))
+		s.must("stream", store.PutStream{Name: fmt.Sprintf("s%d", i), Repo: fmt.Sprintf("git@example.com:r%d.git", i), Base: "main", Pos: i})
 		s.producer(fmt.Sprintf("p%d", i), fmt.Sprintf("s%d", i), "pro", "a/x")
 	}
 	s.tick()

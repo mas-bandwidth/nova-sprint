@@ -201,4 +201,9 @@ func (f *Fake) CancelRun(context.Context, string, int64) error {
 	return nil
 }
 
+func (f *Fake) RerunFailed(context.Context, string, int64) error {
+	f.call_internal("RerunFailed")
+	return nil
+}
+
 var _ Forge = (*Fake)(nil)

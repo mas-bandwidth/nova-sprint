@@ -472,6 +472,19 @@ PromElig(V, s, cl, J) == {p \in V.ob : Stream[p] = s /\ V.ps[p].st = "merging" /
 PromPicks(V, cl, F, J) ==
   {First(ProdSeq, PromElig(V, s, cl, J)) : s \in {s \in Streams : ~BusyK(F, s, "promote") /\ PromElig(V, s, cl, J) # {}}}
 PromReq(V, p) == [id |-> <<Epoch, "promote", PKey(p), V.ps[p].head>>, stream |-> Stream[p], sent |-> FALSE]
+Lane(s, k) == IF k = "promote" \/ MainBase[s] THEN "main" ELSE s
+LaneBusy(F, l) == \E f \in F : f.id[2] \in {"land", "promote"} /\ Lane(f.stream, f.id[2]) = l
+LaneCands(V, cl, F, J) ==
+  {LandReq(V, First(ProdSeq, LandElig(V, s, cl, J))) :
+     s \in {s \in Streams : ~LaneBusy(F, Lane(s, "land")) /\ LandElig(V, s, cl, J) # {}}}
+  \cup {PromReq(V, First(ProdSeq, PromElig(V, s, cl, J))) :
+     s \in {s \in Streams : ~LaneBusy(F, Lane(s, "promote")) /\ PromElig(V, s, cl, J) # {}}}
+LanesOf(R) == {Lane(f.stream, f.id[2]) : f \in R}
+LaneChoices(V, cl, F, J) ==
+  LET C == LaneCands(V, cl, F, J)
+  IN {R \in SUBSET C :
+        /\ LanesOf(R) = LanesOf(C)
+        /\ \A f, g \in R : f # g => Lane(f.stream, f.id[2]) # Lane(g.stream, g.id[2])}
 
 -----------------------------------------------------------------------------
 (* Order, budget, pack, apply                                             *)
@@ -581,19 +594,19 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, proms, cl
               \A p \in picks : \A t \in After[p] : V.ps[t].st # "merging")
      \cup Chk("AfterNeverHolds",
               \A s \in Streams :
-                (~Busy(inflight, s) /\ \E p \in Prods :
+                (~LaneBusy(inflight, Lane(s, "land")) /\ \E p \in Prods :
                     Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin Cards(gs) /\ p \notin V.ob
                     /\ ~Judged(jv, p) /\ \A t \in After[p] : V.ps[t].st # "merging")
-                  => \E p \in picks : Stream[p] = s)
+                  => Lane(s, "land") \in LanesOf({LandReq(V, p) : p \in picks} \cup {PromReq(V, p) : p \in proms}))
      \cup Chk("MergingCovered",
               \A p \in Prods :
-                (V.ps[p].st = "merging" /\ PKey(p) \notin cl4) =>
-                  \/ p \notin V.ob /\ Busy(inflight, Stream[p])
-                  \/ p \notin V.ob /\ \E q \in picks : Stream[q] = Stream[p]
-                  \/ p \in V.ob /\ BusyK(inflight, Stream[p], "promote")
-                  \/ p \in V.ob /\ \E q \in proms : Stream[q] = Stream[p]
-                  \/ Judged(jv, p)
-                  \/ p \notin V.ob /\ \E t \in After[p] : V.ps[t].st = "merging")
+                LET lp == Lane(Stream[p], IF p \in V.ob THEN "promote" ELSE "land")
+                    planned == LanesOf({LandReq(V, q) : q \in picks} \cup {PromReq(V, q) : q \in proms})
+                IN (V.ps[p].st = "merging" /\ PKey(p) \notin cl4) =>
+                     \/ LaneBusy(inflight, lp)
+                     \/ lp \in planned
+                     \/ Judged(jv, p)
+                     \/ p \notin V.ob /\ \E t \in After[p] : V.ps[t].st = "merging")
      \cup Chk("NoDealWithoutPolicy",
               ~V.pol => /\ \A g \in accd : g.kind \notin {"pre", "start", "read"}
                         /\ [kind |-> "no-policy", about |-> "coord"] \in jsn)
@@ -698,21 +711,21 @@ Tick(a, due) ==
         \E cl4 \in {cl3r \cup Cards(dl.gs)} :
         \E jl \in {LandJudged(V, inbox, inflight)} :
         \E jv \in {jsnap \cup jl} :
-        \E picks \in {LandPicks(V, cl4, inflight, jv)} :
-        \E proms \in {PromPicks(V, cl4, inflight, jv)} :
+        \E lands \in LaneChoices(V, cl4, inflight, jv) :
         \E E \in {pre.gs \o SelectSeq(dl.gs, LAMBDA g : g.blk) \o inb.es \o rgs \o fyes \o ffix \o rel \o SelectSeq(dl.gs, LAMBDA g : ~g.blk)} :
         \E adm \in {Admit(E)} :
         \E ops \in {PackOps(adm, split)} :
         \E ap \in {ApplyFold(V, ops, 1, [w |-> W, pv |-> V, ok |-> {}, ref |-> {}])} :
         \E accd \in {UNION {GroupsIn(ops[i]) : i \in ap.ok}} :
         \E pres \in {{adm[i] : i \in {i \in 1..Len(adm) : adm[i].kind = "pre"}}} :
-          LET OpOf(g) == CHOOSE i \in 1..Len(ops) : g \in GroupsIn(ops[i])
+          LET picks == {f.id[3][1] : f \in {x \in lands : x.id[2] = "land"}}
+              proms == {f.id[3][1] : f \in {x \in lands : x.id[2] = "promote"}}
+              OpOf(g) == CHOOSE i \in 1..Len(ops) : g \in GroupsIn(ops[i])
               admIn == {adm[i] : i \in {i \in 1..Len(adm) : adm[i].stamp > 0}}
               used  == {g \in admIn : g.kind = "none" \/ OpOf(g) \in ap.ok}
               ustamps == {g.stamp : g \in used}
               uids  == {inbox[i].id : i \in {i \in 1..Len(inbox) : inbox[i].stamp \in ustamps}}
               stops == UNION {g.req : g \in accd}
-              lands == {LandReq(V, p) : p \in picks} \cup {PromReq(V, p) : p \in proms}
               jnew == {[kind |-> "unserved", about |-> t] : t \in pre.uns \cup dl.uns}
                         \cup {[kind |-> "cannot-read", about |-> p] : p \in dl.cr}
                         \cup {[kind |-> "policy", about |-> q] : q \in pre.miss \cup dl.miss}
@@ -964,6 +977,12 @@ EdgeAfterAccepted ==
                           \/ w.ps[f.id[3][1]].att > f.id[4]
 
 LandedOnMain == \A p \in Prods : w.ps[p].st = "landed" => p \in onmain
+
+(* At most one land or promote request is in flight per (repo, base) lane. *)
+OnePerLane ==
+  \A f, g \in inflight :
+    (f # g /\ f.id[2] \in {"land", "promote"} /\ g.id[2] \in {"land", "promote"})
+      => Lane(f.stream, f.id[2]) # Lane(g.stream, g.id[2])
 
 OneGroupPerCard          == "OneGroupPerCard" \notin last.bad
 GroupWhole               == "GroupWhole" \notin last.bad

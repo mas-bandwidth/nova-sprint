@@ -249,3 +249,20 @@ func TestTokenIsTheOnlyCredential(t *testing.T) {
 		t.Fatalf("a client with no token changed the credential helpers: %v", seen[0].Env)
 	}
 }
+
+func TestLsRemoteRefsBatchesIntoOneCall(t *testing.T) {
+	t.Parallel()
+	s1, s2 := strings.Repeat("1", 40), strings.Repeat("2", 40)
+	calls := 0
+	c := New(Config{Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		calls++
+		if !slices.Equal(cmd.Argv[1:], []string{"ls-remote", "origin", "refs/heads/main", "refs/heads/sprint/s1/c1", "refs/heads/sprint/s1/missing"}) {
+			t.Fatalf("argv = %v", cmd.Argv)
+		}
+		return edge.Result{Stdout: s1 + "\trefs/heads/main\n" + s2 + "\trefs/heads/sprint/s1/c1\n"}, nil
+	})})
+	got, err := c.LsRemoteRefs(context.Background(), "/repo", "refs/heads/main", "refs/heads/sprint/s1/c1", "refs/heads/sprint/s1/missing")
+	if err != nil || calls != 1 || got["refs/heads/main"] != s1 || got["refs/heads/sprint/s1/c1"] != s2 || got["refs/heads/sprint/s1/missing"] != "" {
+		t.Fatalf("got = %v, err = %v, calls = %d", got, err, calls)
+	}
+}

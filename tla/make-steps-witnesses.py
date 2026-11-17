@@ -16,7 +16,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
-    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "ExpiryNeverSilent",
+    "NeverDealtAbsent", "NeverDealtUnadmitted", "AdmissionShown", "LandedOnMain", "OnePerLane", "ExpiryNeverSilent",
     "LapsedReleased", "HandEmptyWhenClosed", "OfferedIsAccepted",
     "NoDealBehindPause", "NoDealOverClaim", "NoFutilePreempt", "PreemptMultiStops",
 ]
@@ -195,6 +195,13 @@ WITNESSES = [
      "onto a workstream base records landed before it is on main.",
      [("LandKind(k, p) == IF k = \"promote\" \\/ MainBase[Stream[p]] THEN \"landed\" ELSE \"onbase\"",
        "LandKind(k, p) == \"landed\"   \\* FAULT: was onbase off a main base", 1)]),
+    ("StepsTwoOnLane", "OnePerLane", "burst",
+     "The old rule (v2.0.53): each stream dispatches its own land or promote\n"
+     "request independently on a shared (repo, base) lane, racing two merges\n"
+     "onto main at once.",
+     [("        \\E lands \\in LaneChoices(V, cl4, inflight, jv) :",
+       "        \\E lands \\in {{LandReq(V, p) : p \\in LandPicks(V, cl4, inflight, jv)}\n"
+       "                         \\cup {PromReq(V, p) : p \\in PromPicks(V, cl4, inflight, jv)}} :   \\* FAULT", 1)]),
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",

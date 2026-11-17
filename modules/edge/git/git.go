@@ -59,6 +59,11 @@ type Git interface {
 	// means on main").
 	Main(ctx context.Context, repoDir string) (branch, tip string, err error)
 }
+
+// RefsReader reads several exact refs on origin in one ls-remote call.
+type RefsReader interface {
+	LsRemoteRefs(ctx context.Context, repoDir string, refs ...string) (map[string]string, error)
+}
 type Config struct {
 	Binary, AuthorName, AuthorEmail string
 	Exec                            edge.Exec
@@ -222,6 +227,34 @@ func (c *Client) LsRemote(ctx context.Context, repoDir, ref string) (string, boo
 		return strings.ToLower(fields[0]), true, nil
 	}
 	return "", false, nil
+}
+
+// LsRemoteRefs reads exact refs/... names on origin in a single ls-remote
+// call; refs absent from origin are omitted from the returned map.
+func (c *Client) LsRemoteRefs(ctx context.Context, repoDir string, refs ...string) (map[string]string, error) {
+	if len(refs) == 0 {
+		return map[string]string{}, nil
+	}
+	for _, r := range refs {
+		if !strings.HasPrefix(r, "refs/") {
+			return nil, fmt.Errorf("git refused: LsRemoteRefs requires full refs/... names, got %q", r)
+		}
+	}
+	args := append([]string{"ls-remote", "origin"}, refs...)
+	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.PushTimeout, args...)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, c.failed_internal(code, stdout, stderr, nil, args...)
+	}
+	out := make(map[string]string, len(refs))
+	for _, line := range strings.Split(stdout, "\n") {
+		if f := strings.Fields(line); len(f) == 2 && isFullSHA_internal(f[0]) {
+			out[f[1]] = strings.ToLower(f[0])
+		}
+	}
+	return out, nil
 }
 
 // Tip is branch's tip at the clone address url (CloneURL), read with one
