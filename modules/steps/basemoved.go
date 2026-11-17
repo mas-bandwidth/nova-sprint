@@ -57,7 +57,7 @@ func (t *tick) baseMoved() {
 			t.held("base-moved", about)
 			continue
 		case last.State == "open":
-			t.expires[last.ID] = fmt.Sprintf("the base was moved again (to %s): reopened as base-moved.%s.%d", shortSHA(m.To), about, n+1)
+			t.expires[last.ID] = fmt.Sprintf("the base was moved again (to %s): reopened as base-moved.%s.%d", shortSHA(m.To), about, t.nextEpisode("base-moved", about))
 		case last.State == "answered" && same:
 			if since, quiet := t.answeredQuiet("base-moved", about); quiet {
 				continue

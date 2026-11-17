@@ -32,6 +32,11 @@
 #   mergenag-walk-<n>   modules/steps/nagtrace_test.go TestMergeNagTraceWalk, the merge-queue nag
 #                       on a View the walk moves (group steps-fixtures); its breaker
 #                       mergenag-breaker-per-card (a line per card) is a committed fixture
+#   judgementid-walk-<kind>-<n>  modules/steps/episodes_trace_test.go TestJudgementIdTraceWalk, the
+#                       steps' Tick on the Fake from stores of any episode numbers: one row's flap
+#                       judgements (count) and one stream's admission judgements (episode), each
+#                       with its own cfg (group steps-fixtures); its breaker judgementid-breaker
+#                       (the tick an invalid op threw away) is a committed fixture
 
 #   store-breaker, card-breaker, policy-breaker, hook-breaker, verbfence-breaker, basered-breaker,
 #   answeredquiet-breaker   the divergence breakers (committed fixtures,
@@ -71,7 +76,7 @@ on() {
         { [ "$1" = steps ] && [ "${GROUP#steps-}" != "$GROUP" ]; }
 }
 
-find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' -o -name 'runner-breaker' -o -name 'runner-breaker-*' -o -name 'runner-restart' -o -name 'hook-walk-*' -o -name 'verbfence-walk-*' -o -name 'basered-walk-*' -o -name 'answeredquiet-walk-*' -o -name 'mergenag-walk-*' \) -exec rm -rf {} +
+find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' -o -name 'runner-breaker' -o -name 'runner-breaker-*' -o -name 'runner-restart' -o -name 'hook-walk-*' -o -name 'verbfence-walk-*' -o -name 'basered-walk-*' -o -name 'answeredquiet-walk-*' -o -name 'mergenag-walk-*' -o -name 'judgementid-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
 # The walks write disjoint trace dirs, so they run in parallel; each one's
 # exit code is kept and any failure fails the script after all have ended.
@@ -80,7 +85,7 @@ if on store; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergen
 if on card; then go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence|TestTraceRepeatHeld' ./modules/card/ & pids+=($!); fi
 if on policy; then go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ & pids+=($!); fi
 if on steps; then go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ & pids+=($!); fi
-if on steps-fixtures; then go test -count=1 -run 'TestMergeNagTraceWalk$' ./modules/steps/ & pids+=($!); fi
+if on steps-fixtures; then go test -count=1 -run 'TestMergeNagTraceWalk$|TestJudgementIdTraceWalk$|TestJudgementIdTraceRefusesDivergence$' ./modules/steps/ & pids+=($!); fi
 if on edge; then go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$|TestLandEdgeTraceRefusesOldBehaviours$' ./modules/edge/git & pids+=($!); fi
 if on edge; then go test -count=1 -run 'TestRunnerTraceRefinementWalk$|TestRunnerTraceRefusesAResume$' ./modules/edge/worker & pids+=($!); fi
 if on hook; then go test -count=1 -run 'TestHookTraceWalk$|TestHookTraceRefusesDivergence$' ./modules/verbs/ & pids+=($!); fi
@@ -109,7 +114,7 @@ for d in "$OUT"/*/; do
     name="$(basename "$d")"
     case "$name" in store-*) model=Store g=store ;; card-*) model=CardMachine g=card ;; policy-*) model=Policy g=policy ;; steps-walk-pre-*) model=Steps g=steps-pre ;; steps-walk-deal-*) model=Steps g=steps-deal ;;
         steps-walk-land-*) model=Steps g=steps-land ;; steps-walk-burst-*) model=Steps g=steps-burst ;; steps-*) model=Steps g=steps-fixtures ;;
-        landedge-*) model=LandEdge g=edge ;; runner-*) model=Runner g=edge ;; hook-*) model=Hook g=hook ;; verbfence-*) model=VerbFence g=verbs ;; basered-*) model=BaseRed g=base-red ;; answeredquiet-*) model=AnsweredQuiet g=answered-quiet ;; mergenag-*) model=MergeNag g=steps-fixtures ;; *) continue ;; esac
+        landedge-*) model=LandEdge g=edge ;; runner-*) model=Runner g=edge ;; hook-*) model=Hook g=hook ;; verbfence-*) model=VerbFence g=verbs ;; basered-*) model=BaseRed g=base-red ;; answeredquiet-*) model=AnsweredQuiet g=answered-quiet ;; mergenag-*) model=MergeNag g=steps-fixtures ;; judgementid-*) model=JudgementId g=steps-fixtures ;; *) continue ;; esac
 
     on "$g" || continue
     ( bash "$HERE/check-trace.sh" "$model" "$d" > "$WORK/$name.out" 2>&1; echo $? > "$WORK/$name.code" ) &

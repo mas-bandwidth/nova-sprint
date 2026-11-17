@@ -131,7 +131,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `judge` | `[<id> <choice> --reason <why>]` | not the coordinator, or not hooked; judgement not open, naming who closed it; a choice it does not offer, listing them | the next open judgement, or `nothing; wait for the bus` | 0, 1 |
 | `priority` | `<card> <level> --reason <why>` | a consumer id (`priority` is the producer's); a final card; a level outside `low normal high critical blocker` (`read` is a rung, not a level) | `nothing; wait for the bus` | 0, 1 |
 | `edit` | `<card> --brief-file <f> --reason <why>` | a live consumer: `nova-bus send --as <me> --to <holder> ...` instead | `nothing; wait for the bus` | 0, 1 |
-| `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | an open judgement on it: `judge <id> drop` (a live consumer is released by the drop itself) | `nothing; wait for the bus` | 0, 1 |
+| `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | a consumer id: drop its producer (a live consumer is released by the drop itself, and every open judgement about a card the drop fails is answered `drop` in the same op: none stays open about a failed card) | `nothing; wait for the bus` | 0, 1 |
 | `hold`, `unhold` | `<row\|stream>... --reason <why> [--dry-run]` | unknown name | `nothing; wait for the bus` | 0, 1 |
 | `retire` | `<row> --reason <why> [--dry-run]` (coordinator; the worst case: the run retires a row nova-config no longer names by itself) | no reason; a row the store lacks; a row nova-config still names (`nova-config machine remove` / `friend remove`); a hooked coordinator; nova-config unreadable or naming nothing | `nothing; wait for the bus` | 0, 1, 2 |
 | `stream remove` | `<s> --reason <why> [--dry-run]` (coordinator; a stream no card of the epoch names, in any state: it then shows nowhere until `stream add` puts it back) | no reason; a stream the store lacks; any card of the stream, naming the count (keep it, or `hold <s>`) | `nothing; wait for the bus` | 0, 1, 2 |
@@ -947,3 +947,31 @@ github.com credential is always gh as the host's login (no switch on
   `TestCheckQuietWithoutWaits`, `TestAddReportsTheLongestChain`,
   `TestChainTime`, `TestLandingsCountsEachLandingOnce`, `TestReadTakesCost`,
   `TestSetupVerifiesActionsAndRestarts` (the advice line).
+
+## Built: an invalid tick op is judged; a drop closes its judgements (2026-11-16)
+
+- A tick op the store's check refuses as invalid (`store.ErrInvalid`: a
+  defect in the planner, never a refusal) still ends the tick there, with
+  its error on the TICK line: no later op of the tick is applied, and the
+  plan is a function of the store, so the next tick ends the same way. The
+  rule is kept on purpose (skipping the op would apply a plan the planner
+  did not make, and hide the defect), but the run now says so where the
+  coordinator is pushed: `Ticker.Tick` opens one engine judgement about
+  `tick` naming the op and the check's reason (`tickInvalid`, beside
+  `RosterUnread`), once while one is open; one answered while ticks still
+  end so is opened again by the next tick, as the next episode. Any other
+  tick error (the store away, the lock lost) opens none. Before, the only
+  sign was `status=error` in the run's log, tick after tick. Test:
+  `TestInvalidTickIsJudged`. An invalid op that ends only itself is an
+  entry in `roadmap.sexp` (`invalid-op-ends-only-itself`), the owner's to
+  rule on.
+- `drop` (and `replace`, and a judgement answered `drop`) answers every
+  open judgement about a card the op fails (the dropped producer and each
+  dependant that fails with it) `drop`, in the same op, by its actor; the
+  dry run names each. `help drop` said it refuses a card with an open
+  judgement (`judge <j> drop`); the code never did, a land judgement offers
+  no drop to answer, and one left open about a failed card could only be
+  answered by hand. The steps expire one a store already holds
+  (LAYER-3 "Judgements"). Tests: `TestDropClosesTheJudgementsAboutIt`,
+  `TestJudgeDropClosesTheOtherJudgementsAboutIt`,
+  `TestNoJudgementStaysOpenAboutAFailedCard`.

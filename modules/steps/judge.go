@@ -95,27 +95,38 @@ func (t *tick) broken() map[string]bool {
 	return out
 }
 
-// judgeAt opens episode n of kind about about once: a count that only grows
-// (a row's flaps) names its own episode, expiring any older open episode of
-// the same (kind, about) in the same op so at most one is open at a time.
+// judgeAt asks question about a count that only grows (a row's flaps at n)
+// once: when no judgement of kind about about asks it yet (asked). It takes
+// the count's own number while that is past every episode there is, else
+// the next episode (a lapse reopens under the next number, so the ids run
+// ahead of the count): never an id that exists. Every open episode before
+// it expires in the same op, so at most one is open (tla/JudgementId.tla
+// RaiseC, CountIsAsked).
 func (t *tick) judgeAt(kind, about string, n int, question string) {
 	t.detect(kind, about)
-	id := fmt.Sprintf("%s.%s.%d", kind, about, n)
-	if _, exists := t.v.Judgements[id]; exists || t.pending(kind, about) {
+	if t.pending(kind, about) || t.asked(kind, about, question) {
 		return
 	}
-	for _, oldID := range sortedKeys(t.v.Judgements) {
-		j := t.v.Judgements[oldID]
-		if j.Kind != kind || j.About != about || j.State != "open" {
-			continue
-		}
-		if episodeOf(j) < n {
-			t.expires[oldID] = fmt.Sprintf("reopened at %d as %s", n, id)
-		} else {
-			return
+	episode := max(n, t.nextEpisode(kind, about))
+	id := fmt.Sprintf("%s.%s.%d", kind, about, episode)
+	for _, old := range t.jindex().ids[jkey(kind, about)] {
+		if t.v.Judgements[old].State == "open" {
+			t.expires[old] = fmt.Sprintf("reopened at %d as %s", n, id)
 		}
 	}
-	t.addJudge(judgement{kind: kind, about: about, question: question, episode: n})
+	t.addJudge(judgement{kind: kind, about: about, question: question, episode: episode})
+}
+
+// asked is whether a judgement of kind about about, open or closed, asks
+// question: as it was first asked, or reopened at a deadline (lapse keeps
+// the question after the repeat count).
+func (t *tick) asked(kind, about, question string) bool {
+	for _, id := range t.jindex().ids[jkey(kind, about)] {
+		if q := t.v.Judgements[id].Question; q == question || strings.HasSuffix(q, repeated+question) {
+			return true
+		}
+	}
+	return false
 }
 
 // engine is the judgement for a defect here or in layer 2: a plan the
@@ -165,17 +176,48 @@ func (t *tick) detect(kind, about string) {
 	t.detected[jkey(kind, about)] = struct{}{}
 }
 
-// episodes is how many judgements of kind about about exist, open or closed.
-func (t *tick) episodes(kind, about string) int { return t.jindex().episodes[jkey(kind, about)] }
+// episodes is the latest episode of kind about about, open or closed: the
+// highest episode number there is, 0 for none.
+func (t *tick) episodes(kind, about string) int { return t.jindex().last[jkey(kind, about)] }
 
-// judgedIndex is the view's judgements by kind and about: the open ones and
-// how many episodes each has. Built once a tick, on first use (the view
-// does not change during a tick).
-type judgedIndex struct {
-	open     set
-	episodes map[string]int
+// nextEpisode is the episode the next judgement of kind about about takes.
+// Every place that names a judgement asks here (put, lapse, judgeAt, the
+// base-red and base-moved replacements; layer 6 through NextEpisode), so no
+// two of them can name one id.
+func (t *tick) nextEpisode(kind, about string) int { return t.episodes(kind, about) + 1 }
+
+// NextEpisode is the episode the next judgement of kind about about takes
+// among js: one past the highest episode there is, never the number of
+// judgements. A kind a count names (flap.<row>.<flaps>) starts past 1, so
+// the count of its judgements names an id that exists (24 flap judgements
+// numbered 3 to 26 reopened as 25: the op expired and put one judgement,
+// the store's check refused it as invalid, and every tick ended there).
+// tla/JudgementId.tla NextEp; its witness by-count is the count.
+func NextEpisode(js map[string]store.Judgement, kind, about string) int {
+	return lastEpisodes(js)[jkey(kind, about)] + 1
 }
 
+// lastEpisodes is the highest episode number of each kind and about in js.
+func lastEpisodes(js map[string]store.Judgement) map[string]int {
+	last := map[string]int{}
+	for _, j := range js {
+		k := jkey(j.Kind, j.About)
+		last[k] = max(last[k], episodeOf(j))
+	}
+	return last
+}
+
+// judgedIndex is the view's judgements by kind and about: their ids, the
+// latest open one, and the highest episode number. Built once a tick, on
+// first use (the view does not change during a tick).
+type judgedIndex struct {
+	ids  map[string][]string // sorted
+	open map[string]string   // the open one with the highest episode
+	last map[string]int
+}
+
+// episodeOf is j's episode number, 0 for an id that is not kind.about.<n>
+// (a policy failure's): such an id is none a step names, so none collides.
 func episodeOf(j store.Judgement) int {
 	rest, ok := strings.CutPrefix(j.ID, j.Kind+"."+j.About+".")
 	if !ok {
@@ -192,14 +234,13 @@ func (t *tick) jindex() judgedIndex {
 	if t.jidx.open != nil {
 		return t.jidx
 	}
-	t.jidx = judgedIndex{open: set{}, episodes: map[string]int{}}
-	counts := map[string]int{}
-	for _, j := range t.v.Judgements {
+	t.jidx = judgedIndex{ids: map[string][]string{}, open: map[string]string{}, last: lastEpisodes(t.v.Judgements)}
+	for _, id := range sortedKeys(t.v.Judgements) {
+		j := t.v.Judgements[id]
 		k := jkey(j.Kind, j.About)
-		counts[k]++
-		t.jidx.episodes[k] = max(t.jidx.episodes[k], counts[k], episodeOf(j))
-		if j.State == "open" {
-			t.jidx.open[k] = struct{}{}
+		t.jidx.ids[k] = append(t.jidx.ids[k], id)
+		if cur, ok := t.jidx.open[k]; j.State == "open" && (!ok || episodeOf(j) >= episodeOf(t.v.Judgements[cur])) {
+			t.jidx.open[k] = id
 		}
 	}
 	return t.jidx
@@ -220,7 +261,7 @@ func (t *tick) riding(kind, about, question string) []store.Write {
 func (t *tick) put(j judgement) store.Write {
 	n := j.episode
 	if n <= 0 {
-		n = t.episodes(j.kind, j.about) + 1
+		n = t.nextEpisode(j.kind, j.about)
 	}
 	id := fmt.Sprintf("%s.%s.%d", j.kind, j.about, n)
 	w := store.PutJudgement{ID: id, Kind: j.kind, About: j.about, Question: j.question, Group: j.kind,
@@ -248,7 +289,11 @@ func (t *tick) put(j judgement) store.Write {
 // still detected is never closed silently (the structure notices, pushes,
 // repeats and escalates; Glenn 2026-11-07): it expires naming its next
 // episode, which opens in the same op with the repeat count, and is pushed
-// to the coordinator again as NEEDS YOU.
+// to the coordinator again as NEEDS YOU. A tick leaves at most one episode
+// of a kind and about open: every open one but the latest expires as
+// superseded, and so does the latest when this tick opens another, so
+// several past their deadline reopen as one and the op writes each
+// judgement once (tla/JudgementId.tla OneOpenAfterTick, NoDoubleWrite).
 func (t *tick) judgements() {
 	t.alarms()
 	t.baseRed()
@@ -261,32 +306,43 @@ func (t *tick) judgements() {
 		if _, replaced := t.expires[id]; replaced || j.State != "open" { // replaced: baseRed or baseMoved opened its next episode
 			continue
 		}
-		if why := t.cleared(j); why != "" {
+		latest := t.jindex().open[jkey(j.Kind, j.About)]
+		switch why := t.cleared(j); {
+		case why != "":
 			t.expires[id] = why
-		} else if !j.Deadline.IsZero() && !t.in.Now.Before(j.Deadline) {
+		case latest != id:
+			t.expires[id] = "superseded by " + latest + ": a later episode of the same cause is open"
+		case t.pending(j.Kind, j.About):
+			t.expires[id] = fmt.Sprintf("superseded by %s.%s.%d: this tick opens it", j.Kind, j.About, t.nextEpisode(j.Kind, j.About))
+		case !j.Deadline.IsZero() && !t.in.Now.Before(j.Deadline):
 			t.lapse(j)
 		}
 	}
 }
 
-// lapse is the deadline of open judgement j: closed as cleared when no step
-// detected its cause this tick, else expired and reopened as the next
-// episode with the repeat count (episodes so far) at the head of its
-// question (repeated replaces the last count).
+// lapse is the deadline of open judgement j, the latest of its kind and
+// about: closed as cleared when no step detected its cause this tick, else
+// expired and reopened as the next episode with the repeat count (how many
+// deadlines the question has now passed unanswered: one more than the count
+// it carries) at the head of its question (repeated replaces the last
+// count).
 func (t *tick) lapse(j store.Judgement) {
 	if _, still := t.detected[jkey(j.Kind, j.About)]; !still {
 		t.expires[j.ID] = "cleared: no step detects its cause at its deadline"
 		return
 	}
-	n := t.episodes(j.Kind, j.About)
-	t.expires[j.ID] = fmt.Sprintf("deadline passed unanswered and it still holds: reopened as %s.%s.%d (repeat %d)", j.Kind, j.About, n+1, n)
+	head, question, again := strings.Cut(j.Question, repeated)
+	n := 0
+	if !again {
+		question = j.Question
+	} else if _, err := fmt.Sscanf(head, "UNANSWERED %d", &n); err != nil {
+		n = 0 // a question that only holds the words: its first repeat
+	}
+	n++
+	t.expires[j.ID] = fmt.Sprintf("deadline passed unanswered and it still holds: reopened as %s.%s.%d (repeat %d)", j.Kind, j.About, t.nextEpisode(j.Kind, j.About), n)
 	times := "TIMES"
 	if n == 1 {
 		times = "TIME"
-	}
-	_, question, again := strings.Cut(j.Question, repeated)
-	if !again {
-		question = j.Question
 	}
 	t.addJudge(judgement{kind: j.Kind, about: j.About, question: fmt.Sprintf("UNANSWERED %d %s%s%s", n, times, repeated, question)})
 }
@@ -356,8 +412,13 @@ func (t *tick) cleared(j store.Judgement) string {
 }
 
 // clearedDeal is cleared for the deal's own kinds: a tier a model can now be
-// named for, the policy gate lifted (or the coordinator's row changed).
+// named for, the policy gate lifted (or the coordinator's row changed); and
+// for a judgement about a card that has failed (aboutCard), whatever failed
+// it.
 func (t *tick) clearedDeal(j store.Judgement) string {
+	if c, ok := t.v.Cards[j.About]; ok && c.State == card.Fail && aboutCard(j) {
+		return j.About + " failed: nothing is left to decide about it"
+	}
 	switch j.Kind {
 	case "no-model":
 		if t.modelServed(j.About) {
@@ -376,6 +437,22 @@ func (t *tick) clearedDeal(j store.Judgement) string {
 		return t.clearedMoved(j.About)
 	}
 	return ""
+}
+
+// aboutCard is whether j's About is a card's id (it is a tier, a stream, a
+// row or a base for the other kinds, and a stream or row may be named as a
+// card is): the kinds a step opens about a producer, and the engine
+// judgement of a merging card with no request. No such judgement stays open
+// once its card has failed: nothing it offers can be done to a failed card
+// (cleared; Verb answers them in the op that fails the card).
+func aboutCard(j store.Judgement) bool {
+	switch j.Kind {
+	case "held", "cannot-read", "land", "undealt", "brief":
+		return true
+	case "engine":
+		return strings.HasPrefix(j.Question, "card "+j.About+" ")
+	}
+	return false
 }
 
 func contains(xs []string, x string) bool {

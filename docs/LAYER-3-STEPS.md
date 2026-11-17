@@ -298,6 +298,25 @@ for each candidate, and the engine refuses one below the card's tier.
   pushed again as NEEDS YOU; one whose cause no step detects closes as
   `cleared` (tla/Steps.tla `ExpiryNeverSilent`, witness
   `StepsExpiresSilently`).
+- A judgement's id (`tla/JudgementId.tla`, bound to the code by the trace
+  walk `modules/steps/episodes_trace_test.go`). The next episode of a kind
+  and subject is one past the highest episode there is, never the number
+  of judgements, and one function says it for every place that names one
+  (`nextEpisode`: `put`, `lapse`, `judgeAt`, the base-red and base-moved
+  replacements; layer 6's own engine judgements through `NextEpisode`). A
+  count that only grows (a row's flaps, `judgeAt`) is asked once per
+  count, known by its question: as the count's own number while that is
+  past every episode, else the next episode (a lapse reopens under the
+  next number, so the ids run ahead of the count), closing every open
+  episode before it in the same op. A tick leaves at most one episode of
+  a kind and subject open: every open one but the latest expires as
+  `superseded by <id>`, so several past their deadline reopen as one and
+  no op writes a judgement twice (the store's check refuses such an op as
+  invalid, and the tick ends there). The repeat count is how many
+  deadlines the question has passed unanswered. A judgement about a card
+  that has failed expires (`<card> failed: ...`), and a drop answers the
+  open judgements about the cards it fails in its own op: none stays open
+  about a failed card.
 - The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `no-model`,
