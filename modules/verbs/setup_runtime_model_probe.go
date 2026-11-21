@@ -22,7 +22,10 @@ func probeEndpoints(p FleetProvider) ([]string, error) {
 			continue
 		}
 		u, err := url.Parse(e)
-		if err != nil || u.Host == "" || u.User != nil || (u.Scheme != "https" && !(u.Scheme == "http" && loopbackHost(u.Hostname()))) {
+		if err != nil {
+			return nil, fmt.Errorf("provider %s endpoint %q does not parse: %w", p.Name, Redact(e), err)
+		}
+		if u.Host == "" || u.User != nil || (u.Scheme != "https" && !(u.Scheme == "http" && loopbackHost(u.Hostname()))) {
 			return nil, fmt.Errorf("provider %s endpoint %q is not an https URL with a host and no credentials", p.Name, Redact(e))
 		}
 		out = append(out, e)
