@@ -109,6 +109,70 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets 
 	}
 }
 
+// TestFunctionalReadyStoreOwesTheFriendCopy: a store already set up and
+// ready is not ready while config.friends still has width and tiers for a
+// friend the store holds no friend:<name> record for, so up's store step
+// installs, which copies them; then it is ready again, and stays so.
+func TestFunctionalReadyStoreOwesTheFriendCopy(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
+	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
+		t.Skip("requires isolated PostgreSQL")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	srv := pgbin.Start(t, roleServer)
+	super, err := pgx.Connect(ctx, srv.Socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer super.Close(context.Background())
+	exec := func(sql string) {
+		t.Helper()
+		if _, err := super.Exec(ctx, sql); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec("CREATE ROLE nova_admin CREATEDB CREATEROLE LOGIN PASSWORD 'fixture-admin'; ALTER DATABASE postgres OWNER TO nova_admin")
+	dsn := fmt.Sprintf("postgres://nova_admin@127.0.0.1:%d/postgres?sslmode=disable", srv.Port)
+	if err = provisionSprintRole(ctx, dsn, "fixture-admin", "fixture-sprint", true); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NOVA_PG_DSN", dsn)
+	t.Setenv(sprintPasswordName, "fixture-sprint")
+	t.Setenv("NOVA_SPRINT_BACKUP_DIR", filepath.Join(srv.Dir, "backups"))
+	probe := func(want bool, why string) {
+		t.Helper()
+		if ready, err := SprintStoreChild(ctx, false, "v2.0.0"); err != nil || ready != want {
+			t.Fatalf("%s: ready %t, %v", why, ready, err)
+		}
+	}
+	if ready, err := SprintStoreChild(ctx, true, "v2.0.0"); err != nil || !ready {
+		t.Fatal("store setup failed", err)
+	}
+	probe(true, "a set-up store with no config.friends")
+	exec(`CREATE SCHEMA config; CREATE TABLE config.friends (name text PRIMARY KEY, width integer NOT NULL DEFAULT 1, tiers text NOT NULL DEFAULT '')`)
+	exec(`INSERT INTO config.friends (name, width, tiers) VALUES ('rowan', 32, 'flash,frontier,heavy,pro'), ('alex', 2, 'heavy,pro'), ('none', 1, '')`)
+	exec(`GRANT USAGE ON SCHEMA config TO nova_sprint; GRANT SELECT ON config.friends TO nova_sprint`)
+	probe(false, "a ready store owing the friend copy")
+	ready, done, err := SprintStoreSetup(ctx, "v2.0.0")
+	if err != nil || !ready || len(done.Friends) != 3 {
+		t.Fatalf("setup: ready %t, friends %q, %v", ready, done.Friends, err)
+	}
+	probe(true, "after the copy (none's settings serve no tier, so it is never owed)")
+	sprintURL, err := sprintDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg, err := store.Open(ctx, sprintURL, "fixture-sprint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pg.Close()
+	vs, err := pg.NewestData(ctx, "friend:")
+	if err != nil || len(vs) != 2 || vs[0].Name != "friend:alex" || vs[0].Body != `{"width":2,"tiers":["pro","heavy"]}` || vs[1].Body != `{"width":32,"tiers":["flash","pro","heavy","frontier"]}` {
+		t.Fatalf("stored %+v %v", vs, err)
+	}
+}
+
 // roleServer is the role tests' PostgreSQL: SCRAM over TCP, so the
 // password checks are real; the local socket is trusted, for the
 // superuser's fixture setup.

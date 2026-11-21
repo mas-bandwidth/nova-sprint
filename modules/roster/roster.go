@@ -50,6 +50,8 @@ type Machine struct {
 // Friend is a friend as nova-config holds it, with its sprint settings
 // (FriendSetting: Width, its own, no cap; Tiers). Unread is why its sprint
 // settings could not be read ("" when they were): the friend is refused.
+// Defaulted is true when the store holds no settings for it, so it works at
+// DefaultFriend's (check warns of it).
 type Friend struct {
 	Name, Harness, Model string
 	Width                int
@@ -57,6 +59,7 @@ type Friend struct {
 	Pronouns             string
 	Enabled              bool
 	Unread               string
+	Defaulted            bool
 }
 
 // Source reads the machines and friends from nova-config.
@@ -82,11 +85,12 @@ type Worker struct {
 const NoCores = "no cores in nova-config"
 
 // Kin is an enabled friend dealt to: its own width, tiers, model and
-// harness.
+// harness. Defaulted is its friend's: no settings recorded, the defaults.
 type Kin struct {
 	Name, Model, Harness string
 	Width                int
 	Tiers                []string
+	Defaulted            bool
 }
 
 // Refused is a machine or friend nova-config holds that this read could not
@@ -249,7 +253,7 @@ func (r *Roster) addKin(fs []Friend) {
 			r.refuse(f.Name, KindKin, fmt.Sprintf("friend %s has tier %q, not one of %v", f.Name, f.Tiers[i], store.Tiers))
 			continue
 		}
-		r.Kin[f.Name] = Kin{Name: f.Name, Model: f.Model, Harness: f.Harness, Width: f.Width, Tiers: slices.Clone(f.Tiers)}
+		r.Kin[f.Name] = Kin{Name: f.Name, Model: f.Model, Harness: f.Harness, Width: f.Width, Tiers: slices.Clone(f.Tiers), Defaulted: f.Defaulted}
 	}
 }
 

@@ -47,6 +47,23 @@ func TestLoad(t *testing.T) {
 	assert.Equal(t, map[string]bool{"stella": true, "alex": true, "off": true}, r.Friends, "every friend listed, enabled or not")
 }
 
+// TestAFriendWithNoRecordIsDefaulted: a friend the store holds no
+// friend:<name> record for works at the defaults and says so (Defaulted,
+// carried to its kin row for check's warning); one with a record does not.
+func TestAFriendWithNoRecordIsDefaulted(t *testing.T) {
+	t.Parallel()
+	recs := map[string]FriendRecord{"alex": {Setting: FriendSetting{Width: 2, Tiers: []string{"heavy", "pro"}}, Version: 3}}
+	none := Friend{Name: "rowan", Enabled: true}.Settings(recs)
+	set := Friend{Name: "alex", Enabled: true}.Settings(recs)
+	assert.True(t, none.Defaulted)
+	assert.Equal(t, 1, none.Width)
+	assert.False(t, set.Defaulted)
+	r, err := Load(context.Background(), Fake{Fs: []Friend{none, set}}, 8)
+	require.NoError(t, err)
+	assert.True(t, r.Kin["rowan"].Defaulted)
+	assert.False(t, r.Kin["alex"].Defaulted)
+}
+
 func TestHulkAt64CoresIsWidth8(t *testing.T) {
 	t.Parallel()
 	r, err := Load(context.Background(), Fake{Ms: []Machine{{Name: "hulk", Roles: []string{"bench"}, Cores: 64}}}, 8)

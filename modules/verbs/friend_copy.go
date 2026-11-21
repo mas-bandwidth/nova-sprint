@@ -14,7 +14,10 @@ import (
 // (nova-sprint friend set; the owner, 2026-11-21). up's store step copies
 // each friend's from config.friends once: only while those columns still
 // exist, and only for a friend the store has no settings for, so a second
-// run copies nothing and a friend set is never overwritten.
+// run copies nothing and a friend set is never overwritten. The store probe
+// answers not ready while a copy is owed (FriendCopyOwed), so up's store
+// step runs it on a store that is otherwise ready; once the columns are gone,
+// check warns of each friend with no record.
 
 // configFriend is one config.friends row's old sprint columns.
 type configFriend struct {
@@ -33,33 +36,15 @@ const friendRowsSQL = `SELECT name, width, tiers FROM config.friends ORDER BY na
 // (read on conn) into st as friend:<name> data versions, in one op by actor
 // at now, and returns one line per friend copied or left at the defaults.
 func CopyFriendSettings(ctx context.Context, conn *pgx.Conn, st store.Store, actor string, now time.Time) ([]string, error) {
-	var cols int
-	if err := conn.QueryRow(ctx, friendColumnsSQL).Scan(&cols); err != nil {
-		return nil, cause("reading config.friends' columns", err)
-	}
-	if cols != 2 {
-		return nil, nil
-	}
-	rows, err := conn.Query(ctx, friendRowsSQL)
-	if err != nil {
-		return nil, cause("reading config.friends", err)
-	}
-	friends, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (configFriend, error) {
-		var f configFriend
-		return f, r.Scan(&f.Name, &f.Width, &f.Tiers)
-	})
-	if err != nil {
-		return nil, cause("reading config.friends", err)
+	friends, have, err := friendCopySources(ctx, conn, st)
+	if err != nil || friends == nil {
+		return nil, err
 	}
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
-	have, err := st.NewestData(ctx, roster.FriendPrefix)
-	if err != nil {
-		return nil, err
-	}
-	writes, lines := friendCopies(friends, roster.FriendSettings(have))
+	writes, lines := friendCopies(friends, have)
 	if len(writes) == 0 {
 		return lines, nil
 	}
@@ -73,6 +58,50 @@ func CopyFriendSettings(ctx context.Context, conn *pgx.Conn, st store.Store, act
 		return nil, fmt.Errorf("copying the friends' settings from nova-config refused: %s (run up again)", r.Reason)
 	}
 	return lines, nil
+}
+
+// FriendCopyOwed says whether CopyFriendSettings would write anything: the
+// store probe answers not ready while it would, so up's store step runs the
+// copy on a store that is otherwise ready.
+func FriendCopyOwed(ctx context.Context, conn *pgx.Conn, st store.Store) (bool, error) {
+	friends, have, err := friendCopySources(ctx, conn, st)
+	return friendCopyOwed(friends, have), err
+}
+
+// friendCopySources is config.friends' old sprint columns (nil once
+// nova-config dropped them) and the friend records the store holds.
+func friendCopySources(ctx context.Context, conn *pgx.Conn, st store.Store) ([]configFriend, map[string]roster.FriendRecord, error) {
+	var cols int
+	if err := conn.QueryRow(ctx, friendColumnsSQL).Scan(&cols); err != nil {
+		return nil, nil, cause("reading config.friends' columns", err)
+	}
+	if cols != 2 {
+		return nil, nil, nil
+	}
+	rows, err := conn.Query(ctx, friendRowsSQL)
+	if err != nil {
+		return nil, nil, cause("reading config.friends", err)
+	}
+	friends, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (configFriend, error) {
+		var f configFriend
+		return f, r.Scan(&f.Name, &f.Width, &f.Tiers)
+	})
+	if err != nil {
+		return nil, nil, cause("reading config.friends", err)
+	}
+	have, err := st.NewestData(ctx, roster.FriendPrefix)
+	if err != nil {
+		return nil, nil, err
+	}
+	return friends, roster.FriendSettings(have), nil
+}
+
+// friendCopyOwed is whether friendCopies writes anything: a friend with no
+// record whose old settings can be copied. One whose old settings serve no
+// tier is never owed: it could never be copied.
+func friendCopyOwed(friends []configFriend, have map[string]roster.FriendRecord) bool {
+	writes, _ := friendCopies(friends, have)
+	return len(writes) > 0
 }
 
 // friendCopies is the writes that copy friends' old settings for each friend

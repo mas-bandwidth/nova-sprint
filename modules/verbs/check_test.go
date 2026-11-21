@@ -87,6 +87,20 @@ func TestCheckWarnsOfIgnoredPolicyAnswers(t *testing.T) {
 		"CHECK WARN default catalog() concurrency is ignored: a provider's cap on runs at once is its nova-config provider record's: nova-config provider set <name> --concurrency <n>, and drop concurrency from catalog()\n")
 }
 
+// TestCheckWarnsOfAFriendWithNoSettings: an enabled friend the store holds
+// no friend:<name> record for is dealt at the defaults; check says so in one
+// WARN naming friend set, never silently; the exit stays 0.
+func TestCheckWarnsOfAFriendWithNoSettings(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	healthy(t, w)
+	k := w.roster.ro.Kin["carol"]
+	k.Defaulted = true
+	w.roster.ro.Kin["carol"] = k
+	want(t, w.do("", "check"), 0,
+		"CHECK WARN friend carol has no sprint settings (no friend:carol record), so it is dealt at width 1, every tier: nova-sprint friend set carol --width <n> --tiers <a,b>\n")
+}
+
 // concurrencyAnswers answers as fakeAnswers, its catalog naming a
 // concurrency.
 type concurrencyAnswers struct{ fakeAnswers }

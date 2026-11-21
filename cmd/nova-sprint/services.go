@@ -113,14 +113,15 @@ func (s services) workerRecords(ctx context.Context) (worker.Records, error) {
 	if err != nil {
 		return worker.Records{}, err
 	}
-	return workerRecordsOf(providers, models)
+	return workerRecordsOf(providers, models), nil
 }
 
 // workerRecordsOf are the enabled provider records as key-proxy routes and
 // each enabled model record's harness (nova-config's default, opencode,
-// when it names none); a provider record that cannot be a route refuses,
-// naming the nova-config verb that fixes it.
-func workerRecordsOf(providers []config.Provider, models []config.Model) (worker.Records, error) {
+// when it names none); a provider record that cannot be a route is skipped,
+// its line in Skipped naming the nova-config verb that fixes it (the worker
+// warns of it; a job of its models finds no route and says so).
+func workerRecordsOf(providers []config.Provider, models []config.Model) worker.Records {
 	rec := worker.Records{Harnesses: map[string]string{}}
 	for _, p := range providers {
 		if !p.Enabled {
@@ -128,7 +129,8 @@ func workerRecordsOf(providers []config.Provider, models []config.Model) (worker
 		}
 		route, err := worker.ProviderRecord(p.Name, p.URL, p.API, p.Key)
 		if err != nil {
-			return worker.Records{}, err
+			rec.Skipped = append(rec.Skipped, fmt.Sprintf("provider record %s skipped, so no model of it is routed: %v", p.Name, err))
+			continue
 		}
 		rec.Providers = append(rec.Providers, route)
 	}
@@ -137,7 +139,7 @@ func workerRecordsOf(providers []config.Provider, models []config.Model) (worker
 			rec.Harnesses[m.Name] = cmp.Or(m.Harness, worker.DefaultHarnessName)
 		}
 	}
-	return rec, nil
+	return rec
 }
 
 // underHome is dir, a relative one taken under home ("" stays "": the

@@ -212,6 +212,8 @@ func sprintStoreChild(ctx context.Context, install bool, version string, done *S
 		if done != nil {
 			done.Restored, done.Friends = lost, copied
 		}
+	} else if owed, err := friendCopyOwedOn(ctx, dsn, password, pg); err != nil || owed {
+		return false, err // owed: not ready, so up's store step installs, which copies (the store may be otherwise ready)
 	}
 	archive := PGBackups{DSN: dsn, Password: password, Directory: dir, Version: version, Loader: PGSQLLoader{}}
 	ok, _, err = verifiedFirstBackup(ctx, pg, archive, dir)
@@ -245,17 +247,37 @@ func sprintStoreChild(ctx context.Context, install bool, version string, done *S
 // copyFriends is CopyFriendSettings on its own connection as nova_sprint,
 // which reads config.friends as the roster does.
 func copyFriends(ctx context.Context, dsn, password string, pg *store.PG) ([]string, error) {
+	conn, err := friendConn(ctx, dsn, password)
+	if err != nil {
+		return nil, err
+	}
+	defer closeSetupConnection(conn)
+	return CopyFriendSettings(ctx, conn, pg, "up", time.Now())
+}
+
+// friendCopyOwedOn is FriendCopyOwed on its own connection as nova_sprint.
+func friendCopyOwedOn(ctx context.Context, dsn, password string, pg *store.PG) (bool, error) {
+	conn, err := friendConn(ctx, dsn, password)
+	if err != nil {
+		return false, err
+	}
+	defer closeSetupConnection(conn)
+	return FriendCopyOwed(ctx, conn, pg)
+}
+
+// friendConn connects to dsn as nova_sprint with password, for the friend
+// copy's read of config.friends.
+func friendConn(ctx context.Context, dsn, password string) (*pgx.Conn, error) {
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return nil, cause("copying the friends' settings: the dsn", err)
+		return nil, cause("the friends' settings from nova-config: the dsn", err)
 	}
 	cfg.Password = password
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return nil, cause("copying the friends' settings: connect", err)
+		return nil, cause("the friends' settings from nova-config: connect", err)
 	}
-	defer closeSetupConnection(conn)
-	return CopyFriendSettings(ctx, conn, pg, "up", time.Now())
+	return conn, nil
 }
 
 func ensureStoreSchema(ctx context.Context, pg *store.PG, install bool) (bool, error) {

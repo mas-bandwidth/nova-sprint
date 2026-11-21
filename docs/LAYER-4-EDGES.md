@@ -1060,7 +1060,12 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   proxy serves every provider; a route forwards only to its upstream's host.
   Since 2026-11-21 the routes come from nova-config's enabled provider records
   (`Records`, read with the sprint's credentials at start and again once when a
-  job names a model the worker has not seen); `--providers` overrides them. A
+  job names a model the worker has not seen; a read that names no record for
+  that model is kept, so it opens nova-config once until the worker restarts);
+  `--providers` overrides them. A record that cannot be a route is skipped
+  with a `WORKER WARNING` naming its `nova-config provider set`, never
+  refusing the start; a failed read refuses the start only without
+  `--providers`, and warns with it. A
   record's `api` sets the key header: `x-api-key` for `anthropic`,
   `Authorization: Bearer` otherwise; a record with no key is a keyless route.
   Each job's harness is its model record's (`--harness`, default opencode, for

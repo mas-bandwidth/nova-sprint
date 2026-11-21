@@ -61,6 +61,11 @@ func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Sna
 	for _, w := range policy.Ignored(policy.Label(a.Version), a) {
 		r.warn(w[0], w[1])
 	}
+	for _, name := range slices.Sorted(maps.Keys(ro.Kin)) {
+		if k := ro.Kin[name]; k.Defaulted {
+			r.warn(fmt.Sprintf("friend %s has no sprint settings (no %s%s record), so it is dealt at width %d, every tier", name, roster.FriendPrefix, name, k.Width), friendFix(name))
+		}
+	}
 	f := benchModelCheck(snap.Policy, a.Catalog, ro)
 	if f != nil {
 		r.red(f)

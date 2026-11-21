@@ -104,7 +104,7 @@ func (f Friend) Settings(recs map[string]FriendRecord) Friend {
 	switch {
 	case !ok:
 		d := DefaultFriend()
-		f.Width, f.Tiers = d.Width, d.Tiers
+		f.Width, f.Tiers, f.Defaulted = d.Width, d.Tiers, true
 	case rec.Unread != "":
 		f.Width, f.Tiers, f.Unread = 0, nil, rec.Unread
 	default:

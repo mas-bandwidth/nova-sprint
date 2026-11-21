@@ -208,11 +208,49 @@ func TestWorkerStartsOnTheRecords(t *testing.T) {
 	if err != nil || len(s.Providers) != 1 || s.Providers[0].Name != "b" || s.Harnesses["a/m"] != "claude" || s.from != "--providers" {
 		t.Fatalf("--providers names the routes: got %+v %v", s, err)
 	}
-	_, err = (Config{Records: func(context.Context) (Records, error) {
+	unread := func(context.Context) (Records, error) {
 		return Records{}, errors.New("permission denied for table providers")
-	}}).records_internal(ctx)
+	}
+	_, err = (Config{Records: unread}).records_internal(ctx)
 	if err == nil || !strings.Contains(err.Error(), "worker refused: nova-config's provider and model records could not be read: permission denied for table providers") {
 		t.Fatalf("got %v", err)
+	}
+	// With --providers the routes it needs are given: an unreadable read is a
+	// warning, never a refusal.
+	s, err = (Config{Records: unread, Providers: "b=https://b.example@B_KEY"}).records_internal(ctx)
+	if err != nil || len(s.Providers) != 1 || s.Providers[0].Name != "b" || len(s.Skipped) != 1 || !strings.Contains(s.Skipped[0], "permission denied for table providers") {
+		t.Fatalf("got %+v %v", s, err)
+	}
+	// A record skipped as bad is said at start, its fix with it.
+	var lines []string
+	warnSkipped_internal(func(l string) { lines = append(lines, l) }, []string{"provider record p skipped: bad api (nova-config provider set p --api openai|anthropic)"})
+	if len(lines) != 1 || lines[0] != "WORKER WARNING provider record p skipped: bad api (nova-config provider set p --api openai|anthropic)" {
+		t.Fatalf("lines %q", lines)
+	}
+}
+
+// A model with no record is read for once: a successful read that does not
+// name it is kept, so the next take does not open nova-config again.
+func TestModelHarnessCachesAModelWithNoRecord(t *testing.T) {
+	t.Parallel()
+	reads := 0
+	r := probeRunner_internal(t, &probeSprint{}, &fakeWall{}, edge.NewFakeExec(), NewKeyProxy(nil, nil))
+	r.ModelHarnesses = map[string]string{"deepseek/v4": "opencode"}
+	r.Records = func(context.Context) (Records, error) {
+		reads++
+		return Records{Harnesses: map[string]string{"deepseek/v4": "opencode"}}, nil
+	}
+	ctx := context.Background()
+	for range 3 {
+		if got := r.modelHarness_internal(ctx, "ollama/q"); got != "" {
+			t.Fatalf("got %q", got)
+		}
+	}
+	if reads != 1 {
+		t.Fatalf("%d reads for one model with no record", reads)
+	}
+	if got := r.modelHarness_internal(ctx, "deepseek/v4"); got != "opencode" || reads != 1 {
+		t.Fatalf("got %q after %d reads", got, reads)
 	}
 }
 

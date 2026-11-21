@@ -91,6 +91,7 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 	if err != nil {
 		return err
 	}
+	warnSkipped_internal(out, recs.Skipped)
 	proxy := NewKeyProxy(recs.Providers, os.LookupEnv)
 	srv, proxyAddr, err := proxy.ListenLoopback("127.0.0.1:0")
 	if err != nil {
@@ -119,16 +120,22 @@ type startRecords_internal struct {
 	from string
 }
 
-// records_internal reads nova-config's records at start (a read that fails
-// refuses the start) and takes the routes from --providers when it is given.
+// records_internal reads nova-config's records at start and takes the routes
+// from --providers when it is given. A read that fails refuses the start
+// only when the routes were to come from it: with --providers it is a
+// warning (Skipped), each model then in --harness.
 func (c Config) records_internal(ctx context.Context) (startRecords_internal, error) {
 	var s startRecords_internal
 	if c.Records != nil {
-		var err error
-		if s.Records, err = c.Records(ctx); err != nil {
+		rec, err := c.Records(ctx)
+		switch {
+		case err != nil && c.Providers == "":
 			return s, fmt.Errorf("worker refused: nova-config's provider and model records could not be read: %w: nova-sprint check names what the sprint's credentials lack", err)
+		case err != nil:
+			s.Skipped = []string{"nova-config's provider and model records could not be read (" + err.Error() + "): the worker routes on --providers, each model in --harness; nova-sprint check names what the sprint's credentials lack"}
+		default:
+			s.Records, s.from = rec, "nova-config provider records"
 		}
-		s.from = "nova-config provider records"
 	}
 	if c.Providers != "" || c.Records == nil {
 		providers, err := ParseProviders(c.Providers)

@@ -37,3 +37,21 @@ func TestFriendCopies(t *testing.T) {
 		t.Fatalf("a second copy wrote %v %v", w, l)
 	}
 }
+
+// TestFriendCopyOwed: a copy is owed while a friend with no record has old
+// settings that can be copied; never for one whose old settings serve no
+// tier (it could never be copied, so the store would never be ready), nor
+// once every friend has a record.
+func TestFriendCopyOwed(t *testing.T) {
+	t.Parallel()
+	friends := []configFriend{{Name: "alex", Width: 2, Tiers: "pro"}, {Name: "nil", Width: 1, Tiers: ""}}
+	if !friendCopyOwed(friends, nil) {
+		t.Fatal("alex has no record: owed")
+	}
+	if friendCopyOwed(friends[1:], nil) {
+		t.Fatal("nil's settings serve no tier: never owed")
+	}
+	if friendCopyOwed(friends, map[string]roster.FriendRecord{"alex": {Version: 1}}) {
+		t.Fatal("alex has a record: nothing owed")
+	}
+}

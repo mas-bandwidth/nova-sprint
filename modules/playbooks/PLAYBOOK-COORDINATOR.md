@@ -496,7 +496,10 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    nova-config lists the friend (`nova-config friend add <name> --harness <h> --model <m>`). A
    friend's width and tiers are the sprint's: `nova-sprint friend set <name> [--width <n>]
    [--tiers <a,b>]` (a flag left out keeps what is in force; nothing set is width 1 on every tier;
-   `show <name>` prints it, the board shows it); the sprint sees a change on the next tick. The
+   `show <name>` prints it, the board shows it); the sprint sees a change on the next tick. While
+   nova-config's friend records still carry a width and tiers, `up` copies them once for each
+   friend with nothing set, on any up, store already set up or not; `check` warns of each friend
+   with nothing set, naming `friend set`. The
    sprint's own row state (session, role, held) is written only by `hook`, `unhook`, `hold` and
    `unhold`.
    To take a machine or a friend out of the sprint, remove it from nova-config (`nova-config
