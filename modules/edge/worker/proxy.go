@@ -29,10 +29,16 @@ type (
 		Name, UpstreamURL string
 		AllowedHosts      []string
 		Key               func() (string, error)
+		// API is how the key is sent: "anthropic" in x-api-key, else
+		// Authorization: Bearer. NoKey: the provider takes none (a local
+		// model), and none is sent.
+		API   string
+		NoKey bool
 	}
 	KeyProxy struct {
 		Routes     map[string]ProxyRoute
 		Transport  http.RoundTripper
+		rmu        sync.RWMutex // Routes, replaced by SetRoutes while requests are served
 		mu         sync.Mutex
 		tick       int                        // numbers each request sent and each status recorded, in the order they happen
 		lastStatus map[string]status_internal // per job (ProxyKey's consumer)
@@ -93,9 +99,13 @@ func (p *KeyProxy) answered_internal(job string, sent int) {
 }
 
 // jobOf_internal is the job a request's placeholder key names ("" for the
-// bare placeholder).
+// bare placeholder), sent as a Bearer token or, by an Anthropic client, in
+// x-api-key.
 func jobOf_internal(r *http.Request) string {
-	job, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "+ProxyKey(""))
+	if job, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "+ProxyKey("")); ok {
+		return job
+	}
+	job, _ := strings.CutPrefix(r.Header.Get("X-Api-Key"), ProxyKey(""))
 	return job
 }
 func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +129,7 @@ func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		key, keyErr = route.Key()
 		key = strings.TrimSpace(key)
 	}
-	if key == "" {
+	if key == "" && !route.NoKey {
 		cause := "no key source configured"
 		if keyErr != nil {
 			cause = keyErr.Error()
@@ -129,7 +139,7 @@ func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("proxy refused: missing API key for route %s: %s", route.Name, edge.RedactN(cause, edge.FailureMax)), http.StatusServiceUnavailable)
 		return
 	}
-	p.forward_internal(w, r, u, key)
+	p.forward_internal(w, r, u, route.API, key)
 }
 
 // resolveRoute_internal is the request's route: the first path segment when
@@ -137,7 +147,12 @@ func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // and the segment is cut from the path forwarded), else the one route there
 // is.
 func (p *KeyProxy) resolveRoute_internal(r *http.Request) (ProxyRoute, bool) {
-	if p == nil || len(p.Routes) == 0 {
+	if p == nil {
+		return ProxyRoute{}, false
+	}
+	p.rmu.RLock()
+	defer p.rmu.RUnlock()
+	if len(p.Routes) == 0 {
 		return ProxyRoute{}, false
 	}
 	first, rest, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
@@ -167,11 +182,38 @@ func ProxyBaseURL(addr, model string) string {
 	return base + "/v1"
 }
 
-// Provider is one route of the key proxy as a flag gives it: the model
-// prefix it serves, the upstream it forwards to (and that URL's host, the
-// one host it may reach), and the name of the environment variable holding
-// its key.
-type Provider struct{ Name, Upstream, Host, Key string }
+// ProxyRouteURL is provider's route on the proxy at addr without /v1: the
+// base an Anthropic client is given (it appends /v1/messages itself).
+func ProxyRouteURL(addr, provider string) string {
+	return strings.TrimSuffix(ProxyBaseURL(addr, provider+"/"), "/v1")
+}
+
+// Provider is one route of the key proxy as a flag or a nova-config
+// provider record gives it: the model prefix it serves, the upstream it
+// forwards to (and that URL's host, the one host it may reach), the name of
+// the environment variable holding its key ("" for a provider that takes
+// none), and its api (openai or anthropic: how the key is sent).
+type Provider struct{ Name, Upstream, Host, Key, API string }
+
+// ProviderRecord is the route of one enabled nova-config provider record,
+// or a refusal naming the nova-config verb that fixes it. A url ending in
+// /v1 loses it: the harness's request path carries /v1.
+func ProviderRecord(name, rawURL, api, key string) (Provider, error) {
+	p := Provider{Name: name, Upstream: strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(rawURL), "/"), "/v1"), Key: key, API: cmp.Or(api, "openai")}
+	u, err := url.Parse(p.Upstream)
+	switch {
+	case !providerName_internal.MatchString(name):
+		return Provider{}, fmt.Errorf("worker refused: nova-config provider %q is not a provider prefix (lowercase letters, digits, '.', '_', '-'): add it as its models' provider/model prefix names it (nova-config provider add <name> --url <url> --api openai|anthropic --key <SECRET_NAME>) and remove this one", edge.Redact(name))
+	case err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil:
+		return Provider{}, fmt.Errorf("worker refused: nova-config provider %s url %q is not an http(s) URL with a host and no credentials: nova-config provider set %s --url <its API base URL> --actor <you> --reason <why>", name, edge.Redact(rawURL), name)
+	case p.API != "openai" && p.API != "anthropic":
+		return Provider{}, fmt.Errorf("worker refused: nova-config provider %s api %q is neither openai nor anthropic: nova-config provider set %s --api openai|anthropic --actor <you> --reason <why>", name, edge.Redact(api), name)
+	case key != "" && !keyName_internal.MatchString(key):
+		return Provider{}, fmt.Errorf("worker refused: nova-config provider %s key %q is not an environment variable name: nova-config provider set %s --key <SECRET_NAME> --actor <you> --reason <why>", name, edge.Redact(key), name)
+	}
+	p.Host = u.Hostname()
+	return p, nil
+}
 
 var (
 	providerName_internal = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
@@ -214,11 +256,25 @@ func ParseProviders(s string) ([]Provider, error) {
 // upstream's host with the key read from the environment at each request
 // (lookup is os.LookupEnv in the binary).
 func NewKeyProxy(providers []Provider, lookup func(string) (string, bool)) *KeyProxy {
-	p := &KeyProxy{Routes: map[string]ProxyRoute{}}
-	for _, pr := range providers {
-		p.Routes[pr.Name] = ProxyRoute{Name: pr.Name, UpstreamURL: pr.Upstream, AllowedHosts: []string{pr.Host}, Key: EnvKey(pr.Key, lookup)}
-	}
+	p := &KeyProxy{}
+	p.SetRoutes(providers, lookup)
 	return p
+}
+
+// SetRoutes replaces the proxy's routes, one per provider (a provider with
+// no key name takes none), while it serves.
+func (p *KeyProxy) SetRoutes(providers []Provider, lookup func(string) (string, bool)) {
+	routes := map[string]ProxyRoute{}
+	for _, pr := range providers {
+		route := ProxyRoute{Name: pr.Name, UpstreamURL: pr.Upstream, AllowedHosts: []string{pr.Host}, API: pr.API, NoKey: pr.Key == ""}
+		if !route.NoKey {
+			route.Key = EnvKey(pr.Key, lookup)
+		}
+		routes[pr.Name] = route
+	}
+	p.rmu.Lock()
+	defer p.rmu.Unlock()
+	p.Routes = routes
 }
 
 // EnvKey is a route's key source: the variable name from the environment,
@@ -238,6 +294,8 @@ func (p *KeyProxy) HasRoute(name string) bool {
 	if p == nil {
 		return false
 	}
+	p.rmu.RLock()
+	defer p.rmu.RUnlock()
 	_, ok := p.Routes[name]
 	return ok
 }
@@ -247,6 +305,8 @@ func (p *KeyProxy) RouteNames() []string {
 	if p == nil {
 		return nil
 	}
+	p.rmu.RLock()
+	defer p.rmu.RUnlock()
 	return slices.Sorted(maps.Keys(p.Routes))
 }
 
@@ -257,6 +317,8 @@ func (p *KeyProxy) MissingKeys() []string {
 	if p == nil {
 		return nil
 	}
+	p.rmu.RLock()
+	defer p.rmu.RUnlock()
 	for _, name := range slices.Sorted(maps.Keys(p.Routes)) {
 		if route := p.Routes[name]; route.Key != nil {
 			if _, err := route.Key(); err != nil {
@@ -303,7 +365,7 @@ func hostAllowed_internal(host string, allowed []string) bool {
 	}
 	return false
 }
-func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, target *url.URL, apiKey string) {
+func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, target *url.URL, api, apiKey string) {
 	outReq, err := http.NewRequestWithContext(r.Context(), r.Method, target.String(), r.Body)
 	if err != nil {
 		http.Error(w, "proxy refused: invalid request: "+err.Error(), http.StatusBadRequest)
@@ -313,11 +375,17 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 	// itself, so the harness is sent plain bytes; the harness's forwarded, a
 	// cut body is a decompression error inside the harness.
 	for k, vals := range r.Header {
-		if !slices.Contains([]string{"AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST", "ACCEPT-ENCODING"}, strings.ToUpper(k)) {
+		if !slices.Contains([]string{"AUTHORIZATION", "X-API-KEY", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST", "ACCEPT-ENCODING"}, strings.ToUpper(k)) {
 			outReq.Header[k] = slices.Clone(vals)
 		}
 	}
-	outReq.Header.Set("Authorization", "Bearer "+apiKey)
+	switch {
+	case apiKey == "": // a provider that takes no key
+	case api == "anthropic":
+		outReq.Header.Set("X-Api-Key", apiKey)
+	default:
+		outReq.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	outReq.Host = target.Host
 	sent := p.sent_internal()
 	resp, err := cmp.Or(p.Transport, upstream_internal).RoundTrip(outReq)

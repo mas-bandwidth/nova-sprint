@@ -529,22 +529,24 @@ func TestBeatRefusals(t *testing.T) {
 }
 
 // A bench's read carries its harness's tokens (--usage); the engine prices
-// them exactly by the policy's prices() and keeps --cost as charged evidence.
-// A model the policy has no price for is unpriced=no-price, never $0, and
+// them exactly by its model's nova-config model record and keeps --cost as
+// charged evidence. A model with no priced record is unpriced=no-price,
+// never $0, and
 // words that do not read are refused before anything is applied.
 func TestReadPricedFromUsage(t *testing.T) {
 	t.Parallel()
-	sheet := map[string]policy.Price{"deepseek-flash": {In: 270_000, CacheRead: 70_000, CacheWrite: 270_000, Out: 1_100_000}}
+	sheet := map[string]roster.Price{"deepseek/deepseek-flash": {In: 270_000, CacheRead: 27_000, Out: 1_100_000}}
 	w := newWorld(t)
-	w.e.Answers = fakeAnswers{prices: sheet}
+	w.roster.ro.Prices = sheet
 	takeR1(t, w)
 	words := "input=19541 cache_read=36336 output=692 reasoning=70 model=deepseek/deepseek-flash"
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.015", "--usage", words), 0, "READ p2.r1 head="+head+" result=ok")
-	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 8658 || !c.Priced || c.Usage != words+" billing=api charged=0.015" {
+	// 19541 x 0.27 + 36336 x 0.027 + (692 + 70) x 1.10 = 5276.07 + 981.072 + 838.2 micro-dollars: cache reads at the record's cache-read price
+	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 7095 || !c.Priced || c.Usage != words+" billing=api charged=0.015" {
 		t.Fatalf("read card %+v", c)
 	}
 	w = newWorld(t)
-	w.e.Answers = fakeAnswers{prices: sheet}
+	w.roster.ro.Prices = sheet
 	takeR1(t, w)
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", "input=10 output=2 model=openai/sol"), 0, "READ p2.r1")
 	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || c.Priced || c.Usage != "input=10 output=2 model=openai/sol billing=api charged=- unpriced=no-price" {
@@ -600,27 +602,34 @@ func (policyless) Policy(context.Context, int) (store.PolicyVersion, error) {
 	return store.PolicyVersion{}, errors.New("connection reset")
 }
 
-// A report whose billing or price sheet cannot be read is recorded unpriced
-// with the reason, never priced from the wrong sheet or billed by guess.
+// A report whose billing or price sheet (both the roster's) cannot be read
+// is recorded unpriced with the reason, never priced from the wrong sheet or
+// billed by guess. A policy that fails or cannot be read prices nothing, so
+// it unprices nothing; a policy's prices() is never read.
 func TestReadUnpricedWhenBillingCannotBeRead(t *testing.T) {
 	t.Parallel()
-	sheet := map[string]policy.Price{"deepseek-flash": {In: 270_000, Out: 1_100_000}}
+	sheet := map[string]roster.Price{"deepseek/deepseek-flash": {In: 270_000, Out: 1_100_000}}
 	words := "input=1000 output=10 model=deepseek/deepseek-flash"
 	for _, c := range []struct {
 		name, why string
 		prep      func(*world)
 	}{
-		{"roster unreadable", "roster-unreadable", func(w *world) { w.roster.err = errors.New("nova-config down") }},
-		{"policy failed", "policy-unreadable", func(w *world) { w.e.Answers = failedAnswers{fakeAnswers{prices: sheet}} }},
-		{"policy version unreadable", "policy-unreadable", func(w *world) { activePolicy(t, w); w.e.Store = policyless{w.f} }},
+		{"roster unreadable", "unpriced=roster-unreadable", func(w *world) { w.roster.err = errors.New("nova-config down") }},
+		{"policy failed", "charged=-", func(w *world) { w.e.Answers = failedAnswers{fakeAnswers{}} }},
+		{"policy version unreadable", "charged=-", func(w *world) { activePolicy(t, w); w.e.Store = policyless{w.f} }},
+		{"a policy price only", "unpriced=no-price", func(w *world) {
+			w.roster.ro.Prices = nil
+			w.e.Answers = fakeAnswers{prices: map[string]policy.Price{"deepseek-flash": {In: 1, Out: 1}}}
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w := newWorld(t)
-			w.e.Answers = fakeAnswers{prices: sheet}
+			w.roster.ro.Prices = sheet
 			takeR1(t, w)
 			c.prep(w)
 			want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", words), 0, "READ p2.r1")
-			if card := w.snap(t).Cards["p2.r1"]; card.Priced || card.Cost != 0 || !strings.HasSuffix(card.Usage, "unpriced="+c.why) {
+			card := w.snap(t).Cards["p2.r1"]
+			if priced := c.why == "charged=-"; card.Priced != priced || (card.Cost == 281) != priced || !strings.HasSuffix(card.Usage, c.why) {
 				t.Fatalf("read card %+v", card)
 			}
 		})

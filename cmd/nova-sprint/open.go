@@ -16,7 +16,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
-	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
+	config "github.com/mas-bandwidth/nova-tools/v2/modules/config"
 )
 
 // credentials are the store's: NOVA_PG_DSN without a password, its user
@@ -54,7 +54,7 @@ func (c credentials) sprint() (string, error) {
 func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 	actor, creds := os.Getenv("NOVA_SPRINT_AS"), credentialsFromEnv()
 	st := &lazyStore{creds: creds}
-	ro := &lazyRoster{creds: creds}
+	ro := &lazyRoster{creds: creds, friends: st}
 	pol := policy.NewEngine(policy.RealClock{})
 	git, fg := gitEdge(), forgeEdge()
 	e := &verbs.Engine{Store: st, Bus: busEdge(), Roster: ro, Answers: pol, Policy: pol, Origin: &origin{git: git, dir: reposDir()}, Forge: hostForge{exec: edge.NewOSExec(), land: fg},
@@ -195,6 +195,10 @@ func (s *lazyStore) PoliciesNamed(ctx context.Context, kind, name string, max in
 	return with(s, ctx, func(p *store.PG) ([]store.PolicyVersion, error) { return p.PoliciesNamed(ctx, kind, name, max) })
 }
 
+func (s *lazyStore) NewestData(ctx context.Context, prefix string) ([]store.PolicyVersion, error) {
+	return with(s, ctx, func(p *store.PG) ([]store.PolicyVersion, error) { return p.NewestData(ctx, prefix) })
+}
+
 func (s *lazyStore) Replay(ctx context.Context, id string) (store.Receipt, bool, error) {
 	p, err := s.get(ctx)
 	if err != nil {
@@ -222,9 +226,10 @@ func with[T any](s *lazyStore, ctx context.Context, f func(*store.PG) (T, error)
 
 // lazyRoster is nova-config, connected on the first read.
 type lazyRoster struct {
-	mu     sync.Mutex
-	creds  credentials
-	reader *run.ConfigRoster
+	mu      sync.Mutex
+	creds   credentials
+	reader  *run.ConfigRoster
+	friends run.FriendReader // the sprint store: the friends' sprint settings
 }
 
 func (l *lazyRoster) open(ctx context.Context, widthCap int) (*run.ConfigRoster, error) {
@@ -243,7 +248,7 @@ func (l *lazyRoster) open(ctx context.Context, widthCap int) (*run.ConfigRoster,
 	if err != nil {
 		return nil, err
 	}
-	if l.reader, err = run.NewConfigRoster(conn, widthCap); err != nil {
+	if l.reader, err = run.NewConfigRoster(conn, l.friends, widthCap); err != nil {
 		conn.Close()
 		return nil, err
 	}

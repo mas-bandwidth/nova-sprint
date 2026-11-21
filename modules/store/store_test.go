@@ -384,6 +384,38 @@ func TestPoliciesNamedNewestFirst(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+// NewestData is the newest data version of each name under the prefix, in
+// name order: a script version, another prefix, an older version and a
+// prefix's LIKE characters are never among them.
+func TestNewestDataPerName(t *testing.T) {
+	t.Parallel()
+	newestDataCase(t, NewFake())
+}
+
+// newestDataCase is NewestData's behaviour on s (the Fake here, PG in
+// TestFunctionalNewestData).
+func newestDataCase(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+	for i, w := range []PutPolicy{{"data", "friend:bob", `{"width":1}`}, {"data", "friend:amy", `{"width":2}`}, {"script", "friend:cat", "x"},
+		{"data", "friend:bob", `{"width":3}`}, {"data", "setup:services", "none"}, {"data", "friendXdan", "y"}} {
+		r, err := s.Apply(ctx, Op{ID: fmt.Sprintf("p%d", i), Epoch: 1, Actor: "alice", Kind: "friend", At: time.Unix(1000, 0), Writes: []Write{w}})
+		require.NoError(t, err)
+		require.True(t, r.Accepted, r.Reason)
+	}
+	got, err := s.NewestData(ctx, "friend:")
+	require.NoError(t, err)
+	var names, bodies []string
+	for _, v := range got {
+		names, bodies = append(names, v.Name), append(bodies, v.Body)
+	}
+	assert.Equal(t, []string{"friend:amy", "friend:bob"}, names)
+	assert.Equal(t, []string{`{"width":2}`, `{"width":3}`}, bodies)
+	got, err = s.NewestData(ctx, "friend_")
+	require.NoError(t, err)
+	assert.Empty(t, got, "the prefix is no LIKE pattern")
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.

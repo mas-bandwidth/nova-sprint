@@ -671,18 +671,21 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   would put a name in both a seat's file and its grants, which `nova-secrets exec` refuses).
   Step 7: after `Role.GrantSeat` for every seat, one record `sprint-worker-<machine>` per worker
   bench: argv `nova-sprint worker --as <machine> --work-clone .local/share/nova-sprint/work
-  --coordinator-hosts <run machine> --harness opencode --root .local/state/nova-worker/<machine>
+  --coordinator-hosts <run machine> --root .local/state/nova-worker/<machine>
   --state-dir .local/state` (built in one function, `workerArgv`; directories under the bench
   login's home, which `nova-sprint worker` now resolves there), seat the machine's, keys
   `NOVA_SPRINT_PG_PASSWORD`, `NOVA_BUS_PASSWORD` (when the bus has a user, as sprint-run),
-  `DEEPSEEK_API_KEY`, `INCEPTION_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY` (Ultramarine left out, not a fit), env `NOVA_PG_DSN`,
+  the key of every enabled nova-config provider record (up refuses, naming `nova-config
+  provider add`, when there is none), env `NOVA_PG_DSN`,
   `NOVA_BUS_REDIS`, `NOVA_BUS_USER` as sprint-run's. All are applied in one play (`nova-fleet
   services -- -l <benches> -e nova_service_only=<records>`), not one per machine. Every bench
   gets a worker, the run machine too when it has the bench role (merged with the worker's
   change of the same night, which dropped its coordinator-host refusal); the UP DONE count is of
-  worker benches. The record's argv carries the worker's per-repo roots (`--work-root`) and its
-  provider routes (`--providers`: DeepSeek, Inception, OpenCode Zen and OpenRouter; Ultramarine left out, not a fit). `harness` is opencode because nova-config's machines carry
-  no harness field.
+  worker benches. The record's argv carries the worker's per-repo roots (`--work-root`); it
+  carries no `--providers` and no `--harness`: the worker reads its proxy routes from
+  nova-config's provider records and each model's harness from its model record (opencode when
+  a model has none). A conflicting record is refused with the exact `nova-config service set`
+  that fixes it.
 - Step 7 verifies from one inventory read, one snapshot and one `nova-bus who`
   (`ExecEnvironment.Present`); a not-ready step is a `verbs.WorkloadNotReady`: up acts once, then
   refuses naming each bench and its unit's last log line, the logs read over the inventory's

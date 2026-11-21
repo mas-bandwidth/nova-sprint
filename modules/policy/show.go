@@ -15,11 +15,13 @@ import (
 
 // Report is what check found: every answer that would differ from the
 // active version's on the current snapshot, by question and subject, then
-// every refusal. Code is 0 when nothing is refused, 1 otherwise.
+// every refusal, then a warning per answer the version gives that nothing
+// reads (Ignored). Code is 0 when nothing is refused, 1 otherwise.
 type Report struct {
 	Label    string
 	Changes  []string
 	Refusals []string
+	Warnings [][2]string // what, fix
 }
 
 // Text is the report as check prints it.
@@ -33,7 +35,27 @@ func (r Report) Text() string {
 	for _, f := range r.Refusals {
 		b.WriteString(f + "\n")
 	}
+	for _, w := range r.Warnings {
+		b.WriteString("WARN " + w[0] + ": " + w[1] + "\n")
+	}
 	return b.String()
+}
+
+// Ignored is a line per answer of a's version (labelled label) that is
+// validated and never read, naming the nova-config verb that holds it now:
+// prices() (a model's price is its model record's) and catalog()'s
+// concurrency (a provider's cap is its provider record's).
+func Ignored(label string, a Answers) [][2]string {
+	var out [][2]string
+	if len(a.Prices) > 0 {
+		out = append(out, [2]string{label + " prices() is ignored: a model's price is its nova-config model record's",
+			"nova-config model set <provider>/<model> --price_in <n> --price_out <n>, and drop prices() from the policy"})
+	}
+	if len(a.Catalog.Concurrency) > 0 {
+		out = append(out, [2]string{label + " catalog() concurrency is ignored: a provider's cap on runs at once is its nova-config provider record's",
+			"nova-config provider set <name> --concurrency <n>, and drop concurrency from catalog()"})
+	}
+	return out
 }
 
 // Code is the exit status: 0 when nothing is refused, 1 otherwise.
@@ -110,7 +132,7 @@ func bothRungs(q Questions) Questions {
 
 // report compares a run's answers with the active version's on snap.
 func (e *Engine) report(ctx context.Context, st store.Store, snap store.Snapshot, ro roster.Roster, label string, a Answers, fs []Failure) (Report, error) {
-	r := Report{Label: label}
+	r := Report{Label: label, Warnings: Ignored(label, a)}
 	for _, f := range fs {
 		r.Refusals = append(r.Refusals, f.Error())
 	}

@@ -51,10 +51,12 @@ def verdict(card, reads):
 
 def width(row):
     # dogfood 2026-11-07 (Glenn: a ready card never sits): no deal-ahead for
-    # anyone; a bench runs at most 4 harnesses at once (nova-reserve shared
-    # slots), so its work width is 4 whatever its cores say (defect 65).
-    if row.kind == "worker":
-        return {"work": min(row.width, 4), "ahead": 0}
+    # anyone; a bench runs at most as many harnesses at once as its
+    # nova-reserve slots (row.slots, its last beat's), so that caps its work
+    # width whatever its cores say (defect 65); before a beat reports slots
+    # (0), the row width.
+    if row.kind == "worker" and row.slots > 0:
+        return {"work": min(row.width, row.slots), "ahead": 0}
     return {"work": row.width, "ahead": 0}
 
 def limits():
@@ -105,8 +107,9 @@ def stitch(stream):
     return stream.cards > 1
 
 def prices():
-    # micro-dollars per million tokens: {"in", "out"}, cache_read and
-    # cache_write default to in. Unlisted API models are unpriced, never $0.
+    # Ignored: a model's price is its nova-config model record's
+    # (nova-config model set <provider>/<model> --price_in <n> --price_out
+    # <n>); policy check warns when a version names one here.
     return {}
 
 def catalog():

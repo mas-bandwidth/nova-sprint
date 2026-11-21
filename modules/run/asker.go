@@ -92,6 +92,7 @@ func (a *asker) Ask(q steps.Questions) steps.Answers {
 	a.answers, a.failures = a.policy.AnswerContext(a.ctx, a.vs, a.snap, a.ro, pq)
 	a.asked = a.answers.Version >= 0
 	out := stepsAnswers(a.answers, a.failures)
+	out.Concurrency = maps.Clone(a.ro.Concurrency) // the provider records'; a policy catalog's concurrency is ignored
 	out.NoDeal = noDeal(a.vs, a.answers, a.failures, a.stored)
 	return out
 }
@@ -132,8 +133,7 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 	}
 	a := steps.Answers{Version: p.Version, Order: map[string][]any{}, Rows: map[string][]string{},
 		Reads: maps.Clone(p.Reads), Verdict: maps.Clone(p.Verdict), Width: map[string]steps.WidthAnswer{},
-		Landing: map[string]steps.LandingAnswer{}, Failed: map[string]string{}, Models: maps.Clone(p.Catalog.Bench),
-		Concurrency: maps.Clone(p.Catalog.Concurrency)}
+		Landing: map[string]steps.LandingAnswer{}, Failed: map[string]string{}, Models: maps.Clone(p.Catalog.Bench)}
 	for id, t := range p.Order {
 		a.Order[id] = orderTuple(t)
 	}

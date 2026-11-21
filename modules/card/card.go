@@ -302,7 +302,7 @@ const LandedState = "landed"
 // its judgement (Held). The first word after it is the route's
 // name, the one vocabulary of routes: the name a brief declares with
 // `NEEDS-ROUTE: <name>` (RouteField) and a machine serves through its
-// `route:<name>` role; the rest of the reason says what is missing.
+// nova-config machine record's routes; the rest of the reason says what is missing.
 const MissingRoute = "missing-route:"
 
 // RouteFault says whether reason is a missing-route fault's, and what it

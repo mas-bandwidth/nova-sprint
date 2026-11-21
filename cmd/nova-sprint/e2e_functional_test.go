@@ -20,7 +20,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
-	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
+	config "github.com/mas-bandwidth/nova-tools/v2/modules/config"
 )
 
 // e2e is one end-to-end sprint: the binary for every verb, run.Serve in
@@ -195,7 +195,7 @@ func (x *e2e) seedConfig() {
 			t.Fatalf("nova-config seed: %v", err)
 		}
 	}
-	x.tr.note("nova-config: schema applied; machine bench1 (bench, 1 core); friend kim (claude, model m-kim, width 1)")
+	x.tr.note("nova-config: schema applied; machine bench1 (bench, 1 core); friend kim (claude, model m-kim; no sprint settings: width 1, every tier)")
 }
 
 // startRun is run.Serve over the real store, nova-config, bus, policy
@@ -207,7 +207,7 @@ func (x *e2e) startRun() func() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ro, err := run.NewConfigRoster(conn, 1)
+	ro, err := run.NewConfigRoster(conn, x.st, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

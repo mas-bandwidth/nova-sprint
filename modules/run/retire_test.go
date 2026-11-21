@@ -82,7 +82,7 @@ func TestTickRetiresNothingOnAnEmptyRoster(t *testing.T) {
 func TestServeRosterFailureRetiresNothing(t *testing.T) {
 	t.Parallel()
 	f, _ := seeded(t)
-	ro, err := NewConfigRoster(&fakeConfigSnapshot{err: errors.New("postgres: connect failed")}, 8)
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{err: errors.New("postgres: connect failed")}, noFriends{}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}

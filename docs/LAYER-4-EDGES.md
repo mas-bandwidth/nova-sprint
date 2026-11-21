@@ -1058,6 +1058,15 @@ clock), mostly in `modules/edge/worker/probe_test.go`.
   harness's base URL is `http://<proxy>/<provider>/v1` (`ProxyBaseURL`), and
   the proxy picks the route by that first path segment and cuts it, so one
   proxy serves every provider; a route forwards only to its upstream's host.
+  Since 2026-11-21 the routes come from nova-config's enabled provider records
+  (`Records`, read with the sprint's credentials at start and again once when a
+  job names a model the worker has not seen); `--providers` overrides them. A
+  record's `api` sets the key header: `x-api-key` for `anthropic`,
+  `Authorization: Bearer` otherwise; a record with no key is a keyless route.
+  Each job's harness is its model record's (`--harness`, default opencode, for
+  a model with none); claude reaches a provider record's route through the
+  proxy (`ANTHROPIC_BASE_URL` the route, `ANTHROPIC_AUTH_TOKEN` the
+  placeholder), and the probe runs each model with its record's harness.
 - **Judgement errors (30).** At 0832c0c0 the probe already appended the
   judgement's error to its refusal. Found: nova-sprint v2 has no `judge-open`
   verb, so `CLISprintClient.OpenJudgement` always fails ("unknown verb") and

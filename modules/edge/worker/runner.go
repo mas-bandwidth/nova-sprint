@@ -169,9 +169,18 @@ type Runner struct {
 	Exec                               edge.Exec
 	Harnesses                          map[string]Harness
 	DefaultHarness                     Harness
-	Timeouts                           Timeouts
-	Logger                             *StepLogger
-	Warn                               func(string) // a best-effort step's failure; nil: stderr
+	// Records re-reads nova-config's provider and model records (nil: the
+	// worker runs without nova-config, on --providers and --harness alone);
+	// ModelHarnesses is each model record's harness as last read (records.go),
+	// and RecordRoutes: the records' providers are the proxy's routes (no
+	// --providers), keys read with LookupEnv (os.LookupEnv when nil).
+	Records        func(context.Context) (Records, error)
+	ModelHarnesses map[string]string
+	RecordRoutes   bool
+	LookupEnv      func(string) (string, bool)
+	Timeouts       Timeouts
+	Logger         *StepLogger
+	Warn           func(string) // a best-effort step's failure; nil: stderr
 	// Meter and Beater, both set, make ServeRow push a heartbeat every
 	// BeatEvery (the const when zero); a worker without them beats not at all.
 	Meter     Meter
@@ -242,7 +251,8 @@ func (r *Runner) harnessFor_internal(name string) (Harness, error) {
 	if h, ok := r.Harnesses[name]; name != "" && ok {
 		return h, nil
 	}
-	if r.DefaultHarness != nil {
+	// a harness a model record names is that harness, whatever the default
+	if _, err := NewHarness(name); r.DefaultHarness != nil && (r.Records == nil || err != nil || r.DefaultHarness.Name() == name) {
 		return r.DefaultHarness, nil
 	}
 	return NewHarness(cmp.Or(name, "claude"))
@@ -507,7 +517,7 @@ func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, er
 	if len(proved) == 0 || r.served[info.Model] {
 		return info.Model, nil
 	}
-	return "", fmt.Errorf("this bench's %s does not serve %s, the model the deal named for tier %s (its probe proved %s): give the tier a bench model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for it (nova-sprint worker --providers)",
+	return "", fmt.Errorf("this bench's %s does not serve %s, the model the deal named for tier %s (its probe proved %s): give the tier a bench model this bench serves (nova-sprint policy set <file> --reason <why>), or its provider a route (nova-config provider add <provider> --url <url> --api openai|anthropic --key <SECRET_NAME>) and restart the worker",
 		h.Name(), info.Model, info.Tier, strings.Join(proved, ", "))
 }
 
@@ -624,7 +634,7 @@ func (r *Runner) launchBackoff_internal(attempt int) time.Duration {
 	return lo + time.Duration((mix^(mix>>31))%uint64(hi-lo))
 }
 func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) (WallRunResult, error) {
-	h, err := r.harnessFor_internal(job.HarnessName)
+	h, err := r.harnessOf_internal(job.HarnessName, job.Model)
 	if err != nil {
 		return WallRunResult{}, err
 	}

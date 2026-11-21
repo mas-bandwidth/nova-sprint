@@ -168,9 +168,9 @@ func routeWords(routes []string) string {
 // serveFix is how a tier and routes come to be served.
 func serveFix(tier string, routes []string) string {
 	if len(routes) > 0 {
-		return "give a bench that has it the role " + roster.RoutePrefix + routes[0] + " (nova-config machine set <bench> --roles bench," + roster.RoutePrefix + routes[0] + " --actor <you> --reason <why>), or drop the " + card.RouteField + " line, then add the card again"
+		return "give a bench that has it the route " + routes[0] + " (nova-config machine set <bench> --routes <its routes>," + routes[0] + " --actor <you> --reason <why>), or drop the " + card.RouteField + " line, then add the card again"
 	}
-	return "give a friend the tier (nova-config friend set <name> --tiers ...," + tier + "), give a bench cores, or change the brief's tier line, then add the card again"
+	return "give a friend the tier (nova-sprint friend set <name> --tiers ...," + tier + "), give a bench cores, or change the brief's tier line, then add the card again"
 }
 
 // benchNamed is the first gate line (DONE-WHEN, TEST) naming a bench

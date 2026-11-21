@@ -29,8 +29,14 @@ type Config struct {
 	// verb it runs (BuildEnv): nova-fleet install replaces SprintBin on disk
 	// under a running worker, so its beat reports the process, not the file.
 	Version string
-	// Providers is --providers: the key proxy's routes (ParseProviders).
+	// Providers is --providers: the key proxy's routes (ParseProviders), in
+	// place of nova-config's provider records.
 	Providers string
+	// Records reads nova-config's enabled provider and model records (the
+	// binary's, through the sprint's credentials): the proxy's routes unless
+	// --providers names them, and each model's harness, Harness's for a
+	// model without a record. nil: the worker runs without nova-config.
+	Records func(context.Context) (Records, error)
 	// WallReads is --wall-read, repeatable: directories every job and probe
 	// wall reads, never writes (a toolchain and its module cache;
 	// CheckWallReads refuses the rest).
@@ -54,7 +60,7 @@ func (c Config) Check() error {
 	if strings.TrimSpace(c.Row) == "" {
 		return fmt.Errorf("worker refused: missing --as <row>: pass --as <row>")
 	}
-	if _, err := NewHarness(cmp.Or(c.Harness, "claude")); err != nil {
+	if _, err := NewHarness(cmp.Or(c.Harness, DefaultHarnessName)); err != nil {
 		return err
 	}
 	if _, err := ParseProviders(c.Providers); err != nil {
@@ -81,11 +87,11 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 	if err != nil {
 		return fmt.Errorf("worker refused: no home directory for the worker's state: %w", err)
 	}
-	providers, err := ParseProviders(c.Providers)
+	recs, err := c.records_internal(ctx)
 	if err != nil {
 		return err
 	}
-	proxy := NewKeyProxy(providers, os.LookupEnv)
+	proxy := NewKeyProxy(recs.Providers, os.LookupEnv)
 	srv, proxyAddr, err := proxy.ListenLoopback("127.0.0.1:0")
 	if err != nil {
 		return err
@@ -95,14 +101,50 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 	if err != nil {
 		return err
 	}
-	return r.ServeRow(ctx, c.Row, cmp.Or(c.Harness, "claude"))
+	r.Records, r.ModelHarnesses, r.RecordRoutes = c.Records, recs.Harnesses, c.Providers == ""
+	out(fmt.Sprintf("worker: key-proxy routes %s (%s); %d model records name a harness, %s for a model without one",
+		cmp.Or(strings.Join(proxy.RouteNames(), ","), "none"), recs.from, len(recs.Harnesses), cmp.Or(c.Harness, DefaultHarnessName)))
+	return r.ServeRow(ctx, c.Row, cmp.Or(c.Harness, DefaultHarnessName))
+}
+
+// DefaultHarnessName is the harness of a model without a nova-config model
+// record when the worker is given no --harness: nova-config's own default
+// for a model record's harness.
+const DefaultHarnessName = "opencode"
+
+// startRecords_internal is what the worker starts on: the proxy's routes
+// and each model record's harness, and where the routes came from.
+type startRecords_internal struct {
+	Records
+	from string
+}
+
+// records_internal reads nova-config's records at start (a read that fails
+// refuses the start) and takes the routes from --providers when it is given.
+func (c Config) records_internal(ctx context.Context) (startRecords_internal, error) {
+	var s startRecords_internal
+	if c.Records != nil {
+		var err error
+		if s.Records, err = c.Records(ctx); err != nil {
+			return s, fmt.Errorf("worker refused: nova-config's provider and model records could not be read: %w: nova-sprint check names what the sprint's credentials lack", err)
+		}
+		s.from = "nova-config provider records"
+	}
+	if c.Providers != "" || c.Records == nil {
+		providers, err := ParseProviders(c.Providers)
+		if err != nil {
+			return s, err
+		}
+		s.Providers, s.from = providers, "--providers"
+	}
+	return s, nil
 }
 
 // newOSRunner_internal is the runner on the real clock, git, wall and bus.
 // It holds no forge: the worker's contract ends at a pushed head, and the
 // run's landing opens the PR with the host's identity (intent rules 16, 32).
 func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *KeyProxy, proxyAddr string, out func(string)) (*Runner, error) {
-	h, err := NewHarness(cmp.Or(c.Harness, "claude"))
+	h, err := NewHarness(cmp.Or(c.Harness, DefaultHarnessName))
 	if err != nil {
 		return nil, err
 	}

@@ -256,6 +256,31 @@ func TestVerdictRetry(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "retry" with a done ok or fix read`, line), fs[0].Error())
 }
 
+// TestWidthCapsAtTheBenchSlots: the built-in width() works a bench at most
+// at the nova-reserve slots its last beat reported (row.slots), at its row
+// width before any beat reported slots, and a friend at its own width; a
+// stored policy written before row.slots (the old min(row.width, 4)) still
+// validates and answers.
+func TestWidthCapsAtTheBenchSlots(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	w.ro.Workers["r1"] = roster.Worker{Name: "r1", Width: 8, Tiers: []string{"flash", "pro", "heavy"}, Harness: roster.WorkerHarness}
+	w.ro.Kin["r3"] = roster.Kin{Name: "r3", Width: 6, Tiers: []string{"frontier"}, Model: "m-frontier", Harness: "claude"}
+	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	require.Empty(t, fs)
+	assert.Equal(t, Width{Work: 8}, a.Width["r1"], "no slots reported: the row width")
+	assert.Equal(t, Width{Work: 6}, a.Width["r3"], "a friend: its own width")
+	w.apply(store.SetRowLoad{Row: "r1", Load1Centi: 10, Cores: 16, SlotsUsed: 1, SlotsTotal: 3})
+	a, fs = testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	require.Empty(t, fs)
+	assert.Equal(t, Width{Work: 3}, a.Width["r1"], "the bench's 3 slots")
+	old, _ := override("width", "def width(row):\n    if row.kind == \"worker\":\n        return {\"work\": min(row.width, 4), \"ahead\": 0}\n    return {\"work\": row.width, \"ahead\": 0}")
+	a, fs = testEngine().Answer(Versions{Active: pv(2, old)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	require.Empty(t, fs)
+	assert.Equal(t, 2, a.Version)
+	assert.Equal(t, Width{Work: 4}, a.Width["r1"])
+}
+
 // TestRosterIsTheSourceOfRowFacts (round 5): every row fact a question
 // reads is the roster's, by the row's name; a row the roster does not name
 // is in no question and is reported once, as a judgement.

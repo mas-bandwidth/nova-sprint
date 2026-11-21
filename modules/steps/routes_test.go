@@ -10,7 +10,7 @@ import (
 
 // TestTickRoutesDealOnlyToServingRows: a card whose brief declares
 // NEEDS-ROUTE is dealt only to a row that serves the route (roster.Worker
-// Routes, from nova-config's route:<name> roles); with none it waits on the
+// Routes, from nova-config's machine routes); with none it waits on the
 // unserved judgement naming the route, and a row that serves it is dealt
 // to (CARD-CONTRACT "Routes", intent rule 34).
 func TestTickRoutesDealOnlyToServingRows(t *testing.T) {

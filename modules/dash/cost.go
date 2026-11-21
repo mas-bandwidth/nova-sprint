@@ -76,7 +76,7 @@ type costSummary struct {
 	Unpriced    int               `json:"unpriced_runs"` // finished API runs with no price: NoTokens + NoPrice
 	NoTokens    int               `json:"unpriced_no_tokens"`
 	NoPrice     int               `json:"unpriced_no_price"`
-	Missing     []string          `json:"missing_prices"` // the models of the no-price runs, which prices() leaves out
+	Missing     []string          `json:"missing_prices"` // the models of the no-price runs, which no nova-config model record prices
 	Landed      int               `json:"landed_cards"`   // cards landed in this run
 	PricedCards int               `json:"priced_cards"`   // of those, the cards whose own API runs were priced
 	APITokens   string            `json:"api_tokens"`     // tokens of the priced API runs, compact (1.2M)

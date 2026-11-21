@@ -123,7 +123,7 @@ func (f FleetServices) existing(ctx context.Context, s FleetService) (bool, erro
 			return false, &OperationError{Problem: "service " + s.Name + " conflicts with setup: nova-config lists it twice", Fix: "remove the duplicate " + s.Name + " service record", Exit: 1}
 		}
 		if !sameFleetService(item.Fields, s) {
-			return false, &OperationError{Problem: edge.RedactN("service "+s.Name+" conflicts with setup: "+fleetServiceDiff(item.Fields, s), edge.CommandMax), Fix: "make the " + s.Name + " service record match setup, or remove it so setup creates it", Exit: 1}
+			return false, &OperationError{Problem: edge.RedactN("service "+s.Name+" conflicts with setup: "+fleetServiceDiff(item.Fields, s), edge.CommandMax), Fix: serviceSetFix(item.Fields, s), Exit: 1}
 		}
 		found = true
 	}
@@ -199,6 +199,49 @@ func fleetServiceDiff(got configService, want FleetService) string {
 	}
 	return strings.Join(diff, "; ")
 }
+
+// serviceSetFix is the nova-config service set that brings the record to
+// what setup wants: each differing field with setup's value, the argv as
+// its JSON array; the environment by its variables' names only, never
+// their values (fleetServiceDiff).
+func serviceSetFix(got configService, want FleetService) string {
+	got.Env = WithoutGitGuard(got.Env, want.Env)
+	keys := append([]string(nil), want.Keys...)
+	sort.Strings(keys)
+	args := []string{"nova-config service set " + want.Name}
+	if got.Machine != want.Machine {
+		args = append(args, "--machine "+want.Machine)
+	}
+	if got.Seat != want.Seat {
+		args = append(args, "--seat "+want.Seat)
+	}
+	if got.Keys != strings.Join(keys, ",") {
+		args = append(args, "--keys "+strings.Join(keys, ","))
+	}
+	if !reflect.DeepEqual(got.Argv, want.Argv) {
+		argv, _ := json.Marshal(want.Argv) // strings: never fails
+		args = append(args, "--argv '"+string(argv)+"'")
+	}
+	for _, f := range [][2]string{{"--every 0", fmt.Sprint(got.Every != 0)}, {"--keepalive true", fmt.Sprint(!got.Keepalive)}, {"--enabled true", fmt.Sprint(!got.Enabled)}, {"--log ''", fmt.Sprint(got.Log != "")}} {
+		if f[1] == "true" {
+			args = append(args, f[0])
+		}
+	}
+	env := want.Env
+	if env == nil {
+		env = map[string]string{}
+	}
+	if !reflect.DeepEqual(got.Env, env) {
+		names := make([]string, 0, len(env))
+		for k := range env {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		args = append(args, "--env '<a JSON object of exactly "+strings.Join(names, ",")+", as sprint-run's record holds them>'")
+	}
+	return strings.Join(args, " ") + " --actor <you> --reason <why>, then nova-sprint up again"
+}
+
 func sameFleetService(got configService, want FleetService) bool {
 	got.Env = WithoutGitGuard(got.Env, want.Env)
 	keys := append([]string(nil), want.Keys...)

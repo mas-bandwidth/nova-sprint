@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
+	config "github.com/mas-bandwidth/nova-tools/v2/modules/config"
 )
 
-// The env path must name config/schema.sql from nova-tools v2.0.3, the
+// The env path must name cmd/nova-config/schema.sql from the nova-tools
 // version go.mod links (config.Open refuses any other schema). The
 // fixture applies it only to chooserTestPG's isolated temporary database.
 func configSchemaFixture(t *testing.T) []byte {
@@ -29,8 +29,8 @@ func configSchemaFixture(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(b)
-	if hex.EncodeToString(sum[:]) != "bc3b542184c19e2b09338199b87184695eab1a26856a3ffee1cde7294ee07e96" {
-		t.Fatal("config schema does not match pinned nova-tools v2.0.3")
+	if hex.EncodeToString(sum[:]) != "1d752de3b4ca6bd48585a782445a51c796ac5e398bdde8ce0f315de42fec66c3" {
+		t.Fatal("config schema does not match the pinned nova-tools")
 	}
 	return b
 }
@@ -55,9 +55,11 @@ func TestFunctionalConfigRosterReadGrantsAndClose(t *testing.T) {
 	defer admin.Close(context.Background())
 	configExec(t, ctx, admin, string(schema))
 	configExec(t, ctx, admin, `CREATE ROLE nova_sprint LOGIN`)
-	configExec(t, ctx, admin, `INSERT INTO config.machines (name,"user",roles,cores,os,arch) VALUES ('bench-a','fixture','bench,runner',12,'linux','amd64'),('service','fixture','services',NULL,'linux','amd64')`)
+	configExec(t, ctx, admin, `INSERT INTO config.machines (name,"user",roles,routes,cores,os,arch) VALUES ('bench-a','fixture','bench,runner','ipad',12,'linux','amd64'),('service','fixture','services','',NULL,'linux','amd64')`)
 	configExec(t, ctx, admin, `INSERT INTO config.friends (name,harness,model,width,tiers,enabled) VALUES ('friend','codex','fixture-model',3,'flash,pro',true),('disabled','codex','fixture-model',1,'pro',false)`)
-	configExec(t, ctx, admin, `GRANT USAGE ON SCHEMA config TO nova_sprint; GRANT SELECT ON config.machines, config.friends, config.services TO nova_sprint`)
+	configExec(t, ctx, admin, `INSERT INTO config.providers (name,url,api,key,concurrency,enabled) VALUES ('deepseek','https://api.deepseek.com','openai','DEEPSEEK_API_KEY',4,true)`)
+	configExec(t, ctx, admin, `INSERT INTO config.models (name,price_in,price_out,enabled) VALUES ('deepseek/deepseek-chat',270000,1100000,true)`)
+	configExec(t, ctx, admin, `GRANT USAGE ON SCHEMA config TO nova_sprint; GRANT SELECT ON config.machines, config.friends, config.services, config.providers, config.models TO nova_sprint`)
 	u, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +69,7 @@ func TestFunctionalConfigRosterReadGrantsAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, err := NewConfigRoster(conn, 8)
+	reader, err := NewConfigRoster(conn, noFriends{}, 8)
 	if err != nil {
 		conn.Close()
 		t.Fatal(err)
@@ -77,8 +79,13 @@ func TestFunctionalConfigRosterReadGrantsAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Workers) != 1 || got.Workers["bench-a"].Width != 8 || len(got.Workers["bench-a"].Tiers) != 4 || len(got.Kin) != 1 || got.Kin["friend"].Width != 3 || got.Kin["friend"].Model != "fixture-model" || got.Kin["friend"].Harness != "codex" {
+	// nova-config's width and tiers columns are never read: a friend with
+	// no sprint settings works at the defaults.
+	if len(got.Workers) != 1 || got.Workers["bench-a"].Width != 8 || len(got.Workers["bench-a"].Tiers) != 4 || got.Workers["bench-a"].Routes[0] != "ipad" || len(got.Kin) != 1 || got.Kin["friend"].Width != 1 || len(got.Kin["friend"].Tiers) != 4 || got.Kin["friend"].Model != "fixture-model" || got.Kin["friend"].Harness != "codex" {
 		t.Fatalf("roster %+v", got)
+	}
+	if got.Prices["deepseek/deepseek-chat"].In != 270000 || got.Concurrency["deepseek"] != 4 {
+		t.Fatalf("prices %v concurrency %v", got.Prices, got.Concurrency)
 	}
 	if _, err = conn.Conn().Exec(ctx, `INSERT INTO config.friends(name) VALUES ('forbidden')`); err == nil {
 		t.Fatal("read-only role wrote config")

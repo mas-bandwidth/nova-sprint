@@ -762,3 +762,21 @@ func (p *PG) PoliciesNamed(ctx context.Context, kind, name string, max int) ([]P
 	}
 	return out, nil
 }
+
+// newestDataSQL is NewestData's one read: the newest data version of each
+// name under a prefix (starts_with, so a prefix's % or _ is no pattern).
+const newestDataSQL = "SELECT DISTINCT ON (name) " + policyCols + " FROM sprint.policy WHERE kind = 'data' AND starts_with(name, $1) ORDER BY name, version DESC"
+
+// NewestData reads the newest data version of every name that starts with
+// prefix, in name order.
+func (p *PG) NewestData(ctx context.Context, prefix string) ([]PolicyVersion, error) {
+	rows, err := p.pool.Query(ctx, newestDataSQL, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("store: newest data: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (PolicyVersion, error) { return scanPolicy(r) })
+	if err != nil {
+		return nil, fmt.Errorf("store: newest data: %w", err)
+	}
+	return out, nil
+}

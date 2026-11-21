@@ -374,7 +374,7 @@ func configSchema(t *testing.T) []byte {
 	if err != nil {
 		t.Fatalf("nova-tools module: %v", err)
 	}
-	schema, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), "config", "schema.sql"))
+	schema, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), "cmd", "nova-config", "schema.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}

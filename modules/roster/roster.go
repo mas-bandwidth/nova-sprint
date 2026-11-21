@@ -2,7 +2,11 @@
 // machines (workers) and the enabled friends (kin), read from nova-config,
 // the one true source of that configuration. nova-sprint never copies it
 // into its store (round 22: a store row is sprint state only); the deal
-// guards take each row's width and tiers from a Roster value instead.
+// guards take each row's width and tiers from a Roster value instead. A
+// friend's width and tiers are the sprint's own (how many cards it works
+// at once, which tiers it serves): they live in the sprint store as a
+// friend:<name> data version (friend.go), and the roster reads them beside
+// nova-config's friend record.
 //
 // The roster is read through a Source. The real one reads nova-config's
 // PostgreSQL through nova-tools' config package (source.go). Layer 6 owns
@@ -32,22 +36,27 @@ const (
 	KindKin    = "kin"
 )
 
-// Machine is a fleet machine as nova-config holds it.
+// Machine is a fleet machine as nova-config holds it. Routes are the
+// devices and tools it has that a card may need (nova-config's machine
+// routes).
 type Machine struct {
 	Name     string
 	Roles    []string
+	Routes   []string
 	Cores    int
 	OS, Arch string
 }
 
-// Friend is a friend as nova-config holds it. Width is the friend's own
-// width (no cap).
+// Friend is a friend as nova-config holds it, with its sprint settings
+// (FriendSetting: Width, its own, no cap; Tiers). Unread is why its sprint
+// settings could not be read ("" when they were): the friend is refused.
 type Friend struct {
 	Name, Harness, Model string
 	Width                int
 	Tiers                []string
 	Pronouns             string
 	Enabled              bool
+	Unread               string
 }
 
 // Source reads the machines and friends from nova-config.
@@ -64,17 +73,10 @@ type Worker struct {
 	Name    string
 	Width   int
 	Tiers   []string
-	Routes  []string // the routes and devices it serves (RoutePrefix roles)
+	Routes  []string // the routes and devices it serves (nova-config's machine routes)
 	Harness string
 	Held    string
 }
-
-// RoutePrefix is how a machine serves a route or a device in nova-config
-// today: a role `route:<name>` beside `bench` (nova-config has no routes
-// field; a first-class one on machines and friends is owed upstream, and a
-// friend serves no route until it exists). A card declares the routes it
-// needs (card.NeedsRoutes) and is dealt only to rows that serve them all.
-const RoutePrefix = "route:"
 
 // NoCores is the Held reason of a bench with no cores in nova-config.
 const NoCores = "no cores in nova-config"
@@ -106,7 +108,20 @@ type Roster struct {
 	// that is disabled are listed though neither is a row of the roster.
 	// Names reads it; nil (a roster built by hand) adds nothing.
 	Listed map[string]bool
+	// Friends is every friend nova-config lists in this read, enabled or
+	// not: the names friend set takes.
+	Friends map[string]bool
+	// Prices is each model's price as its nova-config model record gives it
+	// (both price_in and price_out set; a model without is unpriced, never
+	// $0), and Concurrency each enabled provider's cap on runs at once
+	// across the fleet (its record's concurrency, above 0; none: no cap).
+	Prices      map[string]Price
+	Concurrency map[string]int
 }
+
+// Price is a model's price in micro-dollars per million tokens: in, read
+// from the provider's cache, and out.
+type Price struct{ In, CacheRead, Out int64 }
 
 // Names says whether nova-config names row name in this read: a worker, a
 // kin, a refused row, or any machine or friend it lists (Listed). A store
@@ -140,7 +155,8 @@ func (r Roster) Clone() Roster {
 		r.Kin[n] = k
 	}
 	r.Refused = slices.Clone(r.Refused)
-	r.Listed = maps.Clone(r.Listed)
+	r.Listed, r.Friends = maps.Clone(r.Listed), maps.Clone(r.Friends)
+	r.Prices, r.Concurrency = maps.Clone(r.Prices), maps.Clone(r.Concurrency)
 	return r
 }
 
@@ -155,13 +171,15 @@ func (r Roster) RefusedNamed(name string) (Refused, bool) {
 }
 
 // Load reads src once: every machine with the bench role is a worker at
-// width min(cores, cap) serving every tier; every enabled friend is kin at
-// its own width and tiers. cap is policy's limits().fleet_width_cap (drift
+// width min(cores, cap) serving every tier and its machine record's routes;
+// every enabled friend is kin at its sprint settings' width and tiers
+// (FriendSetting). cap is policy's limits().fleet_width_cap (drift
 // row 26; the built-in says 8). A cap below 1 and a failed read are errors.
 // A bench with no cores loads at width 0, Held NoCores (Glenn,
 // 2026-11-07: a machine with no core count is held, never refused). A row
-// that cannot be loaded (no name, a name given twice, a negative width, an
-// unknown tier) is skipped and named in Refused: the roster is not
+// that cannot be loaded (no name, a name given twice, sprint settings that
+// cannot be read, a negative width, an unknown tier) is skipped and named
+// in Refused: the roster is not
 // guessed, and one bad row never empties it.
 func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 	if cap < 1 {
@@ -175,14 +193,15 @@ func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 	if err != nil {
 		return Roster{}, fmt.Errorf("roster: friends: %w", err)
 	}
-	r := Roster{Workers: map[string]Worker{}, Kin: map[string]Kin{}, Listed: map[string]bool{}}
+	r := Roster{Workers: map[string]Worker{}, Kin: map[string]Kin{}, Listed: map[string]bool{}, Friends: map[string]bool{}}
 	for _, m := range ms {
 		r.Listed[m.Name] = true
 	}
 	for _, f := range fs {
-		r.Listed[f.Name] = true
+		r.Listed[f.Name], r.Friends[f.Name] = true, true
 	}
 	delete(r.Listed, "")
+	delete(r.Friends, "")
 	r.addWorkers(ms, cap)
 	r.addKin(fs)
 	return r, nil
@@ -201,7 +220,7 @@ func (r *Roster) addWorkers(ms []Machine, cap int) {
 			r.refuse(m.Name, KindWorker, "machine "+why)
 			continue
 		}
-		w := Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Routes: routesOf(m.Roles), Harness: WorkerHarness}
+		w := Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Routes: routesOf(m.Routes), Harness: WorkerHarness}
 		if m.Cores < 1 {
 			w.Width, w.Held = 0, NoCores
 		}
@@ -216,6 +235,10 @@ func (r *Roster) addKin(fs []Friend) {
 		}
 		if why := r.fresh(f.Name); why != "" {
 			r.refuse(f.Name, KindKin, "friend "+why)
+			continue
+		}
+		if f.Unread != "" {
+			r.refuse(f.Name, KindKin, fmt.Sprintf("friend %s's sprint settings cannot be read: %s", f.Name, f.Unread))
 			continue
 		}
 		if f.Width < 0 {
@@ -274,11 +297,13 @@ func (r Roster) ServesRoutes(name string, routes []string) bool {
 	return true
 }
 
-// routesOf is the routes a machine's roles name (RoutePrefix), sorted.
-func routesOf(roles []string) []string {
+// routesOf is a machine's routes, sorted, once each, blanks dropped. A card
+// declares the routes it needs (card.NeedsRoutes) and is dealt only to rows
+// that serve them all.
+func routesOf(routes []string) []string {
 	var out []string
-	for _, role := range roles {
-		if name, ok := strings.CutPrefix(strings.TrimSpace(role), RoutePrefix); ok && name != "" && !slices.Contains(out, name) {
+	for _, name := range routes {
+		if name = strings.TrimSpace(name); name != "" && !slices.Contains(out, name) {
 			out = append(out, name)
 		}
 	}
@@ -300,7 +325,7 @@ func routesOf(roles []string) []string {
 // serves no tier: its take receipt may not be the run's (defect D3,
 // 2026-11-07: a stale bench faulted every card it took). version "" (or any
 // build that is not a release) pins nothing; the probe and the board pass "".
-// Kin are untouched: a friend's width and tiers are its own in nova-config.
+// Kin are untouched: a friend's width and tiers are its sprint settings.
 func (r Roster) Advertised(rows map[string]store.Row, version string) Roster {
 	out := r.Clone()
 	for name, w := range out.Workers {

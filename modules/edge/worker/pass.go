@@ -422,12 +422,16 @@ func (r *Runner) prepare_internal(next NextResponse, l launch_internal) prepared
 	return p
 }
 
-// modelFor_internal sets the job's model (chooseModel_internal); none is a
-// fault reported now, and the job ends.
+// modelFor_internal sets the job's model (chooseModel_internal) and, when
+// a nova-config model record names one, its harness (records.go); no model
+// is a fault reported now, and the job ends.
 func (r *Runner) modelFor_internal(p *prepared_internal, info TakeInfo) {
 	m, err := r.chooseModel_internal(p.job.HarnessName, info)
 	if err == nil {
 		p.job.Model = m
+		if name := r.modelHarness_internal(p.ctx, m); name != "" {
+			p.job.HarnessName, p.rec.Harness = name, name
+		}
 		return
 	}
 	p.rec.State, p.rec.Outcome = JobReporting, Outcome{Result: "fault", Reason: err.Error()}

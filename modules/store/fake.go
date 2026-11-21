@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -206,6 +207,24 @@ func (f *Fake) PoliciesNamed(_ context.Context, kind, name string, max int) ([]P
 		if p := f.policies[v]; p.Kind == kind && p.Name == name && len(out) < max {
 			out = append(out, p)
 		}
+	}
+	return out, nil
+}
+
+// NewestData returns the newest data version of every name that starts with
+// prefix, in name order.
+func (f *Fake) NewestData(_ context.Context, prefix string) ([]PolicyVersion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	newest := map[string]PolicyVersion{}
+	for _, p := range f.policies {
+		if n, ok := newest[p.Name]; p.Kind == "data" && strings.HasPrefix(p.Name, prefix) && (!ok || p.Version > n.Version) {
+			newest[p.Name] = p
+		}
+	}
+	out := []PolicyVersion{}
+	for _, name := range slices.Sorted(maps.Keys(newest)) {
+		out = append(out, newest[name])
 	}
 	return out, nil
 }

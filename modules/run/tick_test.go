@@ -17,7 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
-	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
+	config "github.com/mas-bandwidth/nova-tools/v2/modules/config"
 )
 
 // Unit tests: store.Fake, a fake policy and a fake bus; no time, no socket.
@@ -361,7 +361,7 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
 	must(t, f, "up", store.SetRowState{Row: "bench", State: "up"})
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
-	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, 8)
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, noFriends{}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestServeFirstWhoFailurePlansNothing(t *testing.T) {
 	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
 	must(t, f, "up", store.SetRowState{Row: "bench", State: "up"})
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
-	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, 8)
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, noFriends{}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +469,7 @@ func TestTickFailedWhoReadIsNoSilence(t *testing.T) {
 		must(t, f, "up "+n, store.SetRowState{Row: n, State: "up"})
 	}
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
-	ro, err := NewConfigRoster(twoBenches{}, 8)
+	ro, err := NewConfigRoster(twoBenches{}, noFriends{}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +659,7 @@ func TestTickDealsNothingToAStaleRow(t *testing.T) {
 func TestServeRosterFailureFailsTheTickAndJudges(t *testing.T) {
 	t.Parallel()
 	f := started(t)
-	ro, err := NewConfigRoster(&fakeConfigSnapshot{err: errors.New("config: connection refused")}, 8)
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{err: errors.New("config: connection refused")}, noFriends{}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}

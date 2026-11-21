@@ -44,6 +44,7 @@ func TestLoad(t *testing.T) {
 		"stella": {Name: "stella", Model: "m1", Harness: "codex", Width: 16, Tiers: []string{"pro", "heavy"}},
 		"alex":   {Name: "alex", Model: "m2", Harness: "claude", Width: 2, Tiers: []string{"flash"}},
 	}, r.Kin, "enabled friends only, at their own width: no cap")
+	assert.Equal(t, map[string]bool{"stella": true, "alex": true, "off": true}, r.Friends, "every friend listed, enabled or not")
 }
 
 func TestHulkAt64CoresIsWidth8(t *testing.T) {
@@ -105,6 +106,8 @@ func TestLoadSkipsABadRow(t *testing.T) {
 			[]Refused{{"f", KindKin, "friend f has width -1"}}},
 		"tier": {Fake{Fs: []Friend{{Name: "f", Tiers: []string{"big"}, Enabled: true}}},
 			[]Refused{{"f", KindKin, `friend f has tier "big", not one of [flash pro heavy frontier]`}}},
+		"settings unread": {Fake{Fs: []Friend{{Name: "f", Width: 1, Tiers: []string{"pro"}, Enabled: true, Unread: "policy v3: bad"}}},
+			[]Refused{{"f", KindKin, "friend f's sprint settings cannot be read: policy v3: bad"}}},
 	} {
 		f := fleet()
 		src := c.src.(Fake)
@@ -159,12 +162,13 @@ func TestLoadFriendsError(t *testing.T) {
 	assert.EqualError(t, err, "roster: friends: down")
 }
 
-// TestRoutesFromRoles: a bench serves the routes its route:<name> roles name
-// (sorted, once each); kin and unknown names serve none; ServesRoutes is
-// every route served (none needed is always served).
-func TestRoutesFromRoles(t *testing.T) {
+// TestRoutesFromTheMachineRecord: a bench serves the routes its machine
+// record names (sorted, once each, blanks dropped); a role is never a route;
+// kin and unknown names serve none; ServesRoutes is every route served (none
+// needed is always served).
+func TestRoutesFromTheMachineRecord(t *testing.T) {
 	t.Parallel()
-	src := Fake{Ms: []Machine{{Name: "b1", Roles: []string{"bench", "route:usb", "route:ipad", "route:ipad", "route:"}, Cores: 2}, {Name: "b2", Roles: []string{"bench"}, Cores: 2}},
+	src := Fake{Ms: []Machine{{Name: "b1", Roles: []string{"bench"}, Routes: []string{"usb", "ipad", "ipad", ""}, Cores: 2}, {Name: "b2", Roles: []string{"bench", "route:ipad"}, Cores: 2}},
 		Fs: []Friend{{Name: "k1", Harness: "h", Width: 1, Tiers: []string{"pro"}, Enabled: true}}}
 	r, err := Load(context.Background(), src, 8)
 	require.NoError(t, err)

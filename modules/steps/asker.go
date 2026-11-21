@@ -92,7 +92,7 @@ type Answers struct {
 	Failed   map[string]string // question -> why; "*" when the budget was spent
 	Models   map[string]string // tier -> the model a bench runs (the catalog's bench key); none: no bench deal
 	// Concurrency is provider -> how many consumers may work on its models
-	// across the fleet at once (the catalog's concurrency key); none: unlimited.
+	// across the fleet at once (its nova-config provider record's concurrency); none: unlimited.
 	Concurrency map[string]int
 	NoDeal      string // layer 6's gate: why nothing is dealt this tick ("" deals; model.go)
 }

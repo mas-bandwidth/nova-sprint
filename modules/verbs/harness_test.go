@@ -181,6 +181,7 @@ func newRoster() *fakeRoster {
 	return &fakeRoster{ro: roster.Roster{
 		Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all, Harness: roster.WorkerHarness}, "bob": {Name: "bob", Width: 2, Tiers: all, Harness: roster.WorkerHarness}},
 		Kin:     map[string]roster.Kin{"carol": {Name: "carol", Model: "m-carol", Width: 1, Tiers: all, Harness: "claude"}, "dave": {Name: "dave", Model: "m-dave", Width: 1, Tiers: all, Harness: "codex"}},
+		Friends: map[string]bool{"carol": true, "dave": true},
 	}}
 }
 

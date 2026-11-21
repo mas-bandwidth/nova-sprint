@@ -22,35 +22,39 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
-// workerHarness is the harness a worker service runs cards with:
-// nova-config's machines carry no harness field, so this one default.
-const workerHarness = "opencode"
-
-// workerProviderKeys are the provider keys a worker service opens from
-// its bench's own seat, beside the sprint and bus credentials.
-func workerProviderKeys() []string {
-	return []string{"DEEPSEEK_API_KEY", "INCEPTION_API_KEY", "OPENCODE_API_KEY", "OPENROUTER_API_KEY"}
+// workerProviderKeys are the provider keys a worker service opens from its
+// bench's own seat, beside the sprint and bus credentials: each enabled
+// nova-config provider record's key (its routes and each model's harness
+// the worker reads from nova-config itself), sorted, each once; none is a
+// refusal naming the verb that adds one.
+func workerProviderKeys(providers []verbs.FleetProvider) ([]string, error) {
+	var keys []string
+	enabled := false
+	for _, p := range providers {
+		enabled = enabled || p.Enabled
+		if p.Enabled && p.Key != "" && !slices.Contains(keys, p.Key) {
+			keys = append(keys, p.Key)
+		}
+	}
+	if !enabled {
+		return nil, &verbs.OperationError{Problem: "nova-config holds no enabled provider record, so no worker has a route to any model", Fix: verbs.NoProviderFix, Exit: 1}
+	}
+	slices.Sort(keys)
+	return keys, nil
 }
 
 // workerArgv is the one place the worker service's command line is built.
 // The directories are under the login's home on the bench (the worker
 // resolves a relative directory there, services.Worker); a worker that
-// stages one clone per stream repo changes --work-clone here only.
+// stages one clone per stream repo changes --work-clone here only. It
+// names no harness and no providers: the worker reads both from
+// nova-config's model and provider records.
 func workerArgv(machine, _ string) []string {
 	return []string{"nova-sprint", "worker", "--as", machine,
 		"--work-root", ".local/share/nova-sprint/work",
-		"--harness", workerHarness,
-		"--providers", workerProviders,
 		"--root", ".local/state/nova-worker/" + machine,
 		"--state-dir", ".local/state"}
 }
-
-// workerProviders is the worker's key-proxy routes (edge/worker
-// ParseProviders; an upstream is given without /v1): DeepSeek and
-// Inception (Mercury), OpenCode Zen (its OpenAI-compatible endpoint) and
-// OpenRouter. Ultramarine is left out (not a fit); adding a route is this
-// string and its key in workerProviderKeys.
-const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY,opencode=https://opencode.ai/inference/openai@OPENCODE_API_KEY,openrouter=https://openrouter.ai/api@OPENROUTER_API_KEY"
 
 // workerService is the nova-config service record of the worker on a
 // bench: its seat is the bench's own, its keys the sprint credential, the
@@ -58,9 +62,9 @@ const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,ince
 // credential (forge.TokenEnv; the worker refuses to start without it), the
 // bus password when the bus has a user (as sprint-run's), and the provider
 // keys; its environment names the same store and bus as sprint-run's.
-func workerService(machine string, run verbs.FleetService, runAddress string) verbs.FleetService {
+func workerService(machine string, run verbs.FleetService, runAddress string, providerKeys []string) verbs.FleetService {
 	env := map[string]string{"NOVA_PG_DSN": benchReachable(run.Env["NOVA_PG_DSN"], runAddress), "NOVA_BUS_REDIS": benchReachable(run.Env["NOVA_BUS_REDIS"], runAddress)}
-	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD", forge.TokenEnv}, workerProviderKeys()...)
+	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD", forge.TokenEnv}, providerKeys...)
 	if user := run.Env["NOVA_BUS_USER"]; user != "" {
 		env["NOVA_BUS_USER"] = user
 		keys = append(keys, "NOVA_BUS_PASSWORD")
@@ -174,6 +178,14 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	if runAddress == "" && (loopbackAddr(w.run.Env["NOVA_PG_DSN"]) || loopbackAddr(w.run.Env["NOVA_BUS_REDIS"])) {
 		return &verbs.OperationError{Problem: "the store or bus is on loopback on run machine " + w.run.Machine + ", which has no fleet address in the machine inventory, so no bench could reach it", Fix: "nova-config machine set " + w.run.Machine + " --address <MagicDNS name> --actor <you> --reason <why>, then nova-sprint up again", Exit: 1}
 	}
+	providers, err := w.services.Providers(ctx)
+	if err != nil {
+		return serviceConfigFailure("cannot read the provider records: ", err)
+	}
+	providerKeys, err := workerProviderKeys(providers)
+	if err != nil {
+		return err
+	}
 	snap, err := w.store.Snapshot(ctx)
 	if err != nil {
 		return edge.Cause("cannot read the store", err)
@@ -181,7 +193,7 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	names, restart, sessions := make([]string, 0, len(benches)), []string{}, map[string]string{}
 	var behind []string
 	for _, bench := range benches {
-		s := workerService(bench, w.run, runAddress)
+		s := workerService(bench, w.run, runAddress, providerKeys)
 		if _, err = w.services.Ensure(ctx, s); err != nil {
 			return err
 		}

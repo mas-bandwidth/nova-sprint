@@ -182,7 +182,7 @@ jobs:
         shell: bash
         run: |
           go mod download github.com/mas-bandwidth/nova-tools/v2
-          echo "NOVA_CONFIG_SCHEMA_FILE=$(go list -m -f '{{.Dir}}' github.com/mas-bandwidth/nova-tools/v2)/config/schema.sql" >> "$GITHUB_ENV"
+          echo "NOVA_CONFIG_SCHEMA_FILE=$(go list -m -f '{{.Dir}}' github.com/mas-bandwidth/nova-tools/v2)/cmd/nova-config/schema.sql" >> "$GITHUB_ENV"
       - *pkgs
       # NOVA_FUNCTIONAL=1 runs the tests that start their own PostgreSQL behind
       # that gate. Under CI a missing tool a functional test needs (redis-server,

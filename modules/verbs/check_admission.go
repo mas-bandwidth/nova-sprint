@@ -58,6 +58,9 @@ func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Sna
 		return nil
 	}
 	r.ok("policy v%d active (answered by v%d; %d ready producers asked)", snap.Policy, a.Version, len(q.Order))
+	for _, w := range policy.Ignored(policy.Label(a.Version), a) {
+		r.warn(w[0], w[1])
+	}
 	f := benchModelCheck(snap.Policy, a.Catalog, ro)
 	if f != nil {
 		r.red(f)

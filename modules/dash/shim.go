@@ -42,6 +42,7 @@ type fleetRow struct {
 	OKPct    float64
 	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
 	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
+	Tiers    string // a friend's tiers as its sprint settings give them ("pro,heavy"), "" for a fleet row
 	Tokens   int64  // every token its runs reported (package usage), kin and benches alike
 }
 type streamLine struct{ Stream, State string }
@@ -161,7 +162,7 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 }
 
 // mapRows fills the Fleet and Friends tables. Every roster worker is a Fleet
-// row and every roster kin a Friends row, at its roster width, down until the
+// row and every roster kin a Friends row (with its tiers), at its roster width, down until the
 // store has the row (the human, 2026-11-07: "we definitely need all that stuff
 // back"). A store row nova-config does not name is in neither table (Glenn,
 // 2026-11-15: removed machines must not show in the fleet; the run retires
@@ -177,7 +178,7 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		fleet[n] = &fleetRow{Status: "down", Width: w.Width}
 	}
 	for n, k := range ros.Kin {
-		friends[n] = &fleetRow{Status: "down", Width: k.Width}
+		friends[n] = &fleetRow{Status: "down", Width: k.Width, Tiers: store.JoinTiers(k.Tiers)}
 	}
 	for n, r := range rows {
 		if steps.Retirable(ros, r) {
@@ -187,12 +188,14 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		if r.State == "up" && r.Held {
 			status = "held"
 		}
-		kind, width, _, found := ros.Row(n)
+		kind, width, tiers, found := ros.Row(n)
 		if !found { // named but not a roster row, or the roster is empty: down, whatever the store says
 			status = "down"
 		}
 		f := &fleetRow{Status: status, Width: width}
-		if kind != roster.KindKin { // load is only for fleet machines (the human, 2026-11-10)
+		if kind == roster.KindKin {
+			f.Tiers = store.JoinTiers(tiers)
+		} else { // load is only for fleet machines (the human, 2026-11-10)
 			f.Load, f.Slots = loadCells(r)
 		}
 		tableOf(kind, fleet, friends)[n] = f

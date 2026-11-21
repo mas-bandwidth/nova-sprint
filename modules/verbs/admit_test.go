@@ -66,8 +66,8 @@ func TestCardAdmission(t *testing.T) {
 		w.roster.ro = roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"flash"}}}}
 	}
 	runCases(t, []tcase{
-		{name: "an unserved tier", as: "carol", args: b("u1", ""), exit: 1, prep: noPro, want: []string{"card u1: no row in nova-config serves tier pro", "nova-config friend set"}},
-		{name: "an unserved route", as: "carol", args: b("u2", "NEEDS-ROUTE: ipad\n"), exit: 1, want: []string{"serves tier pro with route(s) ipad", "--roles bench,route:ipad"}},
+		{name: "an unserved tier", as: "carol", args: b("u1", ""), exit: 1, prep: noPro, want: []string{"card u1: no row in nova-config serves tier pro", "nova-sprint friend set"}},
+		{name: "an unserved route", as: "carol", args: b("u2", "NEEDS-ROUTE: ipad\n"), exit: 1, want: []string{"serves tier pro with route(s) ipad", "nova-config machine set <bench> --routes <its routes>,ipad"}},
 		{name: "a served route", as: "carol", args: b("u3", "NEEDS-ROUTE: ipad\n"), exit: 0,
 			prep: func(_ *testing.T, w *world) {
 				a := w.roster.ro.Workers["alice"]
