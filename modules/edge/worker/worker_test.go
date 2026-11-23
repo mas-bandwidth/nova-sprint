@@ -228,21 +228,23 @@ func (g *fakeGit) RemoveWorktree(_ context.Context, wt string) error {
 }
 
 type fakeWall struct {
-	mu        sync.Mutex
-	runFn     func(call int, j Job, argv, env []string) (WallRunResult, error)
-	testFn    func(j Job, cmd string) (WallRunResult, error)
-	calls     int
-	lastArgv  []string
-	lastEnv   []string
-	testCalls []string
+	mu          sync.Mutex
+	runFn       func(call int, j Job, argv, env []string) (WallRunResult, error)
+	testFn      func(j Job, cmd string) (WallRunResult, error)
+	calls       int
+	lastArgv    []string
+	lastEnv     []string
+	lastTimeout time.Duration
+	testCalls   []string
 }
 
-func (w *fakeWall) RunHarness(_ context.Context, j Job, argv, env []string, _ time.Duration) (WallRunResult, error) {
+func (w *fakeWall) RunHarness(_ context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error) {
 	w.mu.Lock()
 	w.calls++
 	call := w.calls
 	w.lastArgv = argv
 	w.lastEnv = env
+	w.lastTimeout = timeout
 	fn := w.runFn
 	w.mu.Unlock()
 	if rec, err := ReadJobRecord(j.JobDir); err == nil && rec.State == JobRunning {

@@ -325,6 +325,29 @@ func TestServices(t *testing.T) {
 	}
 }
 
+func TestWorkerProbeTimeout(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	called := false
+	w.svc.worker = func(args WorkerArgs) error {
+		called = true
+		if args.ProbeTimeout != time.Minute {
+			t.Errorf("worker got probe timeout %v, want one minute", args.ProbeTimeout)
+		}
+		return nil
+	}
+	for _, value := range []string{"0s", "-1s", "one minute"} {
+		want(t, w.do("alice", "worker", "--probe-timeout", value), 2, "--probe-timeout takes a positive duration")
+	}
+	if called {
+		t.Fatal("worker started with an invalid probe timeout")
+	}
+	want(t, w.do("alice", "worker", "--probe-timeout", "60s"), 0, "WORKER alice ended")
+	if !called {
+		t.Fatal("worker was not started")
+	}
+}
+
 func TestServicesRefusals(t *testing.T) {
 	t.Parallel()
 	none := func(_ *testing.T, w *world) { w.e.Services = nil }

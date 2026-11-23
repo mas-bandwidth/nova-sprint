@@ -100,6 +100,26 @@ func TestProbeRunsThePolicysModelPerTier(t *testing.T) {
 	}
 }
 
+func TestProbeModelTimeout(t *testing.T) {
+	t.Parallel()
+	wall := &fakeWall{}
+	r := probeRunner_internal(t, &probeSprint{}, wall, nil, nil)
+	for _, tt := range []struct {
+		probe, want time.Duration
+	}{
+		{0, DefaultTimeouts().LaunchGrace},
+		{time.Minute, time.Minute},
+	} {
+		r.Timeouts.Probe = tt.probe
+		if err := r.probeModel_internal(context.Background(), "b1", &ScriptHarness{}, ""); err != nil {
+			t.Fatal(err)
+		}
+		if wall.lastTimeout != tt.want {
+			t.Errorf("probe timeout %v: wall received %v, want %v", tt.probe, wall.lastTimeout, tt.want)
+		}
+	}
+}
+
 // 36: a model the harness does not list is not served; with none served the
 // refusal names the policy's models and the harness's list.
 func TestProbeRefusesAPolicyModelTheHarnessDoesNotList(t *testing.T) {

@@ -410,7 +410,12 @@ COMMIT AS <git-name> <git-email>
 It also prints Git configuration, the playbook command and the next action.
 Read the playbook once. Follow the returned `next:` line. When it says
 `next: nothing; wait for the bus`, wait for a wake; do not poll the queue.
-The bench worker service follows this lifecycle automatically.
+The bench worker service follows this lifecycle automatically. Before hooking
+in, the worker runs its model probe. For a bench whose model needs more time,
+add `--probe-timeout 60s` to its `nova-sprint worker` arguments. The default
+probe allowance is 15 seconds, plus up to 5 seconds for slot reservation.
+This option applies to the model probe. Card deadlines and model listing
+keep their existing limits.
 
 When a receipt prints a bare `nova-sprint` command, run it through `sprint_env`
 in this shell. Preserve the receipt's arguments, including `--as`, generation

@@ -36,6 +36,7 @@ const (
 )
 
 type Timeouts struct {
+	Probe                                                                                                                                  time.Duration // zero uses LaunchGrace for the model probe
 	Stage, LaunchGrace                                                                                                                     time.Duration
 	LaunchTries                                                                                                                            int
 	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, BusClaim, ReserveWait time.Duration
