@@ -144,6 +144,31 @@ func TestUnroutedModelOnInkyWorkerIsRefusedEverywhere(t *testing.T) {
 	}
 }
 
+// Plain unproxied claude and codex workers (even with a non-nil empty KeyProxy,
+// as Serve creates in production) accept empty and bare model IDs ("", "opus",
+// "gpt-5") without demanding a key-proxy route or provider/ prefix.
+func TestUnproxiedClaudeAndCodexAcceptBareAndEmptyModels(t *testing.T) {
+	t.Parallel()
+	proxy := NewKeyProxy(nil, nil) // non-nil KeyProxy with zero routes, matching Serve when --providers is empty
+	for _, tc := range []struct {
+		harness string
+		h       Harness
+		models  []string
+	}{
+		{"claude", &ClaudeHarness{}, []string{"", "opus", "anthropic/opus"}},
+		{"codex", &CodexHarness{}, []string{"", "gpt-5", "openai/gpt-5"}},
+	} {
+		r := probeRunner_internal(t, &probeSprint{}, &fakeWall{}, nil, proxy)
+		r.DefaultHarness = tc.h
+		for _, m := range tc.models {
+			got, err := r.chooseModel_internal(tc.harness, TakeInfo{Tier: "pro", Model: m})
+			if err != nil || got != m {
+				t.Fatalf("unproxied %s chooseModel(%q) = (%q, %v), want (%q, nil)", tc.harness, m, got, err, m)
+			}
+		}
+	}
+}
+
 // Blocking #2: --harness claude is proxied only with Anthropic-compatible
 // routes (such as inky), refuses OpenAI-only routes (deepseek, inception,
 // openrouter, :openai) with a 1-line fix, and stays open-net when --providers

@@ -501,15 +501,10 @@ func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, er
 	if err != nil || !h.Needs().Model {
 		return info.Model, err
 	}
-	if r.Proxy != nil {
-		provider, _, _ := strings.Cut(info.Model, "/")
-		switch {
-		case h.Needs().Proxy && !r.Proxy.HasRoute(provider):
+	if r.Proxy != nil && h.Needs().Proxy {
+		if provider, _, _ := strings.Cut(info.Model, "/"); !r.Proxy.HasRoute(provider) {
 			return "", fmt.Errorf("this bench's %s has no key-proxy route for %s (model %s, tier %s; routes: %s): give this bench a route for it (nova-sprint worker --providers) or point the tier at a routed provider",
 				h.Name(), cmp.Or(provider, "none"), info.Model, info.Tier, cmp.Or(strings.Join(r.Proxy.RouteNames(), ", "), "none"))
-		case !h.Needs().Proxy && h.Needs().Provider != "" && provider != h.Needs().Provider:
-			return "", fmt.Errorf("this bench's %s serves %s only, not %s (tier %s): pass --providers for an Anthropic-compatible proxy route or point the tier at %s",
-				h.Name(), h.Needs().Provider, info.Model, info.Tier, h.Needs().Provider)
 		}
 	}
 	r.mu.Lock()
