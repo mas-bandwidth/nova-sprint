@@ -80,6 +80,10 @@ type (
 	ClaudeHarness        struct {
 		baseHarness_internal
 		ConfigDir string
+		// Proxied: claude reaches its provider through the key proxy's
+		// route for the model's provider (--providers), never with a login
+		// of its own (Command).
+		Proxied bool
 	}
 	CodexHarness struct {
 		baseHarness_internal
@@ -201,6 +205,9 @@ func opencodeUsage_internal(rows []string) (Cost, bool) {
 // and the directory is a --write. It has no command that lists its models.
 // Whether it needs AF_UNIX inside the wall is not measured: no --unix.
 func (h *ClaudeHarness) Needs() Needs {
+	if h.Proxied {
+		return Needs{Proxy: true, Writes: []string{h.ConfigDir}, Model: true}
+	}
 	return Needs{NetOpen: true, Writes: []string{h.ConfigDir}, Provider: "anthropic", Model: true}
 }
 
@@ -234,12 +241,35 @@ func modelFlag_internal(j Job, provider string) []string {
 	}
 	return []string{"--model", j.Model}
 }
+
+// Command: proxied, claude is given the proxy's route for the model's
+// provider (ANTHROPIC_BASE_URL, without /v1 so claude appends /v1/messages),
+// the job's placeholder key (ANTHROPIC_AUTH_TOKEN), the bare model id without
+// its provider prefix (--model, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL),
+// and its config and temporary directories inside the job, with nonessential
+// traffic and autoupdater disabled.
 func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
-	argv := append(append([]string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task"}, modelFlag_internal(j, h.Needs().Provider)...), "--", buildPrompt_internal(j))
+	model := modelFlag_internal(j, h.Needs().Provider)
 	env := baseWallEnv_internal(j)
-	if h.ConfigDir != "" {
+	provider, id, hasPrefix := strings.Cut(j.Model, "/")
+	proxied := h.Proxied || (j.ProxyAddr != "" && hasPrefix && provider != "" && slices.Contains(j.Routes, provider))
+	if proxied && hasPrefix && id != "" && j.ProxyAddr != "" {
+		model = []string{"--model", id}
+		cfgDir := cmp.Or(h.ConfigDir, filepath.Join(j.JobDir, "home", ".claude"))
+		env = append(env,
+			"ANTHROPIC_BASE_URL="+ProxyRouteURL(j.ProxyAddr, provider),
+			"ANTHROPIC_AUTH_TOKEN="+ProxyKey(j.Consumer),
+			"ANTHROPIC_MODEL="+id,
+			"ANTHROPIC_SMALL_FAST_MODEL="+id,
+			"CLAUDE_CONFIG_DIR="+cfgDir,
+			"CLAUDE_CODE_TMPDIR="+filepath.Join(j.JobDir, "tmp"),
+			"DISABLE_AUTOUPDATER=1",
+			"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+		)
+	} else if h.ConfigDir != "" {
 		env = append(env, "CLAUDE_CONFIG_DIR="+h.ConfigDir)
 	}
+	argv := append(append([]string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task"}, model...), "--", buildPrompt_internal(j))
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
 func (h *CodexHarness) Command(j Job) ([]string, []string) {
@@ -721,6 +751,16 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 			hasPath, clean = true, append(clean, kv)
 		case u == "OPENCODE_CONFIG_CONTENT" && openCodeConfigRefusal_internal(v) == nil:
 			clean = append(clean, kv)
+		case u == "ANTHROPIC_BASE_URL" && validAnthropicBaseURL_internal(v):
+			clean = append(clean, "ANTHROPIC_BASE_URL="+v)
+		case u == "ANTHROPIC_AUTH_TOKEN" && proxyKey_internal.MatchString(v):
+			clean = append(clean, "ANTHROPIC_AUTH_TOKEN="+v)
+		case (u == "ANTHROPIC_MODEL" || u == "ANTHROPIC_SMALL_FAST_MODEL") && safeModelID_internal.MatchString(v):
+			clean = append(clean, u+"="+v)
+		case u == "CLAUDE_CODE_TMPDIR" && jobDir != "" && v == filepath.Join(jobDir, "tmp"):
+			clean = append(clean, "CLAUDE_CODE_TMPDIR="+v)
+		case (u == "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" || u == "DISABLE_AUTOUPDATER") && v == "1":
+			clean = append(clean, u+"=1")
 		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME" || u == "DOTNET_CLI_HOME") && jobDir == "":
 			clean = append(clean, kv)
 		case (u == "NOVA_RESERVE_CPUS" || u == "CARGO_BUILD_JOBS" || u == "RUST_TEST_THREADS") && positiveIntEnv_internal(v):
@@ -745,6 +785,15 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 		}
 	}
 	return clean
+}
+
+func validAnthropicBaseURL_internal(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || CheckLoopbackAddr(u.Host) != nil {
+		return false
+	}
+	route := strings.TrimPrefix(u.Path, "/")
+	return route != "" && !strings.Contains(route, "/") && providerName_internal.MatchString(route)
 }
 
 func positiveIntEnv_internal(v string) bool {

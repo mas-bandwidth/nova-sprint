@@ -93,9 +93,12 @@ func (p *KeyProxy) answered_internal(job string, sent int) {
 }
 
 // jobOf_internal is the job a request's placeholder key names ("" for the
-// bare placeholder).
+// bare placeholder), sent as a Bearer token or in X-Api-Key.
 func jobOf_internal(r *http.Request) string {
-	job, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "+ProxyKey(""))
+	if job, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "+ProxyKey("")); ok {
+		return job
+	}
+	job, _ := strings.CutPrefix(r.Header.Get("X-Api-Key"), ProxyKey(""))
 	return job
 }
 func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -167,6 +170,12 @@ func ProxyBaseURL(addr, model string) string {
 	return base + "/v1"
 }
 
+// ProxyRouteURL is provider's route on the proxy at addr without /v1: the
+// base an Anthropic client is given (it appends /v1/messages itself).
+func ProxyRouteURL(addr, provider string) string {
+	return strings.TrimSuffix(ProxyBaseURL(addr, provider+"/"), "/v1")
+}
+
 // Provider is one route of the key proxy as a flag gives it: the model
 // prefix it serves, the upstream it forwards to (and that URL's host, the
 // one host it may reach), and the name of the environment variable holding
@@ -176,8 +185,9 @@ type Provider struct{ Name, Upstream, Host, Key string }
 var (
 	providerName_internal = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 	// proxyKey_internal is a placeholder key (ProxyKey): never a real one.
-	proxyKey_internal = regexp.MustCompile(`^` + regexp.QuoteMeta(ProxyPlaceholderKey) + `-[A-Za-z0-9._@:-]*$`)
-	keyName_internal  = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	proxyKey_internal    = regexp.MustCompile(`^` + regexp.QuoteMeta(ProxyPlaceholderKey) + `-[A-Za-z0-9._@:-]*$`)
+	keyName_internal     = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	safeModelID_internal = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*(\/[A-Za-z0-9][A-Za-z0-9_.:-]*)*$`)
 )
 
 // ParseProviders reads --providers: <name>=<upstream url>@<KEY NAME>, comma
@@ -192,13 +202,14 @@ func ParseProviders(s string) ([]Provider, error) {
 		if at < 0 {
 			return nil, fmt.Errorf("worker refused: --providers entry %q is not <name>=<url>@<KEY>: write it as deepseek=<upstream url>@DEEPSEEK_API_KEY", edge.Redact(spec))
 		}
-		p := Provider{Name: name, Upstream: rest[:at], Key: rest[at+1:]}
+		upstream := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(rest[:at]), "/"), "/v1")
+		p := Provider{Name: name, Upstream: upstream, Key: rest[at+1:]}
 		u, err := url.Parse(p.Upstream)
 		switch {
 		case !providerName_internal.MatchString(p.Name):
 			return nil, fmt.Errorf("worker refused: --providers name %q is not a provider prefix: use the provider of the models' provider/model ids", edge.Redact(p.Name))
 		case err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil:
-			return nil, fmt.Errorf("worker refused: --providers %s upstream %q is not an http(s) URL with a host and no credentials: pass the provider's API base URL", p.Name, edge.Redact(p.Upstream))
+			return nil, fmt.Errorf("worker refused: --providers %s upstream %q is not an http(s) URL with a host and no credentials: pass the provider's API base URL", p.Name, edge.Redact(rest[:at]))
 		case !keyName_internal.MatchString(p.Key):
 			return nil, fmt.Errorf("worker refused: --providers %s key %q is not an environment variable name: pass the name nova-secrets exec sets, e.g. DEEPSEEK_API_KEY", p.Name, edge.Redact(p.Key))
 		case slices.ContainsFunc(out, func(q Provider) bool { return q.Name == p.Name }):
@@ -313,7 +324,7 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 	// itself, so the harness is sent plain bytes; the harness's forwarded, a
 	// cut body is a decompression error inside the harness.
 	for k, vals := range r.Header {
-		if !slices.Contains([]string{"AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST", "ACCEPT-ENCODING"}, strings.ToUpper(k)) {
+		if !slices.Contains([]string{"AUTHORIZATION", "X-API-KEY", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST", "ACCEPT-ENCODING"}, strings.ToUpper(k)) {
 			outReq.Header[k] = slices.Clone(vals)
 		}
 	}

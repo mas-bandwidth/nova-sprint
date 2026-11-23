@@ -116,5 +116,6 @@ def catalog():
     # The bench providers beside deepseek and inception, none on a tier:
     #   opencode:   "opencode/deepseek-v4-pro", "opencode/deepseek-v4.1-flash"
     #   openrouter: "openrouter/z-ai/glm-5.3-flash", "openrouter/x-ai/grok-4.7"
-    # e.g. {"bench": {"flash": "openrouter/z-ai/glm-5.3-flash"}}.
+    #   inky:       "inky/inkling-2-mini" (flash and pro; concurrency {"inky": 4})
+    # e.g. {"bench": {"flash": "inky/inkling-2-mini", "pro": "inky/inkling-2-mini"}, "concurrency": {"inky": 4}}.
     return {"bench": {}}

@@ -106,11 +106,15 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *Key
 	if err != nil {
 		return nil, err
 	}
+	if ch, ok := h.(*ClaudeHarness); ok && len(proxy.RouteNames()) > 0 {
+		ch.Proxied = true
+	}
 	ex, timeouts := edge.NewOSExec(), DefaultTimeouts()
 	root := cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row))
 	workRoot, mirrorRoot := cmp.Or(c.WorkRoot, filepath.Join(root, "clones")), cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror"))
 	stateDir := cmp.Or(c.StateDir, filepath.Join(home, ".local", "state"))
 	own := [][2]string{{"--root", root}, {"--state-dir", stateDir}, {"--work-root", workRoot}, {"--mirror-root", mirrorRoot}, {"secrets store", c.lookupEnv_internal("NOVA_SECRETS_STORE")}}
+	prependHarnessPath_internal(home, out)
 	c = withBenchSDK_internal(c, home, own, out)
 	wall, err := osWallConfig_internal(ctx, c, ex, timeouts.Stage, home, own, out)
 	if err != nil {
@@ -191,6 +195,24 @@ func osWallConfig_internal(ctx context.Context, c Config, ex edge.Exec, timeout 
 		}
 	}
 	return cfg, nil
+}
+
+// prependHarnessPath_internal puts ~/.local/bin and /opt/homebrew/bin on PATH
+// when present on disk so exec.LookPath finds claude and opencode under a
+// LaunchAgent or systemd unit's minimal PATH even on a host without ~/sdk/bin;
+// HarnessDirs then grants --read on the binary's directory and symlink target.
+func prependHarnessPath_internal(home string, out func(string)) {
+	curPath := cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin")
+	entries := filepath.SplitList(curPath)
+	var prepend []string
+	for _, dir := range []string{filepath.Join(home, ".local", "bin"), "/opt/homebrew/bin"} {
+		if st, err := os.Stat(dir); err == nil && st.IsDir() && !slices.Contains(entries, dir) {
+			prepend = append(prepend, dir)
+		}
+	}
+	if len(prepend) > 0 {
+		reportTo(out, "setting PATH for user harness binaries", os.Setenv("PATH", strings.Join(append(prepend, curPath), string(os.PathListSeparator))))
+	}
 }
 
 // withBenchSDK_internal wires the bench's ~/sdk and ~/go toolchains when
