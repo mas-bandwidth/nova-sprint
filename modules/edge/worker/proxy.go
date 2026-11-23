@@ -148,7 +148,7 @@ func (p *KeyProxy) resolveRoute_internal(r *http.Request) (ProxyRoute, bool) {
 		r.URL.Path = "/" + rest
 		return route, true
 	}
-	if len(p.Routes) == 1 {
+	if len(p.Routes) == 1 && first == "v1" {
 		for _, v := range p.Routes {
 			return v, true
 		}
@@ -178,9 +178,9 @@ func ProxyRouteURL(addr, provider string) string {
 
 // Provider is one route of the key proxy as a flag gives it: the model
 // prefix it serves, the upstream it forwards to (and that URL's host, the
-// one host it may reach), and the name of the environment variable holding
-// its key.
-type Provider struct{ Name, Upstream, Host, Key string }
+// one host it may reach), the name of the environment variable holding its
+// key, and an optional wire protocol tag (:anthropic or :openai).
+type Provider struct{ Name, Upstream, Host, Key, API string }
 
 var (
 	providerName_internal = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
@@ -188,10 +188,18 @@ var (
 	proxyKey_internal    = regexp.MustCompile(`^` + regexp.QuoteMeta(ProxyPlaceholderKey) + `-[A-Za-z0-9._@:-]*$`)
 	keyName_internal     = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 	safeModelID_internal = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*(\/[A-Za-z0-9][A-Za-z0-9_.:-]*)*$`)
+	openAIOnlyProviders  = []string{"deepseek", "inception", "opencode", "openrouter", "openai", "paperinstruments"}
 )
 
-// ParseProviders reads --providers: <name>=<upstream url>@<KEY NAME>, comma
-// separated, e.g. deepseek=https://api.example.com@DEEPSEEK_API_KEY. The
+func providerAnthropicCompatible_internal(p Provider) bool {
+	if p.API != "" {
+		return p.API == "anthropic"
+	}
+	return !slices.Contains(openAIOnlyProviders, p.Name)
+}
+
+// ParseProviders reads --providers: <name>=<upstream url>@<KEY NAME>[:anthropic|openai],
+// comma separated, e.g. deepseek=https://api.example.com@DEEPSEEK_API_KEY. The
 // key's value is never a flag: the worker reads it from its environment,
 // where nova-secrets exec put it.
 func ParseProviders(s string) ([]Provider, error) {
@@ -202,8 +210,9 @@ func ParseProviders(s string) ([]Provider, error) {
 		if at < 0 {
 			return nil, fmt.Errorf("worker refused: --providers entry %q is not <name>=<url>@<KEY>: write it as deepseek=<upstream url>@DEEPSEEK_API_KEY", edge.Redact(spec))
 		}
+		key, api, hasAPI := strings.Cut(rest[at+1:], ":")
 		upstream := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(rest[:at]), "/"), "/v1")
-		p := Provider{Name: name, Upstream: upstream, Key: rest[at+1:]}
+		p := Provider{Name: name, Upstream: upstream, Key: key, API: api}
 		u, err := url.Parse(p.Upstream)
 		switch {
 		case !providerName_internal.MatchString(p.Name):
@@ -212,6 +221,8 @@ func ParseProviders(s string) ([]Provider, error) {
 			return nil, fmt.Errorf("worker refused: --providers %s upstream %q is not an http(s) URL with a host and no credentials: pass the provider's API base URL", p.Name, edge.Redact(rest[:at]))
 		case !keyName_internal.MatchString(p.Key):
 			return nil, fmt.Errorf("worker refused: --providers %s key %q is not an environment variable name: pass the name nova-secrets exec sets, e.g. DEEPSEEK_API_KEY", p.Name, edge.Redact(p.Key))
+		case hasAPI && p.API != "anthropic" && p.API != "openai":
+			return nil, fmt.Errorf("worker refused: --providers %s api %q is neither anthropic nor openai: use <name>=<url>@<KEY>[:anthropic|openai]", p.Name, edge.Redact(p.API))
 		case slices.ContainsFunc(out, func(q Provider) bool { return q.Name == p.Name }):
 			return nil, fmt.Errorf("worker refused: --providers names %s twice: name each provider once", p.Name)
 		}

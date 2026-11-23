@@ -501,6 +501,17 @@ func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, er
 	if err != nil || !h.Needs().Model {
 		return info.Model, err
 	}
+	if r.Proxy != nil {
+		provider, _, _ := strings.Cut(info.Model, "/")
+		switch {
+		case h.Needs().Proxy && !r.Proxy.HasRoute(provider):
+			return "", fmt.Errorf("this bench's %s has no key-proxy route for %s (model %s, tier %s; routes: %s): give this bench a route for it (nova-sprint worker --providers) or point the tier at a routed provider",
+				h.Name(), cmp.Or(provider, "none"), info.Model, info.Tier, cmp.Or(strings.Join(r.Proxy.RouteNames(), ", "), "none"))
+		case !h.Needs().Proxy && h.Needs().Provider != "" && provider != h.Needs().Provider:
+			return "", fmt.Errorf("this bench's %s serves %s only, not %s (tier %s): pass --providers for an Anthropic-compatible proxy route or point the tier at %s",
+				h.Name(), h.Needs().Provider, info.Model, info.Tier, h.Needs().Provider)
+		}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	proved := slices.DeleteFunc(slices.Sorted(maps.Keys(r.served)), func(m string) bool { return m == "" || !r.served[m] })
@@ -629,7 +640,12 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		return WallRunResult{}, err
 	}
 	job.Needs, job.Routes = h.Needs(), r.Proxy.RouteNames()
-	r.report("harness config for "+job.Consumer, wallRefusal_internal(h, job))
+	if err := wallRefusal_internal(h, job); err != nil {
+		r.report("harness config for "+job.Consumer, err)
+		if ch, ok := h.(*ClaudeHarness); ok && ch.Proxied {
+			return WallRunResult{}, err
+		}
+	}
 	argv, env := h.Command(job)
 	rec.State = JobRunning
 	if rec.PID <= 0 || rec.PID == os.Getpid() {
@@ -2248,7 +2264,7 @@ func (w *OSReserveWall) RunHarness(ctx context.Context, j Job, argv, env []strin
 		}
 		cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), HarnessDirs(argv[0], lookPath)...)
 	}
-	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(env, j.JobDir), timeout)
+	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeJobWallEnv(env, j.JobDir, j.ProxyAddr), timeout)
 }
 func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeout time.Duration) (WallRunResult, error) {
 	fields, why := edge.ParseGate(cmdStr)

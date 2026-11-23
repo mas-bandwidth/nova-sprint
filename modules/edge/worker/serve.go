@@ -54,10 +54,15 @@ func (c Config) Check() error {
 	if strings.TrimSpace(c.Row) == "" {
 		return fmt.Errorf("worker refused: missing --as <row>: pass --as <row>")
 	}
-	if _, err := NewHarness(cmp.Or(c.Harness, "claude")); err != nil {
+	h, err := NewHarness(cmp.Or(c.Harness, "claude"))
+	if err != nil {
 		return err
 	}
-	if _, err := ParseProviders(c.Providers); err != nil {
+	providers, err := ParseProviders(c.Providers)
+	if err != nil {
+		return err
+	}
+	if err := configureHarnessProxy_internal(h, providers); err != nil {
 		return err
 	}
 	for _, d := range c.WallReads {
@@ -91,7 +96,7 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 		return err
 	}
 	defer func() { reportTo(out, "key proxy close", srv.Close()) }()
-	r, err := newOSRunner_internal(ctx, c, home, proxy, proxyAddr, out)
+	r, err := newOSRunner_internal(ctx, c, home, providers, proxy, proxyAddr, out)
 	if err != nil {
 		return err
 	}
@@ -101,13 +106,27 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 // newOSRunner_internal is the runner on the real clock, git, wall and bus.
 // It holds no forge: the worker's contract ends at a pushed head, and the
 // run's landing opens the PR with the host's identity (intent rules 16, 32).
-func newOSRunner_internal(ctx context.Context, c Config, home string, proxy *KeyProxy, proxyAddr string, out func(string)) (*Runner, error) {
+func configureHarnessProxy_internal(h Harness, providers []Provider) error {
+	ch, ok := h.(*ClaudeHarness)
+	if !ok || len(providers) == 0 {
+		return nil
+	}
+	for _, p := range providers {
+		if !providerAnthropicCompatible_internal(p) {
+			return fmt.Errorf("worker refused: --harness claude cannot route through OpenAI-only provider %s (claude speaks Anthropic /v1/messages): pass --harness opencode, omit --providers to run claude on its own login, or pass an Anthropic-compatible route such as inky=<url>@<KEY>", p.Name)
+		}
+	}
+	ch.Proxied = true
+	return nil
+}
+
+func newOSRunner_internal(ctx context.Context, c Config, home string, providers []Provider, proxy *KeyProxy, proxyAddr string, out func(string)) (*Runner, error) {
 	h, err := NewHarness(cmp.Or(c.Harness, "claude"))
 	if err != nil {
 		return nil, err
 	}
-	if ch, ok := h.(*ClaudeHarness); ok && len(proxy.RouteNames()) > 0 {
-		ch.Proxied = true
+	if err := configureHarnessProxy_internal(h, providers); err != nil {
+		return nil, err
 	}
 	ex, timeouts := edge.NewOSExec(), DefaultTimeouts()
 	root := cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row))

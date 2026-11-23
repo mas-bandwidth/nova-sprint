@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -52,6 +53,9 @@ func TestProxiedClaudeInkyCommandAndWall(t *testing.T) {
 			t.Errorf("env missing %s: %v", kv, env)
 		}
 	}
+	if err := h.WallRefusal(j); err != nil {
+		t.Fatalf("WallRefusal(inky/inkling-2-mini): %v", err)
+	}
 	j.Needs = h.Needs()
 	if j.Needs.NetOpen || !j.Needs.Proxy || j.Needs.Provider != "" {
 		t.Fatalf("proxied ClaudeHarness Needs = %+v", j.Needs)
@@ -98,14 +102,111 @@ func TestProxiedClaudeInkyCommandAndWall(t *testing.T) {
 	}
 }
 
-// SanitizeWallEnv refuses non-loopback ANTHROPIC_BASE_URL, non-placeholder
-// ANTHROPIC_AUTH_TOKEN, any ANTHROPIC_API_KEY, unsafe model names, and /tmp.
+// Blocking #1: on a worker whose only route is inky, an unrouted anthropic/* or
+// deepseek/* model is refused at chooseModel_internal (even before probe),
+// refused by ClaudeHarness.WallRefusal, never given ANTHROPIC_BASE_URL in
+// Command, and refused with HTTP 502 by KeyProxy instead of falling back to inky.
+func TestUnroutedModelOnInkyWorkerIsRefusedEverywhere(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	ps, err := ParseProviders("inky=http://127.0.0.1:8096@INKY_SERVE_KEY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := NewKeyProxy(ps, envOf_internal(map[string]string{"INKY_SERVE_KEY": "inky-secret-fixture"}))
+	h := &ClaudeHarness{Proxied: true}
+
+	// Runner with len(proved) == 0 (no probe run yet) still refuses unrouted models.
+	r := probeRunner_internal(t, &probeSprint{}, &fakeWall{}, nil, proxy)
+	r.DefaultHarness = h
+	for _, unrouted := range []string{"anthropic/opus", "deepseek/deepseek-flash"} {
+		if _, err := r.chooseModel_internal("claude", TakeInfo{Tier: "pro", Model: unrouted}); err == nil || !strings.Contains(err.Error(), "no key-proxy route") {
+			t.Fatalf("chooseModel(%s) before probe = %v, want route refusal", unrouted, err)
+		}
+		j := Job{Model: unrouted, Consumer: "p1.w1", Row: "macbook", JobDir: dir, ProxyAddr: "127.0.0.1:7000", Routes: []string{"inky"}}
+		if err := h.WallRefusal(j); err == nil || !strings.Contains(err.Error(), "no key-proxy route") {
+			t.Fatalf("WallRefusal(%s) = %v, want route refusal", unrouted, err)
+		}
+		if _, env := h.Command(j); slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "ANTHROPIC_") }) {
+			t.Fatalf("Command(%s) injected ANTHROPIC_* without a route: %v", unrouted, env)
+		}
+	}
+
+	// KeyProxy with a single inky route refuses /anthropic/v1/messages and /deepseek/v1/chat/completions (never falls back to inky).
+	for _, path := range []string{"/anthropic/v1/messages", "/deepseek/v1/chat/completions"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:7000"+path, strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer "+ProxyKey("p1.w1"))
+		proxy.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("KeyProxy %s returned %d (%s), want 502 refusal", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// Blocking #2: --harness claude is proxied only with Anthropic-compatible
+// routes (such as inky), refuses OpenAI-only routes (deepseek, inception,
+// openrouter, :openai) with a 1-line fix, and stays open-net when --providers
+// is empty or when the worker runs --harness opencode.
+func TestClaudeHarnessProxyConfigAndOpenAIOnlyRefusal(t *testing.T) {
+	t.Parallel()
+	tokEnv := func(k string) (string, bool) {
+		return "ghp_fixture", k == "GH_GATE_TOKEN"
+	}
+	for _, bad := range []string{
+		"deepseek=https://api.deepseek.example@DEEPSEEK_API_KEY",
+		"inception=https://api.inception.example@INCEPTION_API_KEY",
+		"openrouter=https://openrouter.example/api@OPENROUTER_API_KEY",
+		"custom=http://127.0.0.1:8096@CUSTOM_KEY:openai",
+	} {
+		err := (Config{Row: "b1", Harness: "claude", Providers: bad, LookupEnv: tokEnv}).Check()
+		if err == nil || !strings.Contains(err.Error(), "cannot route through OpenAI-only provider") || strings.Contains(err.Error(), "\n") {
+			t.Fatalf("Check(--harness claude --providers %s) = %v, want 1-line OpenAI-only refusal", bad, err)
+		}
+	}
+
+	// --harness opencode with OpenAI routes succeeds; --harness claude with no --providers keeps open network.
+	if err := (Config{Row: "b1", Harness: "opencode", Providers: "deepseek=https://api.deepseek.example@DEEPSEEK_API_KEY", LookupEnv: tokEnv}).Check(); err != nil {
+		t.Fatalf("opencode with deepseek refused: %v", err)
+	}
+	openClaude := &ClaudeHarness{}
+	if err := configureHarnessProxy_internal(openClaude, nil); err != nil || openClaude.Proxied || !openClaude.Needs().NetOpen || openClaude.Needs().Provider != "anthropic" {
+		t.Fatalf("claude without --providers altered open-net Needs: proxied=%v needs=%+v err=%v", openClaude.Proxied, openClaude.Needs(), err)
+	}
+
+	// --harness claude with inky (or explicit :anthropic) enables Proxied.
+	if err := (Config{Row: "macbook", Harness: "claude", Providers: "inky=http://127.0.0.1:8096@INKY_SERVE_KEY", LookupEnv: tokEnv}).Check(); err != nil {
+		t.Fatalf("claude with inky refused: %v", err)
+	}
+	ps, err := ParseProviders("inky=http://127.0.0.1:8096@INKY_SERVE_KEY:anthropic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxiedClaude := &ClaudeHarness{}
+	if err := configureHarnessProxy_internal(proxiedClaude, ps); err != nil || !proxiedClaude.Proxied {
+		t.Fatalf("configureHarnessProxy_internal(inky) = %v, proxied=%v", err, proxiedClaude.Proxied)
+	}
+}
+
+// SanitizeJobWallEnv pins ANTHROPIC_BASE_URL to the exact j.ProxyAddr host:port
+// (refusing other loopback ports and unproxied SanitizeWallEnv calls), refuses
+// non-placeholder ANTHROPIC_AUTH_TOKEN, strips ANTHROPIC_API_KEY, and refuses
+// unsafe model names or /tmp.
 func TestSanitizeWallEnvRefusesUntrustedAnthropicVars(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
+	good := "ANTHROPIC_BASE_URL=http://127.0.0.1:7000/inky"
+	if got := SanitizeJobWallEnv([]string{good}, dir, "127.0.0.1:7000"); !slices.Contains(got, good) {
+		t.Fatalf("exact proxyAddr rejected valid %q: %v", good, got)
+	}
+	if got := SanitizeWallEnv([]string{good}, dir); slices.Contains(got, good) {
+		t.Fatalf("unproxied SanitizeWallEnv admitted %q without proxyAddr: %v", good, got)
+	}
 	for _, bad := range []string{
 		"ANTHROPIC_BASE_URL=https://api.anthropic.com",
 		"ANTHROPIC_BASE_URL=http://10.0.0.1:7000/inky",
+		"ANTHROPIC_BASE_URL=http://127.0.0.1:7001/inky",
+		"ANTHROPIC_BASE_URL=http://localhost:7000/inky",
 		"ANTHROPIC_BASE_URL=http://127.0.0.1:7000/inky/v1",
 		"ANTHROPIC_BASE_URL=http://127.0.0.1:7000/..",
 		"ANTHROPIC_BASE_URL=http://user@127.0.0.1:7000/inky",
@@ -118,8 +219,8 @@ func TestSanitizeWallEnvRefusesUntrustedAnthropicVars(t *testing.T) {
 		"DISABLE_AUTOUPDATER=0",
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=0",
 	} {
-		if got := SanitizeWallEnv([]string{bad}, dir); slices.Contains(got, bad) {
-			t.Errorf("SanitizeWallEnv admitted untrusted %q: %v", bad, got)
+		if got := SanitizeJobWallEnv([]string{bad}, dir, "127.0.0.1:7000"); slices.Contains(got, bad) {
+			t.Errorf("SanitizeJobWallEnv admitted untrusted %q: %v", bad, got)
 		}
 	}
 }
@@ -168,7 +269,11 @@ func TestKeyProxyForwardsInkyMessagesAcrossFourLanesAndHandlesOverCap(t *testing
 			close(allIn)
 		}
 		mu.Unlock()
-		<-allIn
+		select {
+		case <-allIn:
+		case <-time.After(5 * time.Second): // unitlint: fail-fast guard so a broken lane fails instead of hanging the test
+			return nil, errors.New("timed out waiting for all 4 lanes to enter RoundTrip concurrently")
+		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","model":"inkling-2-mini"}`)),
