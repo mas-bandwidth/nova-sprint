@@ -164,7 +164,10 @@ func (x *e2e) up() {
 	}
 	x.tr.note("policy.Up: active version v%d", r.Version)
 	// The built-in names no bench model; the operator's policy does.
-	body := strings.Replace(policy.DefaultBody(), `return {"bench": {}}`, `return {"bench": {"flash": "deepseek/deepseek-flash", "pro": "deepseek/deepseek-flash", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-flash"}}`, 1)
+	body := strings.Replace(policy.DefaultBody(), `return {"bench": {}`, `return {"bench": {"flash": "deepseek/deepseek-flash", "pro": "deepseek/deepseek-flash", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-flash"}`, 1)
+	if body == policy.DefaultBody() {
+		t.Fatal("default.star catalog bench placeholder not replaced")
+	}
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
