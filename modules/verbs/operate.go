@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 
@@ -142,16 +141,6 @@ func runWorker(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (str
 	}
 	w := WorkerArgs{Row: in.actor, Root: in.str("root"), StateDir: in.str("state-dir"), Harness: in.str("harness"),
 		WorkRoot: in.str("work-root"), MirrorRoot: in.str("mirror-root"), Providers: in.str("providers"), WallReads: in.list("wall-read")}
-	if in.has("probe-timeout") {
-		timeout, err := time.ParseDuration(in.str("probe-timeout"))
-		if err != nil {
-			return "", RefusalOr(err, misuse("worker", "--probe-timeout takes a positive duration, for example 60s: "+errText(err)))
-		}
-		if timeout <= 0 {
-			return "", misuse("worker", "--probe-timeout takes a positive duration, for example 60s")
-		}
-		w.ProbeTimeout = timeout
-	}
 	if err := e.Services.Worker(ctx, w); err != nil {
 		return "", err
 	}

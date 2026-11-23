@@ -100,22 +100,34 @@ func TestProbeRunsThePolicysModelPerTier(t *testing.T) {
 	}
 }
 
-func TestProbeModelTimeout(t *testing.T) {
+func TestProbeTimeouts(t *testing.T) {
 	t.Parallel()
-	wall := &fakeWall{}
-	r := probeRunner_internal(t, &probeSprint{}, wall, nil, nil)
 	for _, tt := range []struct {
-		probe, want time.Duration
+		config        Timeouts
+		probe, launch time.Duration
 	}{
-		{0, DefaultTimeouts().LaunchGrace},
-		{time.Minute, time.Minute},
+		{Timeouts{}, 120 * time.Second, 15 * time.Second},
+		{Timeouts{Probe: time.Minute}, time.Minute, 15 * time.Second},
+		{Timeouts{LaunchGrace: time.Second}, 120 * time.Second, time.Second},
 	} {
-		r.Timeouts.Probe = tt.probe
+		var listTimeout time.Duration
+		exec := edge.NewFakeExec()
+		exec.On("opencode", func(call edge.FakeCall) edge.FakeOutcome {
+			listTimeout = call.Cmd.Timeout
+			return edge.FakeOutcome{Stdout: "deepseek/deepseek-flash\n"}
+		})
+		wall := &fakeWall{}
+		r := probeRunner_internal(t, &probeSprint{}, wall, exec, nil)
+		r.Timeouts = tt.config.WithDefaults()
+		if _, err := r.listModels_internal(context.Background(), "b1", &OpenCodeHarness{}, nil); err != nil {
+			t.Fatal(err)
+		}
 		if err := r.probeModel_internal(context.Background(), "b1", &ScriptHarness{}, ""); err != nil {
 			t.Fatal(err)
 		}
-		if wall.lastTimeout != tt.want {
-			t.Errorf("probe timeout %v: wall received %v, want %v", tt.probe, wall.lastTimeout, tt.want)
+		if listTimeout != tt.probe || wall.lastTimeout != tt.probe || r.Timeouts.LaunchGrace != tt.launch {
+			t.Errorf("timeouts with probe=%v launch=%v: listing=%v execution=%v launch=%v; want probe=%v launch=%v",
+				tt.config.Probe, tt.config.LaunchGrace, listTimeout, wall.lastTimeout, r.Timeouts.LaunchGrace, tt.probe, tt.launch)
 		}
 	}
 }

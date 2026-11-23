@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -32,8 +31,6 @@ type Config struct {
 	Version string
 	// Providers is --providers: the key proxy's routes (ParseProviders).
 	Providers string
-	// ProbeTimeout is --probe-timeout. Zero uses the normal launch grace.
-	ProbeTimeout time.Duration
 	// WallReads is --wall-read, repeatable: directories every job and probe
 	// wall reads, never writes (a toolchain and its module cache;
 	// CheckWallReads refuses the rest).
@@ -72,9 +69,6 @@ func (c Config) Check() error {
 		if err := checkWallReadForm_internal(strings.TrimSpace(d)); err != nil {
 			return err
 		}
-	}
-	if c.ProbeTimeout < 0 || c.ProbeTimeout > math.MaxInt64-DefaultTimeouts().ReserveWait {
-		return fmt.Errorf("worker refused: --probe-timeout is out of range after allowing for slot reservation")
 	}
 	if c.lookupEnv_internal(forge.TokenEnv) == "" {
 		return fmt.Errorf("worker refused: %s is not in the worker's environment, and it is the one github credential of the worker's git clones, fetches and pushes: on the control machine run nova-secrets grant %s --to %s --pins <dir> --store <dir> --key <file>, push the secrets store (grant does not), then nova-sprint up --as <coordinator>", forge.TokenEnv, forge.TokenEnv, strings.TrimSpace(c.Row))
@@ -135,7 +129,6 @@ func newOSRunner_internal(ctx context.Context, c Config, home string, providers 
 		return nil, err
 	}
 	ex, timeouts := edge.NewOSExec(), DefaultTimeouts()
-	timeouts.Probe = c.ProbeTimeout
 	root := cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row))
 	workRoot, mirrorRoot := cmp.Or(c.WorkRoot, filepath.Join(root, "clones")), cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror"))
 	stateDir := cmp.Or(c.StateDir, filepath.Join(home, ".local", "state"))
