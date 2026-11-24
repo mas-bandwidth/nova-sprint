@@ -31,7 +31,7 @@ func (c *Client) Branches(ctx context.Context, url, prefix string) (map[string]s
 			continue
 		}
 		name, ok := strings.CutPrefix(f[1], "refs/heads/")
-		if !ok || !isFullSHA_internal(f[0]) || !strings.HasPrefix(name, prefix) {
+		if !ok || !edge.IsFullSHA(f[0]) || !strings.HasPrefix(name, prefix) {
 			return nil, c.failed_internal(code, stdout, stderr, fmt.Errorf("a line is not <sha> refs/heads/%s...: %q", prefix, line), args...)
 		}
 		out[name] = strings.ToLower(f[0])
