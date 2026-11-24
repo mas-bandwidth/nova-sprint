@@ -134,7 +134,7 @@ func (l *lander) mergePR_internal(ctx context.Context, s store.Stream, branch, h
 	// the merge is taken only on green, read once at head (git.HandVerdict)
 	rollups, err := l.forge.Checks(ctx, s.Repo, []string{head})
 	if err != nil {
-		return "", &verbs.OperationError{Problem: "the checks of " + head + " on " + s.Repo + " could not be read, so nothing was merged: " + edge.RedactN(err.Error(), edge.FailureMax), Fix: "make " + s.Repo + "'s checks readable from this host (gh auth status), then land it again", Exit: 2}
+		return "", verbs.RefusalOr(err, &verbs.OperationError{Problem: "the checks of " + head + " on " + s.Repo + " could not be read, so nothing was merged: " + edge.RedactN(err.Error(), edge.FailureMax), Fix: "make " + s.Repo + "'s checks readable from this host (gh auth status), then land it again", Exit: 2})
 	}
 	if problem, fix, ok := git.HandVerdict(cmp.Or(pr.URL, fmt.Sprintf("#%d", pr.Number)), head, rollups[head]); !ok {
 		return "", &verbs.OperationError{Problem: problem + "; nothing was merged", Fix: fix, Exit: 1}
@@ -155,7 +155,7 @@ func (l *lander) noCI_internal(ctx context.Context, dir string, s store.Stream, 
 	for _, rev := range []string{tip, head} {
 		paths, err := l.clones.git.ListTree(ctx, dir, rev)
 		if err != nil {
-			return &verbs.OperationError{Problem: "stream " + s.Name + " names no forge, and nova-sprint cannot tell whether " + s.Repo + " has CI (its tree at " + rev + " could not be listed: " + edge.RedactN(err.Error(), edge.FailureMax) + "), so nothing was pushed onto " + s.Base, Fix: "fix what it names and land it again, or give the stream its forge (nova-sprint stream set " + s.Name + " --forge github) so the landing reads its checks", Exit: 2}
+			return verbs.RefusalOr(err, &verbs.OperationError{Problem: "stream " + s.Name + " names no forge, and nova-sprint cannot tell whether " + s.Repo + " has CI (its tree at " + rev + " could not be listed: " + edge.RedactN(err.Error(), edge.FailureMax) + "), so nothing was pushed onto " + s.Base, Fix: "fix what it names and land it again, or give the stream its forge (nova-sprint stream set " + s.Name + " --forge github) so the landing reads its checks", Exit: 2})
 		}
 		for _, p := range paths {
 			for _, c := range ciPaths {
