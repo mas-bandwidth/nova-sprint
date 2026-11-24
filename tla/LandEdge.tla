@@ -305,9 +305,15 @@ Late(s) ==
   /\ UNCHANGED <<base, cs, js, jc, held, passes>>
 
 \* An outside commit to base; it may break checks (bad), of either kind.
+\* It may come by a PR merged outside the sprint whose head is its very
+\* tree (pr), so that PR's reds are the tip's proof; a hand landing is
+\* never red on its own PR (HandOK), so this is how a check run only on
+\* PRs is proven red on a base tip.
 BaseMoves(b) ==
   /\ Tip.ext < K
-  /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1, !.bad = @ \cup b], how |-> "ext", gated |-> NoTree, proof |-> {}])
+  /\ \E pr \in BOOLEAN :
+       LET t == [Tip EXCEPT !.ext = @ + 1, !.bad = @ \cup b]
+       IN base' = Append(base, [tree |-> t, how |-> "ext", gated |-> NoTree, proof |-> IF pr THEN Reds(t) ELSE {}])
   /\ ticked' = FALSE
   /\ UNCHANGED <<cs, req, js, jc, held, passes>>
 

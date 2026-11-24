@@ -637,6 +637,9 @@ func (w *landWalk_internal) step_internal() walkMove_internal {
 			}
 		}
 		w.extCommit_internal(bad...)
+		if w.bad.Intn(2) == 0 { // merged by a PR outside the sprint, its head the commit's very tree
+			w.addPR_internal(w.tip_internal(), w.tip_internal())
+		}
 	case "Answer":
 		w.answer_internal(m.arg, m.choice)
 	}
