@@ -150,10 +150,10 @@ func TestHandLandNoForgeRefusesARepoWithCI(t *testing.T) {
 	tip, head := strings.Repeat("a", 40), strings.Repeat("b", 40)
 	plain := []string{"README.md", "main.go"}
 	for _, c := range []struct {
-		name  string
-		trees map[string][]string
-		lands bool
-		says  []string
+		name   string
+		trees  map[string][]string
+		pushes bool
+		says   []string
 	}{
 		{"workflow on base", map[string][]string{tip: append([]string{".github/workflows/ci.yml"}, plain...), head: plain}, false, []string{".github/workflows/ci.yml", "has CI", "--forge github"}},
 		{"CI added by the card", map[string][]string{tip: plain, head: append([]string{".gitlab-ci.yml"}, plain...)}, false, []string{".gitlab-ci.yml", "has CI"}},
@@ -164,7 +164,7 @@ func TestHandLandNoForgeRefusesARepoWithCI(t *testing.T) {
 		l := &lander{clones: &origin{dir: t.TempDir(), git: handGit(tip, c.trees, &ops)}}
 		ctx := git.WithIdentity(context.Background(), "Test", "test@example.invalid")
 		_, err := l.Land(ctx, store.Stream{Name: "s1", Repo: "https://example.invalid/r.git", Base: "main"}, "sprint/s1/x", head)
-		if c.lands {
+		if c.pushes {
 			if !slices.Equal(ops, []string{"checkout"}) {
 				t.Errorf("%s: ops %v (err %v), want the merge begun", c.name, ops, err)
 			}
