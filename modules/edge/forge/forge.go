@@ -394,7 +394,7 @@ func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[st
 		return nil, fmt.Errorf("forge refused: invalid repository %q: expected org/repo", repo)
 	}
 	for _, sha := range shas {
-		if !isFullSHA_internal(sha) {
+		if !edge.IsFullSHA(sha) {
 			return nil, fmt.Errorf("forge refused: invalid SHA %q: pass a 40-character hex commit SHA", sha)
 		}
 	}
@@ -620,7 +620,7 @@ const (
 )
 
 func (c *Client) Merge(ctx context.Context, repo string, pr int, sha string) (string, error) {
-	if pr <= 0 || !isFullSHA_internal(sha) || repo == "" {
+	if pr <= 0 || !edge.IsFullSHA(sha) || repo == "" {
 		return "", fmt.Errorf("forge refused: Merge requires a repo, pr > 0 and a 40-hex sha")
 	}
 	method, err := c.method_internal(ctx, repo)
@@ -654,7 +654,7 @@ func (c *Client) Merge(ctx context.Context, repo string, pr int, sha string) (st
 	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
 		return "", fmt.Errorf("forge: decode gh pr view --json state,mergeCommit: %s", edge.ParseFailure(err, []byte(stdout)))
 	}
-	if v.State != "MERGED" || v.MergeCommit == nil || !isFullSHA_internal(v.MergeCommit.OID) {
+	if v.State != "MERGED" || v.MergeCommit == nil || !edge.IsFullSHA(v.MergeCommit.OID) {
 		return "", fmt.Errorf("forge: gh pr merge %d on %s returned, but the PR is %s with no merge commit (a merge queue or an auto-merge holds it)", pr, repo, cmp.Or(v.State, "in no state"))
 	}
 	return strings.ToLower(v.MergeCommit.OID), nil
@@ -775,7 +775,7 @@ func (c *Client) Failures(ctx context.Context, repo, sha string) ([]Failure, err
 		return nil, err
 	}
 	owner, name, ok := strings.Cut(path, "/")
-	if !ok || !isFullSHA_internal(sha) {
+	if !ok || !edge.IsFullSHA(sha) {
 		return nil, fmt.Errorf("forge refused: Failures requires an org/repo and a 40-hex sha")
 	}
 	var out []Failure
@@ -840,7 +840,7 @@ func (c *Client) BasePR(ctx context.Context, repo, sha string) (BasePR, bool, er
 		return BasePR{}, false, err
 	}
 	owner, name, ok := strings.Cut(path, "/")
-	if !ok || !isFullSHA_internal(sha) {
+	if !ok || !edge.IsFullSHA(sha) {
 		return BasePR{}, false, fmt.Errorf("forge refused: BasePR requires an org/repo and a 40-hex sha")
 	}
 	q := fmt.Sprintf(`query { repository(owner: %q, name: %q) { c0: object(oid: %q) { ... on Commit { oid tree { oid } associatedPullRequests(first: 10) { nodes { number url merged headRefOid mergeCommit { oid } commits(last: 1) { nodes { commit { oid tree { oid } } } } } } } } } }`, owner, name, sha)
@@ -888,7 +888,7 @@ func parseBasePR_internal(raw, sha string) (BasePR, bool, error) {
 		return BasePR{}, false, nil
 	}
 	for _, pr := range commit.AssociatedPullRequests.Nodes {
-		if !pr.Merged || pr.MergeCommit == nil || !strings.EqualFold(pr.MergeCommit.OID, sha) || !isFullSHA_internal(pr.HeadRefOid) {
+		if !pr.Merged || pr.MergeCommit == nil || !strings.EqualFold(pr.MergeCommit.OID, sha) || !edge.IsFullSHA(pr.HeadRefOid) {
 			continue
 		}
 		out := BasePR{Number: pr.Number, URL: pr.URL, HeadSHA: strings.ToLower(pr.HeadRefOid)}
@@ -917,17 +917,6 @@ func FirstFailing(log string, n int) []string {
 		return hits
 	}
 	return all[max(0, len(all)-n):]
-}
-func isFullSHA_internal(s string) bool {
-	if len(s) != 40 {
-		return false
-	}
-	for i := 0; i < 40; i++ {
-		if c := s[i]; !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-	return true
 }
 
 // RepoPath is the <owner>/<repo> a forge API path names repo by. A stream

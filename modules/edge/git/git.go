@@ -211,7 +211,7 @@ func missingRef_internal(stderr string) bool {
 	return strings.Contains(stderr, "couldn't find remote ref") || strings.Contains(stderr, "not our ref") || strings.Contains(stderr, "unadvertised object")
 }
 func (c *Client) LsRemote(ctx context.Context, repoDir, ref string) (string, bool, error) {
-	if isFullSHA_internal(ref) {
+	if edge.IsFullSHA(ref) {
 		return c.lsRemoteSHA_internal(ctx, repoDir, strings.ToLower(ref))
 	}
 	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.PushTimeout, "ls-remote", "--exit-code", "origin", ref)
@@ -223,7 +223,7 @@ func (c *Client) LsRemote(ctx context.Context, repoDir, ref string) (string, boo
 	case code != 0:
 		return "", false, c.failed_internal(code, stdout, stderr, nil, "ls-remote", "--exit-code", "origin", ref)
 	}
-	if fields := strings.Fields(stdout); len(fields) > 0 && isFullSHA_internal(fields[0]) {
+	if fields := strings.Fields(stdout); len(fields) > 0 && edge.IsFullSHA(fields[0]) {
 		return strings.ToLower(fields[0]), true, nil
 	}
 	return "", false, nil
@@ -250,7 +250,7 @@ func (c *Client) LsRemoteRefs(ctx context.Context, repoDir string, refs ...strin
 	}
 	out := make(map[string]string, len(refs))
 	for _, line := range strings.Split(stdout, "\n") {
-		if f := strings.Fields(line); len(f) == 2 && isFullSHA_internal(f[0]) {
+		if f := strings.Fields(line); len(f) == 2 && edge.IsFullSHA(f[0]) {
 			out[f[1]] = strings.ToLower(f[0])
 		}
 	}
@@ -277,7 +277,7 @@ func (c *Client) Tip(ctx context.Context, url, branch string) (string, bool, err
 	case code != 0:
 		return "", false, c.failed_internal(code, stdout, stderr, nil, "ls-remote", "--exit-code", url, ref)
 	}
-	if fields := strings.Fields(stdout); len(fields) > 0 && isFullSHA_internal(fields[0]) {
+	if fields := strings.Fields(stdout); len(fields) > 0 && edge.IsFullSHA(fields[0]) {
 		return strings.ToLower(fields[0]), true, nil
 	}
 	return "", false, c.failed_internal(code, stdout, stderr, fmt.Errorf("no sha in its output"), "ls-remote", "--exit-code", url, ref)
@@ -297,7 +297,7 @@ func (c *Client) Main(ctx context.Context, repoDir string) (string, string, erro
 		switch {
 		case len(f) == 3 && f[0] == "ref:" && f[2] == "HEAD":
 			branch = strings.TrimPrefix(f[1], "refs/heads/")
-		case len(f) == 2 && f[1] == "HEAD" && isFullSHA_internal(f[0]):
+		case len(f) == 2 && f[1] == "HEAD" && edge.IsFullSHA(f[0]):
 			tip = strings.ToLower(f[0])
 		}
 	}
@@ -317,7 +317,7 @@ func (c *Client) lsRemoteSHA_internal(ctx context.Context, repoDir, target strin
 	}
 	var remoteSHAs []string
 	for _, line := range strings.Split(stdout, "\n") {
-		if fields := strings.Fields(line); len(fields) >= 1 && isFullSHA_internal(fields[0]) {
+		if fields := strings.Fields(line); len(fields) >= 1 && edge.IsFullSHA(fields[0]) {
 			s := strings.ToLower(fields[0])
 			if s == target {
 				// A tip origin lists that cannot be fetched is not absent: the
@@ -503,7 +503,7 @@ func (c *Client) Heads(ctx context.Context, url string) (map[string]string, erro
 	}
 	out := map[string]string{}
 	for _, line := range strings.Split(stdout, "\n") {
-		if f := strings.Fields(line); len(f) == 2 && isFullSHA_internal(f[0]) {
+		if f := strings.Fields(line); len(f) == 2 && edge.IsFullSHA(f[0]) {
 			out[f[1]] = strings.ToLower(f[0])
 		}
 	}
@@ -551,17 +551,6 @@ func (c *Client) Push(ctx context.Context, repoDir, sha, ref, expectOld string) 
 		return &PushRefusedError{Ref: ref, SHA: sha, Reason: c.failed_internal(code, stdout, stderr, nil, args...).Error()}
 	}
 	return nil
-}
-func isFullSHA_internal(s string) bool {
-	if len(s) != 40 {
-		return false
-	}
-	for i := 0; i < 40; i++ {
-		if c := s[i]; !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-	return true
 }
 
 // Clone makes dir a working clone of repo (a clone address: CloneURL), once: a dir that already holds a
