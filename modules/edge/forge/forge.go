@@ -29,6 +29,9 @@ const (
 	// CheckAbsent is a commit with no check rollup at all: no workflow has
 	// even queued a job for it. Queued and running jobs are pending; a
 	// rollup that stays absent means no CI listens to the branch (defect 40).
+	// Checks that all completed with none run green (every one skipped or
+	// neutral, or none under a SUCCESS rollup) are absent too: no verdict,
+	// never green.
 	CheckAbsent    CheckState = "absent"
 	CheckFault     CheckState = "fault"
 	FaultRateLimit FaultKind  = "rate_limit"
@@ -453,10 +456,11 @@ var (
 // settled_internal is whether GitHub's counts alone classify a commit whose
 // checks run past the first page: they account for every check and none
 // failed or faulted, so no later page changes the answer or names a check.
-// pending is whether any is still queued or running. The landing asks a
+// pending is whether any is still queued or running; ran, whether any ran
+// green (SUCCESS: a skipped check ran nothing). The landing asks a
 // pending CI again every poll, so this keeps one read of a commit with
 // nothing failed at one gh call however many checks it has.
-func settled_internal(c gqlContexts) (pending, ok bool) {
+func settled_internal(c gqlContexts) (pending, ran, ok bool) {
 	sum := 0
 	for _, sc := range slices.Concat(c.CheckRunCountsByState, c.StatusContextCountsByState) {
 		st := strings.ToUpper(sc.State)
@@ -465,11 +469,13 @@ func settled_internal(c gqlContexts) (pending, ok bool) {
 		case slices.Contains(countPending, st):
 			pending = true
 		case !slices.Contains(countGreen, st):
-			return false, false
+			return false, false, false
+		case st == "SUCCESS":
+			ran = true
 		}
 		sum += sc.Count
 	}
-	return pending, sum > 0 && sum == c.TotalCount
+	return pending, ran, sum > 0 && sum == c.TotalCount
 }
 
 func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, raw string, shas []string) (map[string]CheckRollup, error) {
@@ -490,10 +496,13 @@ func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, r
 		}
 		nodes, pi := commit.StatusCheckRollup.Contexts.Nodes, commit.StatusCheckRollup.Contexts.PageInfo
 		partial := false
-		if pending, ok := settled_internal(commit.StatusCheckRollup.Contexts); ok && pi.HasNextPage {
+		if pending, ran, ok := settled_internal(commit.StatusCheckRollup.Contexts); ok && pi.HasNextPage {
 			pi, partial = gqlPageInfo{}, true // the pages not read hold only green and pending checks
 			if pending {
 				nodes = append(slices.Clone(nodes), gqlNode{Typename: "CheckRun", Status: "IN_PROGRESS"})
+			}
+			if ran { // a check on a page not read ran green (classifyStates_internal: skipped alone is no verdict)
+				nodes = append(slices.Clone(nodes), gqlNode{Typename: "CheckRun", Status: "COMPLETED", Conclusion: "SUCCESS"})
 			}
 		}
 		for pi.HasNextPage && pi.EndCursor != "" {
@@ -562,14 +571,19 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 }
 
 func classifyStates_internal(sha, rollupState string, nodes []gqlNode) CheckRollup {
-	var failing, faulted, redURLs []string
+	var failing, faulted, redURLs, running []string
 	var firstRedURL, firstFaultURL string
-	pending := 0
+	pending, ran := 0, false
 	for _, n := range nodes {
 		st, name, url := classifyNode_internal(n)
 		switch st {
 		case CheckPending:
 			pending++
+			if name != "" {
+				running = append(running, name)
+			}
+		case CheckGreen:
+			ran = ran || !strings.EqualFold(n.Conclusion, "SKIPPED") && !strings.EqualFold(n.Conclusion, "NEUTRAL")
 		case CheckRed:
 			failing, firstRedURL, redURLs = append(failing, name), cmp.Or(firstRedURL, url), append(redURLs, url)
 		case CheckFault:
@@ -585,9 +599,11 @@ func classifyStates_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 		return CheckRollup{SHA: sha, State: CheckRed, Failing: []string{"statusCheckRollup"}, Reason: "statusCheckRollup state " + rollupState}
 	case pending > 0 || strings.EqualFold(rollupState, "PENDING") || strings.EqualFold(rollupState, "EXPECTED") || len(nodes) == 0:
 		if strings.EqualFold(rollupState, "SUCCESS") && len(nodes) == 0 {
-			return CheckRollup{SHA: sha, State: CheckGreen}
+			return CheckRollup{SHA: sha, State: CheckAbsent, Reason: "no check ran green: GitHub reports SUCCESS with no check at all, which is no verdict"}
 		}
-		return CheckRollup{SHA: sha, State: CheckPending, Reason: "checks in progress"}
+		return CheckRollup{SHA: sha, State: CheckPending, Pending: pending, Reason: strings.TrimSuffix("checks in progress: "+strings.Join(running, ", "), ": ")}
+	case !ran: // skipped (or neutral) alone ran nothing: no verdict, never green
+		return CheckRollup{SHA: sha, State: CheckAbsent, Reason: "no check ran green: every check was skipped or neutral, which is no verdict"}
 	default:
 		return CheckRollup{SHA: sha, State: CheckGreen}
 	}

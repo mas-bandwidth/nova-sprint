@@ -20,9 +20,9 @@ import (
 // GraphQL rollup (no network), and the merge recorded, never made.
 type handForge struct {
 	forge.Forge
-	checks         *forge.Client
-	reads, merges  int
-	head           string
+	checks        *forge.Client
+	reads, merges int
+	head          string
 }
 
 func (f *handForge) PR(context.Context, string, string, string) (forge.PRInfo, bool, error) {
@@ -150,10 +150,10 @@ func TestHandLandNoForgeRefusesARepoWithCI(t *testing.T) {
 	tip, head := strings.Repeat("a", 40), strings.Repeat("b", 40)
 	plain := []string{"README.md", "main.go"}
 	for _, c := range []struct {
-		name   string
-		trees  map[string][]string
-		lands  bool
-		says   []string
+		name  string
+		trees map[string][]string
+		lands bool
+		says  []string
 	}{
 		{"workflow on base", map[string][]string{tip: append([]string{".github/workflows/ci.yml"}, plain...), head: plain}, false, []string{".github/workflows/ci.yml", "has CI", "--forge github"}},
 		{"CI added by the card", map[string][]string{tip: plain, head: append([]string{".gitlab-ci.yml"}, plain...)}, false, []string{".gitlab-ci.yml", "has CI"}},
