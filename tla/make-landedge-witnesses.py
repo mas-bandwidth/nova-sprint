@@ -16,7 +16,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 INVARIANTS = ["TypeOK", "BaseNeverRed", "SharedRedOnly", "SharedRedNeverJudged",
               "NothingLandsUnpassed", "MergingCovered", "VerdictOnlyCompleted", "RedIsReal",
-              "ConflictJudgesItsCard", "ConflictNeverJudged"]
+              "ConflictJudgesItsCard", "ConflictNeverJudged", "HandLandsGreen"]
 
 
 def consts(spec, shared="TRUE", flaky="TRUE"):
@@ -114,6 +114,11 @@ WITNESSES = [
      [("      E(s)    == {c \\in Cards : S(c) = s /\\ cs1[c] = \"merging\" /\\ c \\notin js1}",
        "      E(s)    == IF \\E j \\in js1 : S(j) = s THEN {}   \\* FAULT: a judgement holds the stream\n"
        "                 ELSE {c \\in Cards : S(c) = s /\\ cs1[c] = \"merging\" /\\ c \\notin js1}")]),
+    ("LandEdgeHandUngated", "HandLandsGreen",
+     "The old rule (through 7db0425): a hand landing merges the card's\n"
+     "PR without reading its checks, red, pending or all skipped.",
+     [("  /\\ choice = \"land\" => HandOK(c)\n",
+       "  /\\ choice = \"land\" => TRUE   \\* FAULT: merged with no check read\n")]),
     ("LandEdgeConflictJudgesGroup", "ConflictJudgesItsCard",
      "The old rule (v2.0.37): a group's conflict on one card's head is a\n"
      "judgement for every card of the group.",

@@ -26,7 +26,8 @@
 (* only while base is still the tip it was gated on; base moving under   *)
 (* the gate (an outside commit) asks the pass again; GitHub may refuse   *)
 (* the merge. Answer is the coordinator's (rung 3): land merges by hand  *)
-(* (no gate: the coordinator looked), fix sends the card to fix, retry   *)
+(* (only on its own PR's green checks: HandOK), fix sends the card to   *)
+(* fix, retry                                                              *)
 (* asks a new landing. Switch is stream set --base: the stream lands    *)
 (* into another branch from now on, its tip a tree no gate was built on *)
 (* (the same cards: the branch was cut from base); a gate in flight is  *)
@@ -304,9 +305,15 @@ Late(s) ==
   /\ UNCHANGED <<base, cs, js, jc, held, passes>>
 
 \* An outside commit to base; it may break checks (bad), of either kind.
+\* It may come by a PR merged outside the sprint whose head is its very
+\* tree (pr), so that PR's reds are the tip's proof; a hand landing is
+\* never red on its own PR (HandOK), so this is how a check run only on
+\* PRs is proven red on a base tip.
 BaseMoves(b) ==
   /\ Tip.ext < K
-  /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1, !.bad = @ \cup b], how |-> "ext", gated |-> NoTree, proof |-> {}])
+  /\ \E pr \in BOOLEAN :
+       LET t == [Tip EXCEPT !.ext = @ + 1, !.bad = @ \cup b]
+       IN base' = Append(base, [tree |-> t, how |-> "ext", gated |-> NoTree, proof |-> IF pr THEN Reds(t) ELSE {}])
   /\ ticked' = FALSE
   /\ UNCHANGED <<cs, req, js, jc, held, passes>>
 
@@ -328,10 +335,18 @@ Switch(s) ==
 \* is the base tip's proof when the tip is that very tree.
 Branch(c) == [NoTree EXCEPT !.cards = {c}]
 
+\* A hand landing merges only when the checks of that PR's head, read once,
+\* are green (git.HandVerdict; truthful CI: green on a tree with no reds).
+\* Pending, red, stopped, all skipped and none are refused, nothing merged
+\* (a stutter here: the coordinator answers again, or fix). A head already
+\* on base records at once, with no read.
+HandOK(c) == c \in Tip.cards \/ Reds(Branch(c)) = {}
+
 Answer(c, choice) ==
   /\ c \in js
   /\ cs[c] = "merging"
   /\ choice = "retry" => passes < MaxPass
+  /\ choice = "land" => HandOK(c)
   /\ js' = js \ {c} /\ jc' = jc \ {c}
   /\ CASE choice = "land" ->
             /\ cs' = [cs EXCEPT ![c] = "landed"]
@@ -409,6 +424,13 @@ NothingLandsUnpassed ==
        /\ base[i].how = "auto" => base[i].tree = base[i].gated
        /\ base[i].how \in {"ext", "switch"} => base[i].tree.cards = base[i - 1].tree.cards
   /\ \A c \in Cards : cs[c] = "landed" => c \in Tip.cards
+
+\* A hand landing never merges a card whose own PR's checks are not green:
+\* every card a hand merge brings onto base is green on its own branch
+\* (on 11-16 and 11-17, 41 PRs were merged by hand with every check skipped).
+HandLandsGreen ==
+  \A i \in 2..Len(base) : base[i].how = "hand" =>
+       \A c \in base[i].tree.cards \ base[i - 1].tree.cards : Reds(Branch(c)) = {}
 
 \* No merging card without a request or a judgement after a tick: each is
 \* under a land judgement, or its stream has a request in flight (its own,

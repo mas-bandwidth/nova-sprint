@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -69,8 +70,10 @@ func (l *lander) OnMain(ctx context.Context, s store.Stream, sha string) (bool, 
 
 // Land merges head (the tip of branch) into the stream's base: base's tip
 // when head is on it already; else the PR branch -> base merged by the
-// repository's allowed method (opened when there is none), or, with no
-// forge, head merged onto base's tip and pushed fast-forward.
+// repository's allowed method (opened when there is none) only when its
+// checks at head are green (git.HandVerdict), or, with no forge and no CI
+// in the repository (noCI_internal), head merged onto base's tip and
+// pushed fast-forward.
 // One lock on the clone is held from the fetch through the push (a merge
 // with no forge checks out and merges in the clone's work tree).
 func (l *lander) Land(ctx context.Context, s store.Stream, branch, head string) (string, error) {
@@ -106,6 +109,9 @@ func (l *lander) land_internal(ctx context.Context, dir string, s store.Stream, 
 		return tip, err
 	}
 	if s.Forge == "" {
+		if err := l.noCI_internal(ctx, dir, s, tip, head); err != nil {
+			return "", err
+		}
 		return l.pushBase_internal(ctx, dir, s, tip, head)
 	}
 	return l.mergePR_internal(ctx, s, branch, head)
@@ -125,7 +131,41 @@ func (l *lander) mergePR_internal(ctx context.Context, s store.Stream, branch, h
 	if pr.HeadSHA != "" && !strings.EqualFold(pr.HeadSHA, head) {
 		return "", &verbs.OperationError{Problem: fmt.Sprintf("PR %s's head is %s, not the card's head %s", pr.URL, pr.HeadSHA, head), Fix: "send the card to fix (its branch moved after the read), or push its branch back to " + head, Exit: 1}
 	}
+	// the merge is taken only on green, read once at head (git.HandVerdict)
+	rollups, err := l.forge.Checks(ctx, s.Repo, []string{head})
+	if err != nil {
+		return "", verbs.RefusalOr(err, &verbs.OperationError{Problem: "the checks of " + head + " on " + s.Repo + " could not be read, so nothing was merged: " + edge.RedactN(err.Error(), edge.FailureMax), Fix: "make " + s.Repo + "'s checks readable from this host (gh auth status), then land it again", Exit: 2})
+	}
+	if problem, fix, ok := git.HandVerdict(cmp.Or(pr.URL, fmt.Sprintf("#%d", pr.Number)), head, rollups[head]); !ok {
+		return "", &verbs.OperationError{Problem: problem + "; nothing was merged", Fix: fix, Exit: 1}
+	}
 	return l.forge.Merge(ctx, s.Repo, pr.Number, head)
+}
+
+// ciPaths are the CI configuration a repository's tree can carry: a file
+// at one of these paths, or under one ending in "/".
+var ciPaths = []string{".github/workflows/", ".gitlab-ci.yml", ".circleci/", ".travis.yml", "Jenkinsfile",
+	"azure-pipelines.yml", "bitbucket-pipelines.yml", ".buildkite/", ".drone.yml", ".woodpecker.yml", ".woodpecker/",
+	"appveyor.yml", ".appveyor.yml", ".gitea/workflows/", ".forgejo/workflows/"}
+
+// noCI_internal refuses a push straight onto base, which reads no check,
+// for a repository whose base tip or head carries CI configuration, and
+// when either tree cannot be listed (it cannot tell).
+func (l *lander) noCI_internal(ctx context.Context, dir string, s store.Stream, tip, head string) error {
+	for _, rev := range []string{tip, head} {
+		paths, err := l.clones.git.ListTree(ctx, dir, rev)
+		if err != nil {
+			return verbs.RefusalOr(err, &verbs.OperationError{Problem: "stream " + s.Name + " names no forge, and nova-sprint cannot tell whether " + s.Repo + " has CI (its tree at " + rev + " could not be listed: " + edge.RedactN(err.Error(), edge.FailureMax) + "), so nothing was pushed onto " + s.Base, Fix: "fix what it names and land it again, or give the stream its forge (nova-sprint stream set " + s.Name + " --forge github) so the landing reads its checks", Exit: 2})
+		}
+		for _, p := range paths {
+			for _, c := range ciPaths {
+				if p == c || strings.HasSuffix(c, "/") && strings.HasPrefix(p, c) {
+					return &verbs.OperationError{Problem: "stream " + s.Name + " names no forge, but " + s.Repo + " has CI (" + p + " at " + rev + "): a push straight onto " + s.Base + " reads no check, so nothing was pushed", Fix: "give the stream its forge (nova-sprint stream set " + s.Name + " --forge github) so the landing merges only on green, then land it again", Exit: 1}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (l *lander) pushBase_internal(ctx context.Context, dir string, s store.Stream, tip, head string) (string, error) {

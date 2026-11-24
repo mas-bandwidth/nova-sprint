@@ -649,6 +649,28 @@ func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, r
 	return true
 }
 
+// HandVerdict is whether a hand landing (nova-sprint land, a judgement
+// answered land) may merge pr at sha on r, its checks read once at sha: only
+// on green, the verdict readChecks_internal merges on. Otherwise ok is false
+// with the problem, naming the checks, and the next step. Nothing waits or
+// polls: pending checks are a refusal to try again once they complete.
+func HandVerdict(pr, sha string, r forge.CheckRollup) (problem, fix string, ok bool) {
+	why := cmp.Or(r.Reason, string(r.State))
+	switch {
+	case r.State == forge.CheckGreen:
+		return "", "", true
+	case r.State == forge.CheckPending || r.Waiting:
+		return fmt.Sprintf("%s's checks at %s have no verdict yet (%d pending; %s)", pr, sha, r.Pending, why),
+			"wait for them to complete (gh pr checks " + pr + "), then land it again; land never waits", false
+	case r.State == forge.CheckRed || r.State == forge.CheckFault:
+		return fmt.Sprintf("%s's checks at %s are %s: %s", pr, sha, r.State, strings.Join(r.Failing, ", ")),
+			"send it to fix (nova-sprint judge <judgement> fix --reason \"<why>\"), or make those checks green and land it again", false
+	default:
+		return fmt.Sprintf("%s's checks at %s give no verdict: %s", pr, sha, cmp.Or(r.Reason, "no check ran green")),
+			"make CI run on the branch (a workflow that skips sprint/ branches runs nothing), then land it again; or send it to fix", false
+	}
+}
+
 // verdict_internal judges the gated sha's completed checks that did not
 // pass, read once with how GitHub says each stopped (forge.Failures). A
 // stopped check (killed, cancelled, timed out) is no verdict about the code
