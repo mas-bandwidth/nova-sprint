@@ -248,7 +248,9 @@ func modelFlag_internal(j Job, provider string) []string {
 // placeholder key (ANTHROPIC_AUTH_TOKEN), the bare model id without its
 // provider prefix (--model, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL), and
 // its config and temporary directories inside the job, with nonessential
-// traffic and autoupdater disabled.
+// traffic and autoupdater disabled, and CLAUDE_CODE_MAX_CONTEXT_TOKENS and
+// CLAUDE_CODE_MAX_OUTPUT_TOKENS from the worker's own environment when each
+// is a positive integer (claude does not know a routed model's window).
 func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
 	model := modelFlag_internal(j, h.Needs().Provider)
 	env := baseWallEnv_internal(j)
@@ -266,6 +268,11 @@ func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
 			"DISABLE_AUTOUPDATER=1",
 			"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
 		)
+		for _, k := range []string{"CLAUDE_CODE_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_MAX_OUTPUT_TOKENS"} {
+			if v := os.Getenv(k); positiveIntEnv_internal(v) {
+				env = append(env, k+"="+strings.TrimSpace(v))
+			}
+		}
 	} else if h.ConfigDir != "" {
 		env = append(env, "CLAUDE_CONFIG_DIR="+h.ConfigDir)
 	}
@@ -787,7 +794,7 @@ func SanitizeJobWallEnv(env []string, jobDir, proxyAddr string) []string {
 			clean = append(clean, u+"=1")
 		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME" || u == "DOTNET_CLI_HOME") && jobDir == "":
 			clean = append(clean, kv)
-		case (u == "NOVA_RESERVE_CPUS" || u == "CARGO_BUILD_JOBS" || u == "RUST_TEST_THREADS") && positiveIntEnv_internal(v):
+		case (u == "NOVA_RESERVE_CPUS" || u == "CARGO_BUILD_JOBS" || u == "RUST_TEST_THREADS" || u == "CLAUDE_CODE_MAX_CONTEXT_TOKENS" || u == "CLAUDE_CODE_MAX_OUTPUT_TOKENS") && positiveIntEnv_internal(v):
 			clean = append(clean, u+"="+strings.TrimSpace(v))
 		case slices.Contains(allowed, u):
 			if u == "DOTNET_CLI_TELEMETRY_OPTOUT" {
