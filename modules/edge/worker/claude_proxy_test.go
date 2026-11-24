@@ -396,3 +396,85 @@ func TestMacBookInkyWorkerServesOnlyInkyFlashAndPro(t *testing.T) {
 		t.Fatalf("want missing inky route refusal, got %v", err)
 	}
 }
+
+// A proxied claude job gets CLAUDE_CODE_MAX_CONTEXT_TOKENS and
+// CLAUDE_CODE_MAX_OUTPUT_TOKENS from the worker's environment when each is a
+// positive integer, and neither otherwise; an unproxied claude job never does.
+func TestProxiedClaudeContextWindowEnv(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv): Command reads os.Getenv
+	keys := []string{"CLAUDE_CODE_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_MAX_OUTPUT_TOKENS"}
+	dir := t.TempDir()
+	proxied := Job{Model: "inky/inkling-2-mini", Consumer: "p1.w1", Row: "macbook", JobDir: dir, ProxyAddr: "127.0.0.1:7000", Routes: []string{"inky"}}
+	has := func(env []string, k string) (string, bool) {
+		for _, kv := range env {
+			if name, v, _ := strings.Cut(kv, "="); name == k {
+				return v, true
+			}
+		}
+		return "", false
+	}
+	h := &ClaudeHarness{Proxied: true}
+
+	for _, k := range keys {
+		t.Setenv(k, "")
+	}
+	_, env := h.Command(proxied)
+	for _, k := range keys {
+		if v, ok := has(env, k); ok {
+			t.Errorf("unset %s reached the job as %q", k, v)
+		}
+	}
+
+	t.Setenv(keys[0], "131072")
+	t.Setenv(keys[1], "8192")
+	_, env = h.Command(proxied)
+	for k, want := range map[string]string{keys[0]: "131072", keys[1]: "8192"} {
+		if v, ok := has(env, k); !ok || v != want {
+			t.Errorf("%s = %q (present %v), want %q: %v", k, v, ok, want, env)
+		}
+	}
+	_, env = (&ClaudeHarness{}).Command(Job{Model: "claude-opus", Consumer: "p1.w1", Row: "macbook", JobDir: dir})
+	for _, k := range keys {
+		if v, ok := has(env, k); ok {
+			t.Errorf("unproxied claude got %s=%q", k, v)
+		}
+	}
+
+	for _, bad := range []string{"lots", "0", "-1", "1.5"} {
+		for _, k := range keys {
+			t.Setenv(k, bad)
+		}
+		_, env = h.Command(proxied)
+		for _, k := range keys {
+			if v, ok := has(env, k); ok {
+				t.Errorf("%s=%q reached the job as %q", k, bad, v)
+			}
+		}
+	}
+}
+
+// The wall admits the two window variables only as positive integers.
+func TestSanitizeWallEnvAdmitsOnlyPositiveContextWindow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, good := range []string{"CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072", "CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192"} {
+		if got := SanitizeJobWallEnv([]string{good}, dir, "127.0.0.1:7000"); !slices.Contains(got, good) {
+			t.Errorf("SanitizeJobWallEnv refused %q: %v", good, got)
+		}
+	}
+	for _, bad := range []string{
+		"CLAUDE_CODE_MAX_CONTEXT_TOKENS=lots",
+		"CLAUDE_CODE_MAX_CONTEXT_TOKENS=0",
+		"CLAUDE_CODE_MAX_CONTEXT_TOKENS=-131072",
+		"CLAUDE_CODE_MAX_OUTPUT_TOKENS=",
+		"CLAUDE_CODE_MAX_OUTPUT_TOKENS=0",
+		"CLAUDE_CODE_MAX_OUTPUT_TOKENS=-1",
+		"CLAUDE_CODE_SOMETHING_ELSE=8192",
+	} {
+		k, _, _ := strings.Cut(bad, "=")
+		for _, kv := range SanitizeJobWallEnv([]string{bad}, dir, "127.0.0.1:7000") {
+			if strings.HasPrefix(kv, k+"=") {
+				t.Errorf("SanitizeJobWallEnv admitted %q as %q", bad, kv)
+			}
+		}
+	}
+}
