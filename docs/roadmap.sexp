@@ -69,6 +69,7 @@
      ("resource-tags-on-cards-and-runners" "Cards and GitHub runners carry resource tags that say what resources they need to run")
      ("resource-amounts" "A resource can have a number, and a card or a runner says how much of it it needs to run: RAM in GB, a GPU amount, or cores in a unit that allows for cores of different power")
      ("resource-kinds" "Some resources are just things, which a machine has or does not have; others, like CPU and memory, are amounts that can be split up and shared")
+     ("v3-resources-spec" "The v3.0.0 resources specification (docs/SPEC-V3.md) reviewed and settled: tags and whole-number resources replace a bench's width, cards hold resources through nova-reserve, CI jobs win (draft in closed PR #834, branch idea/cards-require-resources)")
      )
    :columns (("done" "done"))
    :cells (
@@ -77,6 +78,7 @@
      ("resource-tags-on-cards-and-runners" "done" "t-resource-tags-on-cards-and-runners")
      ("resource-amounts" "done" "t-resource-amounts")
      ("resource-kinds" "done" "t-resource-kinds")
+     ("v3-resources-spec" "done" "t-v3-resources-spec")
      ))
   (:id "t-admission-refuses-functional-done-when" :type :task :title "add refuses a DONE-WHEN that runs functional tests, which cannot run inside the wall" :state :todo)
   (:id "t-deal-skips-old-binary-rows" :type :task :title "The dealer never deals to a row whose advertised binary is older than the run's version" :state :todo)
@@ -108,4 +110,6 @@
   (:id "t-cards-acquire-and-release-resources" :type :task :title "A card acquires the resources it needs to do its work, and releases them when it is done" :state :todo :note "the owner, 2026-11-15: 'cards will need to acquire and release resources to do their work.' Today a bench's nova-reserve slots are the only limit on work in flight")
   (:id "t-resource-tags-on-cards-and-runners" :type :task :title "Cards and GitHub runners carry resource tags that say what resources they need to run" :state :todo :note "the owner, 2026-11-15: 'cards and github runners will have resource tags, and these resource tags will say what resources they need to run.' His example: 'a machine might have a ps5 toolchain and a ps5 attached to run. ok, that's a ps5 tag. etc.' So a tag can name a thing a machine has (a toolchain and a device), not only a quantity")
   (:id "t-resource-amounts" :type :task :title "A resource can have a number, and a card or a runner says how much of it it needs to run: RAM in GB, a GPU amount, or cores in a unit that allows for cores of different power" :state :todo :note "the owner, 2026-11-15: 'a resource can also have a number', 'and cards/runners can specify how much of something they need to run', 'eg. ram in gb', 'or cores (in some unit that makes sense, given different cores have different power)'. The unit for cores is not chosen")
-  (:id "t-resource-kinds" :type :task :title "Some resources are just things, which a machine has or does not have; others, like CPU and memory, are amounts that can be split up and shared" :state :todo :note "the owner, 2026-11-15: 'or GPU amount', 'my point is some resources are just things.', 'you have it or you don't, but some resources like CPU, memory can be split up and shared.'"))) 
+  (:id "t-resource-kinds" :type :task :title "Some resources are just things, which a machine has or does not have; others, like CPU and memory, are amounts that can be split up and shared" :state :todo :note "the owner, 2026-11-15: 'or GPU amount', 'my point is some resources are just things.', 'you have it or you don't, but some resources like CPU, memory can be split up and shared.'")
+  (:id "t-v3-resources-spec" :type :task :title "The v3.0.0 resources specification reviewed and settled" :state :todo
+   :note "Draft in closed PR #834, branch idea/cards-require-resources (kept): one file, docs/SPEC-V3.md, no code. A bench's width becomes tags and whole-number resources; a consumer card holds what its work needs through an upgraded nova-reserve; CI jobs hold resources too and win (cards yield and pause; a machine is never counted over what it has); the board's Fleet section becomes Resources. Each rule is marked [G] (the owner's decision) or [R] (Rowan's choice, open to being overruled); its section 11 lists the open questions. v2 stays the version in use.")))
