@@ -59,6 +59,22 @@ func TestAskOffersPolicyTheDealsCandidates(t *testing.T) {
 	assert.Equal(t, map[policy.RowsQuestion][]string{{Card: "p1", Kind: "work"}: {"r4"}, {Card: "p5", Kind: "read"}: {}}, p.q.Candidates)
 }
 
+// concurrent is an Asking whose answer carries a catalog concurrency.
+type concurrent struct{}
+
+func (concurrent) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
+	return policy.Answers{Version: 1, Catalog: policy.Catalog{Concurrency: map[string]int{"deepseek": 9}}}, nil
+}
+
+// TestAskCapsProvidersFromTheProviderRecords: a provider's cap on runs at
+// once is its nova-config provider record's (the roster's Concurrency); a
+// policy catalog's concurrency is ignored.
+func TestAskCapsProvidersFromTheProviderRecords(t *testing.T) {
+	t.Parallel()
+	a := (&asker{ctx: context.Background(), policy: concurrent{}, ro: roster.Roster{Concurrency: map[string]int{"openrouter": 2}}}).Ask(steps.Questions{})
+	assert.Equal(t, map[string]int{"openrouter": 2}, a.Concurrency)
+}
+
 // TestStepsAnswersAttributesFailuresToTheirOwnVersion: v5 failed its verdict
 // question and v4 answered the tick; v4's verdicts are the tick's and no
 // failure is filed under v4 (v5's failure is its own policy judgement).

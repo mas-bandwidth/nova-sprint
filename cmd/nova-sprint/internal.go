@@ -28,10 +28,10 @@ func internalCommand(ctx context.Context, args []string) (int, bool) {
 		}
 		return writeContinuationChild(ctx), true
 	case "--internal-model-probe":
-		if code, bad := internalArgs(args, 2); bad {
+		if code, bad := internalArgs(args, 6); bad {
 			return code, true
 		}
-		return (verbs.ModelListProbe{}).Run(ctx, args[1]), true
+		return (verbs.ModelListProbe{}).Run(ctx, verbs.ModelProbeProvider(args[1:])), true
 	case "--internal-setup-role-fresh":
 		if code, bad := internalArgs(args, 1); bad {
 			return code, true
@@ -62,8 +62,8 @@ func internalCommand(ctx context.Context, args []string) (int, bool) {
 			yes, err := verbs.SprintStoreChild(ctx, false, versionString())
 			return internalJSON("ready", yes, err), true
 		}
-		yes, restored, err := verbs.SprintStoreSetup(ctx, versionString())
-		return internalSetupJSON(yes, restored, err), true
+		yes, did, err := verbs.SprintStoreSetup(ctx, versionString())
+		return internalSetupJSON(yes, did, err), true
 	}
 	return 0, false
 }
@@ -88,16 +88,17 @@ func internalJSON(key string, value bool, err error) int {
 }
 
 // internalSetupJSON is the store setup child's result: {"ready": bool}, with
-// "restored" naming the rows it put back from the log when there are any
+// "restored" naming the rows it put back from the log and "friends" a line
+// per friend whose settings it copied from nova-config, when there are any
 // (the parent prints them; a child's stderr is shown only when it fails).
-func internalSetupJSON(ready bool, restored []string, err error) int {
+func internalSetupJSON(ready bool, did verbs.StoreSetupResult, err error) int {
 	if err != nil {
 		return verbs.ChildFailed(err, 1)
 	}
 	result := struct {
-		Ready    bool     `json:"ready"`
-		Restored []string `json:"restored,omitempty"`
-	}{ready, restored}
+		Ready bool `json:"ready"`
+		verbs.StoreSetupResult
+	}{ready, did}
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		return verbs.ChildFailed(edge.Cause("write result", err), 1)
 	}

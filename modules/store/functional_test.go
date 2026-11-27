@@ -62,6 +62,14 @@ func pgHarness(t *testing.T) (*harness, *PG, string) {
 	return &harness{t: t, s: p, ctx: context.Background(), epoch: 1}, p, dsn
 }
 
+// NewestData on PostgreSQL is the Fake's (newestDataCase): one DISTINCT ON
+// read of the policy table.
+func TestFunctionalNewestData(t *testing.T) {
+	t.Parallel()
+	_, p, _ := pgHarness(t)
+	newestDataCase(t, p)
+}
+
 // A second Migrate is a no-op: the fresh store stays stopped, never
 // started, and a row's tiers (round 23's text column) survive it.
 func TestFunctionalMigrateTwice(t *testing.T) {

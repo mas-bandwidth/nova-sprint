@@ -74,6 +74,63 @@ func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 	return result, nil
 }
 
+// FleetProvider is a nova-config provider record as up uses it: the
+// services step's key (Key, the secret's name) and model probe (ModelsURL,
+// BalanceURL, API), and the worker records' keys.
+type FleetProvider struct {
+	Name, URL, API, Key   string
+	ModelsURL, BalanceURL string
+	Enabled               bool
+}
+type configProviders struct {
+	Result struct {
+		Verb, Status string
+		Exit         int
+	} `json:"result"`
+	Facts struct {
+		Kind string
+		Rows int
+	} `json:"facts"`
+	Items []struct {
+		Kind   string `json:"kind"`
+		Fields struct {
+			Name, URL, API, Key string
+			ModelsURL           string `json:"models_url"`
+			BalanceURL          string `json:"balance_url"`
+			Enabled             bool
+		} `json:"fields"`
+	} `json:"items"`
+}
+
+// Providers reads nova-config's provider records, in name order.
+func (f FleetServices) Providers(ctx context.Context) ([]FleetProvider, error) {
+	out, err := f.command(ctx, "nova-config", "provider", "list", "--json")
+	if err != nil {
+		return nil, fmt.Errorf("nova-config provider list --json: %w", err)
+	}
+	var list configProviders
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("nova-config provider list --json: %s", ParseFailure(err, out))
+	}
+	if list.Result.Verb != "provider list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "provider" || list.Facts.Rows != len(list.Items) {
+		return nil, fmt.Errorf("nova-config provider list --json: result %q %q exit %d, facts %q rows %d for %d items; first bytes %q",
+			list.Result.Verb, list.Result.Status, list.Result.Exit, list.Facts.Kind, list.Facts.Rows, len(list.Items), firstBytes(out))
+	}
+	result := make([]FleetProvider, 0, len(list.Items))
+	for _, item := range list.Items {
+		v := item.Fields
+		if item.Kind != "provider" || v.Name == "" || (v.Key != "" && !fleetKey.MatchString(v.Key)) {
+			return nil, fmt.Errorf("nova-config provider list --json: item kind %q name %q is not a provider the sprint can use (no name, or a key that is not a secret's name)", item.Kind, Redact(v.Name))
+		}
+		result = append(result, FleetProvider{Name: v.Name, URL: v.URL, API: v.API, Key: v.Key, ModelsURL: v.ModelsURL, BalanceURL: v.BalanceURL, Enabled: v.Enabled})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	return result, nil
+}
+
+// NoProviderFix is the nova-config verb that adds a provider record.
+const NoProviderFix = "nova-config provider add <name> --url <API base URL> --api openai|anthropic --key <SECRET_NAME> [--models_url <url>] [--balance_url <url>] --actor <you> --reason <why>, then nova-sprint up again"
+
 // SprintSeats uses the chosen run service's actual seat plus the existing
 // swarm seat for each configured bench. The public dashboard service gets
 // no secret (a pull-only record without seat or keys, validPublicTarget):

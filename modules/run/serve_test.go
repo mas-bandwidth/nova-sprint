@@ -76,7 +76,7 @@ func TestServeFirstTickWaitsForHeads(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		f := dealable(t)
-		ro, err := NewConfigRoster(&fakeConfigSnapshot{}, 8)
+		ro, err := NewConfigRoster(&fakeConfigSnapshot{}, noFriends{}, 8)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,7 +124,7 @@ func TestServeFirstTickWaitsForHeads(t *testing.T) {
 func TestServeUnreadableHeadsStillTick(t *testing.T) {
 	t.Parallel()
 	f := dealable(t)
-	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, 8)
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, noFriends{}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}

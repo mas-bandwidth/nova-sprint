@@ -225,7 +225,7 @@ func (ix *index) candidate(r rostered) starlark.Value {
 // roster's, from nova-config), flaps (the store's).
 func row(r rostered) starlark.Value {
 	return newStruct("name", r.Name, "kind", r.kind, "width", r.width, "tiers", r.tiers, "model", r.model,
-		"harness", r.harness, "flaps", r.Flaps)
+		"harness", r.harness, "flaps", r.Flaps, "slots", r.SlotsTotal)
 }
 
 // read is one done read for verdict: row, rank, result (ok or fix), finding

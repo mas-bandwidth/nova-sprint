@@ -313,30 +313,37 @@ For a public dashboard, replace the dashboard choice with
 that service holds no database or provider credential. The public machine may
 also be a bench. Share the resulting URL only with the intended audience.
 
-The current key-setup integrations accept `deepseek` and `openrouter`, separated
+A service is a nova-config provider record (`nova-config provider list`), named
 by commas. Choose only the services your deployment uses. Each selected service
-asks the human for its key once at a hidden terminal prompt and checks it with
-the provider. The AI runs the prompt; the human enters the value there. The
-installed worker's supported routes and the policy's model catalog must also
-match the selected configuration: adding a key alone does not make every model
-runnable. The built-in policy names no bench model: a bench takes a tier's work
-only once the active policy's `catalog()` names that tier's model, as
-`{"bench": {"<tier>": "<provider>/<model>"}}` (`nova-sprint policy set`; `check`
-names each tier without one). Follow any missing-route or harness refusal
-before starting work. An optional `"concurrency": {"<provider>": <n>}` caps how
-many consumers work on that provider's models across the fleet at once (none:
-unlimited). A job that ends on a provider's rate limit (429, "rate limit",
-"too many requests") is a fault, not the card's fail: the card is dealt again
-without spending an attempt, and its model is dealt to no row for the policy's
+asks the human for the key its record names (`--key`) once at a hidden terminal
+prompt and checks it at the record's `balance_url` and `models_url`. The AI runs
+the prompt; the human enters the value there. A record without either URL, or
+without a key, is refused with the `nova-config provider set` that fixes it.
+The policy's model catalog must also match: adding a key alone does not make
+every model runnable. The built-in policy names no bench model: a bench takes a
+tier's work only once the active policy's `catalog()` names that tier's model,
+as `{"bench": {"<tier>": "<provider>/<model>"}}` (`nova-sprint policy set`;
+`check` names each tier without one). Follow any missing-route or harness
+refusal before starting work. A provider record's `concurrency` caps how many
+consumers work on that provider's models across the fleet at once (0:
+unlimited); a model record's `price_in`, `price_cache_read` and `price_out`
+price its runs (unset: unpriced, never $0). A policy's `prices()` and catalog
+`concurrency` are no longer read: `check` and `policy check` warn once each. A
+job that ends on a provider's rate limit (429, "rate limit", "too many
+requests") is a fault, not the card's fail: the card is dealt again without
+spending an attempt, and its model is dealt to no row for the policy's
 `route_rest_for` (1800 s built in).
 
-A bench worker reaches four providers, each through its key proxy with its key
-opened from the bench's own seat: `deepseek` (`DEEPSEEK_API_KEY`), `inception`
-(`INCEPTION_API_KEY`), `opencode`, OpenCode Zen (`OPENCODE_API_KEY`), and
-`openrouter`, OpenRouter (`OPENROUTER_API_KEY`). The model's prefix picks the
-provider; point a tier at one in the policy's catalog, for example
-`{"bench": {"flash": "openrouter/z-ai/glm-5.3-flash", "pro":
-"opencode/deepseek-v4-pro"}}`.
+A bench worker reaches each enabled nova-config provider record through its key
+proxy, the key the record names opened from the bench's own seat (up grants
+every enabled record's key to the worker services, and refuses with
+`nova-config provider add ...` when there is none). The proxy sends the key as
+the record's `api` wants it: `Authorization: Bearer` for `openai`, `x-api-key`
+for `anthropic`. The model's prefix picks the provider; each model runs in the
+harness its nova-config model record names (opencode when it has none), and
+claude reaches a provider record's route through the proxy too. Point a tier
+at a model in the policy's catalog, for example `{"bench": {"flash":
+"openrouter/z-ai/glm-5.3-flash", "pro": "opencode/deepseek-v4-pro"}}`.
 
 Use `--services none` to skip API-key setup. This does **not** disable the worker
 services installed on bench machines. For a sprint using only friend sessions,
@@ -570,15 +577,18 @@ those attempts follow the worker rules above.
 
 Register each friend session in nova-config before expecting it to receive
 work. Include the coordinator's own row if it will work cards. Choose the
-actual harness and model the session runs, the tiers it can serve, and a width
-it can sustain:
+actual harness and model the session runs. Then set, in the sprint, the tiers
+it can serve and a width it can sustain (a friend with nothing set works at
+width 1 on every tier):
 
 ```sh
-seat_exec NOVA_PG_PASSWORD nova-config friend add '<row>' --harness '<harness>' --model '<model>' --width '<width>' --tiers '<tier-list>' --actor "$NOVA_SPRINT_AS" --reason '<why>'
+seat_exec NOVA_PG_PASSWORD nova-config friend add '<row>' --harness '<harness>' --model '<model>' --actor "$NOVA_SPRINT_AS" --reason '<why>'
+sprint_env nova-sprint friend set '<row>' --width '<width>' --tiers '<tier-list>' --as "$NOVA_SPRINT_AS"
 ```
 
 For an existing row, inspect its configuration and use nova-config's update
-command from its help rather than adding it twice. Grant an already registered
+command from its help rather than adding it twice; `nova-sprint show '<row>'`
+prints its sprint settings. Grant an already registered
 worker seat the runtime secrets, then distribute the encrypted store:
 
 ```sh
@@ -769,6 +779,7 @@ a repair for an ordinary refused command.
 | `relink` | Redirect a dependant's failed need to another producer. | `nova-sprint help relink` |
 | `stream set` | Change a stream's landing mode, forge, gates (`--gate <command>`: every card of the stream passes it at its finished head) or base branch (`--base <branch>`: a stream branch it lands into from now on). | `nova-sprint help stream set` |
 | `stream remove` | Remove a stream no card of the epoch names, in any state, with a reason; it then shows nowhere until `stream add` puts it back. | `nova-sprint help stream remove` |
+| `friend set` | Set a friend's sprint settings: how many cards it works at once (`--width <n>`) and the tiers it serves (`--tiers <a,b>`). A friend with nothing set works at width 1 on every tier; `show <name>` prints what is in force. | `nova-sprint help friend set` |
 | `stats reset` | Count the dashboard's Fleet and Friends done, ok, failed and ok% again from now, with a reason, so a change's effect shows at once. Tokens and cost are not reset. | `nova-sprint help stats reset` |
 | `wake` | Consume a bus message on stdin and acknowledge each dealt card before printing its receipt or refusal. | `nova-sprint help wake` |
 

@@ -7,11 +7,11 @@ import (
 )
 
 // Rate is one model's price: micro-dollars per million tokens of each class
-// (the policy's prices(): in, cache_read, cache_write, out). Reasoning is
+// (from the model's nova-config model record: in, cache_read, cache_write, out). Reasoning is
 // billed as output.
 type Rate struct{ In, CacheRead, CacheWrite, Out int64 }
 
-// Sheet is the policy's price sheet, by model.
+// Sheet is the price sheet, by model (the nova-config model records').
 type Sheet map[string]Rate
 
 // Lookup is the rate of model, a record's provider/model: the sheet's entry

@@ -74,6 +74,43 @@ func TestCheckAllGreen(t *testing.T) {
 	}
 }
 
+// TestCheckWarnsOfIgnoredPolicyAnswers: an active policy whose prices() or
+// catalog() concurrency answers anything gets one WARN line each, naming
+// the nova-config verb that holds it now; the exit stays 0.
+func TestCheckWarnsOfIgnoredPolicyAnswers(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	healthy(t, w)
+	w.e.Answers = concurrencyAnswers{fakeAnswers{prices: map[string]policy.Price{"deepseek/deepseek-chat": {In: 1, Out: 2}}}}
+	want(t, w.do("", "check"), 0,
+		"CHECK WARN default prices() is ignored: a model's price is its nova-config model record's: nova-config model set <provider>/<model> --price_in <n> --price_out <n>, and drop prices() from the policy\n",
+		"CHECK WARN default catalog() concurrency is ignored: a provider's cap on runs at once is its nova-config provider record's: nova-config provider set <name> --concurrency <n>, and drop concurrency from catalog()\n")
+}
+
+// TestCheckWarnsOfAFriendWithNoSettings: an enabled friend the store holds
+// no friend:<name> record for is dealt at the defaults; check says so in one
+// WARN naming friend set, never silently; the exit stays 0.
+func TestCheckWarnsOfAFriendWithNoSettings(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	healthy(t, w)
+	k := w.roster.ro.Kin["carol"]
+	k.Defaulted = true
+	w.roster.ro.Kin["carol"] = k
+	want(t, w.do("", "check"), 0,
+		"CHECK WARN friend carol has no sprint settings (no friend:carol record), so it is dealt at width 1, every tier: nova-sprint friend set carol --width <n> --tiers <a,b>\n")
+}
+
+// concurrencyAnswers answers as fakeAnswers, its catalog naming a
+// concurrency.
+type concurrencyAnswers struct{ fakeAnswers }
+
+func (c concurrencyAnswers) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
+	a, fs := c.fakeAnswers.AnswerContext(ctx, vs, snap, ro, q)
+	a.Catalog.Concurrency = map[string]int{"deepseek": 2}
+	return a, fs
+}
+
 // TestCheckRedLines is each red line, and that it makes the exit non-zero
 // with every other line still printed.
 func TestCheckRedLines(t *testing.T) {

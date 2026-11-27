@@ -166,7 +166,8 @@ const (
 // Price is micro-dollars per million tokens of each class: uncached input,
 // cached input read, cache write and output (reasoning is billed as
 // output). prices() names in and out; cache_read and cache_write are
-// optional and default to in.
+// optional and default to in. A version's prices() is validated and never
+// read: a model's price is its nova-config model record's (Ignored).
 type Price struct{ In, CacheRead, CacheWrite, Out int64 }
 
 // Failure is one version's error or refused answer: none of that version's

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
+	config "github.com/mas-bandwidth/nova-tools/v2/modules/config"
 )
 
 // services are the long-running verbs: run (the chooser), worker (a
@@ -85,7 +87,59 @@ func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 		return fmt.Errorf("worker: home directory (a relative --work-root, --mirror-root, --root or --state-dir is under it): %w", err)
 	}
 	w.WorkRoot, w.MirrorRoot, w.Root, w.StateDir = underHome(home, w.WorkRoot), underHome(home, w.MirrorRoot), underHome(home, w.Root), underHome(home, w.StateDir)
+	w.Records = s.workerRecords
 	return worker.Serve(ctx, w, func(line string) { fmt.Println(line) })
+}
+
+// workerRecords reads nova-config's provider and model records as the
+// worker uses them (workerRecordsOf), through the sprint's own credentials.
+func (s services) workerRecords(ctx context.Context) (worker.Records, error) {
+	dsn, err := s.creds.sprint()
+	if err != nil {
+		return worker.Records{}, err
+	}
+	openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	conn, err := config.Open(openCtx, dsn, s.creds.password)
+	if err != nil {
+		return worker.Records{}, err
+	}
+	defer conn.Close()
+	providers, err := conn.Providers(openCtx)
+	if err != nil {
+		return worker.Records{}, err
+	}
+	models, err := conn.Models(openCtx)
+	if err != nil {
+		return worker.Records{}, err
+	}
+	return workerRecordsOf(providers, models), nil
+}
+
+// workerRecordsOf are the enabled provider records as key-proxy routes and
+// each enabled model record's harness (nova-config's default, opencode,
+// when it names none); a provider record that cannot be a route is skipped,
+// its line in Skipped naming the nova-config verb that fixes it (the worker
+// warns of it; a job of its models finds no route and says so).
+func workerRecordsOf(providers []config.Provider, models []config.Model) worker.Records {
+	rec := worker.Records{Harnesses: map[string]string{}}
+	for _, p := range providers {
+		if !p.Enabled {
+			continue
+		}
+		route, err := worker.ProviderRecord(p.Name, p.URL, p.API, p.Key)
+		if err != nil {
+			rec.Skipped = append(rec.Skipped, fmt.Sprintf("provider record %s skipped, so no model of it is routed: %v", p.Name, err))
+			continue
+		}
+		rec.Providers = append(rec.Providers, route)
+	}
+	for _, m := range models {
+		if m.Enabled {
+			rec.Harnesses[m.Name] = cmp.Or(m.Harness, worker.DefaultHarnessName)
+		}
+	}
+	return rec
 }
 
 // underHome is dir, a relative one taken under home ("" stays "": the

@@ -2,6 +2,7 @@ package dash
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -140,6 +141,34 @@ func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 	}
 	if cells["bob"]["okpct"] != "-" || cells["emma"]["okpct"] != "50.0%" {
 		t.Errorf("okpct cells: bob %q (want -), emma %q (want 50.0%%)", cells["bob"]["okpct"], cells["emma"]["okpct"])
+	}
+}
+
+// A friend's row carries the tiers its sprint settings give it (nova-sprint
+// friend set), up or down, beside its width; a fleet row carries none.
+func TestFriendRowShowsItsTiers(t *testing.T) {
+	t.Parallel()
+	ros := roster.Roster{Workers: map[string]roster.Worker{"b": {Name: "b", Width: 4, Tiers: []string{"flash"}}},
+		Kin: map[string]roster.Kin{"emma": {Name: "emma", Width: 2, Tiers: []string{"heavy", "pro"}}, "alex": {Name: "alex", Width: 1, Tiers: []string{"flash"}}}}
+	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"emma": {Name: "emma", State: "up"}, "b": {Name: "b", State: "up"}}}
+	d := mapSnapshot(snap, ros, time.Time{}, nil)
+	for table, want := range map[string]map[string]string{"friends": {"emma": "pro,heavy", "alex": "flash"}, "fleet": {"b": ""}} {
+		var cells map[string]map[string]string
+		body, err := json.Marshal(d.Tables[table])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(body, &cells); err != nil {
+			t.Fatal(err)
+		}
+		for n, tiers := range want {
+			if got, ok := cells[n]["tiers"]; got != tiers || ok != (tiers != "") {
+				t.Errorf("%s %s tiers = %q (present %t), want %q", table, n, got, ok, tiers)
+			}
+			if cells[n]["width"] != fmt.Sprint(map[string]int{"emma": 2, "alex": 1, "b": 4}[n]) {
+				t.Errorf("%s %s width = %q", table, n, cells[n]["width"])
+			}
+		}
 	}
 }
 

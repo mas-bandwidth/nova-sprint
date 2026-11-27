@@ -39,14 +39,14 @@ func TestKeyAskedAgainOnlyBeforeDurableSave(t *testing.T) {
 	terminal := &terminalFake{data: []byte("fake-key")}
 	sink := &sinkFake{fail: true}
 	ctx := context.Background()
-	if EnsureKey(ctx, "deepseek", terminal, sink) == nil {
+	if EnsureKey(ctx, "deepseek", "DEEPSEEK_API_KEY", terminal, sink) == nil {
 		t.Fatal("failed save accepted")
 	}
 	sink.fail = false
-	if err := EnsureKey(ctx, "deepseek", terminal, sink); err != nil {
+	if err := EnsureKey(ctx, "deepseek", "DEEPSEEK_API_KEY", terminal, sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnsureKey(ctx, "deepseek", terminal, sink); err != nil {
+	if err := EnsureKey(ctx, "deepseek", "DEEPSEEK_API_KEY", terminal, sink); err != nil {
 		t.Fatal(err)
 	}
 	if terminal.asks != 2 || sink.value != "fake-key" {
@@ -64,7 +64,7 @@ func (t terminalRace) ReadHidden(context.Context, string) ([]byte, error) {
 func TestKeySavedDuringPromptIsNotOverwritten(t *testing.T) {
 	t.Parallel()
 	sink := &sinkFake{}
-	if err := EnsureKey(context.Background(), "deepseek", terminalRace{sink}, sink); err != nil {
+	if err := EnsureKey(context.Background(), "deepseek", "DEEPSEEK_API_KEY", terminalRace{sink}, sink); err != nil {
 		t.Fatal(err)
 	}
 	if sink.value != "already-saved" {

@@ -242,7 +242,7 @@ function setTrack(box, value, slots, scale, m) {
   if (!m) for (var j = 0; j < value; j++) t.segs.push("working");
   for (var i = 0; i < slots; i++) classes.push(t.segs[i] || "");
   setCells(box, classes, scale, trackCell(scale));
-  setTitle(box, value + " working of " + slots + (t.words.length ? ": " + t.words.join(", ") : ""));
+  setTitle(box, value + " working of " + slots + (t.words.length ? ": " + t.words.join(", ") : "") + (m && m.tiers ? " · tiers " + m.tiers : ""));
 }
 // "a / b" as a block of fixed width: a right-aligned in `digits` character widths, b
 // left-aligned in as many, so the slash of every row in a column sits on one vertical line

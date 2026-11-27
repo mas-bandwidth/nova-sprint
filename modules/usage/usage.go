@@ -36,7 +36,7 @@ const (
 // Why a run has no price (unpriced=<why>).
 const (
 	WhyNoTokens = "no-tokens" // an API run that reported no token
-	WhyNoPrice  = "no-price"  // an API run whose model has no entry in prices()
+	WhyNoPrice  = "no-price"  // an API run whose model has no priced nova-config model record
 )
 
 // Tokens is what one run spent, by class. Each is Unreported when the

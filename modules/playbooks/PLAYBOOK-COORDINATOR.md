@@ -160,7 +160,8 @@ What each judgement kind asks of you, and where to look before you choose:
   route or device names the row and what is missing (its reason starts `missing-route: <route>`,
   the route's name as a brief declares it with `NEEDS-ROUTE: <route>`): the card is never dealt
   again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
-  that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
+  that serves it; or bring up a row that has the route (`nova-config machine set <bench> --routes
+  <its routes>,<route>`) and
   `unhold`; or `drop` it. A `held` whose reason reads `reads faulted <n> times running at review
   <r>` is a review whose reads all faulted policy's `faults` limit in a row (the reason ends with
   the newest fault): fix that cause (a route, a tool on the reading rows), then `unhold`; the card
@@ -489,11 +490,18 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 
 1. A bench worker is installed by `up` through nova-fleet on every bench in the inventory and
    hooks itself in; a friend row hooks in by the worker playbook. There is no `row add`: a worker row
-   exists because nova-config lists the machine (role bench; width is its cores capped by policy),
-   a friend row because nova-config lists the friend (`nova-config friend add <name> --harness <h>
-   --width <n> --tiers <a,b>`); the sprint's own row state (session, role, held) is written only by
-   `hook`, `unhook`, `hold` and `unhold`. Change a width or a tier in nova-config; the sprint sees it
-   on the next tick.
+   exists because nova-config lists the machine (role bench; width is its cores capped by policy,
+   and policy's built-in `width()` caps its work at the nova-reserve slots its beat reports; the
+   devices it serves are its `nova-config machine set <name> --routes <a,b>`), a friend row because
+   nova-config lists the friend (`nova-config friend add <name> --harness <h> --model <m>`). A
+   friend's width and tiers are the sprint's: `nova-sprint friend set <name> [--width <n>]
+   [--tiers <a,b>]` (a flag left out keeps what is in force; nothing set is width 1 on every tier;
+   `show <name>` prints it, the board shows it); the sprint sees a change on the next tick. While
+   nova-config's friend records still carry a width and tiers, `up` copies them once for each
+   friend with nothing set, on any up, store already set up or not; `check` warns of each friend
+   with nothing set, naming `friend set`. The
+   sprint's own row state (session, role, held) is written only by `hook`, `unhook`, `hold` and
+   `unhold`.
    To take a machine or a friend out of the sprint, remove it from nova-config (`nova-config
    machine remove <name>` or `nova-config friend remove <name>`): the run retires its row on the
    next tick, its hand back to the queue with branches and heads kept, and the row shows nowhere
@@ -531,7 +539,7 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    when its needs have landed. A consumer id is refused with its producer's id.
    A busy sprint writes while a verb runs (deals, reports, hooks). `hold`, `unhold`, `replace`,
    `drop`, `judge`, `priority`, `relink`, `land`, `stream add`, `stream set`, `stream remove`, `stop`, `start`,
-   `stats reset`, `identity`, `policy set` and `policy activate` read again by themselves when
+   `stats reset`, `identity`, `friend set`, `policy set` and `policy activate` read again by themselves when
    the write was not to their own row, stream, card, judgement, policy or your hook, up to 5
    tries; each is refused only when its own record changed, and the refusal names what changed.
    "refused 5 times ... the store moves faster than it can plan" means five writes landed in a

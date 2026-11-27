@@ -52,6 +52,10 @@ type Store interface {
 	// name, newest first (none is an empty list), from the policy table: a
 	// setup answer or a continuation, read without the log.
 	PoliciesNamed(ctx context.Context, kind, name string, max int) ([]PolicyVersion, error)
+	// NewestData returns the newest data version of every name that starts
+	// with prefix, in name order (none is an empty list), from the policy
+	// table in one read: a friend's sprint settings (friend:<name>).
+	NewestData(ctx context.Context, prefix string) ([]PolicyVersion, error)
 }
 
 // MaxEvents caps one Events call.

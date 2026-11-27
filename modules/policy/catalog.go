@@ -20,6 +20,8 @@ type Catalog struct {
 	Bench   map[string]string
 	// Concurrency is provider -> how many consumers may work on its models
 	// across the fleet at once (v1's per-provider budget); none: unlimited.
+	// Validated and never read: a provider's cap is its nova-config provider
+	// record's concurrency (Ignored).
 	Concurrency map[string]int
 }
 

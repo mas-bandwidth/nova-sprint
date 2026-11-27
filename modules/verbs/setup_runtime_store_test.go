@@ -102,6 +102,11 @@ func TestSetupStoreSetupPrintsRestoredRows(t *testing.T) {
 	if err := p.storeSetup(context.Background()); err != nil || out.String() != "" {
 		t.Fatal(err, out.String())
 	}
+	answer = `{"ready":true,"friends":["friend stella: width 3 tiers pro,heavy copied from nova-config"]}`
+	out.Reset()
+	if err := p.storeSetup(context.Background()); err != nil || out.String() != "UP store: friend stella: width 3 tiers pro,heavy copied from nova-config\n" {
+		t.Fatal(err, out.String())
+	}
 	answer = `{"ready":false,"restored":["space3"]}`
 	out.Reset()
 	if err := p.storeSetup(context.Background()); err == nil || !strings.Contains(out.String(), "row space3") {

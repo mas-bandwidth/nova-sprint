@@ -137,7 +137,7 @@ func (s *choiceTraceSink) Set(_ context.Context, name string, r io.Reader) error
 
 type choiceTraceProbe struct{}
 
-func (choiceTraceProbe) Run(context.Context, string) error { return nil }
+func (choiceTraceProbe) Run(context.Context, FleetProvider) error { return nil }
 
 type choiceTraceSetup struct {
 	trace   *choiceTrace

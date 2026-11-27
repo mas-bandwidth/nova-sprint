@@ -388,11 +388,11 @@ func TestMacBookInkyWorkerServesOnlyInkyFlashAndPro(t *testing.T) {
 		t.Fatal("chooseModel accepted unproved deepseek/deepseek-flash on inky-only macbook worker")
 	}
 
-	// Without an inky route on KeyProxy, ProbeRow refuses naming --providers inky=<url>@<KEY>.
+	// Without an inky route on KeyProxy, ProbeRow refuses naming the nova-config provider record that adds it.
 	noInky := probeRunner_internal(t, sp, &fakeWall{}, nil, NewKeyProxy(nil, nil))
 	noInky.DefaultHarness = &ClaudeHarness{Proxied: true}
 	err = noInky.ProbeRow(context.Background(), "macbook", "claude")
-	if err == nil || !strings.Contains(err.Error(), "no key-proxy route for inky (--providers inky=<url>@<KEY>)") {
+	if err == nil || !strings.Contains(err.Error(), "no key-proxy route for inky (nova-config provider add inky --url <url> --api openai|anthropic --key <SECRET_NAME>)") {
 		t.Fatalf("want missing inky route refusal, got %v", err)
 	}
 }

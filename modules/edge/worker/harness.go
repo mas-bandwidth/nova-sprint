@@ -81,8 +81,8 @@ type (
 		baseHarness_internal
 		ConfigDir string
 		// Proxied: claude reaches its provider through the key proxy's
-		// route for the model's provider (--providers), never with a login
-		// of its own (Command).
+		// route for the model's provider (a nova-config provider record, or
+		// --providers), never with a login of its own (Command).
 		Proxied bool
 	}
 	CodexHarness struct {
@@ -242,8 +242,8 @@ func modelFlag_internal(j Job, provider string) []string {
 	return []string{"--model", j.Model}
 }
 
-// Command: proxied (only when j.ProxyAddr is set and the model's provider is
-// in j.Routes), claude is given the proxy's route for the model's provider
+// Command: proxied (only when Proxied, j.ProxyAddr is set and the model's
+// provider is in j.Routes), claude is given the proxy's route for the model's provider
 // (ANTHROPIC_BASE_URL, without /v1 so claude appends /v1/messages), the job's
 // placeholder key (ANTHROPIC_AUTH_TOKEN), the bare model id without its
 // provider prefix (--model, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL), and
@@ -255,7 +255,7 @@ func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
 	model := modelFlag_internal(j, h.Needs().Provider)
 	env := baseWallEnv_internal(j)
 	provider, id, hasPrefix := strings.Cut(j.Model, "/")
-	if j.ProxyAddr != "" && hasPrefix && provider != "" && id != "" && slices.Contains(j.Routes, provider) {
+	if h.Proxied && j.ProxyAddr != "" && hasPrefix && provider != "" && id != "" && slices.Contains(j.Routes, provider) {
 		model = []string{"--model", id}
 		cfgDir := cmp.Or(h.ConfigDir, filepath.Join(j.JobDir, "home", ".claude"))
 		env = append(env,

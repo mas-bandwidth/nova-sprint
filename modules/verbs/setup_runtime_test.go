@@ -73,16 +73,35 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 		t.Fatal(check, err)
 	}
 }
+
+// A service is an enabled nova-config provider record with a key, named
+// once; any other name refuses, naming the nova-config verb that fixes it.
 func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
 	t.Parallel()
-	for _, value := range []string{"unknown", "deepseek,deepseek", "deepseek,"} {
-		if _, err := setupServices(value); err == nil {
-			t.Fatal(value)
+	list := `{"result":{"verb":"provider list","status":"ok","exit":0},"facts":{"kind":"provider","rows":4},"items":[` +
+		`{"kind":"provider","fields":{"name":"deepseek","url":"https://api.deepseek.com","api":"openai","key":"DEEPSEEK_API_KEY","models_url":"https://api.deepseek.com/models","enabled":true}},` +
+		`{"kind":"provider","fields":{"name":"ollama","url":"http://127.0.0.1:11434","api":"anthropic","key":"","enabled":true}},` +
+		`{"kind":"provider","fields":{"name":"off","url":"https://off.example","api":"openai","key":"OFF_API_KEY","enabled":false}},` +
+		`{"kind":"provider","fields":{"name":"openrouter","url":"https://openrouter.ai/api","api":"openai","key":"OPENROUTER_API_KEY","models_url":"https://openrouter.ai/api/v1/models","enabled":true}}]}`
+	r := RuntimeSetup{Services: FleetServices{Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name != "nova-config" || strings.Join(args, " ") != "provider list --json" {
+			t.Fatalf("unexpected %s %v", name, args)
+		}
+		return []byte(list), nil
+	}}}
+	ctx := context.Background()
+	for value, want := range map[string]string{"unknown": "nova-config provider add unknown --url", "deepseek,deepseek": "named twice", "deepseek,": "nova-config provider add  --url",
+		"off": "is no enabled nova-config provider record", "ollama": "nova-config provider set ollama --key <SECRET_NAME>"} {
+		if _, err := r.setupServices(ctx, value); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: got %v, want %q", value, err, want)
 		}
 	}
-	names, err := setupServices("openrouter,deepseek")
-	if err != nil || len(names) != 2 || names[0] != "deepseek" {
-		t.Fatal(names, err)
+	chosen, err := r.setupServices(ctx, "openrouter,deepseek")
+	if err != nil || len(chosen) != 2 || chosen[0].Name != "deepseek" || chosen[0].Key != "DEEPSEEK_API_KEY" || chosen[1].ModelsURL != "https://openrouter.ai/api/v1/models" {
+		t.Fatal(chosen, err)
+	}
+	if none, err := r.setupServices(ctx, "none"); err != nil || none != nil {
+		t.Fatal(none, err)
 	}
 }
 

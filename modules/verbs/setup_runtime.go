@@ -333,18 +333,19 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 	if value == "" {
 		return SetupCheck{Line: "UP 8/10 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
 	}
-	names, err := setupServices(value)
+	chosen, err := r.setupServices(ctx, value)
 	if err != nil {
 		return SetupCheck{}, err
 	}
+	names := providerNames(chosen)
 	if in.Key != "" && !slices.Contains(names, in.Key) {
 		return SetupCheck{}, &OperationError{Problem: "key service is not selected", Fix: "nova-sprint up --services <names>", Exit: 1}
 	}
 	if !saved {
 		return SetupCheck{Action: true}, nil
 	}
-	for _, name := range names {
-		ok, err := r.Keys.Verify(ctx, name)
+	for _, p := range chosen {
+		ok, err := r.Keys.Verify(ctx, p)
 		if err != nil {
 			return SetupCheck{}, err
 		}
@@ -362,20 +363,42 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 	}
 	return setupReady(ok, line, err)
 }
-func setupServices(value string) ([]string, error) {
+
+// setupServices are the provider records value names (none for "none"),
+// sorted: each an enabled nova-config provider record with a key, named once.
+func (r RuntimeSetup) setupServices(ctx context.Context, value string) ([]FleetProvider, error) {
 	if value == "none" {
 		return nil, nil
 	}
-	names := strings.Split(value, ",")
-	seen := map[string]bool{}
-	for _, name := range names {
-		if _, ok := modelProbeProviders[name]; !ok || seen[name] {
-			return nil, fmt.Errorf("unsupported or duplicate service")
-		}
-		seen[name] = true
+	providers, err := r.Services.Providers(ctx)
+	if err != nil {
+		return nil, err
 	}
+	names := strings.Split(value, ",")
 	slices.Sort(names)
-	return names, nil
+	var out []FleetProvider
+	for i, name := range names {
+		at := slices.IndexFunc(providers, func(p FleetProvider) bool { return p.Name == name && p.Enabled })
+		switch {
+		case i > 0 && names[i-1] == name:
+			return nil, &OperationError{Problem: "service " + Redact(name) + " is named twice", Fix: "nova-sprint up --services <names>, each once", Exit: 1}
+		case at < 0:
+			return nil, &OperationError{Problem: "service " + Redact(name) + " is no enabled nova-config provider record", Fix: strings.Replace(NoProviderFix, "<name>", Redact(name), 1), Exit: 1}
+		case providers[at].Key == "":
+			return nil, &OperationError{Problem: "provider " + name + " names no key, so up has none to set up for it", Fix: "nova-config provider set " + name + " --key <SECRET_NAME> --actor <you> --reason <why>, or leave it out of --services", Exit: 1}
+		}
+		out = append(out, providers[at])
+	}
+	return out, nil
+}
+
+// providerNames are ps's names.
+func providerNames(ps []FleetProvider) []string {
+	names := make([]string, len(ps))
+	for i, p := range ps {
+		names[i] = p.Name
+	}
+	return names
 }
 func (r RuntimeSetup) Act(ctx context.Context, step int, in SetupInput) error {
 	switch step {
@@ -508,11 +531,11 @@ func (r RuntimeSetup) servicesAct(ctx context.Context, in SetupInput) error {
 	if err != nil {
 		return err
 	}
-	names, err := setupServices(value)
+	chosen, err := r.setupServices(ctx, value)
 	if err != nil {
 		return err
 	}
-	if len(names) > 0 && (r.Keys.Terminal == nil || r.Keys.Sink == nil || r.Keys.Probe == nil) {
+	if len(chosen) > 0 && (r.Keys.Terminal == nil || r.Keys.Sink == nil || r.Keys.Probe == nil) {
 		return fmt.Errorf("service key setup unavailable")
 	}
 	if !saved {
@@ -520,15 +543,15 @@ func (r RuntimeSetup) servicesAct(ctx context.Context, in SetupInput) error {
 			return err
 		}
 	}
-	for _, name := range names {
-		if err := r.Keys.Act(ctx, name); err != nil {
+	for _, p := range chosen {
+		if err := r.Keys.Act(ctx, p); err != nil {
 			return err
 		}
 	}
 	if r.Workload == nil {
 		return fmt.Errorf("service setup unavailable")
 	}
-	return r.Workload.InstallServices(ctx, names)
+	return r.Workload.InstallServices(ctx, providerNames(chosen))
 }
 
 func (r RuntimeSetup) workersAct(ctx context.Context) error {

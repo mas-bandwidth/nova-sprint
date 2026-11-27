@@ -211,6 +211,16 @@ func testCheck(t *testing.T, w *world) {
 	rep, err = Check(w.ctx(), w.st, w.ro, e, "default")
 	require.NoError(t, err)
 	assert.Empty(t, rep.Changes, "v1 is the default")
+	assert.Empty(t, rep.Warnings, "the default sets no prices and no concurrency")
+	// prices() and catalog()'s concurrency still validate, are never read,
+	// and each prints one WARN line naming the nova-config verb that holds it
+	old := strings.Replace(strings.Replace(defaultBody, "    return {}\n\ndef catalog", "    return {\"deepseek/deepseek-chat\": {\"in\": 1, \"out\": 2}}\n\ndef catalog", 1), "return {\"bench\": {}}", "return {\"concurrency\": {\"deepseek\": 2}, \"bench\": {}}", 1)
+	require.NotEqual(t, defaultBody, old)
+	rep, err = Check(w.ctx(), w.st, w.ro, e, w.file("old.star", old))
+	require.NoError(t, err)
+	assert.Equal(t, 0, rep.Code())
+	assert.Contains(t, rep.Text(), "WARN old.star prices() is ignored: a model's price is its nova-config model record's: nova-config model set <provider>/<model> --price_in <n> --price_out <n>, and drop prices() from the policy\n")
+	assert.Contains(t, rep.Text(), "WARN old.star catalog() concurrency is ignored: a provider's cap on runs at once is its nova-config provider record's: nova-config provider set <name> --concurrency <n>, and drop concurrency from catalog()\n")
 	_, err = Check(w.ctx(), w.st, w.ro, e, "v5")
 	assert.Equal(t, "SPRINT REFUSED policy check: policy version 5 does not exist: nova-sprint policy show --list", refusal(t, err))
 	gone := filepath.Join(t.TempDir(), "gone.star")

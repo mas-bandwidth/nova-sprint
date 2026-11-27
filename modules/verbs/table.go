@@ -177,7 +177,7 @@ var usageHelp = []string{
 	"  input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model>",
 	"  (leave out a class the harness did not count; never write a guess as 0)",
 	"the engine prices it, never the row: your row's harness decides the billing.",
-	"  a bench (nova-worker, API keys): the tokens at the policy's prices(), exactly; no tokens or no price is recorded unpriced, never $0",
+	"  a bench (nova-worker, API keys): the tokens at its model's nova-config model record prices, exactly; no tokens or no price is recorded unpriced, never $0",
 	"  a kin on a subscription seat (claude, codex, ...): free; pass nothing, or --usage to have your tokens counted",
 	"--cost <usd> is the harness's own dollar figure, kept as charged= evidence beside the price, never as the price",
 }

@@ -102,6 +102,8 @@ func workerLogFix(u WorkerUnit) string {
 type rowView struct {
 	store.Row
 	Worker *workerView `json:"worker,omitempty"`
+	// Friend is a friend row's sprint settings (nova-sprint friend set).
+	Friend *friendView `json:"friend,omitempty"`
 	// RosterUnread is why nova-config's roster could not be read: show
 	// cannot tell a friend from a bench then, so it applies no bench check.
 	RosterUnread string `json:"roster_unread,omitempty"`
@@ -122,12 +124,16 @@ func (e *Engine) showRow(ctx context.Context, row store.Row, snap store.Snapshot
 		return row
 	}
 	// Bench-only checks never judge a friend row (docs/README.md "Hard
-	// requirements" 3): a friend is the row alone, and with the roster
+	// requirements" 3): a friend is the row and its sprint settings, and with the roster
 	// unreadable no row is read as a bench.
 	if friend, err := e.isFriend(ctx, row.Name); err != nil {
 		return rowView{Row: row, RosterUnread: errText(err)}
 	} else if friend {
-		return row
+		f, err := e.friendOf(ctx, row.Name)
+		if err != nil {
+			f.Unread = errText(err)
+		}
+		return rowView{Row: row, Friend: &f}
 	}
 	u, isBench, err := e.Doctor.Worker(ctx, row.Name)
 	switch {

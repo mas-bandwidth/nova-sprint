@@ -20,7 +20,9 @@ import (
 // ProbeRow proves, before the row takes a card, that its harness starts
 // inside the wall and answers with each model the row would run: of the
 // policy's candidates for each tier (next --json's tier_models), the first
-// the harness serves. A take runs only a model the probe proved. Each run's
+// the harness serves, each model run with its nova-config model record's
+// harness (harnessName's without one). The row advertises only the tiers
+// whose model was proved so. A take runs only a model the probe proved. Each run's
 // stdout.log, stderr.log and command.txt are kept under
 // <root>/probes/<row>/<model>. A failure is the worker's refusal: the
 // cause, the harness's known limits, and where its output is (`nova-sprint
@@ -38,7 +40,10 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName string) error {
 		if err != nil {
 			break
 		}
-		err = r.probeModel_internal(ctx, row, h, m)
+		var hm Harness
+		if hm, err = r.probeHarness_internal(h, m); err == nil { // the model record's harness, else the row's
+			err = r.probeModel_internal(ctx, row, hm, m)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("worker refused: probe failed for row %s: %w", row, err)
@@ -74,13 +79,24 @@ func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness
 	if len(next.TierModels) == 0 {
 		return nil, nil, fmt.Errorf("no model for any tier: next --json names no tier for %s (roster: %s): check that nova-config gives this machine the bench role (nova-sprint check)", row, cmp.Or(next.RosterErr, "read"))
 	}
-	var cands []string
+	// each candidate is judged by its own harness (its model record's,
+	// records.go; else h), each harness listing its candidates once
+	harnesses, byHarness := map[string]Harness{}, map[string][]string{}
 	for _, tier := range slices.Sorted(maps.Keys(next.TierModels)) {
-		cands = append(cands, next.TierModels[tier]...)
+		for _, m := range next.TierModels[tier] {
+			hm, err := r.probeHarness_internal(h, m)
+			if err != nil {
+				return nil, nil, err
+			}
+			k := harnessKey_internal(hm)
+			harnesses[k], byHarness[k] = hm, append(byHarness[k], m)
+		}
 	}
-	listed, err := r.listModels_internal(ctx, row, h, cands)
-	if err != nil {
-		return nil, nil, err
+	listed := map[string][]string{}
+	for name, cands := range byHarness {
+		if listed[name], err = r.listModels_internal(ctx, row, harnesses[name], cands); err != nil {
+			return nil, nil, err
+		}
 	}
 	var chosen, tiers, unserved []string
 	for _, tier := range slices.Sorted(maps.Keys(next.TierModels)) {
@@ -88,7 +104,7 @@ func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness
 		if len(cands) == 0 {
 			return nil, nil, fmt.Errorf("no model for tier %s: the active policy's catalog names no bench model for it: add one to its bench (nova-sprint policy set <file> --reason <why>)", tier)
 		}
-		m, why := r.servedModel_internal(h.Needs(), cands, listed)
+		m, why := r.servedByHarness_internal(h, cands, harnesses, listed)
 		if m == "" {
 			unserved = append(unserved, "tier "+tier+": "+why)
 			continue
@@ -107,6 +123,34 @@ func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness
 	return chosen, tiers, nil
 }
 
+// servedByHarness_internal is the first of cands its harness serves
+// (servedModel_internal over each harness's candidates, the harnesses in
+// the order of their first candidate), or "" and why each is not.
+func (r *Runner) servedByHarness_internal(h Harness, cands []string, harnesses map[string]Harness, listed map[string][]string) (string, string) {
+	var order []string
+	group := map[string][]string{}
+	for _, m := range cands {
+		hm, _ := r.probeHarness_internal(h, m) // resolved without error above
+		k := harnessKey_internal(hm)
+		if _, seen := group[k]; !seen {
+			order = append(order, k)
+		}
+		group[k] = append(group[k], m)
+	}
+	var why []string
+	for _, name := range order {
+		m, w := r.servedModel_internal(harnesses[name].Needs(), group[name], listed[name])
+		if m != "" {
+			return m, ""
+		}
+		if len(order) > 1 {
+			w = name + ": " + w
+		}
+		why = append(why, w)
+	}
+	return "", strings.Join(why, "; ")
+}
+
 // servedModel_internal is the first of cands the harness serves (a route
 // for its provider through the proxy, its own provider without, and in its
 // model list when it has one), or "" and why each is not.
@@ -116,7 +160,7 @@ func (r *Runner) servedModel_internal(needs Needs, cands, listed []string) (stri
 		provider, _, _ := strings.Cut(m, "/")
 		switch {
 		case needs.Proxy && !r.Proxy.HasRoute(provider):
-			why = append(why, m+": no key-proxy route for "+provider+" (--providers "+provider+"=<url>@<KEY>)")
+			why = append(why, m+": no key-proxy route for "+provider+" (nova-config provider add "+provider+" --url <url> --api openai|anthropic --key <SECRET_NAME>)")
 		case !needs.Proxy && needs.Provider != "" && provider != needs.Provider:
 			why = append(why, m+": the harness serves "+needs.Provider+" only")
 		case listed != nil && !slices.Contains(listed, m):

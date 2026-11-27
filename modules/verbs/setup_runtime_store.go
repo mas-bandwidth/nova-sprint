@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -57,7 +59,8 @@ func (p PGSetupStore) Install(ctx context.Context) error {
 }
 
 // storeSetup runs the store child's setup and prints, on Out, each row it put
-// back from the log: the child's stderr is shown only when it fails.
+// back from the log and each friend whose settings it copied from nova-config:
+// the child's stderr is shown only when it fails.
 func (p PGSetupStore) storeSetup(ctx context.Context) error {
 	r, err := p.childResult(ctx, "--internal-store-setup", sprintPasswordName)
 	if err != nil {
@@ -72,6 +75,11 @@ func (p PGSetupStore) storeSetup(ctx context.Context) error {
 			return cause("write the restored rows", err)
 		}
 	}
+	for _, line := range r.Friends {
+		if _, err := fmt.Fprintln(out, "UP store: "+Redact(line)); err != nil {
+			return cause("write the copied friends", err)
+		}
+	}
 	if !r.Ready {
 		return fmt.Errorf("store setup did not verify: the store child answered ready false after --internal-store-setup with no error (a bug: take it to the project's own tracker with this line)")
 	}
@@ -82,10 +90,11 @@ func (p PGSetupStore) child(ctx context.Context, mode string) (bool, error) {
 }
 
 // storeChildResult is a store child's answer: ready, and on setup the rows
-// it put back from the log.
+// it put back from the log and the friends whose settings it copied.
 type storeChildResult struct {
 	Ready    bool
 	Restored []string
+	Friends  []string
 }
 
 func (p PGSetupStore) childWith(ctx context.Context, mode, only string) (bool, error) {
@@ -94,7 +103,7 @@ func (p PGSetupStore) childWith(ctx context.Context, mode, only string) (bool, e
 }
 
 // childResult runs mode under nova-secrets exec with only the names in only
-// (comma-separated) and reads its {"ready": bool, "restored": [names]}.
+// (comma-separated) and reads its {"ready": bool, "restored": [names], "friends": [lines]}.
 func (p PGSetupStore) childResult(ctx context.Context, mode, only string) (storeChildResult, error) {
 	if !filepath.IsAbs(p.Binary) || p.Secrets.Store == "" || p.Secrets.KeyFile == "" || p.Secrets.Seat == "" {
 		return storeChildResult{}, fmt.Errorf("store child configuration unavailable: binary %q absolute %t; secrets store, key file and seat set %t/%t/%t", Redact(p.Binary), filepath.IsAbs(p.Binary), p.Secrets.Store != "", p.Secrets.KeyFile != "", p.Secrets.Seat != "")
@@ -114,9 +123,10 @@ func (p PGSetupStore) childResult(ctx context.Context, mode, only string) (store
 	var result struct {
 		Ready    *bool    `json:"ready"`
 		Restored []string `json:"restored"`
+		Friends  []string `json:"friends"`
 	}
-	if len(out) > 1024 {
-		return storeChildResult{}, fmt.Errorf("store child returned invalid result: %d bytes, over 1024; first bytes %q", len(out), firstBytes(out))
+	if len(out) > 16384 {
+		return storeChildResult{}, fmt.Errorf("store child returned invalid result: %d bytes, over 16384; first bytes %q", len(out), firstBytes(out))
 	}
 	if err := json.Unmarshal(out, &result); err != nil {
 		return storeChildResult{}, fmt.Errorf("store child returned invalid result: %s", ParseFailure(err, out))
@@ -124,7 +134,7 @@ func (p PGSetupStore) childResult(ctx context.Context, mode, only string) (store
 	if result.Ready == nil {
 		return storeChildResult{}, fmt.Errorf("store child returned invalid result: no \"ready\"; first bytes %q", firstBytes(out))
 	}
-	return storeChildResult{Ready: *result.Ready, Restored: result.Restored}, nil
+	return storeChildResult{Ready: *result.Ready, Restored: result.Restored, Friends: result.Friends}, nil
 }
 
 // SprintStoreChild runs only in the dedicated nova-secrets child. Its caller
@@ -134,15 +144,24 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 }
 
 // SprintStoreSetup is SprintStoreChild installing, with the names of the rows
-// it put back from the log (store.PG.RestoreLostRows), for the child's
-// result: its stderr is shown only when it fails.
-func SprintStoreSetup(ctx context.Context, version string) (bool, []string, error) {
-	var restored []string
-	ok, err := sprintStoreChild(ctx, true, version, &restored)
-	return ok, restored, err
+// it put back from the log (store.PG.RestoreLostRows) and a line per friend
+// whose settings it copied from nova-config (CopyFriendSettings), for the
+// child's result: its stderr is shown only when it fails.
+func SprintStoreSetup(ctx context.Context, version string) (bool, StoreSetupResult, error) {
+	var r StoreSetupResult
+	ok, err := sprintStoreChild(ctx, true, version, &r)
+	return ok, r, err
 }
 
-func sprintStoreChild(ctx context.Context, install bool, version string, restored *[]string) (bool, error) {
+// StoreSetupResult is what the store setup child did that the parent prints:
+// the rows it put back from the log, and a line per friend whose settings it
+// copied from nova-config (or left at the defaults).
+type StoreSetupResult struct {
+	Restored []string `json:"restored,omitempty"`
+	Friends  []string `json:"friends,omitempty"`
+}
+
+func sprintStoreChild(ctx context.Context, install bool, version string, done *StoreSetupResult) (bool, error) {
 	dsn, password, dir := os.Getenv("NOVA_PG_DSN"), os.Getenv(sprintPasswordName), os.Getenv("NOVA_SPRINT_BACKUP_DIR")
 	if dir == "" {
 		home, err := os.UserHomeDir()
@@ -186,9 +205,15 @@ func sprintStoreChild(ctx context.Context, install bool, version string, restore
 		for _, name := range lost { // stderr is shown when the child fails later (the backup); its result carries them when it does not
 			fmt.Fprintf(os.Stderr, "nova-sprint: store: row %s was missing from sprint.rows; put back from the log\n", name)
 		}
-		if restored != nil {
-			*restored = lost
+		copied, err := copyFriends(ctx, dsn, password, pg)
+		if err != nil {
+			return false, err
 		}
+		if done != nil {
+			done.Restored, done.Friends = lost, copied
+		}
+	} else if owed, err := friendCopyOwedOn(ctx, dsn, password, pg); err != nil || owed {
+		return false, err // owed: not ready, so up's store step installs, which copies (the store may be otherwise ready)
 	}
 	archive := PGBackups{DSN: dsn, Password: password, Directory: dir, Version: version, Loader: PGSQLLoader{}}
 	ok, _, err = verifiedFirstBackup(ctx, pg, archive, dir)
@@ -217,6 +242,42 @@ func sprintStoreChild(ctx context.Context, install bool, version string, restore
 		return false, fmt.Errorf("first backup did not verify: %s", why)
 	}
 	return ok, err
+}
+
+// copyFriends is CopyFriendSettings on its own connection as nova_sprint,
+// which reads config.friends as the roster does.
+func copyFriends(ctx context.Context, dsn, password string, pg *store.PG) ([]string, error) {
+	conn, err := friendConn(ctx, dsn, password)
+	if err != nil {
+		return nil, err
+	}
+	defer closeSetupConnection(conn)
+	return CopyFriendSettings(ctx, conn, pg, "up", time.Now())
+}
+
+// friendCopyOwedOn is FriendCopyOwed on its own connection as nova_sprint.
+func friendCopyOwedOn(ctx context.Context, dsn, password string, pg *store.PG) (bool, error) {
+	conn, err := friendConn(ctx, dsn, password)
+	if err != nil {
+		return false, err
+	}
+	defer closeSetupConnection(conn)
+	return FriendCopyOwed(ctx, conn, pg)
+}
+
+// friendConn connects to dsn as nova_sprint with password, for the friend
+// copy's read of config.friends.
+func friendConn(ctx context.Context, dsn, password string) (*pgx.Conn, error) {
+	cfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, cause("the friends' settings from nova-config: the dsn", err)
+	}
+	cfg.Password = password
+	conn, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		return nil, cause("the friends' settings from nova-config: connect", err)
+	}
+	return conn, nil
 }
 
 func ensureStoreSchema(ctx context.Context, pg *store.PG, install bool) (bool, error) {

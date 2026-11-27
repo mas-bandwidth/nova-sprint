@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,11 +21,12 @@ import (
 // list it was given, the service records added through it, and every
 // argv it was asked to run, in order.
 type fleetFake struct {
-	machines string // the items of machine list --json
-	rows     int
-	services []map[string]any
-	calls    [][]string
-	fail     map[string]error // by the call's first two words
+	machines  string // the items of machine list --json
+	providers string // the items of provider list --json: "" is workloadProviders, "none" none
+	rows      int
+	services  []map[string]any
+	calls     [][]string
+	fail      map[string]error // by the call's first two words
 }
 
 func (f *fleetFake) command(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -35,6 +37,12 @@ func (f *fleetFake) command(_ context.Context, name string, args ...string) ([]b
 	switch {
 	case name == "nova-config" && args[0] == "machine":
 		return []byte(fmt.Sprintf(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":%d},"items":[%s]}`, f.rows, f.machines)), nil
+	case name == "nova-config" && args[0] == "provider":
+		items := cmp.Or(f.providers, workloadProviders)
+		if items == "none" {
+			items = ""
+		}
+		return []byte(fmt.Sprintf(`{"result":{"verb":"provider list","status":"ok","exit":0},"facts":{"kind":"provider","rows":%d},"items":[%s]}`, strings.Count(items, `"kind"`), items)), nil
 	case name == "nova-config" && args[0] == "service" && args[1] == "list":
 		items := []map[string]any{}
 		for _, s := range f.services {
@@ -68,6 +76,13 @@ func serviceAdded(args []string) map[string]any {
 const workloadMachines = `{"kind":"machine","fields":{"name":"studio","address":"100.100.1.2","roles":"services","cores":8}},` +
 	`{"kind":"machine","fields":{"name":"amd-1","address":"100.100.1.5","roles":"bench,runner","cores":16}},` +
 	`{"kind":"machine","fields":{"name":"amd-2","address":"100.100.1.6","roles":"bench"}}`
+
+// The provider records: two keyed and enabled, one keyless (a local
+// model), one disabled.
+const workloadProviders = `{"kind":"provider","fields":{"name":"deepseek","url":"https://api.deepseek.com","api":"openai","key":"DEEPSEEK_API_KEY","enabled":true}},` +
+	`{"kind":"provider","fields":{"name":"ollama","url":"http://127.0.0.1:11434","api":"anthropic","key":"","enabled":true}},` +
+	`{"kind":"provider","fields":{"name":"old","url":"https://old.example","api":"openai","key":"OLD_API_KEY","enabled":false}},` +
+	`{"kind":"provider","fields":{"name":"openrouter","url":"https://openrouter.ai/api","api":"openai","key":"OPENROUTER_API_KEY","enabled":true}}`
 
 func workloadRun() verbs.FleetService {
 	return verbs.FleetService{Name: "sprint-run", Machine: "studio", Seat: "studio", Keys: []string{"NOVA_BUS_PASSWORD", "NOVA_SPRINT_PG_PASSWORD"},
@@ -108,10 +123,10 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		}
 	}
 	want := []string{"nova-config", "service", "add", "sprint-worker-amd-1", "--machine", "amd-1",
-		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--harness","opencode","--providers","deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY,opencode=https://opencode.ai/inference/openai@OPENCODE_API_KEY,openrouter=https://openrouter.ai/api@OPENROUTER_API_KEY","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
+		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
-		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,GH_GATE_TOKEN,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD,OPENCODE_API_KEY,OPENROUTER_API_KEY",
+		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,GH_GATE_TOKEN,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD,OPENROUTER_API_KEY",
 		"--actor", "rowan", "--reason", "nova-sprint up 9/10 workers"}
 	if len(adds) != 2 || !slices.Equal(adds[0], want) || adds[1][3] != "sprint-worker-amd-2" {
 		t.Fatalf("records:\n%q\nwant\n%q", adds, want)
@@ -257,6 +272,19 @@ func TestInstallWorkersRefusals(t *testing.T) {
 	f.services = []map[string]any{{"name": "sprint-worker-amd-1", "machine": "amd-1", "seat": "amd-1", "keys": "", "argv": []string{"nova-sprint", "old"}, "keepalive": true, "enabled": true, "env": map[string]string{}}}
 	err = testWorkload(f, nil, nil).InstallWorkers(context.Background())
 	if !errors.As(err, &op) || !strings.Contains(op.Problem, "sprint-worker-amd-1 conflicts with setup") || slices.ContainsFunc(f.calls, func(c []string) bool { return c[0] == "nova-fleet" }) {
+		t.Fatal(err, f.calls)
+	}
+	// the refusal is the exact service set that brings the record to setup's shape
+	set := `nova-config service set sprint-worker-amd-1 --keys DEEPSEEK_API_KEY,GH_GATE_TOKEN,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD,OPENROUTER_API_KEY ` +
+		`--argv '["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]' ` +
+		`--env '<a JSON object of exactly NOVA_BUS_REDIS,NOVA_BUS_USER,NOVA_PG_DSN, as sprint-run's record holds them>' --actor <you> --reason <why>, then nova-sprint up again`
+	if op.Fix != set {
+		t.Fatalf("fix %q\nwant %q", op.Fix, set)
+	}
+	// no enabled provider record: no worker could reach a model
+	f = &fleetFake{machines: workloadMachines, rows: 3, providers: `{"kind":"provider","fields":{"name":"old","url":"https://old.example","api":"openai","key":"OLD_API_KEY","enabled":false}}`}
+	err = testWorkload(f, nil, nil).InstallWorkers(context.Background())
+	if !errors.As(err, &op) || !strings.Contains(op.Problem, "no enabled provider record") || !strings.HasPrefix(op.Fix, "nova-config provider add <name> --url") || slices.ContainsFunc(f.calls, func(c []string) bool { return c[0] == "nova-fleet" || (len(c) > 2 && c[2] == "add") }) {
 		t.Fatal(err, f.calls)
 	}
 }
@@ -466,7 +494,7 @@ func TestWorkerServiceStoreAndBusReachableFromTheBench(t *testing.T) {
 	} {
 		run := workloadRun()
 		run.Env["NOVA_PG_DSN"], run.Env["NOVA_BUS_REDIS"] = c.dsn, c.bus
-		env := workerService("amd-1", run, "studio.tail.ts.net").Env
+		env := workerService("amd-1", run, "studio.tail.ts.net", nil).Env
 		if env["NOVA_PG_DSN"] != c.wantDSN || env["NOVA_BUS_REDIS"] != c.wantBus {
 			t.Errorf("%s, %s: worker got %s, %s; want %s, %s", c.dsn, c.bus, env["NOVA_PG_DSN"], env["NOVA_BUS_REDIS"], c.wantDSN, c.wantBus)
 		}
