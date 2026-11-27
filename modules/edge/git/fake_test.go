@@ -317,7 +317,7 @@ func (f *Fake) AddCommit(parent string, changes map[string]string, originRef str
 func (f *Fake) SetOriginRef(ref, sha string) {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
-	if !strings.HasPrefix(ref, "refs/heads/") && !isFullSHA_internal(ref) {
+	if !strings.HasPrefix(ref, "refs/heads/") && !edge.IsFullSHA(ref) {
 		ref = "refs/heads/" + ref
 	}
 	f.world.originRefs[ref] = sha
@@ -325,7 +325,7 @@ func (f *Fake) SetOriginRef(ref, sha string) {
 func (f *Fake) OriginRef(ref string) string {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
-	if !strings.HasPrefix(ref, "refs/heads/") && !isFullSHA_internal(ref) {
+	if !strings.HasPrefix(ref, "refs/heads/") && !edge.IsFullSHA(ref) {
 		ref = "refs/heads/" + ref
 	}
 	return f.world.originRefs[ref]
@@ -372,7 +372,7 @@ func (f *Fake) Fetch(_ context.Context, _ string, refs ...string) error {
 			continue
 		}
 		key := r
-		if !strings.HasPrefix(key, "refs/heads/") && !isFullSHA_internal(key) {
+		if !strings.HasPrefix(key, "refs/heads/") && !edge.IsFullSHA(key) {
 			key = "refs/heads/" + key
 		}
 		sha, ok := f.world.originRefs[key]
@@ -397,7 +397,7 @@ func (f *Fake) LsRemote(_ context.Context, _, ref string) (string, bool, error) 
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
 	key := ref
-	if !strings.HasPrefix(key, "refs/heads/") && !isFullSHA_internal(key) {
+	if !strings.HasPrefix(key, "refs/heads/") && !edge.IsFullSHA(key) {
 		key = "refs/heads/" + key
 	}
 	sha, ok := f.world.originRefs[key]

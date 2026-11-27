@@ -10,7 +10,10 @@ runner-walk-*/
 runner-breaker/
 runner-restart/
 runner-breaker-refused/
+runner-breaker-gate-fails-*/
 verbfence-walk-*/
 basered-walk-*/
 answeredquiet-walk-*/
 hook-walk-*/
+mergenag-walk-*/
+judgementid-walk-*/

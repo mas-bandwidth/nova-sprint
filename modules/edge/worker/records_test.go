@@ -99,7 +99,7 @@ func TestProxyRouteURL(t *testing.T) {
 func TestProxiedClaudeCommand(t *testing.T) {
 	t.Parallel()
 	h := &ClaudeHarness{Proxied: true}
-	j := Job{Model: "ollama/qwen3:8b", Consumer: "p1.w1", Row: "amd-1", JobDir: "/w/j", ProxyAddr: "127.0.0.1:4000"}
+	j := Job{Model: "ollama/qwen3:8b", Consumer: "p1.w1", Row: "amd-1", JobDir: "/w/j", ProxyAddr: "127.0.0.1:4000", Routes: []string{"ollama"}}
 	argv, env := h.Command(j)
 	if got := strings.Join(argv[:7], " "); got != "claude --print --dangerously-skip-permissions --disallowedTools Task --model qwen3:8b" {
 		t.Fatalf("argv %q", got)

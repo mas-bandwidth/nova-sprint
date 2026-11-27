@@ -400,6 +400,9 @@ Adapters: `claude` (its settings refuse subagent spawns, as v1's hook did),
 `codex`, and `opencode`, which also carries the API-rate models (DeepSeek,
 Mercury, OpenRouter) through an OpenAI-shaped base URL. nova-worker writes
 no agent loop of its own.
+A proxied `claude` job also gets `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS` from the worker's own environment, each only
+when it is a positive integer, so claude compacts within a routed model's window.
 
 Keys never reach the agent. An API-rate key goes to a loopback proxy the
 runner starts under `nova-secrets exec`; the harness gets the proxy's

@@ -200,6 +200,10 @@ Each message is a wake. Handle it, then wait for the bus again.
    across the tree.
 4. Edit only the files the brief's PATHS allows. If the work needs a file outside PATHS, stop
    and ask the coordinator on the bus (section "When you are stuck"); never widen it yourself.
+   Before adding logic, search the checkout for the operation, its error text and its callers.
+   When fixing one copy of a rule, check its siblings for the same defect. For a larger change,
+   a token-based clone scan of the touched package and its neighbors can surface similar blocks.
+   Read what each caller expects before choosing a shared implementation. Keep cleanup inside PATHS.
 5. Run the whole package of every file you touch, never a subset. Builds and test suites never
    run on the coordinator's machine. A card names facts it needs (an OS, a tool), never a host;
    where you run is your row's business.
@@ -283,6 +287,9 @@ your own head.
 3. Read the diff against the base and the brief: inspect the code, the invariants and rulings,
    and the tests (that they cover what the brief asks and can fail). Do not run DONE-WHEN or
    stream gate commands: the work attempt ran them before finishing, and landing runs CI.
+   If the diff introduces or changes a repeated rule, compare both sites at the reviewed head.
+   Cite both locations and the input on which their behavior diverges. When the only finding
+   is a chance to simplify, record it as a note on a yes under the rules below.
 4. Say yes only when every DONE-WHEN item is met in the code and tests at this head. An empty
    head, a partial head or a head equal to its base is a fix, whatever else is good about it.
 5. Say fix only for a real defect: an unmet DONE-WHEN item, a regression, a broken ruling, a

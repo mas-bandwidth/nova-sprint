@@ -19,6 +19,7 @@ func TestCatalogDefault(t *testing.T) {
 	require.Empty(t, fs)
 	assert.Empty(t, a.Catalog.Bench, "the built-in ships no bench model")
 	assert.Empty(t, a.Catalog.BenchModel("pro"))
+	assert.Empty(t, a.Catalog.Concurrency, "a provider's concurrency is its nova-config provider record's")
 	body, _ := override("catalog", "def catalog():\n    return {\"bench\": {\"pro\": \"inception/mercury-3\"}}")
 	v := &store.PolicyVersion{Version: 1, Kind: "script", Body: body}
 	a, fs = testEngine().Answer(Versions{Active: v}, w.snap(), w.ro, FullQuestions(w.snap(), nil))

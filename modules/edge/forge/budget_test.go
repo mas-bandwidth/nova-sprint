@@ -96,6 +96,10 @@ func TestChecksReadsEveryPageOnlyForAFailingCommit(t *testing.T) {
 		{"counts short of the total", "SUCCESS", 326, map[string]int{"SUCCESS": 100}, green, CheckGreen, 4},
 		{"a state this build does not know", "SUCCESS", 326, map[string]int{"SUCCESS": 325, "MYSTERY": 1}, green, CheckGreen, 4},
 		{"no counts at all", "SUCCESS", 0, nil, green, CheckGreen, 4},
+		{"every check skipped, past the first page", "SUCCESS", 326, map[string]int{"SKIPPED": 326},
+			func(int) string { return "SKIPPED" }, CheckAbsent, 1},
+		{"one green on a page not read, the rest skipped", "SUCCESS", 326, map[string]int{"SUCCESS": 1, "SKIPPED": 325},
+			func(i int) string { return map[bool]string{true: "SUCCESS", false: "SKIPPED"}[i == 325] }, CheckGreen, 1},
 	} {
 		cl, calls := pagedClient_internal(c.state, c.total, c.counts, checkRuns_internal(326, c.conclusion))
 		m, err := cl.Checks(context.Background(), "mas-bandwidth/nova-sprint", []string{breakSHA})

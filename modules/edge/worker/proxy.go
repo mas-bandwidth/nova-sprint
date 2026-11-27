@@ -160,7 +160,7 @@ func (p *KeyProxy) resolveRoute_internal(r *http.Request) (ProxyRoute, bool) {
 		r.URL.Path = "/" + rest
 		return route, true
 	}
-	if len(p.Routes) == 1 {
+	if len(p.Routes) == 1 && first == "v1" {
 		for _, v := range p.Routes {
 			return v, true
 		}
@@ -192,7 +192,8 @@ func ProxyRouteURL(addr, provider string) string {
 // provider record gives it: the model prefix it serves, the upstream it
 // forwards to (and that URL's host, the one host it may reach), the name of
 // the environment variable holding its key ("" for a provider that takes
-// none), and its api (openai or anthropic: how the key is sent).
+// none), and its api (openai or anthropic: the wire protocol, and how the
+// key is sent; a --providers entry's optional :anthropic or :openai tag).
 type Provider struct{ Name, Upstream, Host, Key, API string }
 
 // ProviderRecord is the route of one enabled nova-config provider record,
@@ -218,12 +219,21 @@ func ProviderRecord(name, rawURL, api, key string) (Provider, error) {
 var (
 	providerName_internal = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 	// proxyKey_internal is a placeholder key (ProxyKey): never a real one.
-	proxyKey_internal = regexp.MustCompile(`^` + regexp.QuoteMeta(ProxyPlaceholderKey) + `-[A-Za-z0-9._@:-]*$`)
-	keyName_internal  = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	proxyKey_internal    = regexp.MustCompile(`^` + regexp.QuoteMeta(ProxyPlaceholderKey) + `-[A-Za-z0-9._@:-]*$`)
+	keyName_internal     = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	safeModelID_internal = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*(\/[A-Za-z0-9][A-Za-z0-9_.:-]*)*$`)
+	openAIOnlyProviders  = []string{"deepseek", "inception", "opencode", "openrouter", "openai", "paperinstruments"}
 )
 
-// ParseProviders reads --providers: <name>=<upstream url>@<KEY NAME>, comma
-// separated, e.g. deepseek=https://api.example.com@DEEPSEEK_API_KEY. The
+func providerAnthropicCompatible_internal(p Provider) bool {
+	if p.API != "" {
+		return p.API == "anthropic"
+	}
+	return !slices.Contains(openAIOnlyProviders, p.Name)
+}
+
+// ParseProviders reads --providers: <name>=<upstream url>@<KEY NAME>[:anthropic|openai],
+// comma separated, e.g. deepseek=https://api.example.com@DEEPSEEK_API_KEY. The
 // key's value is never a flag: the worker reads it from its environment,
 // where nova-secrets exec put it.
 func ParseProviders(s string) ([]Provider, error) {
@@ -234,15 +244,19 @@ func ParseProviders(s string) ([]Provider, error) {
 		if at < 0 {
 			return nil, fmt.Errorf("worker refused: --providers entry %q is not <name>=<url>@<KEY>: write it as deepseek=<upstream url>@DEEPSEEK_API_KEY", edge.Redact(spec))
 		}
-		p := Provider{Name: name, Upstream: rest[:at], Key: rest[at+1:]}
+		key, api, hasAPI := strings.Cut(rest[at+1:], ":")
+		upstream := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(rest[:at]), "/"), "/v1")
+		p := Provider{Name: name, Upstream: upstream, Key: key, API: api}
 		u, err := url.Parse(p.Upstream)
 		switch {
 		case !providerName_internal.MatchString(p.Name):
 			return nil, fmt.Errorf("worker refused: --providers name %q is not a provider prefix: use the provider of the models' provider/model ids", edge.Redact(p.Name))
 		case err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil:
-			return nil, fmt.Errorf("worker refused: --providers %s upstream %q is not an http(s) URL with a host and no credentials: pass the provider's API base URL", p.Name, edge.Redact(p.Upstream))
+			return nil, fmt.Errorf("worker refused: --providers %s upstream %q is not an http(s) URL with a host and no credentials: pass the provider's API base URL", p.Name, edge.Redact(rest[:at]))
 		case !keyName_internal.MatchString(p.Key):
 			return nil, fmt.Errorf("worker refused: --providers %s key %q is not an environment variable name: pass the name nova-secrets exec sets, e.g. DEEPSEEK_API_KEY", p.Name, edge.Redact(p.Key))
+		case hasAPI && p.API != "anthropic" && p.API != "openai":
+			return nil, fmt.Errorf("worker refused: --providers %s api %q is neither anthropic nor openai: use <name>=<url>@<KEY>[:anthropic|openai]", p.Name, edge.Redact(p.API))
 		case slices.ContainsFunc(out, func(q Provider) bool { return q.Name == p.Name }):
 			return nil, fmt.Errorf("worker refused: --providers names %s twice: name each provider once", p.Name)
 		}

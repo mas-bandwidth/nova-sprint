@@ -206,7 +206,7 @@ func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness,
 		return nil, err
 	}
 	_, env := h.Command(lj)
-	cmd := edge.Cmd{Argv: argv, Env: env, CleanEnv: true, Dir: dir, Timeout: r.Timeouts.LaunchGrace}
+	cmd := edge.Cmd{Argv: argv, Env: env, CleanEnv: true, Dir: dir, Timeout: r.Timeouts.Probe}
 	res, err := cmp.Or[edge.Exec](r.Exec, edge.NewOSExec()).Run(ctx, cmd)
 	if err != nil || res.ExitCode != 0 {
 		return nil, fmt.Errorf("the harness could not list its models: %w: fix the harness's install on this bench", edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
@@ -240,7 +240,7 @@ func (r *Runner) probeModel_internal(ctx context.Context, row string, h Harness,
 		return err
 	}
 	argv, env := h.Command(pj)
-	res, runErr := r.Wall.RunHarness(ctx, pj, argv, env, r.Timeouts.LaunchGrace)
+	res, runErr := r.Wall.RunHarness(ctx, pj, argv, env, r.Timeouts.Probe)
 	r.report("probe logs for "+row, keepLogs_internal(dir, res))
 	pj.ProxyStatus = cmp.Or(pj.ProxyStatus, r.Proxy.ConsumeStatus(pj.Consumer))
 	out := ClassifyJob(h, pj, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)

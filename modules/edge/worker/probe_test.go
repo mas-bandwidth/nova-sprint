@@ -100,6 +100,38 @@ func TestProbeRunsThePolicysModelPerTier(t *testing.T) {
 	}
 }
 
+func TestProbeTimeouts(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		config        Timeouts
+		probe, launch time.Duration
+	}{
+		{Timeouts{}, 120 * time.Second, 15 * time.Second},
+		{Timeouts{Probe: time.Minute}, time.Minute, 15 * time.Second},
+		{Timeouts{LaunchGrace: time.Second}, 120 * time.Second, time.Second},
+	} {
+		var listTimeout time.Duration
+		exec := edge.NewFakeExec()
+		exec.On("opencode", func(call edge.FakeCall) edge.FakeOutcome {
+			listTimeout = call.Cmd.Timeout
+			return edge.FakeOutcome{Stdout: "deepseek/deepseek-flash\n"}
+		})
+		wall := &fakeWall{}
+		r := probeRunner_internal(t, &probeSprint{}, wall, exec, nil)
+		r.Timeouts = tt.config.WithDefaults()
+		if _, err := r.listModels_internal(context.Background(), "b1", &OpenCodeHarness{}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.probeModel_internal(context.Background(), "b1", &ScriptHarness{}, ""); err != nil {
+			t.Fatal(err)
+		}
+		if listTimeout != tt.probe || wall.lastTimeout != tt.probe || r.Timeouts.LaunchGrace != tt.launch {
+			t.Errorf("timeouts with probe=%v launch=%v: listing=%v execution=%v launch=%v; want probe=%v launch=%v",
+				tt.config.Probe, tt.config.LaunchGrace, listTimeout, wall.lastTimeout, r.Timeouts.LaunchGrace, tt.probe, tt.launch)
+		}
+	}
+}
+
 // 36: a model the harness does not list is not served; with none served the
 // refusal names the policy's models and the harness's list.
 func TestProbeRefusesAPolicyModelTheHarnessDoesNotList(t *testing.T) {

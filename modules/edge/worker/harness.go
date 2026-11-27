@@ -81,8 +81,8 @@ type (
 		baseHarness_internal
 		ConfigDir string
 		// Proxied: claude reaches its provider through the key proxy's
-		// route for the model's provider (a nova-config provider record),
-		// never with a login of its own (Command).
+		// route for the model's provider (a nova-config provider record, or
+		// --providers), never with a login of its own (Command).
 		Proxied bool
 	}
 	CodexHarness struct {
@@ -206,7 +206,7 @@ func opencodeUsage_internal(rows []string) (Cost, bool) {
 // Whether it needs AF_UNIX inside the wall is not measured: no --unix.
 func (h *ClaudeHarness) Needs() Needs {
 	if h.Proxied {
-		return Needs{Proxy: true, Model: true}
+		return Needs{Proxy: true, Writes: []string{h.ConfigDir}, Model: true}
 	}
 	return Needs{NetOpen: true, Writes: []string{h.ConfigDir}, Provider: "anthropic", Model: true}
 }
@@ -242,26 +242,63 @@ func modelFlag_internal(j Job, provider string) []string {
 	return []string{"--model", j.Model}
 }
 
-// Command: proxied, claude is given the proxy's route for the model's
-// provider (ANTHROPIC_BASE_URL, no /v1), the job's placeholder key
-// (ANTHROPIC_AUTH_TOKEN), the model id without its provider, and its config
-// and temporary directories inside the job (outside the wall's writes it
-// dies with EPERM on /tmp/claude-<uid>, measured), with no updater and no
-// traffic beside the provider's.
+// Command: proxied (only when Proxied, j.ProxyAddr is set and the model's
+// provider is in j.Routes), claude is given the proxy's route for the model's provider
+// (ANTHROPIC_BASE_URL, without /v1 so claude appends /v1/messages), the job's
+// placeholder key (ANTHROPIC_AUTH_TOKEN), the bare model id without its
+// provider prefix (--model, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL), and
+// its config and temporary directories inside the job, with nonessential
+// traffic and autoupdater disabled, and CLAUDE_CODE_MAX_CONTEXT_TOKENS and
+// CLAUDE_CODE_MAX_OUTPUT_TOKENS from the worker's own environment when each
+// is a positive integer (claude does not know a routed model's window).
 func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
 	model := modelFlag_internal(j, h.Needs().Provider)
 	env := baseWallEnv_internal(j)
-	if provider, id, ok := strings.Cut(j.Model, "/"); h.Proxied && ok {
+	provider, id, hasPrefix := strings.Cut(j.Model, "/")
+	if h.Proxied && j.ProxyAddr != "" && hasPrefix && provider != "" && id != "" && slices.Contains(j.Routes, provider) {
 		model = []string{"--model", id}
-		env = append(env, "ANTHROPIC_BASE_URL="+ProxyRouteURL(j.ProxyAddr, provider), "ANTHROPIC_AUTH_TOKEN="+ProxyKey(j.Consumer),
-			"CLAUDE_CONFIG_DIR="+filepath.Join(j.JobDir, "home", ".claude"), "CLAUDE_CODE_TMPDIR="+filepath.Join(j.JobDir, "tmp"),
-			"DISABLE_AUTOUPDATER=1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1")
+		cfgDir := cmp.Or(h.ConfigDir, filepath.Join(j.JobDir, "home", ".claude"))
+		env = append(env,
+			"ANTHROPIC_BASE_URL="+ProxyRouteURL(j.ProxyAddr, provider),
+			"ANTHROPIC_AUTH_TOKEN="+ProxyKey(j.Consumer),
+			"ANTHROPIC_MODEL="+id,
+			"ANTHROPIC_SMALL_FAST_MODEL="+id,
+			"CLAUDE_CONFIG_DIR="+cfgDir,
+			"CLAUDE_CODE_TMPDIR="+filepath.Join(j.JobDir, "tmp"),
+			"DISABLE_AUTOUPDATER=1",
+			"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+		)
+		for _, k := range []string{"CLAUDE_CODE_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_MAX_OUTPUT_TOKENS"} {
+			if v := os.Getenv(k); positiveIntEnv_internal(v) {
+				env = append(env, k+"="+strings.TrimSpace(v))
+			}
+		}
 	} else if h.ConfigDir != "" {
 		env = append(env, "CLAUDE_CONFIG_DIR="+h.ConfigDir)
 	}
 	argv := append(append([]string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task"}, model...), "--", buildPrompt_internal(j))
-	return argv, SanitizeWallEnv(env, j.JobDir)
+	return argv, SanitizeJobWallEnv(env, j.JobDir, j.ProxyAddr)
 }
+
+// WallRefusal refuses a proxied ClaudeHarness job whose model has no route on
+// the key proxy or whose proxy address the wall would strip.
+func (h *ClaudeHarness) WallRefusal(j Job) error {
+	if !h.Proxied {
+		return nil
+	}
+	provider, id, ok := strings.Cut(j.Model, "/")
+	if !ok || provider == "" || id == "" {
+		return fmt.Errorf("proxied claude model %q is not <provider>/<model>", edge.Redact(j.Model))
+	}
+	if !slices.Contains(j.Routes, provider) {
+		return fmt.Errorf("proxied claude has no key-proxy route for %s (routes: %s)", edge.Redact(provider), cmp.Or(strings.Join(j.Routes, ", "), "none"))
+	}
+	if j.ProxyAddr == "" || !validAnthropicBaseURL_internal(ProxyRouteURL(j.ProxyAddr, provider), j.ProxyAddr) {
+		return fmt.Errorf("the claude proxy baseURL for %s was refused at the wall: proxy address is not loopback", edge.Redact(provider))
+	}
+	return nil
+}
+
 func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	wt := cmp.Or(j.WorktreeDir, filepath.Join(j.JobDir, "repo"))
 	argv := append(append([]string{"codex", "exec", "--full-auto"}, modelFlag_internal(j, h.Needs().Provider)...), "--cd", wt, buildPrompt_internal(j))
@@ -269,7 +306,7 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	if h.ConfigDir != "" {
 		env = append(env, "CODEX_HOME="+h.ConfigDir)
 	}
-	return argv, SanitizeWallEnv(env, j.JobDir)
+	return argv, SanitizeJobWallEnv(env, j.JobDir, j.ProxyAddr)
 }
 
 // Command: opencode is given OpenCodeConfig for the job's model (and the
@@ -281,7 +318,7 @@ func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 	if cfg := OpenCodeConfig(j.ProxyAddr, j.Consumer, j.Routes, append(slices.Clone(j.Models), j.Model)); j.ProxyAddr != "" && cfg != "" {
 		env = append(env, "OPENCODE_CONFIG_CONTENT="+cfg)
 	}
-	return argv, SanitizeWallEnv(env, j.JobDir)
+	return argv, SanitizeJobWallEnv(env, j.JobDir, j.ProxyAddr)
 }
 
 type (
@@ -728,6 +765,10 @@ func baseWallEnv_internal(j Job) []string {
 	return env
 }
 func SanitizeWallEnv(env []string, jobDir string) []string {
+	return SanitizeJobWallEnv(env, jobDir, "")
+}
+
+func SanitizeJobWallEnv(env []string, jobDir, proxyAddr string) []string {
 	var clean []string
 	hasPath := false
 	hasDotnetOptout := false
@@ -741,12 +782,20 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 			hasPath, clean = true, append(clean, kv)
 		case u == "OPENCODE_CONFIG_CONTENT" && openCodeConfigRefusal_internal(v) == nil:
 			clean = append(clean, kv)
+		case u == "ANTHROPIC_BASE_URL" && validAnthropicBaseURL_internal(v, proxyAddr):
+			clean = append(clean, "ANTHROPIC_BASE_URL="+v)
+		case u == "ANTHROPIC_AUTH_TOKEN" && proxyKey_internal.MatchString(v):
+			clean = append(clean, "ANTHROPIC_AUTH_TOKEN="+v)
+		case (u == "ANTHROPIC_MODEL" || u == "ANTHROPIC_SMALL_FAST_MODEL") && safeModelID_internal.MatchString(v):
+			clean = append(clean, u+"="+v)
+		case u == "CLAUDE_CODE_TMPDIR" && jobDir != "" && v == filepath.Join(jobDir, "tmp"):
+			clean = append(clean, "CLAUDE_CODE_TMPDIR="+v)
+		case (u == "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" || u == "DISABLE_AUTOUPDATER") && v == "1":
+			clean = append(clean, u+"=1")
 		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME" || u == "DOTNET_CLI_HOME") && jobDir == "":
 			clean = append(clean, kv)
-		case (u == "NOVA_RESERVE_CPUS" || u == "CARGO_BUILD_JOBS" || u == "RUST_TEST_THREADS") && positiveIntEnv_internal(v):
+		case (u == "NOVA_RESERVE_CPUS" || u == "CARGO_BUILD_JOBS" || u == "RUST_TEST_THREADS" || u == "CLAUDE_CODE_MAX_CONTEXT_TOKENS" || u == "CLAUDE_CODE_MAX_OUTPUT_TOKENS") && positiveIntEnv_internal(v):
 			clean = append(clean, u+"="+strings.TrimSpace(v))
-		case claudeProxyEnv_internal(u, v, jobDir): // ClaudeHarness proxied
-			clean = append(clean, kv)
 		case slices.Contains(allowed, u):
 			if u == "DOTNET_CLI_TELEMETRY_OPTOUT" {
 				hasDotnetOptout = true
@@ -769,23 +818,20 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 	return clean
 }
 
-// claudeProxyEnv_internal admits exactly what a proxied claude is given
-// (ClaudeHarness.Command): a base URL on a loopback http proxy, the
-// placeholder key (never a real one), a temporary directory inside the job,
-// and the updater and nonessential traffic switched off.
-func claudeProxyEnv_internal(name, v, jobDir string) bool {
-	switch name {
-	case "ANTHROPIC_BASE_URL":
-		u, err := url.Parse(v)
-		return err == nil && u.Scheme == "http" && CheckLoopbackAddr(u.Host) == nil && u.User == nil && u.RawQuery == ""
-	case "ANTHROPIC_AUTH_TOKEN":
-		return proxyKey_internal.MatchString(v)
-	case "CLAUDE_CODE_TMPDIR":
-		return jobDir == "" || pathUnder_internal(v, jobDir)
-	case "DISABLE_AUTOUPDATER", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":
-		return v == "1"
+func validAnthropicBaseURL_internal(raw, proxyAddr string) bool {
+	if proxyAddr == "" {
+		return false
 	}
-	return false
+	addr := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(proxyAddr), "http://"), "https://"), "/")
+	if CheckLoopbackAddr(addr) != nil {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Host != addr {
+		return false
+	}
+	route := strings.TrimPrefix(u.Path, "/")
+	return route != "" && !strings.Contains(route, "/") && providerName_internal.MatchString(route) && raw == ProxyRouteURL(addr, route)
 }
 
 func positiveIntEnv_internal(v string) bool {

@@ -547,6 +547,21 @@ func (w *landWalk_internal) ciStep_internal(s string) {
 	w.req[s] = r
 }
 
+// handOK_internal is whether a hand landing of c merges: c already on
+// base's tip, or HandVerdict on its head's truthful checks (green with no
+// reds, red on them), the model's HandOK.
+func (w *landWalk_internal) handOK_internal(c string) bool {
+	if cards, _ := w.project_internal(w.tip_internal()); slices.Contains(cards, c) {
+		return true
+	}
+	r := forge.CheckRollup{SHA: w.heads[c], State: forge.CheckGreen}
+	if reds := w.reds_internal(w.heads[c]); len(reds) > 0 {
+		r.State, r.Failing = forge.CheckRed, reds
+	}
+	_, _, ok := HandVerdict("#1", w.heads[c], r)
+	return ok
+}
+
 // answer_internal is the coordinator's answer to card c's land judgement.
 func (w *landWalk_internal) answer_internal(c, choice string) {
 	delete(w.js, c)
@@ -590,6 +605,9 @@ func (w *landWalk_internal) step_internal() walkMove_internal {
 	for _, c := range walkCards {
 		if w.js[c] {
 			choice := []string{"land", "land", "fix", "retry"}[w.rng.Intn(4)]
+			if choice == "land" && !w.handOK_internal(c) {
+				continue // HandVerdict refuses: nothing merged (the model's HandOK)
+			}
 			moves = append(moves, walkMove_internal{act: "Answer", arg: c, choice: choice})
 		}
 	}
@@ -619,6 +637,9 @@ func (w *landWalk_internal) step_internal() walkMove_internal {
 			}
 		}
 		w.extCommit_internal(bad...)
+		if w.bad.Intn(2) == 0 { // merged by a PR outside the sprint, its head the commit's very tree
+			w.addPR_internal(w.tip_internal(), w.tip_internal())
+		}
 	case "Answer":
 		w.answer_internal(m.arg, m.choice)
 	}

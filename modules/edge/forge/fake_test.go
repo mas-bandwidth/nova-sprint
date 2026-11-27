@@ -102,7 +102,7 @@ func (f *Fake) Checks(_ context.Context, repo string, shas []string) (map[string
 		return nil, fmt.Errorf("forge refused: Checks batch size %d exceeds %d SHAs", len(shas), MaxChecksBatch)
 	}
 	for _, sha := range shas {
-		if !isFullSHA_internal(sha) {
+		if !edge.IsFullSHA(sha) {
 			return nil, fmt.Errorf("forge refused: invalid SHA %q: pass a 40-character hex commit SHA", sha)
 		}
 	}
@@ -122,7 +122,7 @@ func (f *Fake) Checks(_ context.Context, repo string, shas []string) (map[string
 
 // Merge merges an open PR whose head is sha and returns a merge sha.
 func (f *Fake) Merge(_ context.Context, repo string, pr int, sha string) (string, error) {
-	if pr <= 0 || !isFullSHA_internal(sha) {
+	if pr <= 0 || !edge.IsFullSHA(sha) {
 		return "", fmt.Errorf("forge refused: Merge requires pr > 0 and a 40-hex sha")
 	}
 	f.call_internal("Merge")

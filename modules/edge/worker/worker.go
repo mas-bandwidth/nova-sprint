@@ -36,14 +36,14 @@ const (
 )
 
 type Timeouts struct {
-	Stage, LaunchGrace                                                                                                                     time.Duration
+	Stage, Probe, LaunchGrace                                                                                                              time.Duration
 	LaunchTries                                                                                                                            int
 	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, BusClaim, ReserveWait time.Duration
 }
 
 func DefaultTimeouts() Timeouts {
 	return Timeouts{
-		Stage: 120 * time.Second, LaunchGrace: 15 * time.Second, LaunchTries: 3,
+		Stage: 120 * time.Second, Probe: 120 * time.Second, LaunchGrace: 15 * time.Second, LaunchTries: 3,
 		LaunchBackoff1Min: 5 * time.Second, LaunchBackoff1Max: 20 * time.Second,
 		LaunchBackoff2Min: 30 * time.Second, LaunchBackoff2Max: 60 * time.Second,
 		TerminateGrace: edge.TerminateGrace, RebaseAndTest: 2 * time.Minute,
@@ -52,7 +52,7 @@ func DefaultTimeouts() Timeouts {
 }
 func (t Timeouts) WithDefaults() Timeouts {
 	d := DefaultTimeouts()
-	t.Stage, t.LaunchGrace, t.LaunchTries = cmp.Or(t.Stage, d.Stage), cmp.Or(t.LaunchGrace, d.LaunchGrace), cmp.Or(t.LaunchTries, d.LaunchTries)
+	t.Stage, t.Probe, t.LaunchGrace, t.LaunchTries = cmp.Or(t.Stage, d.Stage), cmp.Or(t.Probe, d.Probe), cmp.Or(t.LaunchGrace, d.LaunchGrace), cmp.Or(t.LaunchTries, d.LaunchTries)
 	t.LaunchBackoff1Min, t.LaunchBackoff1Max = cmp.Or(t.LaunchBackoff1Min, d.LaunchBackoff1Min), cmp.Or(t.LaunchBackoff1Max, d.LaunchBackoff1Max)
 	t.LaunchBackoff2Min, t.LaunchBackoff2Max = cmp.Or(t.LaunchBackoff2Min, d.LaunchBackoff2Min), cmp.Or(t.LaunchBackoff2Max, d.LaunchBackoff2Max)
 	t.TerminateGrace, t.RebaseAndTest, t.Push = cmp.Or(t.TerminateGrace, d.TerminateGrace), cmp.Or(t.RebaseAndTest, d.RebaseAndTest), cmp.Or(t.Push, d.Push)
