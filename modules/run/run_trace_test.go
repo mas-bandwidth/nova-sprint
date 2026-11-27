@@ -17,7 +17,9 @@ package run
 //   - three tracked producers p1, p2, p3 (the model's jobs and cards 1..3),
 //     ready at Init; p0 (flash) with its consumer w0 working on r1, the
 //     preemption's victim; p9 (flash) with w9 working on r2; r2 serves only
-//     flash and has no room. r1's width is 3: w0 and two jobs (the deal is
+//     flash and has no room, and is hooked in as r1 is (a row not hooked in
+//     is closed, and the holds step returns its whole hand: an op on w9 the
+//     model has no action for). r1's width is 3: w0 and two jobs (the deal is
 //     the take, defect 52, so a dealt job is working on r1). The engine's
 //     idle floor and its nudge, unacked and undealt bounds are set past the
 //     walk (the model has no action for them).
@@ -606,7 +608,7 @@ func traceSetup(t *testing.T, f *store.Fake, at time.Time) {
 	apply("setup-1",
 		store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"},
 		store.PutRow{Name: "r1", Session: "sess-1", Role: "worker"}, store.SetRowState{Row: "r1", State: "up"},
-		store.PutRow{Name: "r2"}, store.SetRowState{Row: "r2", State: "up"})
+		store.PutRow{Name: "r2", Session: "sess-2", Role: "worker"}, store.SetRowState{Row: "r2", State: "up"})
 	apply("setup-policy", activePolicy()...)
 	var ws []store.Write
 	for i, c := range append(slices.Clone(tracked), "p0", "p9") {
