@@ -36,7 +36,7 @@ func TestFleetAndFriendsTablesEndInTheLoadColumn(t *testing.T) {
 		`["ok%", "num"], ["load", "num"]];`,                      // the header
 		`box._total._c.push(el("div"));`,                         // the Total row's spacer under it
 		`r.load = quiet(numCell()); r.node.appendChild(r.load);`, // each row's cell, last
-		`var lp = pct(m.load); setText(r.load, lp === null ? "-" : lp.toFixed(1) + "%")`,
+		`var lp = st === "down" ? null : pct(m.load); setText(r.load, lp === null ? "-" : lp.toFixed(1) + "%")`,
 	} {
 		if !strings.Contains(j, want) {
 			t.Errorf("app.js has no %q", want)

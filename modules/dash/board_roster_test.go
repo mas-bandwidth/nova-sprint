@@ -25,7 +25,7 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 	}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
 		"a-bench": {Name: "a-bench", State: "up"}, "amy": {Name: "amy", State: "up", Held: true},
-		"gone": {Name: "gone", State: "up"}, "gone-friend": {Name: "gone-friend", State: "down"}, "studio": {Name: "studio", State: "up"},
+		"gone": {Name: "gone", State: "up"}, "gone-friend": {Name: "gone-friend", State: "down"}, "studio": {Name: "studio", State: "up", Cores: 12, CPUPeakDeci: 452, SlotsUsed: 3, SlotsTotal: 12},
 	}}
 	d := mapSnapshot(snap, ros, time.Time{}, nil)
 	fleet := d.Tables["fleet"].(map[string]*fleetRow)
@@ -96,7 +96,7 @@ func TestBoardLeavesOutRowsNovaConfigDoesNotName(t *testing.T) {
 // absent: every store row shows, down, at width 0, as before.
 func TestBoardWithAnEmptyRosterShowsEveryRow(t *testing.T) {
 	t.Parallel()
-	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}, "gone": {Name: "gone", State: "up"}}}
+	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Cores: 12, CPUPeakDeci: 452, SlotsUsed: 3, SlotsTotal: 12}, "gone": {Name: "gone", State: "up"}}}
 	fleet := mapSnapshot(snap, roster.Roster{}, time.Time{}, nil).Tables["fleet"].(map[string]*fleetRow)
 	if len(fleet) != 2 || *fleet["amd-1"] != (fleetRow{Status: "down"}) || *fleet["gone"] != (fleetRow{Status: "down"}) {
 		t.Fatalf("fleet = %+v", fleet)
